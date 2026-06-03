@@ -1,7 +1,7 @@
 /**
  * Client-side date range filter for master list views.
  *
- * - From only: records on that calendar day
+ * - From only: records on or after that calendar day
  * - From + To: inclusive range (either order of inputs)
  * - To only: records on or before that day
  */
@@ -56,7 +56,7 @@ export function matchesDateRangeFilter(recordDate: unknown, from: string, to: st
   const toD = parseCalendarDateInput(to);
 
   if (fromD && !toD) {
-    return recMs === dayStartMs(fromD);
+    return recMs >= dayStartMs(fromD);
   }
   if (!fromD && toD) {
     return recMs <= dayStartMs(toD);
@@ -75,7 +75,7 @@ export function dateRangeFilterSummary(from: string, to: string): string | null 
   const toD = parseCalendarDateInput(to);
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  if (fromD && !toD) return `On ${fmt(fromD)}`;
+  if (fromD && !toD) return `From ${fmt(fromD)}`;
   if (!fromD && toD) return `Until ${fmt(toD)}`;
   if (fromD && toD) {
     const lo = dayStartMs(fromD) <= dayStartMs(toD) ? fromD : toD;

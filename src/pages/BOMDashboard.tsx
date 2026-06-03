@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,6 +17,33 @@ import {
   flattenFormulaBomPhases,
 } from '../lib/skuBomMath';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { compareMasterTableSort } from '../lib/masterTableSort';
+import {
+  PM_SKU_CATEGORY_SELECT_OPTIONS,
+  normalizePmDetailSubCategoryForSelect,
+  normalizePmSkuCategoryForSelect,
+  pmDetailSubCategoryHasSubSubCategory,
+  pmDetailSubCategoryOptionsForSkuCategory,
+  pmLevelForSubCategory,
+  pmSubSubCategoryOptionsForDetailSubCategory,
+  normalizePmSubSubCategoryForSelect,
+} from '../constants/materialMasterSkuRules';
+
+type PrListSortColumn =
+  | 'code'
+  | 'record'
+  | 'product'
+  | 'category'
+  | 'form'
+  | 'packSize'
+  | 'batchKg'
+  | 'shelfLife'
+  | 'rmIngs'
+  | 'packItems'
+  | 'status'
+  | 'version'
+  | 'openSos';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
 
@@ -45,6 +72,8 @@ const BOMDashboard: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<PrListSortColumn | null>('code');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [bomEditPopupId, setBomEditPopupId] = useState<string | null>(null);
   const [formulaRmExcelUploading, setFormulaRmExcelUploading] = useState(false);
   /** Full BOM reset for the product currently open in the side panel (toolbar). */
@@ -420,13 +449,64 @@ const BOMDashboard: React.FC = () => {
   const addPackRow = () => {
     setEditDraft((prev) => ({
       ...prev!,
-      packBom: [...(prev?.packBom ?? []), { row_number: (prev?.packBom?.length ?? 0) + 1, pm_id: null, pm_description: '', pm_code: '', pack_type: 'Primary', qty_per_unit: 1, uom: 'pc/unit' }],
+      packBom: [
+        ...(prev?.packBom ?? []),
+        {
+          row_number: (prev?.packBom?.length ?? 0) + 1,
+          pm_id: null,
+          pm_description: '',
+          pm_code: '',
+          pack_type: 'Primary',
+          pm_sku_category: '',
+          pm_sub_category: '',
+          pm_sub_sub_category: '',
+          qty_per_unit: 1,
+          uom: 'pc/unit',
+        },
+      ],
     }));
   };
   const updatePackRow = (rowIdx: number, field: keyof Omit<PackBomRow, 'row_number' | 'pm_id'>, value: string | number) => {
     setEditDraft((prev) => {
       if (!prev) return null;
       const packBom = (prev.packBom ?? []).map((row, i) => (i !== rowIdx ? row : { ...row, [field]: value }));
+      return { ...prev, packBom };
+    });
+  };
+  const updatePackRowCategory = (rowIdx: number, categoryRaw: string) => {
+    const canon = normalizePmSkuCategoryForSelect(categoryRaw) || '';
+    const level = pmLevelForSubCategory(canon);
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const packBom = (prev.packBom ?? []).map((row, i) => {
+        if (i !== rowIdx) return row;
+        return {
+          ...row,
+          pm_sku_category: canon,
+          pm_sub_category: normalizePmDetailSubCategoryForSelect(
+            canon,
+            row.pm_sub_category ?? ''
+          ),
+          pm_sub_sub_category: '',
+          pack_type: level || row.pack_type,
+        };
+      });
+      return { ...prev, packBom };
+    });
+  };
+  const updatePackRowSubCategory = (rowIdx: number, subRaw: string) => {
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const packBom = (prev.packBom ?? []).map((row, i) => {
+        if (i !== rowIdx) return row;
+        const detail =
+          normalizePmDetailSubCategoryForSelect(row.pm_sku_category ?? '', subRaw) || subRaw;
+        return {
+          ...row,
+          pm_sub_category: detail,
+          pm_sub_sub_category: normalizePmSubSubCategoryForSelect(detail, row.pm_sub_sub_category ?? ''),
+        };
+      });
       return { ...prev, packBom };
     });
   };
@@ -540,7 +620,18 @@ const BOMDashboard: React.FC = () => {
         return;
       }
     }
-    const pm_lines = packBom.map((r) => ({ pm_code: r.pm_code, description: r.pm_description, pack_type: r.pack_type, qty_per_unit: r.qty_per_unit, uom: r.uom }));
+    const pm_lines = packBom.map((r) => ({
+      pm_code: r.pm_code,
+      description: r.pm_description,
+      pack_type: r.pack_type,
+      pm_sku_category: r.pm_sku_category || undefined,
+      pm_sub_category: r.pm_sub_category || undefined,
+      optional_pm_sub_category: r.pm_sub_category || undefined,
+      pm_sub_sub_category: r.pm_sub_sub_category || undefined,
+      optional_pm_sub_sub_category: r.pm_sub_sub_category || undefined,
+      qty_per_unit: r.qty_per_unit,
+      uom: r.uom,
+    }));
     const process_steps = processSteps.map((s, i) => ({ step_number: i + 1, description: s.description, duration_minutes: s.duration_minutes }));
     payload.bom = { rm_lines, sku_rm_lines, sku_bom_limit_qty, sku_bom_limit_uom, pm_lines, process_steps };
     const res = await updatePRProduct(selectedProduct.product_id, payload);
@@ -565,25 +656,94 @@ const BOMDashboard: React.FC = () => {
   useEffect(() => {
     // Reset to page 1 whenever filters/search/page size change.
     setCurrentPage(1);
-  }, [searchTerm, selectedCategory, selectedStatus, pageSize]);
+  }, [searchTerm, selectedCategory, selectedStatus, pageSize, sortColumn, sortDirection]);
 
-  const filteredList = list.filter((p) => {
-    const matchSearch = !searchTerm.trim() || [
-      p.product_name,
-      p.product_code,
-      (p as unknown as { zoho_sku_code?: string }).zoho_sku_code,
-      (p as unknown as { product_sku?: string }).product_sku,
-    ].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
-    const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
-    return matchSearch && matchCat && matchStatus;
-  });
+  const togglePrSort = useCallback((column: PrListSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  }, [sortColumn]);
 
-  const totalFiltered = filteredList.length;
+  const filteredList = useMemo(() => {
+    return list.filter((p) => {
+      const matchSearch = !searchTerm.trim() || [
+        p.product_name,
+        p.product_code,
+        (p as unknown as { zoho_sku_code?: string }).zoho_sku_code,
+        (p as unknown as { product_sku?: string }).product_sku,
+      ].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
+      const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
+      return matchSearch && matchCat && matchStatus;
+    });
+  }, [list, searchTerm, selectedCategory, selectedStatus]);
+
+  const sortedFilteredList = useMemo(() => {
+    if (!sortColumn) return filteredList;
+    const dir = sortDirection;
+    const packSizeKey = (p: PRProductListItem): string =>
+      formatSkuBomLimitAsPack(p.skuBomLimitQty, p.skuBomLimitUom);
+    const recordKey = (p: PRProductListItem): string => p.pr_record_type ?? '';
+    const cmp = (a: PRProductListItem, b: PRProductListItem): number => {
+      switch (sortColumn) {
+        case 'code':
+          return compareMasterTableSort(a.product_code ?? '', b.product_code ?? '', dir);
+        case 'record':
+          return compareMasterTableSort(recordKey(a), recordKey(b), dir);
+        case 'product':
+          return compareMasterTableSort(a.product_name ?? '', b.product_name ?? '', dir);
+        case 'category':
+          return compareMasterTableSort(a.category ?? '', b.category ?? '', dir);
+        case 'form':
+          return compareMasterTableSort(a.form ?? '', b.form ?? '', dir);
+        case 'packSize':
+          return compareMasterTableSort(packSizeKey(a), packSizeKey(b), dir);
+        case 'batchKg':
+          return compareMasterTableSort(Number(a.batch_size_kg ?? 0), Number(b.batch_size_kg ?? 0), dir);
+        case 'shelfLife':
+          return compareMasterTableSort(
+            Number(a.shelf_life_months ?? 0),
+            Number(b.shelf_life_months ?? 0),
+            dir
+          );
+        case 'rmIngs':
+          return compareMasterTableSort(
+            Number(a.rm_ingredients_count ?? 0),
+            Number(b.rm_ingredients_count ?? 0),
+            dir
+          );
+        case 'packItems':
+          return compareMasterTableSort(
+            Number(a.pack_items_count ?? 0),
+            Number(b.pack_items_count ?? 0),
+            dir
+          );
+        case 'status':
+          return compareMasterTableSort(a.status ?? '', b.status ?? '', dir);
+        case 'version':
+          return compareMasterTableSort(a.version ?? '', b.version ?? '', dir);
+        case 'openSos':
+          return compareMasterTableSort(
+            Number(a.open_sos_count ?? 0),
+            Number(b.open_sos_count ?? 0),
+            dir
+          );
+        default:
+          return 0;
+      }
+    };
+    return [...filteredList].sort(cmp);
+  }, [filteredList, sortColumn, sortDirection]);
+
+  const totalFiltered = sortedFilteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const pagedFilteredList = filteredList.slice(startIndex, startIndex + pageSize);
+  const pagedFilteredList = sortedFilteredList.slice(startIndex, startIndex + pageSize);
 
   const statCardData = [
     { label: 'TOTAL PRODUCTS', value: list.length, sub: 'Registered PR masters', accent: 'border-l-blue-500', num: 'text-blue-600' },
@@ -745,20 +905,111 @@ const BOMDashboard: React.FC = () => {
                 <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CODE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Record</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PRODUCT</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CATEGORY</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FORM</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PACK SIZE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">BATCH (KG)</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">SHELF LIFE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM INGS.</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PACK ITEMS</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">STATUS</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">VER.</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">OPEN SOS</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ACTIONS</th>
+                    <SortableTableTh
+                      label="Code"
+                      column="code"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Record"
+                      column="record"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Product"
+                      column="product"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Category"
+                      column="category"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Form"
+                      column="form"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Pack size"
+                      column="packSize"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Batch (kg)"
+                      column="batchKg"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Shelf life"
+                      column="shelfLife"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="RM ings."
+                      column="rmIngs"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Pack items"
+                      column="packItems"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Status"
+                      column="status"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Ver."
+                      column="version"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Open SOs"
+                      column="openSos"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1301,15 +1552,73 @@ const BOMDashboard: React.FC = () => {
                       )}
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Category</th><th className="text-left p-2">Sub-category</th><th className="text-left p-2">Sub-sub category</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                           <tbody>
-                            {packList.map((row, i) => (
+                            {packList.map((row, i) => {
+                              const subCategoryOpts = pmDetailSubCategoryOptionsForSkuCategory(row.pm_sku_category ?? '');
+                              const subSubCategoryOpts = pmSubSubCategoryOptionsForDetailSubCategory(
+                                row.pm_sub_category ?? ''
+                              );
+                              const categoryLabel =
+                                PM_SKU_CATEGORY_SELECT_OPTIONS.find((o) => o.value === row.pm_sku_category)?.label ||
+                                row.pm_sku_category ||
+                                '—';
+                              return (
                               <tr key={i} className="border-t border-gray-100">
                                 <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
                                 {isEditMode ? (
                                   <>
                                     <td className="p-2"><input value={row.pm_description} onChange={(e) => updatePackRow(i, 'pm_description', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
                                     <td className="p-2"><input value={row.pm_code} onChange={(e) => updatePackRow(i, 'pm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sku_category ?? ''}
+                                        onChange={(e) => updatePackRowCategory(i, e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs"
+                                      >
+                                        <option value="">Category…</option>
+                                        {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sub_category ?? ''}
+                                        disabled={!String(row.pm_sku_category ?? '').trim()}
+                                        onChange={(e) => updatePackRowSubCategory(i, e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs disabled:bg-gray-50"
+                                      >
+                                        <option value="">Sub-category…</option>
+                                        {subCategoryOpts.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {row.pm_sub_category &&
+                                        !subCategoryOpts.some((o) => o.value === row.pm_sub_category) ? (
+                                          <option value={row.pm_sub_category}>{row.pm_sub_category}</option>
+                                        ) : null}
+                                      </select>
+                                    </td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sub_sub_category ?? ''}
+                                        disabled={
+                                          !String(row.pm_sub_category ?? '').trim() ||
+                                          !pmDetailSubCategoryHasSubSubCategory(row.pm_sub_category ?? '')
+                                        }
+                                        onChange={(e) => updatePackRow(i, 'pm_sub_sub_category', e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs disabled:bg-gray-50"
+                                      >
+                                        <option value="">Sub-sub…</option>
+                                        {subSubCategoryOpts.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {row.pm_sub_sub_category &&
+                                        !subSubCategoryOpts.some((o) => o.value === row.pm_sub_sub_category) ? (
+                                          <option value={row.pm_sub_sub_category}>{row.pm_sub_sub_category}</option>
+                                        ) : null}
+                                      </select>
+                                    </td>
                                     <td className="p-2"><input value={row.pack_type} onChange={(e) => updatePackRow(i, 'pack_type', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
                                     <td className="p-2"><input type="number" step="0.01" value={row.qty_per_unit} onChange={(e) => updatePackRow(i, 'qty_per_unit', Number(e.target.value) || 0)} className="w-20 px-2 py-1 border rounded text-right text-xs" /></td>
                                     <td className="p-2"><input value={row.uom} onChange={(e) => updatePackRow(i, 'uom', e.target.value)} className="w-14 px-2 py-1 border rounded text-xs" /></td>
@@ -1321,13 +1630,17 @@ const BOMDashboard: React.FC = () => {
                                     <td className="p-2">
                                       <Link to={`/packaging?pm=${encodeURIComponent(row.pm_code)}`} className="font-mono text-xs text-amber-600 hover:text-amber-700 underline" title="Open in Pack Materials to edit; changes apply everywhere">{row.pm_code}</Link>
                                     </td>
+                                    <td className="p-2 text-xs text-gray-700">{categoryLabel}</td>
+                                    <td className="p-2 text-xs text-gray-700">{row.pm_sub_category || '—'}</td>
+                                    <td className="p-2 text-xs text-gray-700">{row.pm_sub_sub_category || '—'}</td>
                                     <td className="p-2"><span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-800">{row.pack_type}</span></td>
                                     <td className="p-2 text-right font-mono font-bold text-indigo-600">{row.qty_per_unit}</td>
                                     <td className="p-2 text-gray-500">{toPmDisplayUnit(row.uom)}</td>
                                   </>
                                 )}
                               </tr>
-                            ))}
+                            );
+                            })}
                           </tbody>
                         </table>
                       </div>

@@ -120,3 +120,15 @@ export async function updateProcurementRequest(
     return { data: null, error: err, success: false };
   }
 }
+
+export async function deleteProcurementRequest(id: string): Promise<ServiceResult<null>> {
+  try {
+    await api.delete(`/api/v1/procurement/${id}`);
+    return { data: null, error: null, success: true };
+  } catch (error) {
+    const apiMsg = extractApiErrorMessage(error);
+    if (apiMsg) return { data: null, error: apiMsg, success: false };
+    const err = error instanceof Error ? error.message : 'Failed to delete procurement request';
+    return { data: null, error: err, success: false };
+  }
+}

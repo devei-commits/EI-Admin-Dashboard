@@ -21,9 +21,14 @@ export function buildRmTypeaheadOptions(
   const rows = rawMaterials.map((rm) => {
     const id = String(rm.id);
     const code = String(rm.code ?? '').trim();
-    const name = String(rm.inci || rm.name || '').trim();
-    const label = code ? `${code} — ${name || code}` : name || id;
-    const haystack = `${code} ${name} ${id}`.trim().toLowerCase();
+    const sku = String(rm.zohoSkuCode ?? '').trim();
+    const inci = String(rm.inci ?? '').trim();
+    const tradeName = String(rm.name ?? '').trim();
+    const displayName = inci || tradeName || code;
+    const codeTokens = [code, sku].filter((s, i, arr) => Boolean(s) && arr.indexOf(s) === i);
+    const codePart = codeTokens.join(' / ');
+    const label = codePart ? `${codePart} — ${displayName}` : displayName || id;
+    const haystack = [code, sku, inci, tradeName, id].filter(Boolean).join(' ').trim().toLowerCase();
     const disabled = Boolean(exclude?.has(id) && id !== allowId);
     return { id, code, label, haystack, disabled };
   });
@@ -55,6 +60,11 @@ export function rmTypeaheadLabelForId(
   const rm = rawMaterials.find((r) => String(r.id) === String(id));
   if (!rm) return '';
   const code = String(rm.code ?? '').trim();
-  const name = String(rm.inci || rm.name || '').trim();
-  return code ? `${code} — ${name || code}` : name;
+  const sku = String(rm.zohoSkuCode ?? '').trim();
+  const inci = String(rm.inci ?? '').trim();
+  const tradeName = String(rm.name ?? '').trim();
+  const displayName = inci || tradeName || code;
+  const codeTokens = [code, sku].filter((s, i, arr) => Boolean(s) && arr.indexOf(s) === i);
+  const codePart = codeTokens.join(' / ');
+  return codePart ? `${codePart} — ${displayName}` : displayName || String(id);
 }

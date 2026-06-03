@@ -73,6 +73,12 @@ export interface PackBomRow {
   pm_description: string;
   pm_code: string;
   pack_type: string;
+  /** PM category slug (ppm, spm-labels, …). */
+  pm_sku_category?: string;
+  /** Finer sub-category (Tubes, Sheet form, …). */
+  pm_sub_category?: string;
+  /** Material / construction under sub-category (PET, Aluminium, …). */
+  pm_sub_sub_category?: string;
   qty_per_unit: number;
   uom: string;
 }

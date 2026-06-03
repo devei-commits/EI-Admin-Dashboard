@@ -77,6 +77,32 @@ function fulfilledSortTs(ask: PlanningQuotationAsk): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** Tailwind classes for Items Involved quotation action button. */
+export function planningQuotationActionButtonClass(status: PlanningQuotationAskUiStatus): string {
+  switch (status) {
+    case 'pending':
+      return 'border-yellow-600 bg-yellow-400 text-yellow-950 hover:bg-yellow-500 shadow-sm ring-1 ring-yellow-500/30';
+    case 'fulfilled_unread':
+      return 'border-emerald-600 bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm';
+    case 'fulfilled_read':
+      return 'border-emerald-400 bg-emerald-50 text-emerald-900 hover:bg-emerald-100';
+    default:
+      return 'border-yellow-500 bg-yellow-50 text-yellow-950 hover:bg-yellow-100';
+  }
+}
+
+export function resolvePlanningQuotationAskUiStatus(
+  asks: PlanningQuotationAsk[],
+  item: PlanningQuotationAskItemTarget,
+  seenIds: ReadonlySet<number>,
+  hasOpenProcurementQuotationPr = false
+): { status: PlanningQuotationAskUiStatus; askId: number | null } {
+  const base = getPlanningQuotationAskUiStatus(asks, item, seenIds);
+  if (base.status !== 'none') return base;
+  if (hasOpenProcurementQuotationPr) return { status: 'pending', askId: null };
+  return base;
+}
+
 export function getPlanningQuotationAskUiStatus(
   asks: PlanningQuotationAsk[],
   item: PlanningQuotationAskItemTarget,

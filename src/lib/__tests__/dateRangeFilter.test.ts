@@ -8,8 +8,9 @@ describe('matchesDateRangeFilter', () => {
     expect(matchesDateRangeFilter(rec, '', '')).toBe(true);
   });
 
-  it('matches exact day when from only', () => {
+  it('matches on or after from when from only', () => {
     expect(matchesDateRangeFilter(rec, '2026-05-15', '')).toBe(true);
+    expect(matchesDateRangeFilter(rec, '2026-05-10', '')).toBe(true);
     expect(matchesDateRangeFilter(rec, '2026-05-16', '')).toBe(false);
   });
 

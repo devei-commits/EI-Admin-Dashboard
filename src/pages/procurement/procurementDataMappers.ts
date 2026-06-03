@@ -10,32 +10,35 @@ import type {
   Vendor,
   PurchaseOrder,
   RequestType,
+  RequestStatus,
   DraftPO,
   DraftPOLineItem,
   ItemDetail,
 } from '../../types/procurement.types';
+import { procurementItemMergeKey } from '../../lib/procurementRequestMerge';
 import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '../../services/procurement.service';
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 import type { Order } from '../../types/salesPurchase.types';
 import type { PriceListItemPage } from '../../services/itemsList.service';
 import {
-  serializeStagedPaymentTerms,
+  formatStagedPaymentTermsObject,
+  formatStagedPaymentTermsSummary,
   resolveStagedPaymentTermsFromVendorRecord,
 } from '../../lib/stagedPaymentTerms';
 
-/** Same resolution as Items List / VendorCommercialEditor: payables in `data`, three-way line, then fallbacks. */
+/** Human-readable payment terms for vendor directory (never raw staged JSON). */
 function buildVendorPaymentTermsForProcurement(v: VendorClientRecord): string {
   const data = v.data && typeof v.data === 'object' ? (v.data as Record<string, unknown>) : {};
-  const staged = resolveStagedPaymentTermsFromVendorRecord(v.paymentTerms, data);
+  const plain = String(v.paymentTerms ?? (data as { paymentTerms?: unknown }).paymentTerms ?? '').trim();
+  if (plain) return formatStagedPaymentTermsSummary(plain);
+  const staged = resolveStagedPaymentTermsFromVendorRecord(null, data);
   const hasSplit =
     staged.advance_pct > 0 ||
     staged.pre_shipment_pct > 0 ||
     staged.post_shipment_pct > 0 ||
     staged.credit_days > 0;
-  if (hasSplit) return serializeStagedPaymentTerms(staged);
-  const plain = String(v.paymentTerms ?? (data as { paymentTerms?: unknown }).paymentTerms ?? '').trim();
-  if (plain) return plain;
+  if (hasSplit) return formatStagedPaymentTermsObject(staged);
   return 'As per contract';
 }
 
@@ -599,10 +602,12 @@ export function mapBackendQuotationToQuote(
     const total = item.totalValue ?? item.orderQty * item.pricePerUnit;
     const ld = item.leadTimeDays ?? (item as { lead_time_days?: number }).lead_time_days;
     const leadTimeDays = ld != null && ld !== '' ? Number(ld) : undefined;
+    const uom = String(item.uom ?? item.unit ?? '').trim();
     return {
       item: item.name,
       itemId: item.itemId,
-      qty: `${item.orderQty} ${item.uom}`,
+      unit: uom || undefined,
+      qty: uom ? `${item.orderQty} ${uom}` : String(item.orderQty),
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
@@ -915,8 +920,11 @@ export function syncProcurementItemsAfterDraftPoLineQtyEdit(
     if (!prHit) continue;
 
     const newQ = parseQuantityRequested(newLines[i]?.qty);
-    const oldQ = parseQuantityRequested(oldLines[i]?.qty ?? newLines[i]?.qty);
-    const delta = Math.max(0, oldQ - newQ);
+    const backendQBefore = parseQuantityRequested(prHit.quantity_requested);
+    const oldDraftQ = parseQuantityRequested(oldLines[i]?.qty ?? newLines[i]?.qty);
+    const reductionRemainder = Math.max(0, oldDraftQ - newQ);
+    const consolidationGapRemainder = oldDraftQ === newQ ? Math.max(0, backendQBefore - newQ) : 0;
+    const delta = Math.max(reductionRemainder, consolidationGapRemainder);
 
     if (delta > 0) {
       remainderItems.push({
@@ -1061,6 +1069,131 @@ export type ReleaseLineEditRow = {
   pack_material_id?: number;
 };
 
+export type CommittedPoQtyItemRef = {
+  itemName?: string;
+  itemCode?: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
+  type?: string;
+};
+
+/** Open qty on a PR line = total requested minus qty already on draft/released POs for the same request + item. */
+export function computeOpenProcurementLineQty(totalRequested: number, committedPoQty: number): number {
+  const total = Math.max(0, totalRequested);
+  const committed = Math.max(0, committedPoQty);
+  return Math.max(0, total - committed);
+}
+
+function committedPoLineMatchesItemRef(
+  line: {
+    itemName?: string;
+    itemCode?: string;
+    name?: string;
+    code?: string;
+    raw_material_id?: number;
+    pack_material_id?: number;
+    type?: string;
+  },
+  ref: CommittedPoQtyItemRef
+): boolean {
+  return releaseEditMatchesBackendPrItem(
+    {
+      itemName: String(line.itemName ?? line.name ?? ''),
+      itemCode: String(line.itemCode ?? line.code ?? ''),
+      type: line.type === 'PM' ? 'PM' : 'RM',
+      raw_material_id: line.raw_material_id,
+      pack_material_id: line.pack_material_id,
+    },
+    {
+      type: ref.type === 'PM' ? 'PM' : 'RM',
+      code: ref.itemCode,
+      name: ref.itemName,
+      raw_material_id: ref.raw_material_id,
+      pack_material_id: ref.pack_material_id,
+    } as ProcurementRequestItem
+  );
+}
+
+/** Sum qty already on draft or released POs for this procurement request line (excludes a PO being edited). */
+export function sumCommittedPoQtyForPrItem(
+  ref: CommittedPoQtyItemRef,
+  opts: {
+    requestId: string;
+    purchaseOrders?: Array<{
+      status?: string;
+      poNumber?: string;
+      formData?: Record<string, unknown>;
+      rawItems?: unknown[];
+    }>;
+    draftPOs?: Array<{ requestId?: string; dpoNumber?: string; lineItems: DraftPOLineItem[] }>;
+    excludePoNumber?: string;
+  }
+): number {
+  const reqId = String(opts.requestId ?? '').trim();
+  if (!reqId) return 0;
+
+  let sum = 0;
+  const seenPoNumbers = new Set<string>();
+
+  for (const po of opts.purchaseOrders ?? []) {
+    const status = String(po.status ?? '');
+    if (status !== 'Draft' && status !== 'Released') continue;
+    const fd = po.formData ?? {};
+    const poReqId = String(fd.requestId ?? fd.request_id ?? '').trim();
+    if (poReqId !== reqId) continue;
+    const poNumber = String(po.poNumber ?? '').trim();
+    if (poNumber && opts.excludePoNumber && poNumber === opts.excludePoNumber) continue;
+    if (poNumber) seenPoNumbers.add(poNumber);
+    const raw = Array.isArray(po.rawItems) ? po.rawItems : [];
+    for (const ln of raw) {
+      const row = ln as {
+        itemName?: string;
+        name?: string;
+        itemCode?: string;
+        code?: string;
+        quantity?: number | string;
+        raw_material_id?: number;
+        pack_material_id?: number;
+      };
+      if (!committedPoLineMatchesItemRef(row, ref)) continue;
+      sum += parseQuantityRequested(row.quantity);
+    }
+  }
+
+  for (const d of opts.draftPOs ?? []) {
+    if (String(d.requestId ?? '').trim() !== reqId) continue;
+    const dpoNumber = String(d.dpoNumber ?? '').trim();
+    if (dpoNumber && opts.excludePoNumber && dpoNumber === opts.excludePoNumber) continue;
+    if (dpoNumber && seenPoNumbers.has(dpoNumber)) continue;
+    for (const ln of d.lineItems ?? []) {
+      if (!committedPoLineMatchesItemRef(
+        {
+          itemName: ln.item,
+          itemCode: ln.itemCode,
+          type: ln.type,
+          raw_material_id: ln.raw_material_id,
+          pack_material_id: ln.pack_material_id,
+        },
+        ref
+      )) {
+        continue;
+      }
+      sum += parseQuantityRequested(ln.qty);
+    }
+  }
+
+  return sum;
+}
+
+function partialReleaseBaselineQty(
+  backendQty: number,
+  edit: ReleaseLineEditRow
+): number {
+  const backendOrig = Math.max(0, backendQty);
+  const openCap = Math.max(0, edit.originalQty);
+  return Math.min(backendOrig, openCap);
+}
+
 /**
  * After creating a draft PO for a subset of qty, reduce open quantities on the procurement request.
  * Lines not included in `linesForCreate` keep their previous open qty.
@@ -1073,19 +1206,17 @@ export function mergeBackendPrItemsAfterPartialRelease(
   const out: ProcurementRequestItem[] = [];
   for (const bi of backendItems) {
     const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
-    const orig = parseQuantityRequested(bi.quantity_requested);
     if (!edit) {
       out.push({ ...bi });
       continue;
     }
+    const orig = partialReleaseBaselineQty(parseQuantityRequested(bi.quantity_requested), edit);
     const onThisPo = linesForCreate.some((c) => releaseEditMatchesBackendPrItem(c, bi));
     const releaseQty = onThisPo ? Math.min(Math.max(0, edit.qty), orig) : 0;
     const remaining = Math.max(0, orig - releaseQty);
     if (remaining <= 0) {
       continue;
     }
-    const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
-    const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
     out.push({
       ...bi,
       quantity_requested: remaining,
@@ -1111,7 +1242,6 @@ export function splitBackendPrItemsAfterPartialRelease(
 
   for (const bi of backendItems) {
     const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
-    const orig = parseQuantityRequested(bi.quantity_requested);
 
     if (!edit) {
       // Lines not part of the modal edits: keep them untouched only in remaining.
@@ -1126,6 +1256,7 @@ export function splitBackendPrItemsAfterPartialRelease(
       continue;
     }
 
+    const orig = partialReleaseBaselineQty(parseQuantityRequested(bi.quantity_requested), edit);
     const releaseQty = Math.min(Math.max(0, edit.qty), orig);
     const remaining = Math.max(0, orig - releaseQty);
 
@@ -1151,4 +1282,149 @@ export function splitBackendPrItemsAfterPartialRelease(
   }
 
   return { releasedItems, remainingItems };
+}
+
+function applyQtyToProcurementLine(
+  line: ProcurementRequestItem,
+  qty: number
+): ProcurementRequestItem {
+  const q = Math.max(0, qty);
+  return {
+    ...line,
+    quantity_requested: q,
+    ...(line.required != null ? { required: q } : {}),
+    ...(line.shortage != null ? { shortage: q } : {}),
+    partial_release_remainder: undefined,
+  };
+}
+
+/**
+ * Merge sibling remainder PR lines back into the parent request (reverses partial-release split).
+ */
+export function mergeRemainderPrsIntoParentItems(
+  parentItems: ProcurementRequestItem[],
+  remainderPrs: Array<Pick<ProcurementRequest, 'items'>>
+): ProcurementRequestItem[] {
+  const out = parentItems.map((line) => ({ ...line }));
+  for (const remPr of remainderPrs) {
+    const remItems = Array.isArray(remPr.items) ? remPr.items : [];
+    for (const rem of remItems) {
+      const key = procurementItemMergeKey(rem);
+      const addQ = parseQuantityRequested(rem.quantity_requested);
+      if (addQ <= 0) continue;
+      const idx = out.findIndex((line) => procurementItemMergeKey(line) === key);
+      if (idx >= 0) {
+        const oldQ = parseQuantityRequested(out[idx].quantity_requested);
+        out[idx] = applyQtyToProcurementLine(out[idx], oldQ + addQ);
+      } else {
+        out.push({
+          ...rem,
+          partial_release_remainder: undefined,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** PR status after removing a draft PO when no other draft PO remains for the request. */
+export function resolveRequestStatusAfterDraftPoRemoved(
+  hasOtherDraftPoForRequest: boolean,
+  hasConfirmedOrAnyQuote: boolean
+): RequestStatus {
+  if (hasOtherDraftPoForRequest) return 'PO Draft';
+  return hasConfirmedOrAnyQuote ? 'Quoted' : 'New';
+}
+
+export function requestHasOtherDraftPurchaseOrder(
+  requestId: string,
+  purchaseOrders: Order[],
+  excludeBackendPoId?: string
+): boolean {
+  const want = String(requestId).replace(/\D/g, '').trim();
+  const exclude = String(excludeBackendPoId ?? '').replace(/^PO-/, '').replace(/\D/g, '').trim();
+  if (!want) return false;
+
+  for (const po of purchaseOrders) {
+    if (String(po.status ?? '').trim() !== 'Draft') continue;
+    const poId = String(po.id ?? '').replace(/^PO-/, '').replace(/\D/g, '').trim();
+    if (exclude && poId === exclude) continue;
+    const fd = po.formData ?? {};
+    const poReq = String(fd.requestId ?? fd.request_id ?? '').replace(/\D/g, '').trim();
+    if (poReq === want) return true;
+  }
+  return false;
+}
+
+function draftPoLineMergeKey(line: DraftPOLineItem): string {
+  return procurementItemMergeKey({
+    type: line.type,
+    code: line.itemCode,
+    name: line.item,
+    required: 0,
+    sih: 0,
+    shortage: 0,
+    quantity_requested: 0,
+    unit: line.unit ?? (line.type === 'RM' ? 'KG' : 'PCS'),
+    raw_material_id: line.raw_material_id,
+    pack_material_id: line.pack_material_id,
+  });
+}
+
+/** Remove qty that was on a draft PO from linked PR lines (when another draft PO still shares the request). */
+export function subtractDraftPoLineQtyFromProcurementItems(
+  parentItems: ProcurementRequestItem[],
+  draftLines: DraftPOLineItem[]
+): ProcurementRequestItem[] {
+  const subtractByKey = new Map<string, number>();
+  for (const line of draftLines) {
+    const key = draftPoLineMergeKey(line);
+    const q = parseQuantityRequested(line.qty);
+    if (q <= 0) continue;
+    subtractByKey.set(key, (subtractByKey.get(key) ?? 0) + q);
+  }
+
+  const out: ProcurementRequestItem[] = [];
+  for (const bi of parentItems) {
+    const key = procurementItemMergeKey(bi);
+    const sub = subtractByKey.get(key) ?? 0;
+    const oldQ = parseQuantityRequested(bi.quantity_requested);
+    const remaining = Math.max(0, oldQ - sub);
+    if (remaining <= 0) continue;
+    out.push(applyQtyToProcurementLine(bi, remaining));
+  }
+  return out;
+}
+
+export type DraftPoDeleteProcurementPlan =
+  | { kind: 'delete-parent' }
+  | { kind: 'update-parent'; items: ProcurementRequestItem[]; status: RequestStatus };
+
+/**
+ * After deleting a draft PO: remove linked PR from procurement (full delete) so qty returns to Planning.
+ * Sibling remainder PRs from partial release are kept. When another draft PO shares the request, subtract this PO's lines only.
+ */
+export function planDraftPoDeleteProcurementCleanup(
+  draft: Pick<DraftPO, 'lineItems'>,
+  parentPr: Pick<ProcurementRequest, 'items'>,
+  hasOtherDraftPoForRequest: boolean,
+  hasQuote: boolean
+): DraftPoDeleteProcurementPlan {
+  if (!hasOtherDraftPoForRequest) {
+    return { kind: 'delete-parent' };
+  }
+
+  const items = subtractDraftPoLineQtyFromProcurementItems(
+    Array.isArray(parentPr.items) ? parentPr.items : [],
+    Array.isArray(draft.lineItems) ? draft.lineItems : []
+  );
+  if (items.length === 0) {
+    return { kind: 'delete-parent' };
+  }
+
+  return {
+    kind: 'update-parent',
+    items,
+    status: resolveRequestStatusAfterDraftPoRemoved(false, hasQuote),
+  };
 }

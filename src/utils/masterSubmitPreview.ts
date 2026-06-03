@@ -95,9 +95,19 @@ function formatPackLines(lines: unknown): string {
     .map((line, i) => {
       const row = line as Record<string, unknown>;
       const desc = String(row.pmDescription ?? row.description ?? row.pmCode ?? '—');
+      const subSub = String(
+        row.optionalPmSubSubCategory ??
+          row.pm_sub_sub_category ??
+          row.pmSubSubCategory ??
+          ''
+      ).trim();
+      const subCat = String(
+        row.optionalPmSubCategory ?? row.pm_sub_category ?? ''
+      ).trim();
       const qty = row.qtyUnit ?? row.qty ?? '';
       const uom = row.uom ?? '';
-      return `${i + 1}. ${desc} — ${qty} ${uom}`.trim();
+      const subPart = [subCat, subSub].filter(Boolean).join(' · ');
+      return `${i + 1}. ${desc}${subPart ? ` · ${subPart}` : ''} — ${qty} ${uom}`.trim();
     })
     .join('\n');
 }
@@ -120,7 +130,14 @@ function formatVariants(variants: unknown): string {
   return variants
     .map((v, i) => {
       const row = v as Record<string, unknown>;
-      return `${i + 1}. Vol ${row.volume ?? '—'} — MOQ ${row.moq ?? '—'} (${row.status ?? '—'})`;
+      const id = row.id ?? '—';
+      const name = row.name ?? row.variantName ?? '—';
+      const moq = row.moq ?? '—';
+      const status = row.status ?? '—';
+      const lt = row.leadTimeDays ?? row.leadTime;
+      const ltPart = lt != null && String(lt) !== '' && Number(lt) !== 0 ? ` — ${lt}d LT` : '';
+      const notes = row.notes ? ` — ${row.notes}` : '';
+      return `${i + 1}. [${id}] ${name} — MOQ ${moq} (${status})${ltPart}${notes}`;
     })
     .join('\n');
 }

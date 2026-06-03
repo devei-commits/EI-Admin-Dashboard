@@ -3,6 +3,7 @@ import {
   computeBatchSplitExecutionFraction,
   computeOrderItemExecutionPercent,
   FULFILLMENT_EXEC_PHASE_WEIGHTS,
+  productionSliceProgress01,
 } from '../fulfillmentExecutionPct';
 import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
 
@@ -78,6 +79,42 @@ describe('fulfillmentExecutionPct', () => {
       batchSplits: [split],
     };
     expect(computeOrderItemExecutionPercent(item, null)).toBe(0);
+  });
+
+  it('fg_pending with BMR cleared and BPR pm_reserved uses production status not 0', () => {
+    const split: BatchSplit = {
+      bmrNo: 'BMR-2026-001',
+      bprNo: 'BPR-2026-001',
+      plannedQty: 1,
+      fgQty: 0,
+      fgLocation: null,
+      ffStatus: 'fg_pending',
+      bmrStatus: 'cleared',
+      bprStatus: 'pm_reserved',
+      pickedQty: 0,
+      pickerName: null,
+      pickDate: null,
+      pickSlipNo: null,
+      remarks: null,
+      invoiceNo: null,
+      awbNo: null,
+      courier: null,
+      dispatchDate: null,
+      etaDate: null,
+    };
+    expect(productionSliceProgress01('fg_pending', split)).toBe(0.55);
+    const planning = {
+      totalBatches: 1,
+      sentCount: 1,
+      rmStartedCount: 1,
+      pmStartedCount: 1,
+      rmLineAvailableCount: 20,
+      rmLineTotalCount: 20,
+      pmLineAvailableCount: 2,
+      pmLineTotalCount: 2,
+    };
+    const f = computeBatchSplitExecutionFraction(split, 0, 1, planning);
+    expect(f).toBeGreaterThan(0.35);
   });
 
   it('fg_ready alone is not 100%', () => {

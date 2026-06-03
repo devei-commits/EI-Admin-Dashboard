@@ -1,10 +1,13 @@
 /**
- * Excel Category / Sub-Category map to category + sub-sub-category; SKU series uses sub-category dropdown.
+ * Excel Category / Sub-Category map to category + sub-category detail; SKU series uses category dropdown.
  */
 
 import {
   normalizeRmSubCategoryForSelect,
+  normalizeRmSubSubCategoryForSelect,
   normalizePmSkuCategoryForSelect,
+  normalizePmDetailSubCategoryForSelect,
+  normalizePmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
 
 function trim(s: string | null | undefined): string {
@@ -17,7 +20,14 @@ export function resolveRmEditCategories(record: {
   rmType?: string | null;
   group?: string | null;
   form_data?: Record<string, unknown> | null;
-}): { subCategory: string; rmCategoryKey: string; rmCategory: string; rmType: string; optionalRmSubCategory: string } {
+}): {
+  subCategory: string;
+  rmCategoryKey: string;
+  rmCategory: string;
+  rmType: string;
+  optionalRmSubCategory: string;
+  optionalRmSubSubCategory: string;
+} {
   const fd = record.form_data && typeof record.form_data === 'object' ? record.form_data : {};
   const subCategoryRaw = trim(
     (fd as { excelSubCategory?: string }).excelSubCategory ||
@@ -38,6 +48,13 @@ export function resolveRmEditCategories(record: {
   );
   const rmType = trim((fd as { rmType?: string }).rmType || record.rmType);
   const optionalRmSubCategory = trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory);
+  const optionalRmSubSubCategoryRaw = trim(
+    (fd as { optionalRmSubSubCategory?: string }).optionalRmSubSubCategory ||
+      (fd as { rm_sub_sub_category?: string }).rm_sub_sub_category
+  );
+  const optionalRmSubSubCategory =
+    normalizeRmSubSubCategoryForSelect(optionalRmSubCategory, optionalRmSubSubCategoryRaw) ||
+    optionalRmSubSubCategoryRaw;
 
   return {
     subCategory,
@@ -45,6 +62,7 @@ export function resolveRmEditCategories(record: {
     rmCategory,
     rmType,
     optionalRmSubCategory,
+    optionalRmSubSubCategory,
   };
 }
 
@@ -54,7 +72,7 @@ export function resolvePmEditCategories(record: {
   material?: string | null;
   type?: string | null;
   form_data?: Record<string, unknown> | null;
-}): { subCategory: string; optionalPmSubCategory: string } {
+}): { subCategory: string; optionalPmSubCategory: string; optionalPmSubSubCategory: string } {
   const fd = record.form_data && typeof record.form_data === 'object' ? record.form_data : {};
   const excelCat = trim(
     (fd as { excelCategory?: string }).excelCategory ||
@@ -74,14 +92,28 @@ export function resolvePmEditCategories(record: {
     normalizePmSkuCategoryForSelect(subCategoryRaw) ||
     normalizePmSkuCategoryForSelect(excelCat) ||
     subCategoryRaw;
-  const optionalPmSubCategory = trim(
+  const optionalPmSubCategoryRaw = trim(
     (fd as { optionalPmSubCategory?: string }).optionalPmSubCategory ||
-      (excelSub && excelSub.toLowerCase() !== subCategoryRaw.toLowerCase() && excelSub.toLowerCase() !== excelCat.toLowerCase()
+      (excelSub &&
+      excelSub.toLowerCase() !== subCategoryRaw.toLowerCase() &&
+      excelSub.toLowerCase() !== excelCat.toLowerCase()
         ? excelSub
-        : '')
+        : '') ||
+      (record.material && String(record.material).trim() !== subCategory ? String(record.material).trim() : '')
   );
+  const optionalPmSubCategory =
+    normalizePmDetailSubCategoryForSelect(subCategory, optionalPmSubCategoryRaw) ||
+    optionalPmSubCategoryRaw;
+  const optionalPmSubSubCategoryRaw = trim(
+    (fd as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
+      (fd as { pm_sub_sub_category?: string }).pm_sub_sub_category ||
+      ''
+  );
+  const optionalPmSubSubCategory =
+    normalizePmSubSubCategoryForSelect(optionalPmSubCategory, optionalPmSubSubCategoryRaw) ||
+    optionalPmSubSubCategoryRaw;
 
-  return { subCategory, optionalPmSubCategory };
+  return { subCategory, optionalPmSubCategory, optionalPmSubSubCategory };
 }
 
 /** @deprecated Excel is source of truth; kept for code paths that still call this. */

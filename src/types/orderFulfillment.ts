@@ -140,7 +140,8 @@ export interface KPIData {
 }
 
 export interface PipelineStage {
-  key: SOStatus;
+  /** SO status keys on Fulfillment; procurement Issued POs uses `issued-0` … `issued-6`. */
+  key: SOStatus | string;
   label: string;
   icon: React.ReactNode;
   count: number;

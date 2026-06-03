@@ -17,6 +17,7 @@ import {
   createPRRegistration,
   fetchPRProductDetail,
   updatePRProduct,
+  type PackBomRow,
   type PRProductDetail,
   type PrRecordTypeForm,
 } from '../services/productsMaster.service';
@@ -41,6 +42,17 @@ import {
   isCanonicalPrProductForm,
   normalizePrProductFormForSelect,
 } from '../constants/prProductFormOptions';
+import {
+  PM_SKU_CATEGORY_SELECT_OPTIONS,
+  normalizePmDetailSubCategoryForSelect,
+  normalizePmSkuCategoryForSelect,
+  normalizePmSubSubCategoryForSelect,
+  pmDetailSubCategoryHasSubSubCategory,
+  pmDetailSubCategoryOptionsForSkuCategory,
+  pmLevelForSubCategory,
+  pmSubSubCategoryOptionsForDetailSubCategory,
+} from '../constants/materialMasterSkuRules';
+import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 
 /** Legacy alphanumeric PR codes only — used to infer composite when editing old rows. */
 const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
@@ -103,6 +115,12 @@ interface BOMFormState {
     packMaterialId?: string;
     pmCode?: string;
     pmDescription: string;
+    /** PM category slug (ppm, spm-labels, …) — drives sub-category options and pack type level. */
+    pmSkuCategory: string;
+    /** Finer sub-category (Tubes, Sheet form, …) — same as PM master optionalPmSubCategory. */
+    optionalPmSubCategory: string;
+    /** Material / construction (PET, Aluminium, …) — same as PM master optionalPmSubSubCategory. */
+    optionalPmSubSubCategory: string;
     type: string;
     qtyUnit: string;
     uom: string;
@@ -233,9 +251,54 @@ function bomFormToPmLines(fd: BOMFormState) {
     pack_material_id: c.packMaterialId ? parseInt(c.packMaterialId, 10) : undefined,
     description: c.pmDescription,
     pack_type: c.type,
+    pm_sku_category: c.pmSkuCategory || undefined,
+    pm_sub_category: c.optionalPmSubCategory || undefined,
+    optional_pm_sub_category: c.optionalPmSubCategory || undefined,
+    pm_sub_sub_category: c.optionalPmSubSubCategory || undefined,
+    optional_pm_sub_sub_category: c.optionalPmSubSubCategory || undefined,
     qty_per_unit: parseFloat(c.qtyUnit) || 1,
     uom: c.uom || 'PCS',
   }));
+}
+
+function emptyPackComponentDraft(): {
+  pmDescription: string;
+  pmSkuCategory: string;
+  optionalPmSubCategory: string;
+  optionalPmSubSubCategory: string;
+  type: string;
+  qtyUnit: string;
+  uom: string;
+} {
+  return {
+    pmDescription: '',
+    pmSkuCategory: '',
+    optionalPmSubCategory: '',
+    optionalPmSubSubCategory: '',
+    type: '',
+    qtyUnit: '',
+    uom: '',
+  };
+}
+
+function packCategoriesFromPmRecord(pm: PackMaterialRecord): {
+  pmSkuCategory: string;
+  optionalPmSubCategory: string;
+  optionalPmSubSubCategory: string;
+  type: string;
+} {
+  const cats = resolvePmEditCategories({
+    code: pm.code,
+    group: pm.group,
+    material: pm.material,
+    type: pm.type,
+    form_data: pm.form_data,
+  });
+  const pmSkuCategory = cats.subCategory;
+  const optionalPmSubCategory = cats.optionalPmSubCategory;
+  const optionalPmSubSubCategory = cats.optionalPmSubSubCategory;
+  const type = pm.level || pmLevelForSubCategory(pmSkuCategory) || pm.type || '';
+  return { pmSkuCategory, optionalPmSubCategory, optionalPmSubSubCategory, type };
 }
 
 function bomFormToProcessSteps(fd: BOMFormState) {
@@ -413,18 +476,71 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
       ? String(p.skuBomLimitQty)
       : '';
   const skuBomLimitUomStr = p.skuBomLimitUom?.trim() ? String(p.skuBomLimitUom) : 'GM';
-  const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => ({
-    id: `pc-${i}`,
-    packMaterialId:
-      (row as any).pack_material_id != null
-        ? String((row as any).pack_material_id)
-        : (row.pm_id != null ? String(row.pm_id) : undefined),
-    pmCode: (row.pm_code as string) || '',
-    pmDescription: row.pm_description || '',
-    type: row.pack_type || '',
-    qtyUnit: String(row.qty_per_unit ?? ''),
-    uom: row.uom || 'PCS',
-  }));
+  const packingComponents: BOMFormState['packingComponents'] = (p.packBom || []).map((row, i) => {
+    const rowExtra = row as PackBomRow & {
+      pm_sku_category?: string;
+      pm_sub_category?: string;
+      /** @deprecated legacy key */
+      pm_sub_sub_category?: string;
+      optional_pm_sub_category?: string;
+      pmSkuCategory?: string;
+      optionalPmSubCategory?: string;
+    };
+    const pmSkuCategory =
+      normalizePmSkuCategoryForSelect(
+        rowExtra.pm_sku_category || rowExtra.pmSkuCategory || ''
+      ) || '';
+    const optionalPmSubCategory =
+      normalizePmDetailSubCategoryForSelect(
+        pmSkuCategory,
+        rowExtra.pm_sub_category ||
+          rowExtra.pm_sub_sub_category ||
+          rowExtra.optional_pm_sub_category ||
+          rowExtra.optionalPmSubCategory ||
+          ''
+      ) ||
+      String(
+        rowExtra.pm_sub_category ||
+          rowExtra.pm_sub_sub_category ||
+          rowExtra.optional_pm_sub_category ||
+          rowExtra.optionalPmSubCategory ||
+          ''
+      ).trim();
+    const type =
+      row.pack_type ||
+      (pmSkuCategory ? pmLevelForSubCategory(pmSkuCategory) : '') ||
+      '';
+    return {
+      id: `pc-${i}`,
+      packMaterialId:
+        rowExtra.pack_material_id != null
+          ? String(rowExtra.pack_material_id)
+          : row.pm_id != null
+            ? String(row.pm_id)
+            : undefined,
+      pmCode: (row.pm_code as string) || '',
+      pmDescription: row.pm_description || '',
+      pmSkuCategory,
+      optionalPmSubCategory,
+      optionalPmSubSubCategory:
+        normalizePmSubSubCategoryForSelect(
+          optionalPmSubCategory,
+          rowExtra.pm_sub_sub_category ||
+            rowExtra.optional_pm_sub_sub_category ||
+            (rowExtra as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
+            ''
+        ) ||
+        String(
+          rowExtra.pm_sub_sub_category ||
+            rowExtra.optional_pm_sub_sub_category ||
+            (rowExtra as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
+            ''
+        ).trim(),
+      type,
+      qtyUnit: String(row.qty_per_unit ?? ''),
+      uom: row.uom || 'PCS',
+    };
+  });
   const processSteps: BOMFormState['processSteps'] = (p.processSteps || []).map((step, i) => ({
     id: `ps-${i}`,
     stepNumber: String(step.step_number ?? ''),
@@ -537,7 +653,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editingSkuLineId, setEditingSkuLineId] = useState<string | null>(null);
   const [selectedSkuRmId, setSelectedSkuRmId] = useState<string>('');
   const [skuRmQuery, setSkuRmQuery] = useState('');
-  const [tempComponent, setTempComponent] = useState({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+  const [tempComponent, setTempComponent] = useState(emptyPackComponentDraft);
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
   const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
@@ -677,6 +793,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }),
     [packMaterials, selectedPmIds, selectedPmId]
   );
+  const packDraftSubCategoryOptions = useMemo(
+    () => pmDetailSubCategoryOptionsForSkuCategory(tempComponent.pmSkuCategory),
+    [tempComponent.pmSkuCategory]
+  );
+  const packDraftSubSubCategoryOptions = useMemo(() => {
+    const base = pmSubSubCategoryOptionsForDetailSubCategory(tempComponent.optionalPmSubCategory);
+    const cur = String(tempComponent.optionalPmSubSubCategory ?? '').trim();
+    if (cur && !base.some((o) => o.value === cur)) {
+      return [{ value: cur, label: cur }, ...base];
+    }
+    return base;
+  }, [tempComponent.optionalPmSubCategory, tempComponent.optionalPmSubSubCategory]);
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
@@ -989,6 +1117,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingComponentId(id);
     setTempComponent({
       pmDescription: c.pmDescription,
+      pmSkuCategory: c.pmSkuCategory || '',
+      optionalPmSubCategory: c.optionalPmSubCategory || '',
+      optionalPmSubSubCategory: c.optionalPmSubSubCategory || '',
       type: c.type,
       qtyUnit: c.qtyUnit,
       uom: c.uom || '',
@@ -1006,7 +1137,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingComponentId(null);
     setSelectedPmId('');
     setPackPmQuery('');
-    setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+    setTempComponent(emptyPackComponentDraft());
   };
 
   const flushComponentDraft = (): boolean => {
@@ -1024,6 +1155,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           return false;
         }
       }
+      const editPmCats = pm ? packCategoriesFromPmRecord(pm) : null;
       setFormData((prev) => ({
         ...prev,
         packingComponents: prev.packingComponents.map((item) =>
@@ -1033,7 +1165,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 packMaterialId: pm ? String(pm.id) : undefined,
                 pmCode: pm ? pm.code : '',
                 pmDescription: pm ? (pm.description || manualDesc) : manualDesc,
-                type: tempComponent.type || pm?.level || pm?.type || '',
+                pmSkuCategory: tempComponent.pmSkuCategory || editPmCats?.pmSkuCategory || '',
+                optionalPmSubCategory:
+                  tempComponent.optionalPmSubCategory || editPmCats?.optionalPmSubCategory || '',
+                optionalPmSubSubCategory:
+                  tempComponent.optionalPmSubSubCategory || editPmCats?.optionalPmSubSubCategory || '',
+                type:
+                  tempComponent.type ||
+                  editPmCats?.type ||
+                  (tempComponent.pmSkuCategory
+                    ? pmLevelForSubCategory(tempComponent.pmSkuCategory)
+                    : ''),
                 qtyUnit: tempComponent.qtyUnit,
                 uom: tempComponent.uom || pm?.unit || 'PCS',
               }
@@ -1043,7 +1185,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       setEditingComponentId(null);
       setSelectedPmId('');
       setPackPmQuery('');
-      setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+      setTempComponent(emptyPackComponentDraft());
       return true;
     }
 
@@ -1051,6 +1193,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       addToast('error', 'This pack material is already added in Pack BOM');
       return false;
     }
+    const pmCats = pm ? packCategoriesFromPmRecord(pm) : null;
     setFormData((prev) => ({
       ...prev,
       packingComponents: [
@@ -1060,7 +1203,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           packMaterialId: pm ? String(pm.id) : undefined,
           pmCode: pm ? pm.code : '',
           pmDescription: pm ? (pm.description || manualDesc) : manualDesc,
-          type: tempComponent.type || pm?.level || pm?.type || '',
+          pmSkuCategory: tempComponent.pmSkuCategory || pmCats?.pmSkuCategory || '',
+          optionalPmSubCategory:
+            tempComponent.optionalPmSubCategory || pmCats?.optionalPmSubCategory || '',
+          optionalPmSubSubCategory:
+            tempComponent.optionalPmSubSubCategory || pmCats?.optionalPmSubSubCategory || '',
+          type:
+            tempComponent.type ||
+            pmCats?.type ||
+            (tempComponent.pmSkuCategory ? pmLevelForSubCategory(tempComponent.pmSkuCategory) : ''),
           qtyUnit: tempComponent.qtyUnit,
           uom: tempComponent.uom || pm?.unit || 'PCS',
         },
@@ -1068,7 +1219,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
     setSelectedPmId('');
     setPackPmQuery('');
-    setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+    setTempComponent(emptyPackComponentDraft());
     return true;
   };
 
@@ -1080,7 +1231,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingComponentId((cur) => {
       if (cur === id) {
         setSelectedPmId('');
-        setTempComponent({ pmDescription: '', type: '', qtyUnit: '', uom: '' });
+        setTempComponent(emptyPackComponentDraft());
         return null;
       }
       return cur;
@@ -1904,9 +2055,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[620px] grid-cols-5 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[980px] grid-cols-8 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
                     <div className="col-span-2">PM Description</div>
                     <div>SKU</div>
+                    <div>Category</div>
+                    <div>Sub-category</div>
+                    <div>Sub-sub</div>
                     <div>Type</div>
                     <div>Qty / Unit</div>
                   </div>
@@ -1914,7 +2068,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     {formData.packingComponents.map(comp => (
                       <div
                         key={comp.id}
-                        className={`grid min-w-[620px] grid-cols-5 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
+                        className={`grid min-w-[980px] grid-cols-8 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
                           comp.id === editingComponentId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
                         }`}
                       >
@@ -1922,6 +2076,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         <div className="text-slate-600 font-mono text-xs break-all">
                           {getPackComponentSku(comp) || '—'}
                         </div>
+                        <div className="text-slate-600 text-xs">
+                          {PM_SKU_CATEGORY_SELECT_OPTIONS.find((o) => o.value === comp.pmSkuCategory)?.label ||
+                            comp.pmSkuCategory ||
+                            '—'}
+                        </div>
+                        <div className="text-slate-600 text-xs">{comp.optionalPmSubCategory || '—'}</div>
+                        <div className="text-slate-600 text-xs">{comp.optionalPmSubSubCategory || '—'}</div>
                         <div className="text-slate-600">{comp.type}</div>
                         <div className="flex justify-end items-center gap-1">
                           <span className="text-slate-600 mr-auto">{comp.qtyUnit}</span>
@@ -1977,20 +2138,131 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       setSelectedPmId(opt.id);
                       setPackPmQuery(opt.label);
                       const pm = packMaterialById.get(opt.id);
+                      const pmCats = pm ? packCategoriesFromPmRecord(pm) : null;
                       setTempComponent((prev) => ({
                         ...prev,
                         pmDescription: pm ? (pm.description || opt.label) : opt.label,
-                        type: prev.type || pm?.level || pm?.type || '',
+                        pmSkuCategory: pmCats?.pmSkuCategory || prev.pmSkuCategory,
+                        optionalPmSubCategory: pmCats?.optionalPmSubCategory || prev.optionalPmSubCategory,
+                        optionalPmSubSubCategory: pmCats?.optionalPmSubSubCategory || prev.optionalPmSubSubCategory,
+                        type: prev.type || pmCats?.type || pm?.level || pm?.type || '',
                         uom: prev.uom || pm?.unit || 'PCS',
                       }));
                     }}
                     onClearSelection={() => setSelectedPmId('')}
                     placeholder="Search PM by code or description — pick from list or type manual name"
                   />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <label htmlFor="packPmSkuCategory" className="block text-xs font-medium text-slate-600 mb-1">
+                        Category
+                      </label>
+                      <select
+                        id="packPmSkuCategory"
+                        value={tempComponent.pmSkuCategory}
+                        onChange={(e) => {
+                          const canon = normalizePmSkuCategoryForSelect(e.target.value) || '';
+                          const level = pmLevelForSubCategory(canon);
+                          setTempComponent((prev) => ({
+                            ...prev,
+                            pmSkuCategory: canon,
+                            optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(
+                              canon,
+                              prev.optionalPmSubCategory
+                            ),
+                            optionalPmSubSubCategory: '',
+                            type: level || prev.type,
+                          }));
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      >
+                        <option value="">Select category…</option>
+                        {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="packPmSubCategoryDetail" className="block text-xs font-medium text-slate-600 mb-1">
+                        Sub-category
+                      </label>
+                      <select
+                        id="packPmSubCategoryDetail"
+                        value={tempComponent.optionalPmSubCategory}
+                        disabled={!tempComponent.pmSkuCategory.trim()}
+                        onChange={(e) => {
+                          const detail =
+                            normalizePmDetailSubCategoryForSelect(
+                              tempComponent.pmSkuCategory,
+                              e.target.value
+                            ) || e.target.value;
+                          setTempComponent((prev) => ({
+                            ...prev,
+                            optionalPmSubCategory: detail,
+                            optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
+                              detail,
+                              prev.optionalPmSubSubCategory
+                            ),
+                          }));
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="">Select sub-category…</option>
+                        {packDraftSubCategoryOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                        {tempComponent.optionalPmSubCategory &&
+                        !packDraftSubCategoryOptions.some((o) => o.value === tempComponent.optionalPmSubCategory) ? (
+                          <option value={tempComponent.optionalPmSubCategory}>
+                            {tempComponent.optionalPmSubCategory} (legacy)
+                          </option>
+                        ) : null}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="packPmSubSubCategoryDetail" className="block text-xs font-medium text-slate-600 mb-1">
+                        Sub-sub category
+                      </label>
+                      <select
+                        id="packPmSubSubCategoryDetail"
+                        value={tempComponent.optionalPmSubSubCategory}
+                        disabled={
+                          !tempComponent.optionalPmSubCategory.trim() ||
+                          !pmDetailSubCategoryHasSubSubCategory(tempComponent.optionalPmSubCategory)
+                        }
+                        onChange={(e) =>
+                          setTempComponent((prev) => ({
+                            ...prev,
+                            optionalPmSubSubCategory: e.target.value,
+                          }))
+                        }
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="">Select sub-sub category…</option>
+                        {packDraftSubSubCategoryOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                        {tempComponent.optionalPmSubSubCategory &&
+                        !packDraftSubSubCategoryOptions.some(
+                          (o) => o.value === tempComponent.optionalPmSubSubCategory
+                        ) ? (
+                          <option value={tempComponent.optionalPmSubSubCategory}>
+                            {tempComponent.optionalPmSubSubCategory} (legacy)
+                          </option>
+                        ) : null}
+                      </select>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <input
                       type="text"
-                      placeholder="Type"
+                      placeholder="Type (Primary / Secondary / Tertiary)"
                       value={tempComponent.type}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, type: e.target.value }))}
                       className="px-2 py-1.5 border border-slate-200 rounded text-sm"

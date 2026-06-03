@@ -101,7 +101,7 @@ type MrnSortColumn =
   | 'mrnNo'
   | 'type'
   | 'source'
-  | 'prName'
+  | 'ItemName'
   | 'requestDate'
   | 'expectedDate'
   | 'batchNumber'
@@ -120,7 +120,7 @@ function sortValueForMrn(mrn: MRN, column: MrnSortColumn): string {
       const src = mrnSourceDoc(mrn);
       return src ? `${src.kind}:${src.id}`.toLowerCase() : '';
     }
-    case 'prName':
+    case 'ItemName':
       return mrnDisplayPrName(mrn).toLowerCase();
     case 'requestDate':
       return mrn.createdAt || '';
@@ -822,7 +822,7 @@ const OutboundDashboard = () => {
             {/* Search Bar */}
             <input
               type="text"
-              placeholder="Search MRN, PR name, batch…"
+              placeholder="Search MRN, Item name, batch…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-4 py-2 bg-white border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
@@ -839,7 +839,7 @@ const OutboundDashboard = () => {
                       { col: 'mrnNo' as const, label: 'Request ID (MRN)' },
                       { col: 'type' as const, label: 'Type' },
                       { col: 'source' as const, label: 'Source' },
-                      { col: 'prName' as const, label: 'PR name' },
+                      { col: 'ItemName' as const, label: 'Item name' },
                       { col: 'requestDate' as const, label: 'Request date' },
                       { col: 'expectedDate' as const, label: 'Expected date' },
                       { col: 'batchNumber' as const, label: 'Batch number' },

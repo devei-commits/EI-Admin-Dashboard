@@ -4,12 +4,14 @@ import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query';
 import type { Query } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
-import logoFull from '../../assets/logo/eilogofull.svg';
+import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
+import IssuedPOsView from '../../components/procurement/IssuedPOsView';
 import procurementData from '../../mocks/procurement-data.json';
 import {
   fetchProcurementRequests as fetchProcurementRequestsApi,
   updateProcurementRequest as updateProcurementRequestApi,
   createProcurementRequest as createProcurementRequestApi,
+  deleteProcurementRequest as deleteProcurementRequestApi,
 } from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as ApiProcurementRequest } from '../../services/procurement.service';
 import {
@@ -29,6 +31,7 @@ import {
   fetchPurchaseOrders,
   createPurchaseOrder,
   updatePurchaseOrder,
+  deletePurchaseOrder,
   importPrRowsExcel,
 } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
@@ -68,6 +71,8 @@ import {
   matchBackendPrItemForDraftLine,
   splitBackendPrItemsAfterPartialRelease,
   syncProcurementItemsAfterDraftPoLineQtyEdit,
+  computeOpenProcurementLineQty,
+  sumCommittedPoQtyForPrItem,
   parseQuantityRequested,
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
@@ -81,10 +86,13 @@ import {
   normalizeDateOnlyString,
   resolvePlannedUnitPrice,
   mergePlannedRateIntoLineNotes,
+  planDraftPoDeleteProcurementCleanup,
+  requestHasOtherDraftPurchaseOrder,
 } from './procurementDataMappers';
 import { applyDraftPoLinePrices, applyEditRequestSideEffects } from './syncEditRequestSideEffects';
 import type { ReleaseLineEditRow } from './procurementDataMappers';
 import { formatMoqDisplay, moqValuesEqual, parseMoqInput } from '../../utils/moqQuantity';
+import { formatQtyWithPrimaryUnit, normRmPrimaryUom } from '../../lib/rmUnitConversion';
 import type {
   RequestType,
   RequestPriority,
@@ -103,7 +111,6 @@ import type {
   CompletedGrn,
   StockCheckStatus,
   StockCheckLineData,
-  ItemTrackerRow,
   LiveProcurementState,
   ReleaseToPlannedItem,
   QuoteLine,
@@ -111,10 +118,7 @@ import type {
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
-import { Search, X, ShoppingCart, DollarSign, Factory, Package, FileText, Truck, CheckCircle, TrendingUp, Loader2 } from 'lucide-react';
-import { KPICard } from '../../components/orders/KPICard';
-import { PipelineStrip } from '../../components/orders/PipelineStrip';
-import { formatLakhs } from '../../utils/orderFulfillmentUtils';
+import { Search, X, Package, Loader2 } from 'lucide-react';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -125,7 +129,9 @@ import {
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 import GrnMonitorDetailPanel from '../../components/procurement/GrnMonitorDetailPanel';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Pagination } from '../../components/ui/Pagination';
+import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
 import {
   parseStagedPaymentTerms,
   serializeStagedPaymentTerms,
@@ -135,6 +141,10 @@ import {
   resolveStagedPaymentTermsForForm,
 } from '../../lib/stagedPaymentTerms';
 import { queryKeys } from '../../lib/queryClient';
+import {
+  PROCUREMENT_PRE_DRAFT_STATUSES,
+  isProcurementRequestPreDraftPipelineStatus,
+} from '../../lib/procurementRequestMerge';
 
 /** Populate tier editor fields from Items List payment_terms (JSON or legacy vendor text). */
 function paymentTermsToStagedFields(raw: string): {
@@ -351,9 +361,69 @@ function resolveMasterIdsFromRawItem(raw: any): {
 }
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
-const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
+const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor'];
 
 const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+
+type GrnMonitorSortColumn =
+  | 'grnNo'
+  | 'poNo'
+  | 'vendor'
+  | 'type'
+  | 'items'
+  | 'poValue'
+  | 'receivedDate'
+  | 'assignedTo'
+  | 'qcStatus'
+  | 'status';
+
+function grnMonitorStatusLabel(grn: GRNRecordFromApi): string {
+  const s = String(grn.status ?? '').trim();
+  if (s === 'GRN Complete') return 'Completed';
+  if (s === 'Under GRN') return 'Under GRN';
+  if (s) return s;
+  return 'Pending GRN';
+}
+
+function compareGrnSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForGrnMonitorRow(grn: GRNRecordFromApi, col: GrnMonitorSortColumn): string | number {
+  switch (col) {
+    case 'grnNo':
+      return grn.grnNo ?? '';
+    case 'poNo':
+      return grn.poNo ?? '';
+    case 'vendor':
+      return grn.vendor ?? '';
+    case 'type':
+      return grn.type ?? '';
+    case 'items':
+      return grnLineItemsNameSummary(grn.lineItems);
+    case 'poValue':
+      return Number(grn.poValue) || 0;
+    case 'receivedDate': {
+      const d = grn.receivedDate ? new Date(grn.receivedDate) : null;
+      return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+    }
+    case 'assignedTo':
+      return grn.assignedTo ?? '';
+    case 'qcStatus':
+      return grn.qcStatus ?? '';
+    case 'status':
+      return grnMonitorStatusLabel(grn);
+    default:
+      return '';
+  }
+}
+
 const QUOTATIONS_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 /** Vendor-consolidated quotation cards show this many item rows before "View more". */
 const QUOTATION_VENDOR_LINES_PREVIEW = 5;
@@ -374,10 +444,10 @@ function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
 }
 
 /** PRs still in the RFQ / request queue (before Release to Draft PO). Hidden from the Requests "Active" tab once status is PO Draft or later. */
-const REQUEST_STATUSES_PRE_DRAFT_PIPELINE: readonly RequestStatus[] = ['New', 'Quoted'];
+const REQUEST_STATUSES_PRE_DRAFT_PIPELINE = PROCUREMENT_PRE_DRAFT_STATUSES;
 
 function requestStatusIsPreDraftPipeline(status: RequestStatus): boolean {
-  return REQUEST_STATUSES_PRE_DRAFT_PIPELINE.includes(status);
+  return isProcurementRequestPreDraftPipelineStatus(status);
 }
 
 /** True when payment terms include a positive advance % (transaction details + advance recording apply). */
@@ -893,6 +963,8 @@ const Procurement: React.FC = () => {
   const [splitPOTarget, setSplitPOTarget] = useState<DraftPO | null>(null);
   const [splitSelectedLineIndexes, setSplitSelectedLineIndexes] = useState<number[]>([]);
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
+  const [deletingDraftPoId, setDeletingDraftPoId] = useState<string | null>(null);
+  const [draftPoDeleteConfirmTarget, setDraftPoDeleteConfirmTarget] = useState<DraftPO | null>(null);
   const [releaseMethod, setReleaseMethod] = useState<'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email'>('Email + Portal');
   const [releaseNotes, setReleaseNotes] = useState('');
   const [releasePaymentTransactionNo, setReleasePaymentTransactionNo] = useState('');
@@ -910,18 +982,14 @@ const Procurement: React.FC = () => {
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
+  const [grnSortColumn, setGrnSortColumn] = useState<GrnMonitorSortColumn | null>('receivedDate');
+  const [grnSortDirection, setGrnSortDirection] = useState<SortDirection>('desc');
   const [grnMonitorPage, setGrnMonitorPage] = useState(1);
   const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
   const [quotationsPage, setQuotationsPage] = useState(1);
   const [quotationsPageSize, setQuotationsPageSize] = useState<number>(10);
-  const [issuedPoPage, setIssuedPoPage] = useState(1);
-  const [issuedPoPageSize, setIssuedPoPageSize] = useState<number>(10);
   const [selectedGrnMonitor, setSelectedGrnMonitor] = useState<GRNRecordFromApi | null>(null);
   const [grnMonitorDetailLoading, setGrnMonitorDetailLoading] = useState(false);
-  const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
-  const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
-  const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
-  const [itemTrackerSearch, setItemTrackerSearch] = useState('');
   const [releaseToPlannedTarget, setReleaseToPlannedTarget] = useState<{ request: ProcurementRequest; item: ReleaseToPlannedItem } | null>(null);
   const [releaseToPlannedForm, setReleaseToPlannedForm] = useState<{
     vendor: string;
@@ -1044,9 +1112,19 @@ const Procurement: React.FC = () => {
     }
   }, []);
 
+  const toggleGrnMonitorSort = useCallback((column: GrnMonitorSortColumn) => {
+    if (grnSortColumn === column) {
+      setGrnSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setGrnSortColumn(column);
+      setGrnSortDirection('asc');
+    }
+    setGrnMonitorPage(1);
+  }, [grnSortColumn]);
+
   const filteredGrnMonitorLines = useMemo(() => {
     const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
-    return grnList.filter((grn) => {
+    const filtered = grnList.filter((grn) => {
       if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
       if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
       const statusNorm =
@@ -1056,19 +1134,39 @@ const Procurement: React.FC = () => {
             ? 'Under GRN'
             : 'Pending GRN';
       if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
-      if (!grnSearch.trim()) return true;
-      const q = grnSearch.toLowerCase();
-      return (
-        (grn.grnNo ?? '').toLowerCase().includes(q) ||
-        (grn.poNo ?? '').toLowerCase().includes(q) ||
-        (grn.vendor ?? '').toLowerCase().includes(q) ||
-        (grn.lineItems ?? []).some((l) => {
-          const name = grnLineItemDisplayName(l).toLowerCase();
-          return name.includes(q) || (l.itemCode ?? '').toLowerCase().includes(q);
-        })
-      );
+      if (grnSearch.trim()) {
+        const q = grnSearch.toLowerCase();
+        const globalHit =
+          (grn.grnNo ?? '').toLowerCase().includes(q) ||
+          (grn.poNo ?? '').toLowerCase().includes(q) ||
+          (grn.vendor ?? '').toLowerCase().includes(q) ||
+          (grn.lineItems ?? []).some((l) => {
+            const name = grnLineItemDisplayName(l).toLowerCase();
+            return name.includes(q) || (l.itemCode ?? '').toLowerCase().includes(q);
+          });
+        if (!globalHit) return false;
+      }
+      return true;
     });
-  }, [grnListFromApi, grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch]);
+    if (!grnSortColumn) return filtered;
+    return [...filtered].sort((a, b) => {
+      const cmp = compareGrnSortValues(
+        sortValueForGrnMonitorRow(a, grnSortColumn),
+        sortValueForGrnMonitorRow(b, grnSortColumn),
+        grnSortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [
+    grnListFromApi,
+    grnCategoryFilter,
+    grnVendorFilter,
+    grnStatusFilter,
+    grnSearch,
+    grnSortColumn,
+    grnSortDirection,
+  ]);
 
   const grnMonitorTotalPages = Math.max(
     1,
@@ -1083,7 +1181,7 @@ const Procurement: React.FC = () => {
 
   useEffect(() => {
     setGrnMonitorPage(1);
-  }, [grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch, grnMonitorPageSize]);
+  }, [grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch, grnSortColumn, grnSortDirection, grnMonitorPageSize]);
 
   useEffect(() => {
     if (grnMonitorPage > grnMonitorTotalPages) {
@@ -1098,7 +1196,7 @@ const Procurement: React.FC = () => {
       return res.success ? res.data : null;
     },
     // Needed for Stock Summary in PR View modal as well.
-    enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest || !!selectedRequest,
+    enabled: !!selectedStockCheckRequest || !!selectedRequest,
     staleTime: 0,
     // Avoid repeated GETs when users switch tabs/windows.
     refetchOnMount: false,
@@ -1279,6 +1377,32 @@ const Procurement: React.FC = () => {
     [purchaseOrdersRaw]
   );
 
+  const resolveOpenQtyForReleaseItem = useCallback(
+    (args: {
+      requestId: string;
+      reqType: RequestType;
+      itemName: string;
+      itemCode?: string;
+      totalReqQty: number;
+      raw_material_id?: number;
+      pack_material_id?: number;
+      itemType?: 'RM' | 'PM';
+    }): number => {
+      const committed = sumCommittedPoQtyForPrItem(
+        {
+          itemName: args.itemName,
+          itemCode: args.itemCode,
+          raw_material_id: args.raw_material_id,
+          pack_material_id: args.pack_material_id,
+          type: args.itemType ?? args.reqType,
+        },
+        { requestId: args.requestId, purchaseOrders, draftPOs },
+      );
+      return computeOpenProcurementLineQty(args.totalReqQty, committed);
+    },
+    [purchaseOrders, draftPOs],
+  );
+
   /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
   const releasedPoBackendIdsForTracking = useMemo(() => {
     const ids = purchaseOrders
@@ -1379,12 +1503,51 @@ const Procurement: React.FC = () => {
     enabled: needItemsListForQuotesOrDraftPO || backendPrArray.length > 0,
   });
 
+  const resolveRmPrimaryUnit = useCallback(
+    (rawMaterialId?: number | null, itemCode?: string | null, fallback?: string | null): string => {
+      const rmId = rawMaterialId != null ? Number(rawMaterialId) : NaN;
+      const code = String(itemCode ?? '').trim().toLowerCase();
+      const hit = (itemsListRm ?? []).find((row) => {
+        const rowRmId = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+        if (Number.isFinite(rmId) && rmId > 0 && Number.isFinite(rowRmId) && rowRmId > 0) return rowRmId === rmId;
+        const rowCode = String(row.code ?? '').trim().toLowerCase();
+        return !!code && !!rowCode && rowCode === code;
+      });
+      return normRmPrimaryUom(hit?.uom ?? fallback ?? 'KG');
+    },
+    [itemsListRm]
+  );
+
   const requestsFromApi = useMemo(() => {
     return requestsMapped.map((req) => {
       const quote = quotesFromApi.find((q) => q.requestId === req.id) ?? null;
-      return fillItemLeadFromPriceListPages(req, itemsListRm, itemsListPm, quote?.vendor ?? null);
+      const withLead = fillItemLeadFromPriceListPages(req, itemsListRm, itemsListPm, quote?.vendor ?? null);
+      const itemDetails = (withLead.itemDetails ?? []).map((d) => {
+        const lineType: 'RM' | 'PM' = d.type === 'PM' ? 'PM' : 'RM';
+        const master =
+          lineType === 'RM'
+            ? (itemsListRm ?? []).find((row) => {
+                const rid = d.raw_material_id != null ? Number(d.raw_material_id) : NaN;
+                const rowRm = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+                if (Number.isFinite(rid) && rid > 0 && Number.isFinite(rowRm) && rowRm === rid) return true;
+                const c = String(d.itemCode ?? '').trim().toLowerCase();
+                const rc = String(row.code ?? '').trim().toLowerCase();
+                return !!c && !!rc && c === rc;
+              })
+            : undefined;
+        const unit =
+          lineType === 'PM'
+            ? normRmPrimaryUom(d.unit || 'PCS')
+            : resolveRmPrimaryUnit(
+                d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                d.itemCode,
+                d.unit || (master as { uom?: string } | undefined)?.uom
+              );
+        return { ...d, unit };
+      });
+      return { ...withLead, itemDetails };
     });
-  }, [requestsMapped, itemsListRm, itemsListPm, quotesFromApi]);
+  }, [requestsMapped, itemsListRm, itemsListPm, quotesFromApi, resolveRmPrimaryUnit]);
 
   const draftPOsFromApi = useMemo(() => {
     const reqs = requestsFromApi;
@@ -1827,209 +1990,6 @@ const Procurement: React.FC = () => {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
-    const quotesByRequestId = new Map<string, VendorQuote[]>();
-    quotes.forEach((quote) => {
-      const list = quotesByRequestId.get(quote.requestId) ?? [];
-      list.push(quote);
-      quotesByRequestId.set(quote.requestId, list);
-    });
-
-    const rows: ItemTrackerRow[] = [];
-
-    requests.forEach((request) => {
-      if (isPlanningQuotationRequest(request)) return;
-      const requestQuotes = quotesByRequestId.get(request.id) ?? [];
-      const confirmedQuote = requestQuotes.find((q) => q.status === 'Confirmed') ?? null;
-      const primaryQuote = confirmedQuote ?? requestQuotes[0] ?? null;
-
-      const draftCandidates = draftPOs.filter((d) => d.requestId === request.id);
-      const releasedPosForRequest = purchaseOrders.filter(
-        (p) =>
-          p.status === 'Released' &&
-          (String((p.formData as { requestId?: string } | undefined)?.requestId) === String(request.id) ||
-            String((p.formData as { requestCode?: string } | undefined)?.requestCode).toUpperCase() ===
-              String(request.code).toUpperCase() ||
-            p.requestCode === request.code),
-      );
-
-      const details: ItemDetail[] =
-        request.itemDetails && request.itemDetails.length > 0
-          ? request.itemDetails
-          : request.items.map((itemName, idx) => {
-            const qty = request.quantities?.[idx] ?? 0;
-            const plannedPrice = request.plannedPrices?.[idx] ?? 0;
-            return {
-              itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
-              itemName,
-              reqQty: qty,
-              unit: request.units?.[idx] ?? '',
-              moq: '',
-              packSize: '',
-              plannedPrice,
-              leadTimeDays: 0,
-              estValue: plannedPrice * qty,
-            };
-          });
-
-      details.forEach((detail) => {
-        const itemName = detail.itemName;
-        const norm = (s: string) => String(s ?? '').trim().toLowerCase();
-
-        const po =
-          releasedPosForRequest.find((p) => {
-            const raw = Array.isArray(p.rawItems) ? (p.rawItems as { itemName?: string; name?: string; itemCode?: string; code?: string }[]) : [];
-            return raw.some(
-              (ri) =>
-                (norm(ri.itemName ?? ri.name ?? '') && norm(ri.itemName ?? ri.name ?? '') === norm(itemName)) ||
-                (!!detail.itemCode &&
-                  norm(String(ri.itemCode ?? ri.code ?? '')) &&
-                  norm(String(ri.itemCode ?? ri.code ?? '')) === norm(detail.itemCode)),
-            );
-          }) ??
-          (releasedPosForRequest.length === 1 ? releasedPosForRequest[0] : null);
-
-        const draftPo =
-          draftCandidates.find((d) =>
-            d.lineItems.some(
-              (ln) => norm(ln.item) === norm(itemName) || (!!detail.itemCode && norm(ln.itemCode) === norm(detail.itemCode)),
-            ),
-          ) ?? (draftCandidates.length === 1 ? draftCandidates[0] : null);
-
-        let quotedVendor: string | null = null;
-        let actualPrice: number | null = null;
-        let actualVsPlanned: string | null = null;
-        let orderQty: string | null = null;
-
-        if (requestQuotes.length > 0) {
-          const sourceQuote =
-            confirmedQuote ??
-            requestQuotes.find((q) => q.lines.some((line) => line.item === itemName)) ??
-            requestQuotes[0];
-
-          const matchedLine = sourceQuote.lines.find((line) => line.item === itemName) ?? sourceQuote.lines[0];
-          quotedVendor = sourceQuote.vendor;
-          actualPrice = matchedLine?.pricePerUnit ?? null;
-          actualVsPlanned = matchedLine?.vsPlanned ?? null;
-          orderQty = matchedLine?.qty ?? null;
-        }
-
-        let advPaid: string | null = null;
-        let lrNo: string | null = null;
-
-        if (po && po.timeline) {
-          const advanceStage = po.timeline.find((step) => step.stage === 'Advance Paid' && step.done);
-          if (advanceStage) {
-            advPaid = 'Yes';
-          }
-
-          const shippedStage = po.timeline.find((step) => step.stage === 'Shipped' && step.done && step.note);
-          if (shippedStage?.note) {
-            const match = shippedStage.note.match(/LR No: ([A-Za-z0-9-]+)/i);
-            if (match) {
-              lrNo = match[1];
-            }
-          }
-        }
-
-        const expDelivery = draftPo?.expectedDelivery ?? request.dueDate ?? null;
-
-        rows.push({
-          key: `${request.id}::${detail.itemCode}`,
-          requestId: request.id,
-          requestCode: request.code,
-          type: request.type,
-          priority: request.priority,
-          requestStatus: request.status,
-          itemName: detail.itemName,
-          itemCode: detail.itemCode,
-          reqQty: detail.reqQty,
-          unit: detail.unit,
-          plannedPrice: detail.plannedPrice,
-          plannedValue: detail.estValue,
-          // Vendor cards must also include requests where vendor is chosen directly on request
-          // (e.g. Release to Planning) even before a quotation row exists.
-          preferredVendor: primaryQuote?.vendor ?? request.preferredVendor ?? null,
-          quotedVendor,
-          actualPrice,
-          actualVsPlanned,
-          poNumber: po?.poNumber ?? null,
-          poStatus: po?.status ?? null,
-          orderQty,
-          advPaid,
-          lrNo,
-          expDelivery,
-          grnRef: null,
-          quoteId: primaryQuote?.id ?? null,
-          draftPoId: draftPo?.id ?? null,
-          poId: po?.id ?? null,
-        });
-      });
-    });
-
-    return rows;
-  }, [draftPOs, purchaseOrders, quotes, requests]);
-
-  const filteredItemTrackerRows = useMemo(() => {
-    return itemTrackerRows.filter((row) => {
-      if (itemTrackerCategory !== 'All' && row.type !== itemTrackerCategory) {
-        return false;
-      }
-
-      if (itemTrackerVendor !== 'All Vendors') {
-        if (row.preferredVendor !== itemTrackerVendor && row.quotedVendor !== itemTrackerVendor) {
-          return false;
-        }
-      }
-
-      if (itemTrackerStatus !== 'All Statuses' && row.requestStatus !== itemTrackerStatus) {
-        return false;
-      }
-
-      if (!itemTrackerSearch.trim()) {
-        return true;
-      }
-
-      const q = itemTrackerSearch.toLowerCase();
-      return (
-        row.itemName.toLowerCase().includes(q) ||
-        row.itemCode.toLowerCase().includes(q) ||
-        row.requestCode.toLowerCase().includes(q) ||
-        (row.poNumber ?? '').toLowerCase().includes(q) ||
-        (row.preferredVendor ?? '').toLowerCase().includes(q) ||
-        (row.quotedVendor ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [itemTrackerCategory, itemTrackerRows, itemTrackerSearch, itemTrackerStatus, itemTrackerVendor]);
-
-  /** Item Tracker: bucket filtered rows under one vendor label (quoted → preferred → Unassigned). */
-  const itemTrackerRowsByVendor = useMemo(() => {
-    const map = new Map<string, ItemTrackerRow[]>();
-    for (const row of filteredItemTrackerRows) {
-      const q = (row.quotedVendor ?? '').trim();
-      const p = (row.preferredVendor ?? '').trim();
-      const vendor = q || p || 'Unassigned';
-      const list = map.get(vendor) ?? [];
-      list.push(row);
-      map.set(vendor, list);
-    }
-    const keys = [...map.keys()].sort((a, b) => {
-      if (a === 'Unassigned') return 1;
-      if (b === 'Unassigned') return -1;
-      return a.localeCompare(b, undefined, { sensitivity: 'base' });
-    });
-    return keys.map((vendor) => ({ vendor, rows: map.get(vendor)! }));
-  }, [filteredItemTrackerRows]);
-
-  const itemTrackerVendors = useMemo(() => {
-    const set = new Set<string>();
-    itemTrackerRows.forEach((row) => {
-      if (row.preferredVendor) set.add(row.preferredVendor);
-      if (row.quotedVendor) set.add(row.quotedVendor);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [itemTrackerRows]);
-
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
       if (categoryFilter !== 'All' && quote.requestType !== categoryFilter) {
@@ -2097,7 +2057,14 @@ const Procurement: React.FC = () => {
     const add = (type: RequestType, item: PriceListItemPage) => {
       const code = String(item.code ?? '').trim();
       const name = String(item.name ?? '').trim() || code;
-      const unit = type === 'RM' ? (String(item.uom ?? 'KG') || 'KG') : 'PCS';
+      const unit =
+        type === 'RM'
+          ? resolveRmPrimaryUnit(
+              item.raw_material_id != null ? Number(item.raw_material_id) : null,
+              item.code,
+              item.uom
+            )
+          : 'PCS';
       (item.vendorRates ?? []).forEach((rate) => {
         const vendorName = String(rate.vendor_name ?? rate.vendor_code ?? '').trim();
         if (!vendorName) return;
@@ -2845,13 +2812,11 @@ const Procurement: React.FC = () => {
       'Draft POs': draftPOs.length,
       'Issued POs': issuedPORecords.length,
       'GRN Monitor': (grnListFromApi ?? []).length,
-      'Item Tracker': itemTrackerRows.length,
     }),
     [
       draftPOs,
       grnListFromApi,
       issuedPORecords,
-      itemTrackerRows,
       filteredPlanningQuotationAsks.length,
       planningQuotationRequestsAwaitingQuote.length,
       procurementRequestTabCounts,
@@ -2914,57 +2879,6 @@ const Procurement: React.FC = () => {
     releasedPoTrackingByBackendId,
     unlinkedPoTimelineOverrides,
   ]);
-
-  const issuedPoTotalPages = Math.max(1, Math.ceil(filteredIssuedPORecords.length / issuedPoPageSize));
-  const issuedPoSafePage = Math.min(issuedPoPage, issuedPoTotalPages);
-  const issuedPoStartIndex = (issuedPoSafePage - 1) * issuedPoPageSize;
-  const pagedIssuedPORecords = useMemo(
-    () => filteredIssuedPORecords.slice(issuedPoStartIndex, issuedPoStartIndex + issuedPoPageSize),
-    [filteredIssuedPORecords, issuedPoStartIndex, issuedPoPageSize],
-  );
-
-  /** Issued PO list grouped by vendor (Fulfillment-style client grouping). */
-  const groupedIssuedPoByVendor = useMemo(() => {
-    type IssuedRecord = (typeof pagedIssuedPORecords)[number];
-    const map = new Map<string, IssuedRecord[]>();
-    for (const record of pagedIssuedPORecords) {
-      const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
-      const list = map.get(vendorName) ?? [];
-      list.push(record);
-      map.set(vendorName, list);
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([vendorName, orders]) => ({
-        vendorName,
-        orders,
-        poCount: orders.length,
-        lineCount: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
-        totalValue: orders.reduce((sum, o) => sum + o.grandTotal, 0),
-      }));
-  }, [pagedIssuedPORecords]);
-
-  useEffect(() => {
-    setIssuedPoPage(1);
-  }, [
-    categoryFilter,
-    issuedVendorFilter,
-    issuedStatusFilter,
-    issuedPoPipelineStageKey,
-    issuedSearch,
-    issuedPoPageSize,
-  ]);
-
-  useEffect(() => {
-    if (issuedPoPage > issuedPoTotalPages) {
-      setIssuedPoPage(issuedPoTotalPages);
-    }
-  }, [issuedPoPage, issuedPoTotalPages]);
-
-  const issuedFilteredLineCount = useMemo(
-    () => filteredIssuedPORecords.reduce((sum, r) => sum + r.lineItems.length, 0),
-    [filteredIssuedPORecords],
-  );
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
     const recBackend = (record as { backendPoId?: string }).backendPoId;
@@ -3764,6 +3678,134 @@ const Procurement: React.FC = () => {
     addToast('success', `${target.dpoNumber} approved`);
   };
 
+  const openDeleteDraftPOConfirm = (draft: DraftPO): void => {
+    const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
+      addToast('error', 'This draft PO is not saved on the server yet. Refresh the page and try again.');
+      return;
+    }
+
+    const serverPo = purchaseOrders.find(
+      (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId
+    );
+    if (serverPo && String(serverPo.status ?? '').trim().toLowerCase() === 'released') {
+      addToast('warning', 'Released purchase orders cannot be deleted here.');
+      return;
+    }
+
+    setDraftPoDeleteConfirmTarget(draft);
+  };
+
+  const confirmDeleteDraftPO = (): void => {
+    const draft = draftPoDeleteConfirmTarget;
+    if (!draft) return;
+    void deleteDraftPO(draft);
+  };
+
+  const deleteDraftPO = async (draft: DraftPO): Promise<void> => {
+    const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
+      addToast('error', 'This draft PO is not saved on the server yet. Refresh the page and try again.');
+      return;
+    }
+
+    const serverPo = purchaseOrders.find(
+      (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId
+    );
+    if (serverPo && String(serverPo.status ?? '').trim().toLowerCase() === 'released') {
+      addToast('warning', 'Released purchase orders cannot be deleted here.');
+      return;
+    }
+
+    setDeletingDraftPoId(draft.id);
+    try {
+      const backendRequestId = resolveBackendProcurementRequestId(draft);
+      const prRow = backendRequestId
+        ? backendPrArray.find((p) => String(p.id) === backendRequestId)
+        : undefined;
+      let linkedPrRemoved = false;
+
+      if (prRow) {
+        const hasOtherDraft = requestHasOtherDraftPurchaseOrder(
+          backendRequestId,
+          purchaseOrders,
+          backendPoId
+        );
+        const hasQuote = quotes.some((q) => q.requestId === backendRequestId);
+        const plan = planDraftPoDeleteProcurementCleanup(
+          draft,
+          prRow,
+          hasOtherDraft,
+          hasQuote
+        );
+
+        if (plan.kind === 'delete-parent') {
+          const delPr = await deleteProcurementRequestApi(backendRequestId);
+          if (!delPr.success) {
+            addToast(
+              'error',
+              typeof delPr.error === 'string'
+                ? delPr.error
+                : 'Could not remove the linked procurement request. Draft PO was not deleted.'
+            );
+            return;
+          }
+          linkedPrRemoved = true;
+        } else {
+          const prUpd = await updateProcurementRequestApi(backendRequestId, {
+            items: plan.items,
+            status: plan.status,
+          });
+          if (!prUpd.success) {
+            addToast(
+              'error',
+              typeof prUpd.error === 'string'
+                ? prUpd.error
+                : 'Could not update the linked procurement request. Draft PO was not deleted.'
+            );
+            return;
+          }
+        }
+      }
+
+      const delPo = await deletePurchaseOrder(backendPoId);
+      if (!delPo.success) {
+        addToast('error', typeof delPo.error === 'string' ? delPo.error : 'Failed to delete draft PO');
+        void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        return;
+      }
+
+      updateProcurementState((current) => ({
+        draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
+        requests:
+          linkedPrRemoved && backendRequestId
+            ? current.requests.filter((r) => r.id !== backendRequestId)
+            : current.requests,
+      }));
+
+      if (selectedDraftPO?.id === draft.id) setSelectedDraftPO(null);
+      if (editDraftPOTarget?.id === draft.id) setEditDraftPOTarget(null);
+      if (releasePOTarget?.id === draft.id) closeReleasePOModal();
+
+      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      void invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+      addToast(
+        'success',
+        linkedPrRemoved
+          ? `Draft PO ${draft.dpoNumber} deleted; linked procurement request removed — qty available on Planning → Items Involved.`
+          : `Draft PO ${draft.dpoNumber} deleted; procurement request updated.`
+      );
+      setDraftPoDeleteConfirmTarget(null);
+    } finally {
+      setDeletingDraftPoId(null);
+    }
+  };
+
   const resolveBackendProcurementRequestId = (draft: DraftPO): string => {
     // Backend PATCH /api/v1/procurement/:id expects the numeric procurement_requests.id.
     const direct = draft.requestId ?? '';
@@ -3902,7 +3944,8 @@ const Procurement: React.FC = () => {
       const moq = Number(prLine?.moq_min ?? 0) || 0;
 
       if (moq > 0 && qty > 0 && qty < moq) {
-        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${qty} is below vendor MOQ ${moq}.`;
+        const u = String(prLine?.unit ?? 'KG');
+        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${formatQtyWithPrimaryUnit(qty, u, 'RM')} is below vendor MOQ ${formatQtyWithPrimaryUnit(moq, u, 'RM')}.`;
       }
       if (orig > 0 && qty > orig) {
         return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${qty} exceeds open request qty ${orig}.`;
@@ -4251,7 +4294,8 @@ const Procurement: React.FC = () => {
           if (moq <= 0) continue;
           const qty = Number(String(ln.qty ?? '').replace(/[^\d.]/g, '')) || 0;
           if (qty > 0 && qty < moq) {
-            return `${splitLabel}: ${ln.item || ln.itemCode || 'line'} qty ${qty} is below MOQ ${moq}. Adjust split quantities/items.`;
+            const u = String(pr?.unit ?? 'KG');
+            return `${splitLabel}: ${ln.item || ln.itemCode || 'line'} qty ${formatQtyWithPrimaryUnit(qty, u, 'RM')} is below MOQ ${formatQtyWithPrimaryUnit(moq, u, 'RM')}. Adjust split quantities/items.`;
           }
         }
         return null;
@@ -4450,7 +4494,14 @@ const Procurement: React.FC = () => {
         index: 0,
         itemId: String(ask.itemCode ?? '').trim(),
         name: String(ask.itemName ?? '').trim(),
-        uom: String(ask.unit ?? (lineType === 'PM' ? 'PCS' : 'KG')),
+        uom:
+          lineType === 'PM'
+            ? String(ask.unit ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                ask.rawMaterialId != null ? Number(ask.rawMaterialId) : null,
+                String(ask.itemCode ?? ''),
+                String(ask.unit ?? '')
+              ),
         orderQty: String(qty > 0 ? qty : ''),
         pricePerUnit: '',
         totalValue: 0,
@@ -4495,7 +4546,14 @@ const Procurement: React.FC = () => {
         index: i,
         itemId: String(d.itemCode ?? '').trim(),
         name: String(d.itemName ?? '').trim(),
-        uom: String(d.unit ?? (lineType === 'PM' ? 'PCS' : 'KG')),
+        uom:
+          lineType === 'PM'
+            ? String(d.unit ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                String(d.itemCode ?? ''),
+                String(d.unit ?? '')
+              ),
         orderQty: String(qty > 0 ? qty : ''),
         pricePerUnit: price > 0 ? String(price) : '',
         totalValue: qty * price,
@@ -4782,141 +4840,59 @@ const Procurement: React.FC = () => {
     recordingAdvancePayment;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-yellow-50 text-slate-900">
-      {showProcurementGlobalLoader && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-white/55 backdrop-blur-[2px]"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200/80 bg-white px-8 py-6 shadow-xl">
-            <Loader2 className="h-10 w-10 shrink-0 animate-spin text-amber-600" aria-hidden />
-            <p className="text-sm font-medium text-slate-700">Loading…</p>
-          </div>
-        </div>
-      )}
-      <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
-        <div className="px-5 md:px-8 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 pl-12">
-            <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
-            <p className="text-xs text-slate-500">Operations Hub</p>
-            <div className="hidden md:flex items-center gap-2 ml-4">
-              {(['Procurement', 'Vendors', 'Reports'] as MainTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => applyRouteState(tab, sideSection)}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${mainTab === tab
-                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                    : 'bg-white text-slate-600 border-slate-300 hover:text-slate-900'
-                    }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <input
-              ref={poExcelInputRef}
-              type="file"
-              accept=".xlsx,.xlsm"
-              className="hidden"
-              onChange={handlePoExcelChange}
-              aria-hidden
-            />
-            <button
-              type="button"
-              onClick={() => poExcelInputRef.current?.click()}
-              disabled={importingPoExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              title="Import PO Excel (PR rows, Quotation rows, Raw PO Detail)"
-            >
-              {importingPoExcel ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden />
-                  Importing…
-                </>
-              ) : (
-                'Import PO Excel'
-              )}
-            </button>
-            <span className="px-2 py-1 rounded-full border border-rose-300 bg-rose-50 text-rose-700">{quoteStats.urgent} Urgent</span>
-            <span className="px-2 py-1 rounded-full border border-yellow-300 bg-yellow-50 text-yellow-700">{quoteStats.pendingAction} Pending Action</span>
-            <span className="hidden sm:inline px-2 py-1 rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700">Esthetic Insights CDMO</span>
-            <span className="hidden md:inline px-2 py-1 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700">Live · {liveSyncTime}</span>
-          </div>
-        </div>
-      </div>
-
-      {mainTab !== 'Procurement' ? (
-        <div className="px-5 md:px-8 py-8 space-y-4">
-          {mainTab === 'Vendors' && (
-            <ProcurementVendors
-              vendors={vendors}
-              purchaseOrders={purchaseOrders}
-              selectedVendor={selectedVendor}
-              setSelectedVendor={setSelectedVendor}
-              applyRouteState={applyRouteState}
-              sideSection={sideSection}
-            />
-          )}
-
-          {mainTab === 'Reports' && (
-            <ProcurementReports
-              requests={requests}
-              quotes={quotes}
-              quoteStats={quoteStats}
-              applyRouteState={applyRouteState}
-              sideSection={sideSection}
-              requestTypeClass={requestTypeClass}
-              priorityClass={priorityClass}
-              statusBg={statusBg}
-            />
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr]">
-          <aside className="border-r border-blue-200 bg-blue-50/50 px-4 py-4">
-            <p className="text-[11px] tracking-[0.2em] text-slate-400 mb-3">PROCUREMENT</p>
-            <div className="space-y-1 mb-6">
-              {(['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs'] as SideSection[]).map((section) => (
-                <button
-                  key={section}
-                  onClick={() => applyRouteState('Procurement', section)}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
-                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                    : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <span>{section}</span>
-                  <span className="text-xs text-slate-500">{sideCounts[section]}</span>
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[11px] tracking-[0.2em] text-slate-400 mb-3">OPERATIONS</p>
-            <div className="space-y-1">
-              {(['GRN Monitor', 'Item Tracker'] as SideSection[]).map((section) => (
-                <button
-                  key={section}
-                  onClick={() => {
-                    applyRouteState('Procurement', section);
-                    addToast('info', `${section} synced with procurement data`);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
-                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-300'
-                    : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <span>{section}</span>
-                  <span className="text-xs text-cyan-700">{sideCounts[section]}</span>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <main className="px-5 md:px-7 py-5 space-y-4">
+    <div className="min-h-screen bg-[#F7F7F9] text-gray-900">
+      <input
+        ref={poExcelInputRef}
+        type="file"
+        accept=".xlsx,.xlsm"
+        className="hidden"
+        onChange={handlePoExcelChange}
+        aria-hidden
+      />
+      <ProcurementDashboardShell
+        mainTab={mainTab}
+        onMainTabChange={(tab) => applyRouteState(tab, sideSection)}
+        sideSection={sideSection}
+        onSideSectionChange={(section) => {
+          applyRouteState('Procurement', section);
+          if (section === 'GRN Monitor') {
+            addToast('info', `${section} synced with procurement data`);
+          }
+        }}
+        sideCounts={sideCounts}
+        quoteStats={quoteStats}
+        liveSyncTime={liveSyncTime}
+        importingPoExcel={importingPoExcel}
+        onImportPoExcel={() => poExcelInputRef.current?.click()}
+        showGlobalLoader={showProcurementGlobalLoader}
+        secondaryContent={
+          <>
+            {mainTab === 'Vendors' && (
+              <ProcurementVendors
+                vendors={vendors}
+                purchaseOrders={purchaseOrders}
+                selectedVendor={selectedVendor}
+                setSelectedVendor={setSelectedVendor}
+                applyRouteState={applyRouteState}
+                sideSection={sideSection}
+              />
+            )}
+            {mainTab === 'Reports' && (
+              <ProcurementReports
+                requests={requests}
+                quotes={quotes}
+                quoteStats={quoteStats}
+                applyRouteState={applyRouteState}
+                sideSection={sideSection}
+                requestTypeClass={requestTypeClass}
+                priorityClass={priorityClass}
+                statusBg={statusBg}
+              />
+            )}
+          </>
+        }
+        procurementContent={
+          <>
             {sideSection !== 'Overview' && (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
@@ -4924,7 +4900,7 @@ const Procurement: React.FC = () => {
                   { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
                   { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
                 ].map((stat) => (
-                  <div key={stat.label} className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                  <div key={stat.label} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
                     <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
                     <p className={`mt-2 text-3xl font-bold font-archivo ${stat.color}`}>{stat.value}</p>
                   </div>
@@ -5029,7 +5005,7 @@ const Procurement: React.FC = () => {
                         { label: 'STOCK CHECKS ACTIVE', value: requests.filter(r => r.priority !== 'Low').length, sub: null, color: 'text-yellow-600' },
                         { label: 'PO VALUE (ACTIVE)', value: `₹${activePOValue.toLocaleString('en-IN')}`, sub: null, color: 'text-cyan-600' },
                       ].map(kpi => (
-                        <div key={kpi.label} className="flex-1 min-w-32 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                        <div key={kpi.label} className="flex-1 min-w-32 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
                           <div className="flex items-center gap-2 mb-1">
                             {kpi.badge && (
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${kpi.badge === 'RM' ? 'bg-cyan-100 text-cyan-700' : 'bg-violet-100 text-violet-700'}`}>{kpi.badge}</span>
@@ -5044,9 +5020,9 @@ const Procurement: React.FC = () => {
 
                     {/* Actions Required + PO Pipeline */}
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-                      <div className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-yellow-50 to-white">
-                          <h3 className="font-bold text-slate-900">Actions Required</h3>
+                      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+                          <h3 className="font-bold text-gray-900">Actions Required</h3>
                         </div>
                         <div className="divide-y divide-slate-100">
                           {activeRequests.map(req => {
@@ -5498,7 +5474,15 @@ const Procurement: React.FC = () => {
                                   const detail = req.itemDetails?.[itemIdx];
                                   const reqQtyNum = Number(detail?.reqQty ?? 0) || 0;
                                   const lineType = detail?.type === 'PM' ? 'PM' : detail?.type === 'FG' ? 'FG' : 'RM';
-                                  const unitLabel = detail?.unit || (lineType === 'PM' ? 'PCS' : 'KG');
+                                  const unitLabel =
+                                    detail?.unit ||
+                                    (lineType === 'PM'
+                                      ? 'PCS'
+                                      : resolveRmPrimaryUnit(
+                                          detail?.raw_material_id != null ? Number(detail.raw_material_id) : null,
+                                          detail?.itemCode,
+                                          ''
+                                        ));
                                   const plannedPrice = Number(detail?.plannedPrice ?? 0) || 0;
                                   const estValue = reqQtyNum * plannedPrice;
                                   const leadRaw = detail?.leadTimeDays;
@@ -5534,7 +5518,15 @@ const Procurement: React.FC = () => {
                                         </div>
                                         <div>
                                           <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                          <p className="font-semibold text-slate-900">{detail?.moq || '—'}</p>
+                                          <p className="font-semibold text-slate-900">
+                                            {detail?.moq
+                                              ? formatQtyWithPrimaryUnit(
+                                                  detail.moq,
+                                                  unitLabel,
+                                                  lineType
+                                                )
+                                              : '—'}
+                                          </p>
                                         </div>
                                         <div>
                                           <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
@@ -5755,14 +5747,31 @@ const Procurement: React.FC = () => {
                                         setReleaseToPlannedNotes('');
                                         setReleaseToPlannedLineEdits(
                                           (req.itemDetails ?? []).map((d) => {
-                                            const oq = Number(d.reqQty ?? 0) || 0;
+                                            const totalReqQty = Number(d.reqQty ?? 0) || 0;
+                                            const oq = resolveOpenQtyForReleaseItem({
+                                              requestId: req.id,
+                                              reqType: req.type,
+                                              itemName: d.itemName ?? '',
+                                              itemCode: d.itemCode,
+                                              totalReqQty,
+                                              raw_material_id: d.raw_material_id,
+                                              pack_material_id: d.pack_material_id,
+                                              itemType: d.type === 'PM' ? 'PM' : 'RM',
+                                            });
                                             return {
                                               itemName: d.itemName ?? '',
                                               itemCode: d.itemCode ?? '',
                                               type: d.type === 'PM' ? 'PM' : 'RM',
                                               originalQty: oq,
                                               qty: oq,
-                                              unit: String(d.unit ?? (d.type === 'PM' ? 'PCS' : 'KG')),
+                                              unit:
+                                                d.type === 'PM'
+                                                  ? String(d.unit ?? 'PCS')
+                                                  : resolveRmPrimaryUnit(
+                                                      d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                                                      String(d.itemCode ?? ''),
+                                                      String(d.unit ?? '')
+                                                    ),
                                               moq: Number(d.moq ?? 0) || 0,
                                               unitPrice: Number(d.plannedPrice ?? 0) || 0,
                                               leadDays: Number(d.leadTimeDays ?? 0) || 0,
@@ -5775,12 +5784,19 @@ const Procurement: React.FC = () => {
                                         const itemName = req.items[0];
                                         const qty = req.quantities?.[0] ?? 0;
                                         const price = req.plannedPrices?.[0] ?? 0;
-                                        const unit = req.units?.[0] ?? 'KG';
                                         const spec = req.specifications?.[0];
                                         const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
                                           | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
                                           | undefined;
                                         const line0 = prRow?.items?.[0];
+                                        const line0Type: 'RM' | 'PM' = line0?.type === 'PM' ? 'PM' : 'RM';
+                                        const unit = line0Type === 'PM'
+                                          ? String(req.units?.[0] ?? 'PCS')
+                                          : resolveRmPrimaryUnit(
+                                              line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                                              String(line0?.code ?? itemName ?? ''),
+                                              String(req.units?.[0] ?? '')
+                                            );
                                         const relItem: ReleaseToPlannedItem = {
                                           itemName,
                                           itemCode: line0?.code,
@@ -5791,7 +5807,7 @@ const Procurement: React.FC = () => {
                                           plannedPrice: price,
                                           raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
                                           pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
-                                          itemType: line0?.type === 'PM' ? 'PM' : 'RM',
+                                          itemType: line0Type,
                                         };
                                         setReleaseToPlannedTarget({ request: req, item: relItem });
                                         const reqType1: RequestType =
@@ -5840,14 +5856,31 @@ const Procurement: React.FC = () => {
                                         });
                                         setReleaseToPlannedNotes('');
                                         setReleaseToPlannedLineEdits((req.items ?? []).map((nm, i) => {
-                                          const oq = Number((req.quantities ?? [])[i] ?? 0) || 0;
+                                          const totalReqQty = Number((req.quantities ?? [])[i] ?? 0) || 0;
+                                          const oq = resolveOpenQtyForReleaseItem({
+                                            requestId: req.id,
+                                            reqType: req.type,
+                                            itemName: String(nm ?? ''),
+                                            itemCode: String(line0?.code ?? ''),
+                                            totalReqQty,
+                                            raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+                                            pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+                                            itemType: relItem.itemType,
+                                          });
                                           return {
                                             itemName: String(nm ?? ''),
                                             itemCode: String(line0?.code ?? ''),
                                             type: relItem.itemType === 'PM' ? 'PM' : 'RM',
                                             originalQty: oq,
                                             qty: oq,
-                                            unit: String((req.units ?? [])[i] ?? 'KG'),
+                                            unit:
+                                              relItem.itemType === 'PM'
+                                                ? String((req.units ?? [])[i] ?? 'PCS')
+                                                : resolveRmPrimaryUnit(
+                                                    line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                                                    String(line0?.code ?? nm ?? ''),
+                                                    String((req.units ?? [])[i] ?? '')
+                                                  ),
                                             moq: 0,
                                             unitPrice: Number((req.plannedPrices ?? [])[i] ?? 0) || 0,
                                             leadDays: 0,
@@ -5958,7 +5991,14 @@ const Procurement: React.FC = () => {
                             <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
                             <p className="font-semibold text-slate-900 text-sm">
                               {Number(ask.quantityRequested ?? 0).toLocaleString('en-IN')}{' '}
-                              {ask.unit || (ask.itemType === 'PM' ? 'PCS' : 'KG')}
+                              {ask.unit ||
+                                (ask.itemType === 'PM'
+                                  ? 'PCS'
+                                  : resolveRmPrimaryUnit(
+                                      ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
+                                      ask.itemCode,
+                                      ask.unit
+                                    ))}
                             </p>
                             <p className="text-[11px] text-slate-500 font-mono mt-0.5">{ask.itemCode || '—'}</p>
                             {ask.vendorHint ? (
@@ -5967,7 +6007,19 @@ const Procurement: React.FC = () => {
                                 {ask.moqHint != null && ask.moqHint > 0 ? (
                                   <>
                                     {' '}
-                                    · <span className="font-semibold">MOQ:</span> {ask.moqHint}
+                                    · <span className="font-semibold">MOQ:</span>{' '}
+                                    {formatQtyWithPrimaryUnit(
+                                      ask.moqHint,
+                                      ask.unit ||
+                                        (ask.itemType === 'PM'
+                                          ? 'PCS'
+                                          : resolveRmPrimaryUnit(
+                                              ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
+                                              ask.itemCode,
+                                              ''
+                                            )),
+                                      ask.itemType === 'PM' ? 'PM' : 'RM'
+                                    )}
                                   </>
                                 ) : null}
                               </p>
@@ -6048,7 +6100,14 @@ const Procurement: React.FC = () => {
                                 <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
                                 <p className="font-semibold text-slate-900 text-sm">
                                   {Number(detail.reqQty ?? 0).toLocaleString('en-IN')}{' '}
-                                  {detail.unit || (req.type === 'PM' ? 'PCS' : 'KG')}
+                                  {detail.unit ||
+                                    (req.type === 'PM'
+                                      ? 'PCS'
+                                      : resolveRmPrimaryUnit(
+                                          detail.raw_material_id != null ? Number(detail.raw_material_id) : null,
+                                          detail.itemCode,
+                                          ''
+                                        ))}
                                 </p>
                                 <p className="text-[11px] text-slate-500 font-mono mt-0.5">{detail.itemCode || '—'}</p>
                               </div>
@@ -6599,6 +6658,15 @@ const Procurement: React.FC = () => {
                           {/* Actions */}
                           <div className="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
                             <button
+                              type="button"
+                              disabled={deletingDraftPoId === dpo.id}
+                              onClick={() => openDeleteDraftPOConfirm(dpo)}
+                              className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                            >
+                              {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSelectedDraftPO(dpo)}
                               className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
                             >
@@ -6805,443 +6873,48 @@ const Procurement: React.FC = () => {
                 </div>
               )}
 
-              {sideSection === 'Issued POs' && (() => {
-                const normPoKeyLocal = (n: string) =>
-                  String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
-                const k = issuedPoOverviewKpis;
+              {sideSection === 'Issued POs' && (
+                <IssuedPOsView
+                  kpis={issuedPoOverviewKpis}
+                  records={filteredIssuedPORecords}
+                  categoryFilter={categoryFilter}
+                  onCategoryFilterChange={setCategoryFilter}
+                  issuedVendorFilter={issuedVendorFilter}
+                  onIssuedVendorFilterChange={setIssuedVendorFilter}
+                  vendorOptions={Array.from(new Set(issuedPORecords.map((r) => r.vendor))).sort((a, b) =>
+                    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+                  )}
+                  issuedStatusFilter={issuedStatusFilter}
+                  onIssuedStatusFilterChange={setIssuedStatusFilter}
+                  issuedSearch={issuedSearch}
+                  onIssuedSearchChange={setIssuedSearch}
+                  issuedPoPipelineStageKey={issuedPoPipelineStageKey}
+                  onIssuedPoPipelineStageKeyChange={setIssuedPoPipelineStageKey}
+                  onClearFilters={() => {
+                    setIssuedSearch('');
+                    setCategoryFilter('All');
+                    setIssuedVendorFilter('All Vendors');
+                    setIssuedStatusFilter('All');
+                    setIssuedPoPipelineStageKey(null);
+                  }}
+                  getTimelineCompletedIndex={(record) => {
+                    const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+                    const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+                    const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+                    const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+                    return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+                  }}
+                  releasedPoTrackingByBackendId={releasedPoTrackingByBackendId}
+                  resolveBackendPoId={resolveIssuedPoBackendId}
+                  hasPoTrackingTimestamp={hasPoTrackingTimestamp}
+                  onOpenDetail={openIssuedPODetail}
+                  onMarkVendorConfirmed={markIssuedPOVendorConfirmed}
+                  onMarkShipped={markIssuedPOShipped}
+                  onReceiveGrn={receiveIssuedPOGRN}
+                  onOpenGrnMonitor={() => applyRouteState('Procurement', 'GRN Monitor')}
+                />
+              )}
 
-                const timelineStages = [
-                  'PO Released',
-                  'Advance Paid',
-                  'Vendor Confirmed',
-                  'Shipped',
-                  'Delivered',
-                  'Under GRN',
-                  'GRN Complete',
-                ] as const;
-
-                const getTimelineCompletedIndexForRecord = (record: any) => {
-                  const backendPoId = record?.backendPoId ? String(record.backendPoId) : '';
-                  const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-                  const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
-                  const grnDone = grnCompletePoNormSet.has(normPoKeyLocal(record.poNumber));
-                  return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
-                };
-
-                return (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-gray-200">
-                      <div>
-                        <h2 className="text-lg font-bold text-gray-800">Issued POs</h2>
-                        <p className="text-xs text-gray-500 mt-1">Purchase orders grouped by vendor (line items are listed per PO below)</p>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {issuedFilteredLineCount} line{issuedFilteredLineCount !== 1 ? 's' : ''} · {filteredIssuedPORecords.length} PO
-                        {filteredIssuedPORecords.length !== 1 ? 's' : ''} · {groupedIssuedPoByVendor.length} vendor
-                        {groupedIssuedPoByVendor.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 pt-2">
-                      <KPICard
-                        label="Total POs"
-                        value={String(k.totalPos)}
-                        icon={<ShoppingCart size={20} />}
-                        color="#3b82f6"
-                      />
-                      <KPICard
-                        label="Total Value"
-                        value={formatLakhs(k.totalValue)}
-                        icon={<DollarSign size={20} />}
-                        color="#10b981"
-                      />
-                      <KPICard
-                        label="RM POs"
-                        value={String(k.rmPos)}
-                        icon={<Factory size={20} />}
-                        color="#f59e0b"
-                      />
-                      <KPICard
-                        label="PM POs"
-                        value={String(k.pmPos)}
-                        icon={<Package size={20} />}
-                        color="#8b5cf6"
-                      />
-                      <KPICard
-                        label="Advance Pending"
-                        value={String(k.advancePending)}
-                        icon={<FileText size={20} />}
-                        color="#f97316"
-                      />
-                      <KPICard
-                        label="In Transit"
-                        value={String(k.inTransitCount)}
-                        icon={<Truck size={20} />}
-                        color="#ea580c"
-                      />
-                      <KPICard
-                        label="GRN Complete"
-                        value={String(k.grnCompletePoCount)}
-                        icon={<CheckCircle size={20} />}
-                        color="#14b8a6"
-                      />
-                      <KPICard
-                        label="Pending Value"
-                        value={formatLakhs(k.pendingValue)}
-                        icon={<TrendingUp size={20} />}
-                        color="#ef4444"
-                      />
-                    </div>
-
-                    <PipelineStrip
-                      stages={[
-                        { key: 'issued-0', label: 'Released', count: k.stageCounts[0], icon: null },
-                        { key: 'issued-1', label: 'Advance', count: k.stageCounts[1], icon: null },
-                        { key: 'issued-2', label: 'Confirmed', count: k.stageCounts[2], icon: null },
-                        { key: 'issued-3', label: 'Shipped', count: k.stageCounts[3], icon: null },
-                        { key: 'issued-4', label: 'Delivered', count: k.stageCounts[4], icon: null },
-                        { key: 'issued-5', label: 'Under GRN', count: k.stageCounts[5], icon: null },
-                        { key: 'issued-6', label: 'Complete', count: k.stageCounts[6], icon: null },
-                      ]}
-                      onStageClick={(stage) =>
-                        setIssuedPoPipelineStageKey((prev) => (stage === prev ? null : stage))
-                      }
-                    />
-
-                    <div className="flex items-center gap-2 flex-wrap bg-white/60 backdrop-blur-sm border border-gray-200/80 rounded-lg px-3 py-2.5 shadow-sm">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => setCategoryFilter('All')}
-                          className={`px-3 py-1 rounded-full border text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${categoryFilter === 'All'
-                            ? 'text-orange-600 bg-orange-50 border-orange-300 shadow-sm'
-                            : 'text-gray-600 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                            }`}
-                        >
-                          All
-                        </button>
-                        {(['RM', 'PM'] as RequestType[]).map((type) => (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() => setCategoryFilter(type)}
-                            className={`px-3 py-1 rounded-full border text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 ${categoryFilter === type
-                              ? 'text-orange-600 bg-orange-50 border-orange-300 shadow-sm'
-                              : 'text-gray-600 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                              }`}
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="w-px h-5 bg-gray-200 mx-1 hidden sm:block" />
-
-                      <select
-                        value={issuedVendorFilter}
-                        onChange={(event) => setIssuedVendorFilter(event.target.value)}
-                        className="px-3 py-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-[10rem]"
-                      >
-                        <option value="All Vendors">All vendors</option>
-                        {Array.from(new Set(issuedPORecords.map((record) => record.vendor))).map((vendor) => (
-                          <option key={vendor} value={vendor}>
-                            {vendor}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        value={issuedStatusFilter}
-                        onChange={(event) =>
-                          setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')
-                        }
-                        className="px-3 py-1.5 border border-gray-300 rounded-md text-xs bg-white text-gray-900 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none min-w-[8rem]"
-                      >
-                        <option value="All">All status</option>
-                        <option value="Released">Released</option>
-                        <option value="In Transit">In Transit</option>
-                        <option value="At Risk">At Risk</option>
-                      </select>
-
-                      <div className="w-px h-5 bg-gray-200 mx-1 hidden md:block" />
-
-                      <div className="relative flex-grow min-w-[220px]">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          value={issuedSearch}
-                          onChange={(event) => setIssuedSearch(event.target.value)}
-                          placeholder="Search PO no, vendor, item..."
-                          className="w-full pl-9 pr-4 py-1.5 rounded-md border border-gray-300 bg-white text-gray-900 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors placeholder:text-gray-400"
-                        />
-                      </div>
-
-                      {(issuedSearch.trim() ||
-                        categoryFilter !== 'All' ||
-                        issuedVendorFilter !== 'All Vendors' ||
-                        issuedStatusFilter !== 'All' ||
-                        issuedPoPipelineStageKey != null) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIssuedSearch('');
-                              setCategoryFilter('All');
-                              setIssuedVendorFilter('All Vendors');
-                              setIssuedStatusFilter('All');
-                              setIssuedPoPipelineStageKey(null);
-                            }}
-                            className="ml-auto px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-full hover:bg-gray-100 hover:text-gray-800 transition-all flex items-center gap-1.5"
-                          >
-                            <X size={14} />
-                            Clear filters
-                          </button>
-                        )}
-                    </div>
-
-                    {filteredIssuedPORecords.length === 0 ? (
-                      <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
-                        <p className="text-sm text-gray-500">No issued purchase orders match current filters.</p>
-                      </div>
-                    ) : (
-                    <div className="space-y-8">
-                      {groupedIssuedPoByVendor.map((vendorGroup) => (
-                        <div key={vendorGroup.vendorName} className="space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-blue-50/60 border border-blue-100 px-4 py-2.5">
-                            <div className="text-sm font-semibold text-blue-900">{vendorGroup.vendorName}</div>
-                            <div className="text-xs text-blue-800">
-                              {vendorGroup.poCount} PO{vendorGroup.poCount !== 1 ? 's' : ''} · {vendorGroup.lineCount} line
-                              {vendorGroup.lineCount !== 1 ? 's' : ''} ·{' '}
-                              <span className="font-semibold text-blue-900">
-                                ₹{vendorGroup.totalValue.toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                      {vendorGroup.orders.map((record, cardIndex) => {
-                        const completedIndex = getTimelineCompletedIndexForRecord(record);
-                        const trCard =
-                          record.backendPoId && releasedPoTrackingByBackendId
-                            ? releasedPoTrackingByBackendId[String(record.backendPoId)]
-                            : undefined;
-                        const lrRef = trCard?.orderTrackingRef?.trim() || '';
-                        const shipNote = trCard?.shippedNote?.trim() || '';
-                        const etaLabel = (record as { etaDateDisplay?: string }).etaDateDisplay ?? '—';
-                        const backendPoIdCard = resolveIssuedPoBackendId(record);
-                        const trCardResolved =
-                          backendPoIdCard && releasedPoTrackingByBackendId
-                            ? releasedPoTrackingByBackendId[backendPoIdCard]
-                            : trCard;
-                        const ovCard = backendPoIdCard ? unlinkedPoTimelineOverrides[backendPoIdCard] : undefined;
-                        const hasVendorConfirmedCard = hasPoTrackingTimestamp(trCardResolved?.vendorConfirmedAt);
-                        const hasShippedCard =
-                          hasPoTrackingTimestamp(trCardResolved?.shippedAt) || Boolean(ovCard?.shipped);
-
-                        return (
-                          <div
-                            key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-card-${cardIndex}`}
-                            className="rounded-lg border border-gray-200 bg-white px-4 py-4 text-xs text-gray-800 shadow-sm"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="px-2 py-0.5 rounded-full bg-gray-50 border border-gray-300 font-mono text-[10px] text-orange-700">
-                                    {record.poNumber}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 rounded-full border border-gray-300 text-[10px] text-gray-600">
-                                    {record.request.type}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-gray-500">{record.requestCode}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm font-bold text-amber-700">
-                                  ₹{record.grandTotal.toLocaleString('en-IN')}
-                                </p>
-                                <p
-                                  className={`text-[11px] mt-1 ${record.etaDays <= 1 ? 'text-rose-600' : 'text-slate-500'
-                                    }`}
-                                >
-                                  {record.etaDays >= 0 ? `ETA ${record.etaDays} days` : 'Overdue'}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Timeline */}
-                            <div className="mt-3">
-                              <div className="flex items-center justify-between mb-1.5 relative">
-                                <div className="absolute left-8 right-8 top-1/2 h-px bg-slate-200" />
-                                {timelineStages.map((stage, index) => {
-                                  const done = index <= completedIndex;
-                                  return (
-                                    <div
-                                      key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-${stage}`}
-                                      className="relative flex flex-col items-center flex-1"
-                                    >
-                                      <div
-                                        className={`z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold shadow-sm ${done
-                                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                                          : 'bg-white border-sky-200 text-sky-400'
-                                          }`}
-                                      >
-                                        {index + 1}
-                                      </div>
-                                      <p
-                                        className={`mt-2 text-[10px] tracking-[0.18em] uppercase ${done ? 'text-sky-700' : 'text-sky-400'
-                                          }`}
-                                      >
-                                        {stage}
-                                      </p>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Shipment tracking + actions */}
-                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
-                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
-                                <p className="mb-1 font-semibold">Items Ordered</p>
-                                {record.lineItems.map((line, index) => (
-                                  <div
-                                    key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-li-${line.itemCode}-${index}`}
-                                    className="flex items-center justify-between gap-2 py-1 border-t border-slate-800 first:border-t-0"
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="text-[11px] text-slate-900">{line.item}</span>
-                                      <span className="text-[10px] text-slate-500">{line.itemCode}</span>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[10px] text-slate-700">{line.qty}</p>
-                                      <p className="text-[10px] text-amber-700">
-                                        ₹{line.lineTotal.toLocaleString('en-IN')}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
-                                <p className="mb-1 font-semibold">Shipment Tracking</p>
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-slate-500 shrink-0">LR / tracking ref</span>
-                                    <span className="text-slate-800 text-right break-all">{lrRef || '—'}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-slate-500 shrink-0">Courier / logistics note</span>
-                                    <span className="text-slate-800 text-right break-words max-w-[14rem]">{shipNote || '—'}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500">ETA</span>
-                                    <span className="text-slate-800" title="PO date + max line lead (or PR due date if no leads)">
-                                      {etaLabel}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500">Status</span>
-                                    <span className="text-slate-800">{record.status}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <button
-                                onClick={() => openIssuedPODetail(record)}
-                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-800 text-[11px] font-semibold hover:bg-slate-50"
-                              >
-                                Full Timeline
-                              </button>
-                              {backendPoIdCard && !hasVendorConfirmedCard && (
-                                <button
-                                  type="button"
-                                  onClick={() => markIssuedPOVendorConfirmed(record)}
-                                  className="px-3 py-1.5 rounded border border-cyan-400 text-cyan-800 text-[11px] font-semibold bg-cyan-50 hover:bg-cyan-100"
-                                >
-                                  Mark Vendor Confirmed
-                                </button>
-                              )}
-                              {backendPoIdCard && hasVendorConfirmedCard && !hasShippedCard && (
-                                <button
-                                  type="button"
-                                  onClick={() => markIssuedPOShipped(record)}
-                                  className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
-                                >
-                                  Mark In Transit
-                                </button>
-                              )}
-                              {backendPoIdCard && hasShippedCard && (
-                                <span className="px-3 py-1.5 rounded border border-slate-200 text-slate-500 text-[11px] font-semibold bg-slate-50">
-                                  In Transit
-                                </span>
-                              )}
-                              {!backendPoIdCard && record.status !== 'In Transit' && (
-                                <button
-                                  type="button"
-                                  onClick={() => markIssuedPOShipped(record)}
-                                  className="px-3 py-1.5 rounded border border-amber-400 text-amber-700 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100"
-                                  title="No backend PO link — updates request status only"
-                                >
-                                  Mark In Transit
-                                </button>
-                              )}
-                              <button
-                                onClick={() => receiveIssuedPOGRN(record)}
-                                className="px-3 py-1.5 rounded border border-emerald-400 text-emerald-700 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100"
-                              >
-                                Mark Delivered at WH
-                              </button>
-                              <button
-                                onClick={() => applyRouteState('Procurement', 'GRN Monitor')}
-                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-700 text-[11px] font-semibold bg-white hover:bg-slate-50"
-                              >
-                                Open GRN Monitor
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between gap-3 px-1">
-                        <div className="text-xs text-slate-500">
-                          Page {issuedPoSafePage} of {issuedPoTotalPages} · Showing {pagedIssuedPORecords.length} of {filteredIssuedPORecords.length} POs
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={issuedPoPageSize}
-                            onChange={(event) => setIssuedPoPageSize(Number(event.target.value) || 10)}
-                            className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white text-gray-900"
-                          >
-                            <option value={10}>10 / page</option>
-                            <option value={20}>20 / page</option>
-                            <option value={50}>50 / page</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => setIssuedPoPage((p) => Math.max(1, p - 1))}
-                            disabled={issuedPoSafePage <= 1}
-                            className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
-                          >
-                            Prev
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIssuedPoPage((p) => Math.min(issuedPoTotalPages, p + 1))}
-                            disabled={issuedPoSafePage >= issuedPoTotalPages}
-                            className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    )}
-                  </div>
-                );
-              })()}
 
               {sideSection === 'GRN Monitor' && (() => {
                 const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
@@ -7354,21 +7027,25 @@ const Procurement: React.FC = () => {
                       />
                     </div>
 
-                    {/* GRN list from warehouse (read-only) */}
-                    <p className="text-[11px] text-slate-500 mb-2">Data from warehouse GRN table. Click a row to view full GRN details.</p>
+                    {/* Single GRN list: pending, under GRN, and completed */}
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      All GRNs from warehouse (pending, under GRN, and completed). Use the filters above or click column headers to sort. Click a row for full details.
+                    </p>
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                       <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
                         <div className="flex items-center gap-2">
                           <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
                           <div>
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN list (warehouse)</p>
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN register</p>
                             <p className="text-[11px] text-slate-500">
                               {filteredGrnLines.length} GRN{filteredGrnLines.length === 1 ? '' : 's'} match filters
                               {grnList.length !== filteredGrnLines.length ? ` (${grnList.length} total)` : ''}
+                              {' · '}
+                              {grnComplete} completed · {underGrn} under GRN · {pendingGrn} pending
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                           <span>Rows per page</span>
                           <select
                             value={grnMonitorPageSize}
@@ -7390,17 +7067,101 @@ const Procurement: React.FC = () => {
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-full text-[11px] text-slate-900">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">GRN No.</th>
-                              <th className="px-4 py-2 text-left">PO No.</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-center">Type</th>
-                              <th className="px-4 py-2 text-left min-w-[180px]">Item name(s)</th>
-                              <th className="px-4 py-2 text-center">PO Value</th>
-                              <th className="px-4 py-2 text-left">Received Date</th>
-                              <th className="px-4 py-2 text-left">Assigned To</th>
-                              <th className="px-4 py-2 text-center">QC Status</th>
-                              <th className="px-4 py-2 text-center">Status</th>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <SortableTableTh
+                                label="GRN No."
+                                column="grnNo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="PO No."
+                                column="poNo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Vendor"
+                                column="vendor"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Type"
+                                column="type"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Item name(s)"
+                                column="items"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase min-w-[180px]"
+                              />
+                              <SortableTableTh
+                                label="PO Value"
+                                column="poValue"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Received Date"
+                                column="receivedDate"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Assigned To"
+                                column="assignedTo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="QC Status"
+                                column="qcStatus"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Status"
+                                column="status"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
                             </tr>
                           </thead>
                           <tbody>
@@ -7442,8 +7203,16 @@ const Procurement: React.FC = () => {
                                 <td className="px-4 py-2 align-middle text-[11px]">{grn.assignedTo || '—'}</td>
                                 <td className="px-4 py-2 align-middle text-center text-[11px]">{grn.qcStatus ?? '—'}</td>
                                 <td className="px-4 py-2 align-middle text-center">
-                                  <span className="inline-flex items-center justify-center px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold min-w-24">
-                                    {grn.status ?? 'Pending'}
+                                  <span
+                                    className={`inline-flex items-center justify-center px-3 py-0.5 rounded-full text-[10px] font-semibold min-w-24 border ${
+                                      (grn.status || '') === 'GRN Complete'
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                        : (grn.status || '') === 'Under GRN'
+                                          ? 'bg-sky-50 border-sky-200 text-sky-800'
+                                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                                    }`}
+                                  >
+                                    {grnMonitorStatusLabel(grn)}
                                   </span>
                                 </td>
                               </tr>
@@ -7471,473 +7240,14 @@ const Procurement: React.FC = () => {
                         </div>
                       )}
                     </div>
-
-                    {/* Line items for GRNs on current page */}
-                    {pagedGrnMonitorLines.some((g) => (g.lineItems?.length ?? 0) > 0) && (
-                      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                          <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">
-                            GRN line items — page {grnMonitorSafePage}
-                          </p>
-                        </div>
-                        <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                          <table className="w-full min-w-full text-[11px] text-slate-900">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                                <th className="px-4 py-2 text-left">GRN No.</th>
-                                <th className="px-4 py-2 text-left">Item name</th>
-                                <th className="px-4 py-2 text-left">Code</th>
-                                <th className="px-4 py-2 text-center">PO Qty</th>
-                                <th className="px-4 py-2 text-center">Rcvd</th>
-                                <th className="px-4 py-2 text-center">QC</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pagedGrnMonitorLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
-                                <tr key={`${grn.id}-${idx}`} className="border-b border-slate-100">
-                                  <td className="px-4 py-1.5 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                  <td className="px-4 py-1.5 font-medium text-slate-900">{grnLineItemDisplayName(li)}</td>
-                                  <td className="px-4 py-1.5 font-mono text-[10px] text-slate-600">{li.itemCode || '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.poQty ?? '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.rcvdQty ?? '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
-                                </tr>
-                              )))}
-                              {pagedGrnMonitorLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
-                                <tr>
-                                  <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={6}>
-                                    No GRN line items.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Completed GRNs (read-only from warehouse API) */}
-                    {(() => {
-                      const completedFromApi = filteredGrnLines.filter((g) => (g.status || '') === 'GRN Complete');
-                      return (
-                        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
-                          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
-                            <p className="text-[11px] text-slate-500">Showing {completedFromApi.length} completed GRN{completedFromApi.length === 1 ? '' : 's'} (read-only)</p>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full min-w-full text-[11px] text-slate-900">
-                              <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                                  <th className="px-4 py-2 text-left">GRN No.</th>
-                                  <th className="px-4 py-2 text-left">PO No.</th>
-                                  <th className="px-4 py-2 text-left">Type</th>
-                                  <th className="px-4 py-2 text-left">Vendor</th>
-                                  <th className="px-4 py-2 text-left min-w-[160px]">Item name(s)</th>
-                                  <th className="px-4 py-2 text-left">Received Date</th>
-                                  <th className="px-4 py-2 text-left">Assigned To</th>
-                                  <th className="px-4 py-2 text-left">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {completedFromApi.map((grn) => (
-                                  <tr
-                                    key={grn.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="border-b border-slate-100 hover:bg-emerald-50/40 cursor-pointer"
-                                    onClick={() => void openGrnMonitorDetail(grn)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        void openGrnMonitorDetail(grn);
-                                      }
-                                    }}
-                                  >
-                                    <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                    <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px] max-w-[220px]">
-                                      <div className="font-medium text-slate-800">{grnLineItemsNameSummary(grn.lineItems, 3)}</div>
-                                    </td>
-                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
-                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
-                                    <td className="px-4 py-2">
-                                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">Completed</span>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {completedFromApi.length === 0 && (
-                                  <tr>
-                                    <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={8}>
-                                      No completed GRNs yet.
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 );
               })()}
 
-              {sideSection === 'Item Tracker' && (
-                <div className="rounded-xl border border-blue-200 bg-white p-4 md:p-5 shadow-sm space-y-4">
-                  {/* Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-base md:text-lg font-bold text-slate-900">Item Tracker — All Items Across All Stages</h2>
-                      <p className="text-xs md:text-sm text-slate-600 mt-1">
-                        Live view of every raw material and packaging item across requests, quotes, POs and deliveries.
-                      </p>
-                    </div>
-                    <div className="text-[11px] md:text-xs text-slate-500 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold">
-                        {filteredItemTrackerRows.length} items shown
-                      </span>
-                      <span className="hidden sm:inline text-slate-400">Synced with procurement data</span>
-                    </div>
-                  </div>
-
-                  {/* Filters row */}
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 md:px-4 py-3 flex flex-wrap items-center gap-3 md:gap-4 text-[11px] md:text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Category:</span>
-                      <button
-                        type="button"
-                        onClick={() => setItemTrackerCategory('All')}
-                        className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === 'All'
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                          }`}
-                      >
-                        All
-                      </button>
-                      {(['RM', 'PM'] as RequestType[]).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setItemTrackerCategory(type)}
-                          className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === type
-                            ? type === 'RM'
-                              ? 'border-cyan-500 bg-cyan-50 text-cyan-800'
-                              : 'border-violet-500 bg-violet-50 text-violet-800'
-                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                            }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Vendor:</span>
-                      <select
-                        value={itemTrackerVendor}
-                        onChange={(e) => setItemTrackerVendor(e.target.value)}
-                        className="min-w-35 md:min-w-45 bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
-                      >
-                        <option value="All Vendors">All Vendors</option>
-                        {itemTrackerVendors.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Status:</span>
-                      <select
-                        value={itemTrackerStatus}
-                        onChange={(e) => setItemTrackerStatus(e.target.value as 'All Statuses' | RequestStatus)}
-                        className="bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
-                      >
-                        <option value="All Statuses">All Statuses</option>
-                        <option value="New">New</option>
-                        <option value="Quoted">Quoted</option>
-                        <option value="PO Draft">PO Draft</option>
-                        <option value="PO Released">PO Released</option>
-                        <option value="Delivery Pending">Delivery Pending</option>
-                      </select>
-                    </div>
-
-                    <div className="ml-auto flex-1 min-w-40 max-w-xs">
-                      <input
-                        value={itemTrackerSearch}
-                        onChange={(e) => setItemTrackerSearch(e.target.value)}
-                        placeholder="Search item name, code, PO"
-                        className="w-full px-3 py-1.5 rounded-md bg-white border border-slate-300 text-[11px] md:text-xs text-slate-800 placeholder:text-slate-400"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Items grouped by vendor — one card per vendor */}
-                  <div className="space-y-4">
-                    {filteredItemTrackerRows.length === 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-[11px] text-slate-500">
-                        No items match the current filters.
-                      </div>
-                    ) : (
-                      itemTrackerRowsByVendor.map(({ vendor, rows }) => (
-                        <article
-                          key={vendor}
-                          className="rounded-xl border border-indigo-200/80 bg-white shadow-sm overflow-hidden"
-                        >
-                          <div className="px-4 py-3 bg-linear-to-r from-indigo-50 via-slate-50 to-indigo-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <h3 className="text-sm md:text-base font-bold text-slate-900 truncate" title={vendor}>
-                                {vendor}
-                              </h3>
-                              <p className="text-[10px] md:text-[11px] text-slate-600 mt-0.5">
-                                {rows.length} line{rows.length !== 1 ? 's' : ''} in this view
-                              </p>
-                            </div>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-[11px] md:text-xs text-slate-900">
-                              <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr className="text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                                  <th className="px-3 md:px-4 py-2 text-left">Item</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Type</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Request</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Priority</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Req Qty</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Planned ₹</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Request Status</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Preferred Vendor</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Quoted Vendor</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Actual ₹</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">PO Number</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">PO Status</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Order Qty</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Adv Paid</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">LR No</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">Exp. Delivery</th>
-                                  <th className="px-3 md:px-4 py-2 text-left">GRN Ref</th>
-                                  <th className="px-3 md:px-4 py-2 text-center">Action</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rows.map((row) => {
-                                  const priorityClassName =
-                                    row.priority === 'High'
-                                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                      : row.priority === 'Medium'
-                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                        : 'bg-slate-50 text-slate-600 border-slate-200';
-
-                                  const typePillClass =
-                                    row.type === 'RM'
-                                      ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
-                                      : 'bg-violet-50 text-violet-700 border-violet-200';
-
-                                  const statusPillClass = statusBg[row.requestStatus];
-
-                                  let actionLabel: string | null = null;
-                                  if (row.requestStatus === 'New') actionLabel = 'Quote';
-                                  else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
-                                  else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
-                                  else if (requestStatusShowsIssuedPOs(row.requestStatus)) actionLabel = 'PO';
-
-                                  const handleActionClick = () => {
-                                    if (!actionLabel) return;
-
-                                    if (row.requestStatus === 'New') {
-                                      setCategoryFilter('All');
-                                      setVendorFilter('All Vendors');
-                                      setStatusFilter('All Statuses');
-                                      setSearchQuery(row.itemName);
-                                      applyRouteState('Procurement', 'Quotations');
-                                      return;
-                                    }
-
-                                    if (row.requestStatus === 'Quoted') {
-                                      if (row.quoteId) {
-                                        createDraftPO(row.quoteId);
-                                      } else {
-                                        addToast('warning', 'No quote found for this item');
-                                      }
-                                      return;
-                                    }
-
-                                    if (row.requestStatus === 'PO Draft') {
-                                      if (row.draftPoId) {
-                                        approveDraftPO(row.draftPoId);
-                                        openReleasePOModal(row.draftPoId);
-                                      } else {
-                                        addToast('warning', 'No draft PO linked to this item');
-                                      }
-                                      return;
-                                    }
-
-                                    if (requestStatusShowsIssuedPOs(row.requestStatus)) {
-                                      if (row.poId) {
-                                        const po = purchaseOrders.find((p) => p.id === row.poId);
-                                        if (po) {
-                                          setSelectedPO(po);
-                                        } else {
-                                          addToast('warning', 'Purchase order not found');
-                                        }
-                                      } else {
-                                        applyRouteState('Procurement', 'Issued POs');
-                                      }
-                                    }
-                                  };
-
-                                  return (
-                                    <tr key={row.key} className="border-b border-slate-100 hover:bg-blue-50/40">
-                                      <td className="px-3 md:px-4 py-2 align-middle">
-                                        <div className="flex flex-col">
-                                          <span className="text-[11px] md:text-xs font-semibold text-slate-900">{row.itemName}</span>
-                                          <span className="text-[10px] text-slate-500 font-mono">{row.itemCode}</span>
-                                        </div>
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${typePillClass}`}>
-                                          {row.type === 'RM' ? 'RM' : 'PM'}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle">
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-[10px] font-mono text-slate-700">
-                                          {row.requestCode}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${priorityClassName}`}>
-                                          {row.priority}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                        {row.reqQty.toLocaleString('en-IN')} {row.unit}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                        ₹{row.plannedPrice.toLocaleString('en-IN')}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusPillClass}`}>
-                                          {row.requestStatus}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                        {row.preferredVendor ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                        {row.quotedVendor ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-emerald-700">
-                                        {row.actualPrice != null ? `₹${row.actualPrice.toLocaleString('en-IN')}` : '—'}
-                                        {row.actualVsPlanned && (
-                                          <span className="block text-[9px] text-emerald-600">{row.actualVsPlanned}</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
-                                        {row.poNumber ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px]">
-                                        {row.poStatus ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                        {row.orderQty ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                        {row.advPaid ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
-                                        {row.lrNo ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                        {row.expDelivery ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                        {row.grnRef ?? '—'}
-                                      </td>
-                                      <td className="px-3 md:px-4 py-2 align-middle text-center">
-                                        {actionLabel && (
-                                          <button
-                                            type="button"
-                                            onClick={handleActionClick}
-                                            className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold shadow-sm"
-                                          >
-                                            {actionLabel}
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </article>
-                      ))
-                    )}
-                  </div>
-
-                  {/* Warehouse item progress (read-only from warehouse API) */}
-                  <div className="mt-6 rounded-xl border border-slate-200 bg-white overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Warehouse item progress</p>
-                      <span className="text-[11px] text-slate-500">Read-only · from warehouse inventory</span>
-                    </div>
-                    {warehouseInventoryLoading ? (
-                      <div className="px-4 py-8 text-center text-slate-500 text-sm">Loading…</div>
-                    ) : (
-                      <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Code</th>
-                              <th className="px-4 py-2 text-left">Name</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">Zone</th>
-                              <th className="px-4 py-2 text-left">Rack</th>
-                              <th className="px-4 py-2 text-right">Stock in hand</th>
-                              <th className="px-4 py-2 text-right">In transit</th>
-                              <th className="px-4 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(warehouseInventoryData?.rows ?? []).map((row) => (
-                              <tr key={row.id} className="border-b border-slate-100">
-                                <td className="px-4 py-2 font-mono text-[10px] text-slate-800">{row.code}</td>
-                                <td className="px-4 py-2">{row.name}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : row.type === 'PM' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{row.type}</span>
-                                </td>
-                                <td className="px-4 py-2 text-slate-700">{row.zone ?? '—'}</td>
-                                <td className="px-4 py-2 text-slate-700">{row.rack ?? '—'}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                      row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                        'bg-red-50 text-red-700 border-red-200'
-                                    }`}>{row.status}</span>
-                                </td>
-                              </tr>
-                            ))}
-                            {(warehouseInventoryData?.rows ?? []).length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>No warehouse inventory data.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
-          </main>
-        </div>
-      )}
+          </>
+        }
+      />
 
       {/* ── PO Detail Side Panel ── */}
       {selectedPO && (() => {
@@ -8514,6 +7824,15 @@ const Procurement: React.FC = () => {
               {/* Footer */}
               <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
                 <button
+                  type="button"
+                  disabled={deletingDraftPoId === dpo.id}
+                  onClick={() => openDeleteDraftPOConfirm(dpo)}
+                  className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                >
+                  {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete draft PO'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setEditDraftPOTarget(dpo)}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                 >
@@ -9106,7 +8425,15 @@ const Procurement: React.FC = () => {
                                 </div>
                                 <div>
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                  <p className="text-slate-900 font-bold">{item.moq}</p>
+                                  <p className="text-slate-900 font-bold">
+                                    {item.moq
+                                      ? formatQtyWithPrimaryUnit(
+                                          item.moq,
+                                          item.unit,
+                                          item.type === 'PM' ? 'PM' : 'RM'
+                                        )
+                                      : '—'}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
@@ -9969,14 +9296,31 @@ const Procurement: React.FC = () => {
         const lineItemsForModal: ReleaseLineEditRow[] = releaseToPlannedLineEdits.length > 0
           ? releaseToPlannedLineEdits
           : (() => {
-            const oq = Number(item.reqQty ?? item.qty ?? 0) || 0;
+            const totalReqQty = Number(item.reqQty ?? item.qty ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: itemName ?? '',
+              itemCode: itemCode ?? '',
+              totalReqQty,
+              raw_material_id: item.raw_material_id,
+              pack_material_id: item.pack_material_id,
+              itemType: reqTypeModal,
+            });
             return [{
               itemName: itemName ?? '',
               itemCode: itemCode ?? '',
               type: req.type,
               originalQty: oq,
               qty: oq,
-              unit: String(item.unit ?? (req.type === 'PM' ? 'PCS' : 'KG')),
+              unit:
+                req.type === 'PM'
+                  ? String(item.unit ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      item.raw_material_id != null ? Number(item.raw_material_id) : null,
+                      item.itemCode,
+                      String(item.unit ?? '')
+                    ),
               moq: Number(item.moq ?? 0) || 0,
               unitPrice: Number(item.plannedPrice ?? 0) || 0,
               leadDays: Number(releaseToPlannedForm.leadTimeDays ?? 0) || 0,
@@ -11939,6 +11283,31 @@ const Procurement: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={draftPoDeleteConfirmTarget !== null}
+        onClose={() => {
+          if (deletingDraftPoId) return;
+          setDraftPoDeleteConfirmTarget(null);
+        }}
+        onConfirm={confirmDeleteDraftPO}
+        title="Delete draft PO?"
+        message={
+          draftPoDeleteConfirmTarget ? (
+            <>
+              Delete draft PO{' '}
+              <span className="font-semibold">{draftPoDeleteConfirmTarget.dpoNumber}</span>? The draft PO
+              and its linked procurement request will be removed. Quantities return to Planning so you
+              can use Release to Planning again. Other remainder requests from a partial release are kept.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deletingDraftPoId === draftPoDeleteConfirmTarget?.id}
+      />
     </div>
   );
 };

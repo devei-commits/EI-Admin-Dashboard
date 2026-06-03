@@ -20,6 +20,5 @@ export type {
   StockCheckStatus,
   PackagingCondition,
   StockCheckLineData,
-  ItemTrackerRow,
   LiveProcurementState,
 } from '../../types/procurement.types';

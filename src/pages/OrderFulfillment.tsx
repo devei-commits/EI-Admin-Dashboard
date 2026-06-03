@@ -591,10 +591,10 @@ export const OrderFulfillment: React.FC = () => {
               <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-4">
                 <h4 className="text-sm font-bold text-purple-900 mb-2">BPR (Filling/Packing)</h4>
                 <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between"><span>Bulk units</span><b>{Math.round(selectedYield.bprBulkUnits).toLocaleString('en-IN')}</b></div>
-                  <div className="flex justify-between"><span>Actual output units</span><b>{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</b></div>
-                  <div className="flex justify-between"><span>BPR wastage units</span><b>{Math.round(selectedYield.bprWasteUnits).toLocaleString('en-IN')}</b></div>
-                  <div className="flex justify-between"><span>Overall waste units</span><b>{Math.round(selectedYield.overallWasteUnits).toLocaleString('en-IN')}</b></div>
+                  <div className="flex justify-between"><span>Bulk units</span><b>{selectedYield.bprBulkUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
+                  <div className="flex justify-between"><span>Actual output units</span><b>{selectedYield.actualOutputUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
+                  <div className="flex justify-between"><span>BPR wastage units</span><b>{selectedYield.bprWasteUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
+                  <div className="flex justify-between"><span>Overall waste units</span><b>{selectedYield.overallWasteUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
                 </div>
               </div>
             </div>

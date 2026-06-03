@@ -203,7 +203,7 @@ function ScheduleYieldContextBanner({ batch }: { batch: Batch }) {
           <>
             {' · '}
             <span className="text-slate-500">Actual bulk (BMR QC):</span>{' '}
-            <b className="text-indigo-800">{bulk} KG</b>
+            <b className="text-indigo-800">{formatYieldKg(bulk)} KG</b>
             {!bmrCleared && <span className="text-amber-700 font-medium"> (recorded; BMR not cleared yet)</span>}
           </>
         ) : (
@@ -217,12 +217,12 @@ function ScheduleYieldContextBanner({ batch }: { batch: Batch }) {
         <p className="text-slate-600 border-t border-indigo-100/80 pt-2 mt-2">
           {hasFill && (
             <span className="mr-3">
-              Fill QC yield: <b>{fillY}</b> units
+              Fill QC yield: <b>{formatYieldUnits(fillY)}</b> units
             </span>
           )}
           {hasFg && (
             <span>
-              Pack / FG yield: <b>{fgY}</b> units
+              Pack / FG yield: <b>{formatYieldUnits(fgY)}</b> units
             </span>
           )}
         </p>
@@ -746,6 +746,38 @@ function makeDefaultBatches(): Batch[] {
 
 function today(): string { return new Date().toISOString().split('T')[0]; }
 function fmt(n: number): string { return n.toLocaleString('en-IN'); }
+
+const YIELD_KG_DECIMALS = 3;
+const YIELD_UNIT_DECIMALS = 3;
+
+function roundYieldKg(n: number): number {
+  const f = 10 ** YIELD_KG_DECIMALS;
+  return Math.round(n * f) / f;
+}
+
+function roundYieldUnits(n: number): number {
+  const f = 10 ** YIELD_UNIT_DECIMALS;
+  return Math.round(n * f) / f;
+}
+
+function formatYieldKg(n: number): string {
+  return n.toLocaleString('en-IN', {
+    maximumFractionDigits: YIELD_KG_DECIMALS,
+    minimumFractionDigits: 0,
+  });
+}
+
+function formatYieldUnits(n: number): string {
+  return n.toLocaleString('en-IN', {
+    maximumFractionDigits: YIELD_UNIT_DECIMALS,
+    minimumFractionDigits: 0,
+  });
+}
+
+function yieldValueToInputString(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(Number(value))) return '';
+  return String(Number(value));
+}
 
 const addDaysStr = addDaysToDateStr;
 
@@ -2535,14 +2567,14 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                       {' · '}Planned split (order ÷ batches): <b>{batchWithUnits.fillUnitsRequired} fill</b>, <b>{batchWithUnits.packUnitsRequired} pack</b> units
                       {batch?.bulkYield != null && Number(batch.bulkYield) > 0 && (
                         <span className="block mt-1 text-indigo-800 font-medium">
-                          BMR bulk recorded: <b>{Number(batch.bulkYield)} KG</b> vs planned <b>{batch.batchSize} KG</b> — use fill/pack QC yields when available for true output.
+                          BMR bulk recorded: <b>{formatYieldKg(Number(batch.bulkYield))} KG</b> vs planned <b>{batch.batchSize} KG</b> — use fill/pack QC yields when available for true output.
                         </span>
                       )}
                       {batch?.fillYield != null && Number(batch.fillYield) > 0 && (
-                        <span className="block mt-1 text-purple-800 font-medium">Fill QC yield on file: <b>{Number(batch.fillYield)}</b> units.</span>
+                        <span className="block mt-1 text-purple-800 font-medium">Fill QC yield on file: <b>{formatYieldUnits(Number(batch.fillYield))}</b> units.</span>
                       )}
                       {batch?.fgYield != null && Number(batch.fgYield) > 0 && (
-                        <span className="block mt-1 text-emerald-800 font-medium">Pack QC / FG yield on file: <b>{Number(batch.fgYield)}</b> units.</span>
+                        <span className="block mt-1 text-emerald-800 font-medium">Pack QC / FG yield on file: <b>{formatYieldUnits(Number(batch.fgYield))}</b> units.</span>
                       )}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3212,11 +3244,11 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 
   useEffect(() => {
     if (qcType === 'bmr') {
-      setYieldVal(batch.bulkYield != null && Number.isFinite(Number(batch.bulkYield)) ? String(batch.bulkYield) : '');
+      setYieldVal(yieldValueToInputString(batch.bulkYield));
     } else if (qcType === 'fill') {
-      setYieldVal(batch.fillYield != null && Number.isFinite(Number(batch.fillYield)) ? String(batch.fillYield) : '');
+      setYieldVal(yieldValueToInputString(batch.fillYield));
     } else {
-      setYieldVal(batch.fgYield != null && Number.isFinite(Number(batch.fgYield)) ? String(batch.fgYield) : '');
+      setYieldVal(yieldValueToInputString(batch.fgYield));
     }
   }, [batch.bmrNo, qcType, batch.bulkYield, batch.fillYield, batch.fgYield, batch.bmrStatus, batch.bprStatus]);
   const [qcRef, setQcRef] = useState<QcReferencePayload | null>(null);
@@ -3262,8 +3294,8 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
 
   const trimmedYield = yieldVal.trim();
   const parsedYieldNum = parseFloat(trimmedYield.replace(/,/g, ''));
-  const bulkYieldNum = parsedYieldNum;
-  const fillFgYieldNum = parsedYieldNum;
+  const bulkYieldNum = roundYieldKg(parsedYieldNum);
+  const fillFgYieldNum = roundYieldUnits(parsedYieldNum);
   const yieldValid =
     qcType === 'bmr'
       ? Number.isFinite(bulkYieldNum) && bulkYieldNum > 0
@@ -3472,8 +3504,9 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
             disabled={saving}
             className={`${INP} ${allPassed && !yieldValid ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
             type="number"
-            min={qcType === 'bmr' ? 0.01 : 1}
-            step={qcType === 'bmr' ? '0.01' : 1}
+            min={0.001}
+            step={qcType === 'bmr' ? '0.001' : '0.001'}
+            inputMode="decimal"
             placeholder={(() => {
               if (qcType === 'bmr') return `e.g. ${batch.batchSize} (planned batch size KG)`;
               // BPR (fill / pack): mirror BMR's placeholder shape so users see the expected count
@@ -3485,17 +3518,20 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
                 batch.bulkYield != null && Number.isFinite(Number(batch.bulkYield)) && Number(batch.bulkYield) > 0
                   ? Number(batch.bulkYield)
                   : plannedKg;
-              const expectedUnits = kgPerUnit > 0 ? Math.round(actualBulkKg / kgPerUnit) : plannedUnits;
+              const expectedUnits = kgPerUnit > 0 ? actualBulkKg / kgPerUnit : plannedUnits;
               const sourceLabel = batch.bulkYield != null && Number(batch.bulkYield) > 0
                 ? 'actual bulk KG'
                 : 'planned batch KG';
-              return `e.g. ${expectedUnits} units (expected from ${actualBulkKg} ${sourceLabel})`;
+              return `e.g. ${formatYieldUnits(expectedUnits)} units (from ${formatYieldKg(actualBulkKg)} ${sourceLabel})`;
             })()}
             value={yieldVal}
             onChange={e => setYieldVal(e.target.value)}
           />
           {qcType === 'bmr' && (
-            <p className="text-[10px] text-gray-500 mt-1">Required to approve. Compare to planned batch size <b>{batch.batchSize} KG</b> (order line / formula).</p>
+            <p className="text-[10px] text-gray-500 mt-1">
+              Required to approve (decimals allowed, e.g. 498.75 KG). Compare to planned batch size{' '}
+              <b>{batch.batchSize} KG</b> (order line / formula).
+            </p>
           )}
           {qcType === 'fill' && (
             <p className="text-[10px] text-gray-500 mt-1">Required — how many sellable units were filled (feeds BPR / packaging planning).</p>
@@ -5964,9 +6000,25 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                 ) : (
                   <div className="text-center py-10 text-gray-400 text-sm">No QC results yet. Submit batch for QC review.</div>
                 )}
-                {batch.bulkYield != null && <div className="mt-3 text-xs"><span className="text-gray-500">Bulk Yield:</span> <b>{batch.bulkYield} KG</b> {batch.bulkBatchAccepted ? <Badge className="bg-emerald-100 text-emerald-700">Accepted</Badge> : ''}</div>}
-                {batch.fillYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">Fill Yield:</span> <b>{fmt(batch.fillYield)} units</b></div>}
-                {batch.fgYield != null && <div className="mt-1 text-xs"><span className="text-gray-500">FG Yield:</span> <b>{fmt(batch.fgYield)} units</b></div>}
+                {batch.bulkYield != null && (
+                  <div className="mt-3 text-xs">
+                    <span className="text-gray-500">Bulk Yield:</span>{' '}
+                    <b>{formatYieldKg(Number(batch.bulkYield))} KG</b>{' '}
+                    {batch.bulkBatchAccepted ? <Badge className="bg-emerald-100 text-emerald-700">Accepted</Badge> : ''}
+                  </div>
+                )}
+                {batch.fillYield != null && (
+                  <div className="mt-1 text-xs">
+                    <span className="text-gray-500">Fill Yield:</span>{' '}
+                    <b>{formatYieldUnits(Number(batch.fillYield))} units</b>
+                  </div>
+                )}
+                {batch.fgYield != null && (
+                  <div className="mt-1 text-xs">
+                    <span className="text-gray-500">FG Yield:</span>{' '}
+                    <b>{formatYieldUnits(Number(batch.fgYield))} units</b>
+                  </div>
+                )}
               </div>
             )}
 
@@ -6891,16 +6943,16 @@ function YieldReworkPreflightModal({
           <h4 className="text-xs font-bold text-blue-900 mb-2">BMR (KG)</h4>
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between"><span className="text-gray-600">Planned</span><b>{plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">Yield</span><b>{bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Yield</span><b>{formatYieldKg(bmrYieldKg)}</b></div>
             <div className="flex justify-between"><span className="text-gray-600">Wastage</span><b className="text-amber-700">{bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
           </div>
         </div>
         <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
           <h4 className="text-xs font-bold text-purple-900 mb-2">BPR (units)</h4>
           <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-gray-600">Bulk to fill</span><b>{fmt(Math.round(bprBulkUnits))}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">FG / output</span><b>{fmt(Math.round(builtUnits))}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{fmt(Math.round(bprWastageUnits))}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">Bulk to fill</span><b>{formatYieldUnits(bprBulkUnits)}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">FG / output</span><b>{formatYieldUnits(builtUnits)}</b></div>
+            <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{formatYieldUnits(bprWastageUnits)}</b></div>
           </div>
         </div>
       </div>
@@ -6990,10 +7042,10 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
       </div>
       <div className="kpi-row grid grid-cols-2 sm:grid-cols-5 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0">
         <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">FG Ready Batches</div><div className="kpi-val text-lg font-extrabold text-emerald-600">{rows.length}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Yield (KG)</div><div className="kpi-val text-lg font-extrabold text-blue-600">{totalYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Actual Output (Units)</div><div className="kpi-val text-lg font-extrabold text-purple-600">{fmt(Math.round(totalActualOutputUnits))}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Wastage (KG)</div><div className="kpi-val text-lg font-extrabold text-amber-600">{totalBmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BPR Wastage (Units)</div><div className="kpi-val text-lg font-extrabold text-rose-600">{fmt(Math.round(totalBprWastageUnits))}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Yield (KG)</div><div className="kpi-val text-lg font-extrabold text-blue-600">{formatYieldKg(totalYieldKg)}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Actual Output (Units)</div><div className="kpi-val text-lg font-extrabold text-purple-600">{formatYieldUnits(totalActualOutputUnits)}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Wastage (KG)</div><div className="kpi-val text-lg font-extrabold text-amber-600">{formatYieldKg(totalBmrWastageKg)}</div></div>
+        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BPR Wastage (Units)</div><div className="kpi-val text-lg font-extrabold text-rose-600">{formatYieldUnits(totalBprWastageUnits)}</div></div>
       </div>
       <div className="flex-1 overflow-auto p-5">
         {rows.length === 0 ? (
@@ -7030,13 +7082,13 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
                       <div className="text-[10px] text-gray-500">{r.b.soNo || '—'}</div>
                     </td>
                     <td className="px-3 py-2 text-right font-mono">{r.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">{r.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                    <td className="px-3 py-2 text-right font-mono text-amber-700">{r.bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">{formatYieldKg(r.bmrYieldKg)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-amber-700">{formatYieldKg(r.bmrWastageKg)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.bmrYieldPct.toFixed(1)}%</td>
-                    <td className="px-3 py-2 text-right font-mono">{fmt(Math.round(r.bprBulkUnits))}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-purple-700">{fmt(Math.round(r.builtUnits))}</td>
-                    <td className="px-3 py-2 text-right font-mono text-rose-700">{fmt(Math.round(r.bprWastageUnits))}</td>
-                    <td className="px-3 py-2 text-right font-mono text-amber-700">{fmt(Math.round(r.overallWastageUnits))}</td>
+                    <td className="px-3 py-2 text-right font-mono">{formatYieldUnits(r.bprBulkUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-purple-700">{formatYieldUnits(r.builtUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-rose-700">{formatYieldUnits(r.bprWastageUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-amber-700">{formatYieldUnits(r.overallWastageUnits)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.outputVsPlanPct.toFixed(1)}%</td>
                     <td className="px-3 py-2 text-center">
                       <button
@@ -7092,17 +7144,17 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
               <h4 className="text-sm font-bold text-blue-900 mb-3">BMR (Manufacturing) Detail</h4>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between"><span className="text-gray-600">Planned batch weight</span><b>{selectedRow.plannedKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Actual yield weight</span><b>{selectedRow.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">BMR wastage</span><b className="text-amber-700">{selectedRow.bmrWastageKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Actual yield weight</span><b>{formatYieldKg(selectedRow.bmrYieldKg)} KG</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">BMR wastage</span><b className="text-amber-700">{formatYieldKg(selectedRow.bmrWastageKg)} KG</b></div>
                 <div className="flex justify-between"><span className="text-gray-600">Yield efficiency</span><b>{selectedRow.bmrYieldPct.toFixed(1)}%</b></div>
               </div>
             </div>
             <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
               <h4 className="text-sm font-bold text-purple-900 mb-3">BPR (Filling & Packing) Detail</h4>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Bulk available to fill</span><b>{fmt(Math.round(selectedRow.bprBulkUnits))} units</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Actual output produced</span><b>{fmt(Math.round(selectedRow.builtUnits))} units</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{fmt(Math.round(selectedRow.bprWastageUnits))} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Bulk available to fill</span><b>{formatYieldUnits(selectedRow.bprBulkUnits)} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">Actual output produced</span><b>{formatYieldUnits(selectedRow.builtUnits)} units</b></div>
+                <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{formatYieldUnits(selectedRow.bprWastageUnits)} units</b></div>
                 <div className="flex justify-between"><span className="text-gray-600">Output vs planned units</span><b>{selectedRow.outputVsPlanPct.toFixed(1)}%</b></div>
               </div>
             </div>
@@ -7112,8 +7164,8 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
             <h4 className="text-sm font-bold text-emerald-900 mb-3">Combined Batch Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
               <div><p className="text-gray-500">Planned units</p><p className="font-semibold">{fmt(Math.round(selectedRow.plannedUnits))}</p></div>
-              <div><p className="text-gray-500">Actual output units</p><p className="font-semibold">{fmt(Math.round(selectedRow.builtUnits))}</p></div>
-              <div><p className="text-gray-500">Overall unit wastage</p><p className="font-semibold text-amber-700">{fmt(Math.round(selectedRow.overallWastageUnits))}</p></div>
+              <div><p className="text-gray-500">Actual output units</p><p className="font-semibold">{formatYieldUnits(selectedRow.builtUnits)}</p></div>
+              <div><p className="text-gray-500">Overall unit wastage</p><p className="font-semibold text-amber-700">{formatYieldUnits(selectedRow.overallWastageUnits)}</p></div>
               <div><p className="text-gray-500">Overall quality state</p><p className="font-semibold">{selectedRow.b.bprStatus === 'fg_ready' ? 'FG Ready' : 'In Progress'}</p></div>
             </div>
           </div>

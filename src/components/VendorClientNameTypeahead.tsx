@@ -5,8 +5,45 @@ import type { VendorClientRecord } from '../services/vendorClient.service';
 const MAX_SUGGESTIONS = 50;
 
 function partySearchHaystack(record: VendorClientRecord): string {
-  const code = String(record.data?.entityCode ?? record.data?.entity_code ?? '').trim();
-  return `${record.name ?? ''} ${record.id} ${record.email ?? ''} ${record.city ?? ''} ${record.location ?? ''} ${record.country ?? ''} ${code}`.toLowerCase();
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  const code = String(
+    record.entityCode ?? data.entityCode ?? data.entity_code ?? ''
+  ).trim();
+  const trade = String(data.tradeName ?? data.trade_name ?? '').trim();
+  const legal = String(data.legalName ?? data.legal_name ?? '').trim();
+  return [
+    record.name ?? '',
+    code,
+    trade,
+    legal,
+    record.email ?? '',
+    record.phone ?? '',
+    record.city ?? '',
+    record.location ?? '',
+    record.country ?? '',
+    record.category ?? '',
+  ]
+    .join(' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchScore(haystack: string, tokens: string[]): number {
+  if (tokens.length === 0) return 0;
+  let score = 0;
+  for (const token of tokens) {
+    if (!haystack.includes(token)) return -1;
+    if (haystack.startsWith(token)) score += 100;
+    else {
+      const wordStart = haystack.split(' ').some((w) => w.startsWith(token));
+      score += wordStart ? 50 : 10;
+    }
+  }
+  return score;
 }
 
 export function filterVendorClientsForTypeahead(
@@ -15,8 +52,19 @@ export function filterVendorClientsForTypeahead(
   max = MAX_SUGGESTIONS
 ): VendorClientRecord[] {
   const q = query.trim().toLowerCase();
-  const list = q ? records.filter((r) => partySearchHaystack(r).includes(q)) : records;
-  return list.slice(0, max);
+  if (!q) {
+    return records.slice(0, max);
+  }
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const ranked = records
+    .map((record) => {
+      const haystack = partySearchHaystack(record);
+      const score = matchScore(haystack, tokens);
+      return score >= 0 ? { record, score } : null;
+    })
+    .filter((row): row is { record: VendorClientRecord; score: number } => row != null)
+    .sort((a, b) => b.score - a.score || partySearchHaystack(a.record).localeCompare(partySearchHaystack(b.record)));
+  return ranked.slice(0, max).map((r) => r.record);
 }
 
 export type VendorClientNameTypeaheadProps = {
@@ -60,7 +108,7 @@ export default function VendorClientNameTypeahead({
   const [inputValue, setInputValue] = useState('');
 
   const selectedParty = useMemo(
-    () => parties.find((p) => p.id === selectedId) ?? null,
+    () => parties.find((p) => String(p.id) === String(selectedId)) ?? null,
     [parties, selectedId]
   );
 
@@ -78,7 +126,10 @@ export default function VendorClientNameTypeahead({
 
   const suggestions = useMemo(() => {
     const filtered = filterVendorClientsForTypeahead(parties, inputValue, MAX_SUGGESTIONS);
-    return filtered.map((p) => ({ party: p, disabled: disabledIds?.has(p.id) ?? false }));
+    return filtered.map((p) => ({
+      party: p,
+      disabled: disabledIds?.has(String(p.id)) ?? false,
+    }));
   }, [parties, inputValue, disabledIds]);
 
   useEffect(() => {
@@ -94,7 +145,7 @@ export default function VendorClientNameTypeahead({
   }, []);
 
   const pick = (party: VendorClientRecord) => {
-    if (disabledIds?.has(party.id)) return;
+    if (disabledIds?.has(String(party.id))) return;
     const label = party.name ?? party.id;
     onSelect(party);
     setInputValue(label);
@@ -113,7 +164,6 @@ export default function VendorClientNameTypeahead({
     setInputValue(next);
     if (allowFreeText) {
       onFreeTextChange?.(next);
-      if (selectedId) onSelect(null);
       setOpen(true);
       return;
     }
@@ -193,10 +243,16 @@ export default function VendorClientNameTypeahead({
           className="absolute z-40 mt-1 max-h-52 w-full min-w-[220px] overflow-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg"
         >
           {suggestions.map((row, idx) => {
-            const meta = [row.party.city, row.party.location].filter(Boolean).join(', ');
+            const code = String(
+              row.party.entityCode ??
+                row.party.data?.entityCode ??
+                row.party.data?.entity_code ??
+                ''
+            ).trim();
+            const meta = [code, row.party.city, row.party.location].filter(Boolean).join(' · ');
             return (
               <li
-                key={row.party.id}
+                key={String(row.party.id)}
                 role="option"
                 aria-selected={idx === activeIndex}
                 aria-disabled={row.disabled}

@@ -1,5 +1,9 @@
 /**
- * RM primary UoM (KG, GM, L, ML) ↔ kilograms for planning vs procurement/PO.
+ * RM primary UoM (KG, GM, L, ML) ↔ kilograms.
+ *
+ * - Planning / BOM / production: kg (volume lines use SG).
+ * - Warehouse SIH / in-transit: RM standard UoM from master / wh_unit.
+ * - Procurement / Items Involved display: RM standard UoM; release from planning converts kg → primary.
  */
 
 export function normRmPrimaryUom(raw: string | undefined | null): string {
@@ -126,4 +130,49 @@ export function procurementQtyFromKgGap(
 ): { qty: number; unit: string } {
   const unit = normRmPrimaryUom(primaryUom);
   return { qty: kgToRmPrimaryQty(kgQty, unit, specificGravity), unit };
+}
+
+/** Items Involved / pipeline tables: decimal qty for RM mass/volume UoMs. */
+export function itemsInvolvedUsesDecimalQty(itemType: 'RM' | 'PM', unit?: string): boolean {
+  if (itemType === 'PM') return String(unit ?? '').toUpperCase() === 'KG';
+  const p = normRmPrimaryUom(unit);
+  return p === 'KG' || p === 'GM' || p === 'L' || p === 'ML';
+}
+
+/** RM line unit for procurement / quotations (master primary UoM when known). */
+export function resolveProcurementRmUnit(
+  rawMaterialId: number | null | undefined,
+  fallbackUnit: string | undefined | null,
+  masterUom?: string | null
+): string {
+  if (masterUom) return normRmPrimaryUom(masterUom);
+  if (fallbackUnit) return normRmPrimaryUom(fallbackUnit);
+  return 'KG';
+}
+
+/** MOQ or qty label with standard unit (e.g. `25 L`, `100 kg`). */
+export function formatQtyWithPrimaryUnit(
+  qty: number | string | null | undefined,
+  unit?: string | null,
+  itemType: 'RM' | 'PM' = 'RM'
+): string {
+  const n = Number(qty);
+  if (!Number.isFinite(n)) return '—';
+  const formatted =
+    Math.abs(n - Math.round(n)) < 1e-9
+      ? String(Math.round(n))
+      : String(parseFloat(n.toFixed(4)));
+  const suffix =
+    itemType === 'PM' ? (normRmPrimaryUom(unit || 'PCS') === 'PCS' ? ' pcs' : ` ${unit}`) : procurementUnitSuffix(unit);
+  return `${formatted}${suffix}`;
+}
+
+/** Display suffix for Items Involved qty columns (RM master UoM). */
+export function itemsInvolvedUnitSuffix(unit?: string, itemType?: 'RM' | 'PM'): string {
+  if (itemType === 'PM') {
+    const u = String(unit ?? '').toUpperCase();
+    if (u === 'PCS') return ' pcs';
+    return unit ? ` ${unit}` : ' pcs';
+  }
+  return procurementUnitSuffix(unit);
 }

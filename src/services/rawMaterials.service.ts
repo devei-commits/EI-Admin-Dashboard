@@ -30,6 +30,10 @@ export interface RawMaterialFromApi {
   hsn_code?: string | null;
   tax_pref?: string | null;
   sales_purchase_account?: string | null;
+  master_lifecycle_status?: string | null;
+  rm_owner?: string | null;
+  universal_swap_eligibility?: string | null;
+  functional_equivalents?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -55,6 +59,10 @@ export interface RawMaterialRecord {
   hsnCode: string | null;
   taxPref: string | null;
   salesPurchaseAccount: string | null;
+  masterLifecycleStatus: string | null;
+  rmOwner: string | null;
+  universalSwapEligibility: string | null;
+  functionalEquivalents: string | null;
 }
 
 export interface PaginatedRowsResponse<T> {
@@ -89,6 +97,10 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     hsnCode: row.hsn_code ?? null,
     taxPref: row.tax_pref ?? null,
     salesPurchaseAccount: row.sales_purchase_account ?? null,
+    masterLifecycleStatus: row.master_lifecycle_status ?? null,
+    rmOwner: row.rm_owner ?? null,
+    universalSwapEligibility: row.universal_swap_eligibility ?? null,
+    functionalEquivalents: row.functional_equivalents ?? null,
   };
 }
 
@@ -252,7 +264,7 @@ export interface ItemReferenceBulkChunkRow {
   line_type: 'Packaging' | 'Raw Material';
   zoho_sku_code: string;
   description: string;
-  /** Multi-worksheet RM template (tabs: Raw Materials, Fragrances, Colors & Pigments, Club Items). */
+  /** Multi-worksheet RM template (tabs: Raw Materials, Fragrances, Colors & Pigments). */
   import_profile?: 'rm_multi_sheet';
   sheet_name?: string;
   category?: string;

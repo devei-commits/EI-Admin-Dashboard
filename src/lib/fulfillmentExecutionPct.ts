@@ -166,8 +166,47 @@ function procurementProgress01(
   return 0;
 }
 
+const BPR_PRODUCTION_PROGRESS: Record<string, number> = {
+  fg_ready: 1,
+  qc_failed: 1,
+  pack_qc: 0.92,
+  packaging: 0.88,
+  fill_qc: 0.82,
+  filling: 0.75,
+  pm_dispensing: 0.68,
+  pm_connected: 0.62,
+  scheduled: 0.58,
+  pm_reserved: 0.55,
+};
+
+const BMR_PRODUCTION_PROGRESS: Record<string, number> = {
+  cleared: 0.5,
+  bulk_qc: 0.45,
+  in_production: 0.4,
+  dispensing: 0.35,
+  rm_connected: 0.28,
+  scheduled: 0.25,
+  rm_reserved: 0.22,
+  batch_confirmed: 0.15,
+};
+
+function productionProgressFromBatchStatuses(split: BatchSplit | undefined): number | null {
+  if (!split) return null;
+  const bpr = normalizeProdStatus(split.bprStatus);
+  const bmr = normalizeProdStatus(split.bmrStatus);
+  const bprScore = bpr ? BPR_PRODUCTION_PROGRESS[bpr] : undefined;
+  const bmrScore = bmr ? BMR_PRODUCTION_PROGRESS[bmr] : undefined;
+  if (bprScore != null || bmrScore != null) {
+    return Math.max(bprScore ?? 0, bmrScore ?? 0);
+  }
+  return null;
+}
+
 /** 0–1 within the production slice (before picking). */
-export function productionSliceProgress01(st: FFStatus): number {
+export function productionSliceProgress01(st: FFStatus, split?: BatchSplit): number {
+  const fromBatch = productionProgressFromBatchStatuses(split);
+  if (fromBatch != null) return fromBatch;
+
   switch (st) {
     case 'fg_pending':
       return 0;
@@ -207,7 +246,7 @@ export function computeBatchSplitExecutionFraction(
   const terminal = st === 'delivered' || st === 'closed';
   const pPlan = terminal ? 1 : planBatchProgress01(planning, batchRow, split);
   const pProc = terminal ? 1 : procurementProgress01(planning, batchRow, split, st);
-  const pProd = productionSliceProgress01(st);
+  const pProd = productionSliceProgress01(st, split);
 
   let score = w.planBatch * pPlan + w.procurement * pProc + w.production * pProd;
 

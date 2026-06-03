@@ -266,7 +266,7 @@ function ItemWithBatches({
   const readyQty = item.batchSplits.reduce(
     (sum, sp) =>
       ['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(sp.ffStatus)
-        ? sum + (sp.fgQty || 0)
+        ? sum + (Number(sp.fgOutput ?? sp.fgQty) || 0)
         : sum,
     0
   );
@@ -422,9 +422,9 @@ function BatchRow({
       </td>
       <td className="py-2 px-3 font-mono">{formatNumber(split.plannedQty)}</td>
       <td className="py-2 px-3 font-mono font-bold">
-        {split.fgQty != null && split.fgQty > 0 ? (
+        {(split.fgOutput ?? split.fgQty) != null && Number(split.fgOutput ?? split.fgQty) > 0 ? (
           <span className="text-emerald-600 dark:text-emerald-400">
-            {formatNumber(split.fgQty)}
+            {formatNumber(Number(split.fgOutput ?? split.fgQty))}
           </span>
         ) : (
           <span className="text-gray-400 dark:text-gray-500">—</span>

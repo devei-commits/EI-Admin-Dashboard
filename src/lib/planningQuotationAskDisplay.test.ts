@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { PlanningQuotationAsk } from '../services/planningQuotationAsks.service';
 import {
   getPlanningQuotationAskUiStatus,
+  planningQuotationActionButtonClass,
   planningQuotationAskMatchesItem,
+  resolvePlanningQuotationAskUiStatus,
 } from './planningQuotationAskDisplay';
 
 const baseItem = {
@@ -74,6 +76,16 @@ describe('planningQuotationAskDisplay', () => {
   it('returns pending when no unread fulfilled ask', () => {
     const asks = [mkAsk({ id: 3, status: 'pending' })];
     const { status } = getPlanningQuotationAskUiStatus(asks, baseItem, new Set());
+    expect(status).toBe('pending');
+  });
+
+  it('uses solid yellow button class when quotation is pending', () => {
+    expect(planningQuotationActionButtonClass('pending')).toContain('bg-yellow-400');
+    expect(planningQuotationActionButtonClass('none')).toContain('bg-yellow-50');
+  });
+
+  it('treats open procurement quotation PR as pending when no ask row', () => {
+    const { status } = resolvePlanningQuotationAskUiStatus([], baseItem, new Set(), true);
     expect(status).toBe('pending');
   });
 

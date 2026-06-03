@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { createVendorClient, fetchNextCode } from '../../services/vendorClient.service';
 import type { Vendor, PurchaseOrder, MainTab, SideSection } from '../../types/procurement.types';
+import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 
 export type ProcurementVendorsProps = {
   vendors: Vendor[];
@@ -182,7 +184,11 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                     </td>
                     <td className="px-6 py-3 text-slate-700">{vendor.contact}</td>
                     <td className="px-6 py-3 text-slate-600">{vendor.city}</td>
-                    <td className="px-6 py-3 text-slate-600 text-xs">{vendor.paymentTerms}</td>
+                    <td className="px-6 py-3 text-slate-600 text-xs max-w-[220px]">
+                      <span className="line-clamp-2" title={formatStagedPaymentTermsSummary(vendor.paymentTerms)}>
+                        {formatStagedPaymentTermsSummary(vendor.paymentTerms)}
+                      </span>
+                    </td>
                     <td className="px-6 py-3">
                       <span className="text-yellow-700 font-bold">{vendor.rating}</span>
                     </td>
@@ -245,7 +251,9 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
 
             <div>
               <p className="text-xs text-slate-500 tracking-widest font-semibold">PAYMENT TERMS</p>
-              <p className="text-sm text-slate-700 mt-1">{selectedVendor.paymentTerms}</p>
+              <div className="mt-1">
+                <PaymentTermsDisplay value={selectedVendor.paymentTerms} />
+              </div>
             </div>
 
             <div>

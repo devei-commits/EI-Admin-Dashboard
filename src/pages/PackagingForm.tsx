@@ -8,8 +8,10 @@ import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
+import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
+  findVendorClientByName,
   type PmCommercialVendor,
   type VendorTierDraft,
 } from '../components/VendorCommercialEditor';
@@ -17,6 +19,12 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import {
+  buildMasterStatBuckets,
+  compareMasterTableSort,
+  type MasterStatCardSort,
+} from '../lib/masterTableSort';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import { validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { fetchPriceListRowForMaterial, mergePmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
@@ -27,11 +35,16 @@ import {
   normalizePmSkuCategoryForSelect,
   normalizePmDetailSubCategoryForSelect,
   pmDetailSubCategoryOptionsForSkuCategory,
+  pmDetailSubCategoryHasSubSubCategory,
   pmLevelForSubCategory,
   pmSkuCategoryRequiresDetailSubCategory,
   pmSubCategorySkuPrefix,
+  pmSubSubCategoryOptionsForDetailSubCategory,
+  normalizePmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
+import { getPmConditionalVisibility } from '../lib/pmConditionalFields';
+import PmConditionalFieldBlocks from '../components/packaging/PmConditionalFieldBlocks';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   PRI: { label: 'Primary Container (Bottle/Jar/Tube)', prefix: 'EI-PM-PRI' },
@@ -48,8 +61,107 @@ const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   MISC: { label: 'Miscellaneous / Others', prefix: 'EI-PM-MISC' },
 };
 
-const QC_GROUPS = ['Chemical QC', 'Microbiology', 'Physical QC', 'Packaging QC', 'Incoming QA'];
+const PM_QC_TESTING_GROUP_OPTIONS = ['Packaging QC only'] as const;
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
+
+const PM_REUSABILITY_OPTIONS = [
+  { value: 'Single use', label: 'Single use' },
+  { value: 'Reusable', label: 'Reusable' },
+  { value: 'Refillable', label: 'Refillable' },
+] as const;
+
+const PM_DECORATION_OPTIONS = [
+  'None',
+  'Printed',
+  'Hot foil',
+  'Cold foil',
+  'Metalised',
+  'Frosted',
+  'Etched',
+  'Sticker',
+] as const;
+
+const PM_DECORATION_METHOD_OPTIONS = [
+  'Silk screen',
+  'Pad print',
+  'UV print',
+  'Offset',
+  'Flexo',
+  'Gravure',
+  'Hot stamp',
+] as const;
+
+const PM_SURFACE_FINISH_OPTIONS = ['Gloss', 'Matte', 'Velvet', 'Satin', 'Soft-touch'] as const;
+
+const PM_SURFACE_TEXTURE_OPTIONS = ['Smooth', 'Embossed', 'Debossed', 'Textured'] as const;
+
+const PM_TRANSPARENCY_LEVEL_OPTIONS = ['Transparent', 'Translucent', 'Opaque'] as const;
+
+const PM_VARIANT_STATUS_OPTIONS = [
+  { value: 'Active', label: 'Active' },
+  { value: 'Discontinued', label: 'Discontinued' },
+  { value: 'Sample only', label: 'Sample only' },
+] as const;
+
+const PM_TOOLING_OWNERSHIP_OPTIONS = ['EI', 'Vendor', 'Shared'] as const;
+
+const PM_APPLICATION_METHOD_OPTIONS = ['Manual', 'Automatic', 'Both'] as const;
+
+const PM_PRODUCT_ENVIRONMENT_OPTIONS = ['Oil', 'Water', 'Chemical', 'Mixed', 'Dry'] as const;
+
+const PM_COA_REQUIRED_OPTIONS = ['Yes', 'No'] as const;
+
+const PM_DROP_LEAK_TEST_OPTIONS = ['Pass', 'Fail', 'NA'] as const;
+
+const PM_LISTED_IN_CATALOGUE_OPTIONS = ['Yes', 'No', 'Internal Only'] as const;
+
+const PM_CATALOGUE_VISIBILITY_OPTIONS = ['Public', 'Client-locked', 'Internal'] as const;
+
+const PM_MIGRATION_TEST_STATUS_OPTIONS = ['Pass', 'Fail', 'NA'] as const;
+
+const PM_BPA_PHTHALATE_OPTIONS = ['Declared', 'NA'] as const;
+
+const PM_LIFECYCLE_STATUS_OPTIONS = [
+  'Active',
+  'Preferred',
+  'Conditional',
+  'Phase-Out',
+  'Discontinued',
+] as const;
+
+const PM_CLIENT_SCOPE_OPTIONS = ['Generic', 'Client-locked'] as const;
+
+const PM_MATERIAL_OPTIONS = [
+  'PET',
+  'HDPE',
+  'LDPE',
+  'PP',
+  'PVC',
+  'PETG',
+  'Glass',
+  'Aluminium',
+  'ABL',
+  'Acrylic',
+  'Duplex/SBS',
+  'FBB',
+  'Kraft',
+  'BOPP',
+  'BOPET',
+  'Corrugated',
+  'Wood',
+  'Metal',
+  'Silica gel',
+] as const;
+
+type PmVariantRow = {
+  id: string;
+  name: string;
+  moq: number;
+  status: string;
+  leadTimeDays: number;
+  notes: string;
+};
+
 const PM_REQUIRED_FIELDS: Array<{
   id: string;
   label: string;
@@ -59,11 +171,37 @@ const PM_REQUIRED_FIELDS: Array<{
   { id: 'pmSkuCategory', label: 'Category', section: 0, toastMessage: 'Step 1 — Category is required' },
   {
     id: 'tradeCommercialName',
-    label: 'Trade/Commercial Name',
+    label: 'PM Name / description',
     section: 0,
-    toastMessage: 'Step 1 — Trade/commercial name is required',
+    toastMessage: 'Step 1 — PM Name / description is required',
   },
-  { id: 'pkgUnit', label: 'Primary UoM', section: 0, toastMessage: 'Step 1 — Primary UoM is required' },
+  { id: 'intendedUse', label: 'Intended use', section: 0, toastMessage: 'Step 1 — Intended use is required' },
+  { id: 'pkgUnit', label: 'Primary UoM', section: 1, toastMessage: 'Step 2 — Primary UoM is required' },
+  {
+    id: 'storeLoc',
+    label: 'Storage condition',
+    section: 2,
+    toastMessage: 'Step 3 — Storage condition is required',
+  },
+  { id: 'matBody', label: 'Material', section: 2, toastMessage: 'Step 3 — Material is required' },
+  {
+    id: 'preferredVendor',
+    label: 'Preferred vendor',
+    section: 7,
+    toastMessage: 'Vendors & Commercial — Preferred vendor is required',
+  },
+  {
+    id: 'qaArNumber',
+    label: 'AR number',
+    section: 10,
+    toastMessage: 'QA Testing & Documents — AR number is required',
+  },
+  {
+    id: 'qaCoaRequired',
+    label: 'COA required',
+    section: 10,
+    toastMessage: 'QA Testing & Documents — COA required (Yes or No) is required',
+  },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -87,14 +225,19 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
 function createEmptyPackagingFormData() {
   return {
     itemCode: '',
-    status: 'Draft',
+    status: 'Active',
     version: 'v1.0',
+    pmLifecycleStatus: 'Active',
+    pmClientScope: '',
+    pmOwner: '',
     pmCategory: '',
     pmSkuCategory: '',
     optionalPmSubCategory: '',
-    qcGroup: '',
+    optionalPmSubSubCategory: '',
+    qcGroup: 'Packaging QC only',
     subCategory: '',
     storeLoc: '',
+    pkgUnitsPerShipperRoll: '',
     zohoId: '',
     pkgSku: '',
     pkgUnit: 'PCS',
@@ -109,10 +252,7 @@ function createEmptyPackagingFormData() {
     level: '',
     itemCategory: '',
     intendedUse: '',
-    expectedProductTypes: '',
     reusability: '',
-    regulatory: '',
-    identityNotes: '',
     matBody: '',
     matClosure: '',
     matInner: '',
@@ -139,28 +279,32 @@ function createEmptyPackagingFormData() {
     colorCode: '',
     finish: '',
     deco: '',
+    decorationMethod: '',
+    surfaceEffects: '',
+    surfaceTexture: '',
+    printCoverage: '',
+    numberOfColours: '',
+    printColours: '',
+    transparencyLevel: '',
+    foilColour: '',
+    uvFinishing: '',
+    embossingDebossing: '',
+    premiumLookFeel: '',
     images: '',
-    cusCustomizable: false,
-    cusParams: '',
-    cusStdMoq: '',
-    cusCustomMoq: '',
-    cusToolingReq: '',
+    cusApprovedVendorCustom: '',
+    cusCustomisedMoq: '',
+    cusCustomisationLeadTimeDays: '',
+    cusCustomUnitCost: '',
+    cusSampleLeadTimeDays: '',
+    cusPrintingCylinderCost: '',
+    cusPrintingPlateDieCost: '',
     cusToolingCost: '',
-    cusSamplingLT: '',
-    cusBulkLTStd: '',
-    cusBulkLTCustom: '',
-    cusRemarks: '',
-    compLow: false,
-    compMed: false,
-    compHigh: false,
-    compOil: false,
-    compAlc: false,
-    compAirless: false,
-    compPump: false,
-    compLeak: false,
-    compActives: '',
-    compRisk: '',
-    compRemarks: '',
+    cusToolingOwnership: '',
+    cusPaymentTermsCustom: '',
+    cusSupplyLocationCustom: '',
+    compApplicationMethod: '',
+    compProductEnvironment: '',
+    compCompatibilityPmSkus: '',
     secLabelType: '',
     secLabelSize: '',
     secAdhesive: '',
@@ -175,24 +319,79 @@ function createEmptyPackagingFormData() {
     terDrop: '',
     terStack: '',
     terNotes: '',
+    qaArNumber: '',
+    qaQcTestPlanRef: '',
+    qaCoaRequired: '' as '' | 'Yes' | 'No',
+    qaDimensionalChecks: '',
+    qaFunctionalChecks: '',
+    qaPrintDecorationChecks: '',
+    qaDropLeakTest: '',
+    qaCoaDocumentRef: '',
+    qaInspectionReportRef: '',
+    qaSpecFile: '',
+    qaSampleImageMock: '',
     apprPack: false,
     apprRd: false,
     apprFin: false,
     apprLock: false,
-    catVisible: false,
-    catShare: false,
-    catWebName: '',
-    catTags: '',
-    catRecoTypes: '',
-    catWebImages: '',
-    variants: [] as Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }>,
+    catListedInCatalogue: '',
+    catCataloguePhoto: '',
+    catCatalogueCustomNotes: '',
+    catCatalogueVisibility: '',
+    regMigrationTestStatus: '',
+    regBpaPhthalateFree: '',
+    regRecyclabilityCode: '',
+    regEprRegistration: '',
+    regFoodCosmeticCompliance: '',
+    pmAssemblyCode: '',
+    pmComponentBreakdown: '',
+    pmSkuVolume: '',
+    pmShoulderHeightMm: '',
+    pmOverallHeightMm: '',
+    pmOuterDiameterMm: '',
+    pmInnerDiameterNeckMm: '',
+    pmCircumferenceMm: '',
+    pmOrificeMm: '',
+    pmClosureType: '',
+    pmPumpCcDosage: '',
+    pmPipetteLengthMm: '',
+    pmSleeveHeightMm: '',
+    pmFillVolumeMl: '',
+    pmPackWidthMm: '',
+    pmPackHeightMm: '',
+    pmOpenClosedSizeMm: '',
+    pmSealLaminateWidthMm: '',
+    pmCartonLengthMm: '',
+    pmCartonWidthMm: '',
+    pmCartonHeightMm: '',
+    pmBoardPaperType: '',
+    pmGsm: '',
+    pmMaterialThicknessMicron: '',
+    pmLamination: '',
+    pmStickerType: '',
+    pmPrintingCmykPantones: '',
+    pmShoulderColour: '',
+    pmCapOvercapColour: '',
+    pmActuatorColourStyle: '',
+    pmCollarFinish: '',
+    pmTeatColour: '',
+    pmSuitableContainerType: '',
+    pmContainerSurface: '',
+    pmAdhesiveCompatibility: '',
+    variants: [] as PmVariantRow[],
+    preferredVendor: '',
+    preferredVendorClientId: '',
+    alternateVendor: '',
+    alternateVendorClientId: '',
+    pmSupplyLocation: '',
     vendors: [] as PmCommercialVendor[],
     tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
   };
 }
 
 const SECTIONS = [
-  'Primary info (details, code & tax)',
+  'Primary info',
+  'Units & Taxes',
   'Technical, material & procurement',
   'Aesthetics',
   'Variants Matrix',
@@ -203,6 +402,8 @@ const SECTIONS = [
   'Tertiary Packaging',
   'QA Testing & Documents',
   'Catalogue / Website',
+  'Regulatory',
+  'Lifecycle & Ownership',
 ];
 
 function parsePmVendorTierPrice(raw: string): number {
@@ -253,20 +454,57 @@ const PackagingRefactored: React.FC = () => {
     }
     return base;
   }, [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]);
+  const pmSubSubCategoryRequired = pmDetailSubCategoryHasSubSubCategory(formData.optionalPmSubCategory);
+  const pmConditionalVisibility = useMemo(
+    () =>
+      getPmConditionalVisibility({
+        pmSkuCategory: formData.pmSkuCategory || formData.subCategory,
+        subCategory: formData.subCategory,
+        optionalPmSubCategory: formData.optionalPmSubCategory,
+      }),
+    [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]
+  );
+
+  const pmSubSubCategoryOptions = useMemo(() => {
+    const base = pmSubSubCategoryOptionsForDetailSubCategory(formData.optionalPmSubCategory);
+    const cur = String(formData.optionalPmSubSubCategory ?? '').trim();
+    if (cur && !base.some((o) => o.value === cur)) {
+      return [{ value: cur, label: cur }, ...base];
+    }
+    return base;
+  }, [formData.optionalPmSubCategory, formData.optionalPmSubSubCategory]);
   const canAdvancePastPrimary =
     !isNewPm ||
     Boolean(
       isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory) &&
         pmLevelForSubCategory(formData.pmSkuCategory || formData.subCategory) &&
         (formData.tradeCommercialName?.trim() || formData.name?.trim()) &&
+        formData.intendedUse?.trim()
+    );
+  const canAdvancePastUnitsTaxes =
+    !isNewPm ||
+    Boolean(
+      formData.pkgUnit?.trim() &&
         formData.pkgReturnable?.trim() &&
         formData.pkgTaxPreference?.trim() &&
-        formData.pkgUnit?.trim() &&
         (!taxIsTaxable || (formData.pkgHsn?.trim() && formData.pkgGst?.toString().trim()))
     );
+  const isPmSectionNavLocked = (idx: number): boolean => {
+    if (!isNewPm) return false;
+    if (idx > 0 && !canAdvancePastPrimary) return true;
+    if (idx > 1 && !canAdvancePastUnitsTaxes) return true;
+    return false;
+  };
   /** On edit: internal code and level stay fixed; identity, UoM, returnable, and tax remain editable. */
 
-  const [tempVariant, setTempVariant] = useState({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
+  const [tempVariant, setTempVariant] = useState({
+    id: '',
+    name: '',
+    moq: '',
+    status: 'Active',
+    leadTimeDays: '',
+    notes: '',
+  });
   const [tempVendor, setTempVendor] = useState({
     name: '',
     location: '',
@@ -284,9 +522,7 @@ const PackagingRefactored: React.FC = () => {
     creditDays: '',
   });
   const [tempVendorTiers, setTempVendorTiers] = useState<VendorTierDraft[]>(() => defaultTempVendorTiers(4));
-  const [tempTest, setTempTest] = useState({ name: '', result: '', date: '', by: '', remarks: '' });
-
-  const { data: vendorClientData } = useQuery({
+  const { data: vendorClientData, isFetching: vendorClientsLoading } = useQuery({
     queryKey: ['vendor-clients', 'vendor', 'packaging-form'],
     queryFn: async () => {
       const res = await fetchVendorClients('vendor');
@@ -296,9 +532,27 @@ const PackagingRefactored: React.FC = () => {
   });
   const vendorClientList = vendorClientData ?? [];
 
+  const preferredVendorSelectedId = useMemo(() => {
+    if (formData.preferredVendorClientId) return formData.preferredVendorClientId;
+    const row = findVendorClientByName(vendorClientList, formData.preferredVendor);
+    return row?.id ?? '';
+  }, [formData.preferredVendorClientId, formData.preferredVendor, vendorClientList]);
+
+  const alternateVendorSelectedId = useMemo(() => {
+    if (formData.alternateVendorClientId) return formData.alternateVendorClientId;
+    const row = findVendorClientByName(vendorClientList, formData.alternateVendor);
+    return row?.id ?? '';
+  }, [formData.alternateVendorClientId, formData.alternateVendor, vendorClientList]);
+
+  const alternateVendorDisabledIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (preferredVendorSelectedId) ids.add(preferredVendorSelectedId);
+    return ids;
+  }, [preferredVendorSelectedId]);
+
   const resetPmFormToEmpty = useCallback(() => {
     setFormData(createEmptyPackagingFormData());
-    setTempVariant({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
+    setTempVariant({ id: '', name: '', moq: '', status: 'Active', leadTimeDays: '', notes: '' });
     setTempVendor({
       name: '',
       location: '',
@@ -316,7 +570,6 @@ const PackagingRefactored: React.FC = () => {
       creditDays: '',
     });
     setTempVendorTiers(defaultTempVendorTiers(4));
-    setTempTest({ name: '', result: '', date: '', by: '', remarks: '' });
     setGeneratedCode('');
     setErrors({});
     setCurrentSection(0);
@@ -359,23 +612,57 @@ const PackagingRefactored: React.FC = () => {
         pmSkuCategory: canon || prev.pmSkuCategory,
         subCategory: canon || prev.subCategory,
         optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(canon, prev.optionalPmSubCategory),
+        optionalPmSubSubCategory: '',
         ...(level ? { level } : {}),
       }));
       setErrors((prev) => {
         const next = { ...prev };
         delete next.pmSkuCategory;
         delete next.optionalPmSubCategory;
+        delete next.optionalPmSubSubCategory;
         return next;
       });
       return;
     }
     if (id === 'optionalPmSubCategory') {
+      const detail = normalizePmDetailSubCategoryForSelect(
+        formData.pmSkuCategory || formData.subCategory,
+        value
+      ) || value;
+      setFormData((prev) => ({
+        ...prev,
+        optionalPmSubCategory: detail,
+        optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(detail, prev.optionalPmSubSubCategory),
+      }));
       setErrors((prev) => {
-        if (!prev.optionalPmSubCategory) return prev;
+        if (!prev.optionalPmSubCategory && !prev.optionalPmSubSubCategory) return prev;
         const next = { ...prev };
         delete next.optionalPmSubCategory;
+        delete next.optionalPmSubSubCategory;
         return next;
       });
+      return;
+    }
+    if (id === 'optionalPmSubSubCategory') {
+      setErrors((prev) => {
+        if (!prev.optionalPmSubSubCategory) return prev;
+        const next = { ...prev };
+        delete next.optionalPmSubSubCategory;
+        return next;
+      });
+    }
+    if (id === 'pmLifecycleStatus') {
+      const normalized = normalizePmLifecycleStatus(value);
+      setFormData((prev) => ({
+        ...prev,
+        pmLifecycleStatus: normalized,
+        status: normalized,
+      }));
+      return;
+    }
+    if (id === 'version') {
+      setFormData((prev) => ({ ...prev, version: value }));
+      return;
     }
     setFormData(prev => ({
       ...prev,
@@ -385,23 +672,45 @@ const PackagingRefactored: React.FC = () => {
 
   // Variant ops
   const handleAddVariant = () => {
-    if (!tempVariant.volume || Number(tempVariant.volume) <= 0) {
-      setErrors(prev => ({ ...prev, varVolume: 'Step 4 — Fill volume is required' }));
-      addToast('error', 'Step 4 — Fill volume is required');
+    const nameTrim = tempVariant.name.trim();
+    if (!nameTrim) {
+      setErrors((prev) => ({ ...prev, varName: 'Variants Matrix — Variant name is required' }));
+      addToast('error', 'Variants Matrix — Variant name is required');
       return;
     }
-    setFormData(prev => ({
+    const moqNum = tempVariant.moq.trim() ? Number(tempVariant.moq) : 0;
+    const leadNum = tempVariant.leadTimeDays.trim() ? Number(tempVariant.leadTimeDays) : 0;
+    if (tempVariant.moq.trim() && (Number.isNaN(moqNum) || moqNum < 0)) {
+      addToast('error', 'Variants Matrix — Variant MOQ must be a valid number');
+      return;
+    }
+    if (tempVariant.leadTimeDays.trim() && (Number.isNaN(leadNum) || leadNum < 0)) {
+      addToast('error', 'Variants Matrix — Lead time must be a valid number of days');
+      return;
+    }
+    const statusVal = PM_VARIANT_STATUS_OPTIONS.some((o) => o.value === tempVariant.status)
+      ? tempVariant.status
+      : 'Active';
+    setFormData((prev) => ({
       ...prev,
-      variants: [...prev.variants, {
-        id: tempVariant.id || `V${prev.variants.length + 1}`,
-        volume: Number(tempVariant.volume),
-        sameMold: tempVariant.sameMold,
-        moq: Number(tempVariant.moq),
-        status: tempVariant.status,
-      }],
+      variants: [
+        ...prev.variants,
+        {
+          id: tempVariant.id.trim() || `V${prev.variants.length + 1}`,
+          name: nameTrim,
+          moq: moqNum,
+          status: statusVal,
+          leadTimeDays: leadNum,
+          notes: tempVariant.notes.trim(),
+        },
+      ],
     }));
-    setTempVariant({ id: '', volume: '', sameMold: '', moq: '', status: 'Active' });
-    setErrors(prev => ({ ...prev, varVolume: '' }));
+    setTempVariant({ id: '', name: '', moq: '', status: 'Active', leadTimeDays: '', notes: '' });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.varName;
+      return next;
+    });
   };
   const handleRemoveVariant = (idx: number) => setFormData(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== idx) }));
 
@@ -511,16 +820,12 @@ const PackagingRefactored: React.FC = () => {
     return created;
   };
 
-  // Test ops
-  const handleAddTest = () => {
-    if (!tempTest.name || !tempTest.result) { addToast('error', 'Select test + result'); return; }
-    setFormData(prev => ({
-      ...prev,
-      tests: [...prev.tests, { name: tempTest.name, result: tempTest.result, date: tempTest.date, by: tempTest.by, remarks: tempTest.remarks }],
-    }));
-    setTempTest({ name: '', result: '', date: '', by: '', remarks: '' });
+  const handlePmFileNameCapture = (
+    fieldId: 'qaSpecFile' | 'qaSampleImageMock' | 'catCataloguePhoto',
+    file: File | null
+  ): void => {
+    setFormData((prev) => ({ ...prev, [fieldId]: file?.name ?? '' }));
   };
-  const handleRemoveTest = (idx: number) => setFormData(prev => ({ ...prev, tests: prev.tests.filter((_, i) => i !== idx) }));
 
   const handleReset = () => {
     if (window.confirm('Reset all form data? This cannot be undone.')) {
@@ -545,11 +850,11 @@ const PackagingRefactored: React.FC = () => {
       type: formData.itemCategory || undefined,
       level: formData.level || undefined,
       group: skuCat || undefined,
-      material:
-        formData.optionalPmSubCategory?.trim() ||
-        formData.matBody?.trim() ||
+      material: formData.matBody?.trim() || undefined,
+      size_spec:
+        formData.specNominal?.trim() ||
+        formData.pmOverallHeightMm?.trim() ||
         undefined,
-      size_spec: formData.specNominal || undefined,
       price_per_pc: firstVendor?.price != null ? Number(firstVendor.price) : undefined,
       moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
       lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
@@ -570,6 +875,7 @@ const PackagingRefactored: React.FC = () => {
           subCategory: _sub,
           pmSkuCategory: _pmSku,
           optionalPmSubCategory: _optSub,
+          optionalPmSubSubCategory: _optSubSub,
           ...formRest
         } = formData as Record<string, unknown>;
         return {
@@ -580,6 +886,7 @@ const PackagingRefactored: React.FC = () => {
                 subCategory: skuCat,
                 pmSkuCategory: skuCat,
                 optionalPmSubCategory: formData.optionalPmSubCategory?.trim() || undefined,
+                optionalPmSubSubCategory: formData.optionalPmSubSubCategory?.trim() || undefined,
               }
             : {}),
         };
@@ -615,6 +922,18 @@ const PackagingRefactored: React.FC = () => {
       if (field.id === 'optionalPmSubCategory') {
         continue;
       }
+      if (field.id === 'qaCoaRequired') {
+        const coa = String(formData.qaCoaRequired ?? '').trim();
+        if (!PM_COA_REQUIRED_OPTIONS.some((o) => o === coa)) {
+          const stepNo = field.section + 1;
+          setErrors((prev) => ({ ...prev, qaCoaRequired: `Step ${stepNo} — ${field.label} is required` }));
+          addToast('error', field.toastMessage);
+          setCurrentSection(field.section);
+          focusPmField('qaCoaRequired');
+          return null;
+        }
+        continue;
+      }
       if (field.id === 'tradeCommercialName') {
         const trade = String(formData.tradeCommercialName ?? formData.name ?? '').trim();
         if (!trade) {
@@ -648,10 +967,10 @@ const PackagingRefactored: React.FC = () => {
     if (!String(formData.pkgReturnable ?? '').trim()) {
       setErrors((prev) => ({
         ...prev,
-        pkgReturnable: 'Step 1 — Returnable Item is required (pick Yes or No)',
+        pkgReturnable: 'Step 2 — Returnable Item is required (pick Yes or No)',
       }));
-      addToast('error', 'Step 1 — Returnable Item is required (pick Yes or No)');
-      setCurrentSection(0);
+      addToast('error', 'Step 2 — Returnable Item is required (pick Yes or No)');
+      setCurrentSection(1);
       focusPmField('pkgReturnable');
       return null;
     }
@@ -662,9 +981,9 @@ const PackagingRefactored: React.FC = () => {
       addToast(
         'error',
         (firstTaxKey && taxValidation.errors[firstTaxKey]) ||
-          'Select a Tax Preference and (for Taxable) fill a valid HSN code and GST % (Step 1).'
+          'Select a Tax Preference and (for Taxable) fill a valid HSN code and GST % (Step 2 — Units & Taxes).'
       );
-      setCurrentSection(0);
+      setCurrentSection(1);
       if (firstTaxKey) focusPmField(firstTaxKey);
       return null;
     }
@@ -744,8 +1063,10 @@ const PackagingRefactored: React.FC = () => {
           <div className="min-w-0 space-y-5 sm:space-y-6">
             {/* PM Category — Industry Buckets */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Category &amp; sub-category</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+                Category, sub-category &amp; sub-sub category
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SelectField
                   label="Category"
                   id="pmSkuCategory"
@@ -764,7 +1085,7 @@ const PackagingRefactored: React.FC = () => {
                 ) : null}
                 {pmDetailSubCategoryRequired ? (
                   <SelectField
-                    label="Sub-category (optional)"
+                    label="Sub-category"
                     id="optionalPmSubCategory"
                     value={formData.optionalPmSubCategory}
                     onChange={handleInputChange}
@@ -775,7 +1096,7 @@ const PackagingRefactored: React.FC = () => {
                   />
                 ) : (
                   <InputField
-                    label="Sub-category (optional)"
+                    label="Sub-category"
                     id="optionalPmSubCategory"
                     value={formData.optionalPmSubCategory}
                     onChange={handleInputChange}
@@ -784,12 +1105,38 @@ const PackagingRefactored: React.FC = () => {
                     readOnly={!formData.pmSkuCategory?.trim()}
                   />
                 )}
+                {pmSubSubCategoryRequired ? (
+                  <SelectField
+                    label="Sub-sub category"
+                    id="optionalPmSubSubCategory"
+                    value={formData.optionalPmSubSubCategory}
+                    onChange={handleInputChange}
+                    options={pmSubSubCategoryOptions}
+                    error={errors.optionalPmSubSubCategory}
+                    disabled={!formData.optionalPmSubCategory?.trim()}
+                    emptyLabel="Select sub-sub category…"
+                  />
+                ) : (
+                  <InputField
+                    label="Sub-sub category"
+                    id="optionalPmSubSubCategory"
+                    value={formData.optionalPmSubSubCategory}
+                    onChange={handleInputChange}
+                    placeholder={
+                      formData.optionalPmSubCategory?.trim()
+                        ? 'No sub-sub options for this sub-category'
+                        : 'Select sub-category first'
+                    }
+                    error={errors.optionalPmSubSubCategory}
+                    readOnly
+                  />
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Category sets the SKU series: PPM <span className="font-mono">4</span>, SPM Labels{' '}
-                <span className="font-mono">5L</span>, Monocartons <span className="font-mono">5M</span>, Other Secondary{' '}
-                <span className="font-mono">5O</span>, TPM Tertiary <span className="font-mono">6T</span>, Ancillary{' '}
-                <span className="font-mono">6A</span>. Level is set automatically from category.
+                Category sets the SKU series: PPM <span className="font-mono">4XXXXX</span>, SPM Labels{' '}
+                <span className="font-mono">5LXXXXX</span>, Monocartons <span className="font-mono">5MXXXXX</span>, Other Secondary{' '}
+                <span className="font-mono">5OXXXXX</span>, TPM Tertiary <span className="font-mono">6TXXXXX</span>, Ancillary{' '}
+                <span className="font-mono">6AXXXX</span>. Level is set automatically from category.
               </p>
             </div>
 
@@ -806,14 +1153,7 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
-                  label="INCI Name"
-                  id="inciName"
-                  value={formData.inciName}
-                  onChange={handleInputChange}
-                  placeholder="Official INCI / standard name (if applicable)"
-                />
-                <InputField
-                  label="Trade/Commercial Name"
+                  label="PM Name / description"
                   id="tradeCommercialName"
                   value={formData.tradeCommercialName}
                   onChange={(e) => {
@@ -827,19 +1167,27 @@ const PackagingRefactored: React.FC = () => {
                       return next;
                     });
                   }}
-                  placeholder="Packaging item name as used internally"
+                  placeholder="Packaging item name and short description"
                   requiredMark
                   error={errors.tradeCommercialName ?? errors.name}
                   readOnly={false}
                 />
-                <SelectField
-                  label="Primary UoM"
-                  id="pkgUnit"
-                  value={formData.pkgUnit}
+                <InputField
+                  label="Intended use"
+                  id="intendedUse"
+                  value={formData.intendedUse}
                   onChange={handleInputChange}
-                  options={['PCS', 'GM', 'ML', 'L', 'KG']}
+                  placeholder="e.g. Face serum bottle, outer shipper"
                   requiredMark
-                  error={errors.pkgUnit}
+                  error={errors.intendedUse}
+                />
+                <SelectField
+                  label="Reusability"
+                  id="reusability"
+                  value={formData.reusability}
+                  onChange={handleInputChange}
+                  options={[...PM_REUSABILITY_OPTIONS]}
+                  emptyLabel="Select reusability…"
                 />
                 <div>
                   <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
@@ -870,8 +1218,43 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
+            <PmConditionalFieldBlocks
+              section="primary"
+              visibility={pmConditionalVisibility}
+              formData={formData}
+              errors={errors}
+              onChange={handleInputChange}
+            />
+          </div>
+        );
+
+      case 1: // Units & Taxes
+        return (
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Units</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+                <SelectField
+                  label="Primary UoM"
+                  id="pkgUnit"
+                  value={formData.pkgUnit}
+                  onChange={handleInputChange}
+                  options={['PCS', 'GM', 'ML', 'L', 'KG']}
+                  requiredMark
+                  error={errors.pkgUnit}
+                />
+                <InputField
+                  label="Units per shipper / roll"
+                  id="pkgUnitsPerShipperRoll"
+                  value={formData.pkgUnitsPerShipperRoll}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 24, 48"
+                />
+              </div>
+            </div>
+
             <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax Classification</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax classification</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SelectField
                   label="Returnable Item"
@@ -919,43 +1302,12 @@ const PackagingRefactored: React.FC = () => {
                 Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
               </p>
             </div>
-
           </div>
         );
 
-      case 1: // Material & Specs
+      case 2: // Material & Specs
         return (
           <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — classification</h3>
-              <p className="text-xs text-gray-500 mb-3">Not required to create the PM; complete when available.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Expected Product Types"
-                  id="expectedProductTypes"
-                  value={formData.expectedProductTypes}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Creams, Serums, Shampoos"
-                />
-              </div>
-              <div className="mt-3 space-y-3">
-                <TextareaField
-                  label="Regulatory Notes"
-                  id="regulatory"
-                  value={formData.regulatory}
-                  onChange={handleInputChange}
-                  placeholder="Any packaging-specific regulations or country notes"
-                />
-                <TextareaField
-                  label="Identity Notes"
-                  id="identityNotes"
-                  value={formData.identityNotes}
-                  onChange={handleInputChange}
-                  placeholder="Any extra description to identify this item uniquely"
-                />
-              </div>
-            </div>
-
             <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
               <p className="text-xs text-gray-500 mb-3">
@@ -986,215 +1338,229 @@ const PackagingRefactored: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — QC, storage & unit</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">QC, storage & material</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">QC Inspection Group</label>
-                  <select
-                    id="qcGroup"
-                    value={formData.qcGroup}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {QC_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Storage Location Type</label>
-                  <select
-                    id="storeLoc"
-                    value={formData.storeLoc}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Select</option>
-                    {STORAGE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Material</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Body Material"
+                <SelectField
+                  label="QC testing Group"
+                  id="qcGroup"
+                  value={formData.qcGroup}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_QC_TESTING_GROUP_OPTIONS,
+                    ...(formData.qcGroup &&
+                    !PM_QC_TESTING_GROUP_OPTIONS.some((o) => o === formData.qcGroup)
+                      ? [{ value: formData.qcGroup, label: `${formData.qcGroup} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select QC testing group…"
+                />
+                <SelectField
+                  label="Storage condition"
+                  id="storeLoc"
+                  value={formData.storeLoc}
+                  onChange={handleInputChange}
+                  options={STORAGE_TYPES}
+                  requiredMark
+                  error={errors.storeLoc}
+                  emptyLabel="Select storage condition…"
+                />
+                <SelectField
+                  label="Material"
                   id="matBody"
                   value={formData.matBody}
                   onChange={handleInputChange}
-                  placeholder="e.g. PET, Glass, HDPE"
+                  options={[
+                    ...PM_MATERIAL_OPTIONS,
+                    ...(formData.matBody &&
+                    !PM_MATERIAL_OPTIONS.some((o) => o === formData.matBody)
+                      ? [{ value: formData.matBody, label: `${formData.matBody} (legacy)` }]
+                      : []),
+                  ]}
+                  requiredMark
                   error={errors.matBody}
-                />
-                <InputField
-                  label="Closure Material"
-                  id="matClosure"
-                  value={formData.matClosure}
-                  onChange={handleInputChange}
-                  placeholder="e.g. PP cap, Pump, Dropper"
-                  error={errors.matClosure}
-                />
-                <InputField
-                  label="Inner Material"
-                  id="matInner"
-                  value={formData.matInner}
-                  onChange={handleInputChange}
-                  placeholder="e.g. LDPE liner, Pouch film"
-                />
-                <InputField
-                  label="Grade"
-                  id="matGrade"
-                  value={formData.matGrade}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Pharma grade, Food grade"
-                />
-              </div>
-              <div className="flex gap-6 mt-3">
-                <CheckboxField label="Recyclable" id="matRecycle" checked={formData.matRecycle} onChange={handleInputChange} />
-                <CheckboxField label="BPA Free" id="matBpa" checked={formData.matBpa} onChange={handleInputChange} />
-              </div>
-            </div>
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Specifications</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Nominal Volume"
-                  id="specNominal"
-                  value={formData.specNominal}
-                  onChange={handleInputChange}
-                  placeholder="Declared fill volume (e.g. 50 ml)"
-                  error={errors.specNominal}
-                />
-                <InputField
-                  label="Brimful Volume"
-                  id="specBrimful"
-                  value={formData.specBrimful}
-                  onChange={handleInputChange}
-                  placeholder="Total capacity at brim"
-                />
-                <InputField
-                  label="Height (mm)"
-                  id="specHeight"
-                  value={formData.specHeight}
-                  onChange={handleInputChange}
-                  placeholder="Total height of pack"
-                />
-                <InputField
-                  label="Diameter (mm)"
-                  id="specDia"
-                  value={formData.specDia}
-                  onChange={handleInputChange}
-                  placeholder="Body diameter"
-                />
-                <InputField
-                  label="Neck (mm)"
-                  id="specNeck"
-                  value={formData.specNeck}
-                  onChange={handleInputChange}
-                  placeholder="Neck / thread spec"
-                />
-                <InputField
-                  label="Weight (g)"
-                  id="specWeight"
-                  value={formData.specWeight}
-                  onChange={handleInputChange}
-                  placeholder="Empty component weight"
-                />
-                <InputField
-                  label="Wall Thickness (mm)"
-                  id="specWall"
-                  value={formData.specWall}
-                  onChange={handleInputChange}
-                  placeholder="Critical wall thickness if applicable"
-                />
-                <InputField
-                  label="Tech Link / Reference"
-                  id="specLink"
-                  value={formData.specLink}
-                  onChange={handleInputChange}
-                  placeholder="Link to drawing / spec sheet"
+                  emptyLabel="Select material…"
                 />
               </div>
             </div>
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Bulk quality specifications</h3>
-              <p className="text-[11px] text-gray-500 mb-3">Same fields as raw materials; used as reference during BMR Bulk QC for this PM.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField label="Assay / Purity %" id="assayPurity" value={formData.assayPurity} onChange={handleInputChange} placeholder="e.g. NLT 98%" />
-                <InputField label="Appearance spec" id="appearanceSpec" value={formData.appearanceSpec} onChange={handleInputChange} placeholder="e.g. Clear, no defects" />
-                <InputField label="pH range" id="phSpec" value={formData.phSpec} onChange={handleInputChange} placeholder="e.g. 5.0 – 7.0" />
-                <InputField label="Moisture / LOD %" id="moistureLod" value={formData.moistureLod} onChange={handleInputChange} placeholder="e.g. NMT 2%" />
-                <InputField label="Heavy metals" id="heavyMetalsSpec" value={formData.heavyMetalsSpec} onChange={handleInputChange} placeholder="e.g. Pb, As, Cd limits" />
-                <InputField label="Microbial" id="microbialSpec" value={formData.microbialSpec} onChange={handleInputChange} placeholder="e.g. TAMC / TYMC limits" />
-                <InputField label="Odor & color" id="odorColorSpec" value={formData.odorColorSpec} onChange={handleInputChange} placeholder="e.g. Characteristic odour" />
-                <InputField label="Other specifications" id="otherSpecs" value={formData.otherSpecs} onChange={handleInputChange} placeholder="Any additional criteria" />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 2: // Aesthetics
-        return (
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Optional — usage details</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Intended Use"
-                  id="intendedUse"
-                  value={formData.intendedUse}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Face serum bottle, Outer mono-carton"
-                />
-                <InputField
-                  label="Reusability"
-                  id="reusability"
-                  value={formData.reusability}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Single use, Refillable, Re-closable"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField
-                label="Color Type"
-                id="colorType"
-                value={formData.colorType}
-                onChange={handleInputChange}
-                placeholder="e.g. Solid, Transparent, Frosted"
-              />
-              <InputField
-                label="Color Code"
-                id="colorCode"
-                value={formData.colorCode}
-                onChange={handleInputChange}
-                placeholder="e.g. Pantone, HEX, or vendor shade code"
-              />
-              <InputField
-                label="Finish"
-                id="finish"
-                value={formData.finish}
-                onChange={handleInputChange}
-                placeholder="e.g. Glossy, Matte, Soft-touch"
-              />
-              <InputField
-                label="Decoration"
-                id="deco"
-                value={formData.deco}
-                onChange={handleInputChange}
-                placeholder="e.g. Screen print, Hot foil, Label, Embossing"
-              />
-            </div>
-            <TextareaField
-              label="Images / References"
-              id="images"
-              value={formData.images}
+            <PmConditionalFieldBlocks
+              section="technical"
+              visibility={pmConditionalVisibility}
+              formData={formData}
+              errors={errors}
               onChange={handleInputChange}
-              placeholder="Links or notes for reference artwork, mood boards, or sample packs"
             />
           </div>
         );
 
-      case 3: // Variants Matrix
+      case 3: // Aesthetics
+        return (
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Color &amp; body</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Body / component color"
+                  id="colorType"
+                  value={formData.colorType}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Natural, White, Amber"
+                />
+                <SelectField
+                  label="Transparency level"
+                  id="transparencyLevel"
+                  value={formData.transparencyLevel}
+                  onChange={handleInputChange}
+                  options={[...PM_TRANSPARENCY_LEVEL_OPTIONS]}
+                  emptyLabel="Select transparency…"
+                />
+                <InputField
+                  label="Colour code (Pantone)"
+                  id="colorCode"
+                  value={formData.colorCode}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Pantone 877 C, HEX #FFFFFF"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Decoration &amp; print</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <SelectField
+                  label="Decoration"
+                  id="deco"
+                  value={formData.deco}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_DECORATION_OPTIONS,
+                    ...(formData.deco && !PM_DECORATION_OPTIONS.some((o) => o === formData.deco)
+                      ? [{ value: formData.deco, label: `${formData.deco} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select decoration…"
+                />
+                <SelectField
+                  label="Decoration method"
+                  id="decorationMethod"
+                  value={formData.decorationMethod}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_DECORATION_METHOD_OPTIONS,
+                    ...(formData.decorationMethod &&
+                    !PM_DECORATION_METHOD_OPTIONS.some((o) => o === formData.decorationMethod)
+                      ? [{ value: formData.decorationMethod, label: `${formData.decorationMethod} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select decoration method…"
+                />
+                <InputField
+                  label="Print coverage"
+                  id="printCoverage"
+                  value={formData.printCoverage}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 40% panel, full wrap"
+                />
+                <InputField
+                  label="Number of colours"
+                  id="numberOfColours"
+                  value={formData.numberOfColours}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 4"
+                />
+                <InputField
+                  label="Print colours"
+                  id="printColours"
+                  value={formData.printColours}
+                  onChange={handleInputChange}
+                  placeholder="e.g. CMYK + white, Pantone 185 C"
+                />
+                <InputField
+                  label="Foil colour"
+                  id="foilColour"
+                  value={formData.foilColour}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Gold, Silver, Holographic"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Surface &amp; finish</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <SelectField
+                  label="Surface finish"
+                  id="finish"
+                  value={formData.finish}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_SURFACE_FINISH_OPTIONS,
+                    ...(formData.finish && !PM_SURFACE_FINISH_OPTIONS.some((o) => o === formData.finish)
+                      ? [{ value: formData.finish, label: `${formData.finish} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select surface finish…"
+                />
+                <SelectField
+                  label="Surface texture"
+                  id="surfaceTexture"
+                  value={formData.surfaceTexture}
+                  onChange={handleInputChange}
+                  options={[...PM_SURFACE_TEXTURE_OPTIONS]}
+                  emptyLabel="Select surface texture…"
+                />
+                <InputField
+                  label="Surface effects"
+                  id="surfaceEffects"
+                  value={formData.surfaceEffects}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Pearlescent, Gradient, Spot UV"
+                />
+                <InputField
+                  label="UV finishing"
+                  id="uvFinishing"
+                  value={formData.uvFinishing}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Spot UV, Full UV coat"
+                />
+                <InputField
+                  label="Embossing / debossing"
+                  id="embossingDebossing"
+                  value={formData.embossingDebossing}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Logo emboss, panel deboss"
+                />
+                <InputField
+                  label="Premium look &amp; feel"
+                  id="premiumLookFeel"
+                  value={formData.premiumLookFeel}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Luxury matte, Tactile soft-touch"
+                />
+              </div>
+            </div>
+
+            <PmConditionalFieldBlocks
+              section="aesthetics"
+              visibility={pmConditionalVisibility}
+              formData={formData}
+              errors={errors}
+              onChange={handleInputChange}
+            />
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Reference</h3>
+              <TextareaField
+                label="Reference image / mockup"
+                id="images"
+                value={formData.images}
+                onChange={handleInputChange}
+                placeholder="Links or notes for reference artwork, mock-ups, or sample packs"
+              />
+            </div>
+          </div>
+        );
+
+      case 4: // Variants Matrix
         return (
           <ArrayItemManager
             masterType="packaging"
@@ -1208,100 +1574,315 @@ const PackagingRefactored: React.FC = () => {
             itemLabel="Variant"
             columns={[
               { key: 'id', label: 'Variant ID' },
-              { key: 'volume', label: 'Volume (ml)', type: 'number' },
-              { key: 'sameMold', label: 'Same Mold' },
-              { key: 'moq', label: 'MOQ', type: 'number' },
-              { key: 'status', label: 'Status' },
+              { key: 'name', label: 'Variant name', required: true },
+              { key: 'moq', label: 'Variant MOQ', type: 'number' },
+              {
+                key: 'status',
+                label: 'Variant status',
+                type: 'select',
+                options: [...PM_VARIANT_STATUS_OPTIONS],
+              },
+              { key: 'leadTimeDays', label: 'Variant lead time (days)', type: 'number' },
+              { key: 'notes', label: 'Variant notes' },
             ]}
           />
         );
 
-      case 4: // Customization & Tooling
+      case 5: // Customization & Tooling
         return (
-          <div className="space-y-4">
-            <CheckboxField label="Customizable" id="cusCustomizable" checked={formData.cusCustomizable} onChange={handleInputChange} />
-            <TextareaField label="Customization Parameters" id="cusParams" value={formData.cusParams} onChange={handleInputChange} />
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Vendor &amp; MOQ</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Approved vendor (custom)"
+                  id="cusApprovedVendorCustom"
+                  value={formData.cusApprovedVendorCustom}
+                  onChange={handleInputChange}
+                  placeholder="Vendor approved for custom runs"
+                />
+                <InputField
+                  label="Customised MOQ"
+                  id="cusCustomisedMoq"
+                  value={formData.cusCustomisedMoq}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 5000"
+                />
+                <InputField
+                  label="Customisation lead time (days)"
+                  id="cusCustomisationLeadTimeDays"
+                  value={formData.cusCustomisationLeadTimeDays}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 45"
+                />
+                <InputField
+                  label="Custom unit cost"
+                  id="cusCustomUnitCost"
+                  value={formData.cusCustomUnitCost}
+                  onChange={handleInputChange}
+                  placeholder="e.g. INR per piece"
+                />
+                <InputField
+                  label="Sample lead time (days)"
+                  id="cusSampleLeadTimeDays"
+                  value={formData.cusSampleLeadTimeDays}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 14"
+                />
+                <InputField
+                  label="Supply location (custom)"
+                  id="cusSupplyLocationCustom"
+                  value={formData.cusSupplyLocationCustom}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Mumbai, Guangzhou"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Printing &amp; tooling costs</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Printing cylinder cost"
+                  id="cusPrintingCylinderCost"
+                  value={formData.cusPrintingCylinderCost}
+                  onChange={handleInputChange}
+                  placeholder="e.g. INR lump sum"
+                />
+                <InputField
+                  label="Printing plate / die cost"
+                  id="cusPrintingPlateDieCost"
+                  value={formData.cusPrintingPlateDieCost}
+                  onChange={handleInputChange}
+                  placeholder="e.g. INR per design"
+                />
+                <InputField
+                  label="Tooling cost"
+                  id="cusToolingCost"
+                  value={formData.cusToolingCost}
+                  onChange={handleInputChange}
+                  placeholder="e.g. mould / die cost"
+                />
+                <SelectField
+                  label="Tooling ownership"
+                  id="cusToolingOwnership"
+                  value={formData.cusToolingOwnership}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_TOOLING_OWNERSHIP_OPTIONS,
+                    ...(formData.cusToolingOwnership &&
+                    !PM_TOOLING_OWNERSHIP_OPTIONS.some((o) => o === formData.cusToolingOwnership)
+                      ? [{ value: formData.cusToolingOwnership, label: `${formData.cusToolingOwnership} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select tooling ownership…"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Commercial (custom)</h3>
+              <InputField
+                label="Payment terms (custom)"
+                id="cusPaymentTermsCustom"
+                value={formData.cusPaymentTermsCustom}
+                onChange={handleInputChange}
+                placeholder="e.g. 30% advance, balance on dispatch"
+              />
+            </div>
+          </div>
+        );
+
+      case 6: // Compatibility (R&D / QA)
+        return (
+          <div className="min-w-0 space-y-5 sm:space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Standard MOQ" id="cusStdMoq" value={formData.cusStdMoq} onChange={handleInputChange} />
-              <InputField label="Custom MOQ" id="cusCustomMoq" value={formData.cusCustomMoq} onChange={handleInputChange} />
-              <InputField label="Tooling Required" id="cusToolingReq" value={formData.cusToolingReq} onChange={handleInputChange} />
-              <InputField label="Tooling Cost" id="cusToolingCost" value={formData.cusToolingCost} onChange={handleInputChange} />
-              <InputField label="Sampling Lead Time" id="cusSamplingLT" value={formData.cusSamplingLT} onChange={handleInputChange} />
-              <InputField label="Bulk Lead Time (Std)" id="cusBulkLTStd" value={formData.cusBulkLTStd} onChange={handleInputChange} />
-              <InputField label="Bulk Lead Time (Custom)" id="cusBulkLTCustom" value={formData.cusBulkLTCustom} onChange={handleInputChange} />
+              <SelectField
+                label="Application method"
+                id="compApplicationMethod"
+                value={formData.compApplicationMethod}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_APPLICATION_METHOD_OPTIONS,
+                  ...(formData.compApplicationMethod &&
+                  !PM_APPLICATION_METHOD_OPTIONS.some((o) => o === formData.compApplicationMethod)
+                    ? [{ value: formData.compApplicationMethod, label: `${formData.compApplicationMethod} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select application method…"
+              />
+              <SelectField
+                label="Product environment"
+                id="compProductEnvironment"
+                value={formData.compProductEnvironment}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_PRODUCT_ENVIRONMENT_OPTIONS,
+                  ...(formData.compProductEnvironment &&
+                  !PM_PRODUCT_ENVIRONMENT_OPTIONS.some((o) => o === formData.compProductEnvironment)
+                    ? [{ value: formData.compProductEnvironment, label: `${formData.compProductEnvironment} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select product environment…"
+              />
             </div>
-            <TextareaField label="Customization Remarks" id="cusRemarks" value={formData.cusRemarks} onChange={handleInputChange} />
+            <InputField
+              label="Compatibility PM SKUs"
+              id="compCompatibilityPmSkus"
+              value={formData.compCompatibilityPmSkus}
+              onChange={handleInputChange}
+              placeholder="Comma-separated PM codes this item is compatible with"
+            />
+            <p className="text-xs text-gray-500">
+              List related packaging SKUs (e.g. closures, labels) that are validated for use with this PM.
+            </p>
+            <PmConditionalFieldBlocks
+              section="compatibility"
+              visibility={pmConditionalVisibility}
+              formData={formData}
+              errors={errors}
+              onChange={handleInputChange}
+            />
           </div>
         );
 
-      case 5: // Compatibility (R&D / QA)
+      case 7: // Vendors & Commercial
         return (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
-                Viscosity Compatibility
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sourcing</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Pick preferred and alternate suppliers from vendor master suggestions, then add commercial pricing rows below.
               </p>
-              <div className="flex flex-wrap gap-3">
-                <PillCheckboxField label="Low" id="compLow" checked={formData.compLow} onChange={handleInputChange} />
-                <PillCheckboxField label="Medium" id="compMed" checked={formData.compMed} onChange={handleInputChange} />
-                <PillCheckboxField label="High" id="compHigh" checked={formData.compHigh} onChange={handleInputChange} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
-                Chemical Compatibility
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <PillCheckboxField label="Oil Compatible" id="compOil" checked={formData.compOil} onChange={handleInputChange} color="red" />
-                <PillCheckboxField label="Alcohol Compatible" id="compAlc" checked={formData.compAlc} onChange={handleInputChange} color="red" />
-                <PillCheckboxField label="Airless Compatible" id="compAirless" checked={formData.compAirless} onChange={handleInputChange} color="red" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-1">
-                Functional Compatibility
-              </p>
-              <div className="flex flex-col gap-4 w-full">
-                <div className="flex flex-wrap gap-3">
-                  <PillCheckboxField label="Pump Compatible" id="compPump" checked={formData.compPump} onChange={handleInputChange} />
-                  <PillCheckboxField label="Leak Proof" id="compLeak" checked={formData.compLeak} onChange={handleInputChange} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="preferredVendor" className="block text-sm font-medium text-gray-700 mb-1">
+                    Preferred vendor
+                    <span className="text-red-600 ml-0.5" aria-hidden>
+                      *
+                    </span>
+                  </label>
+                  <VendorClientNameTypeahead
+                    inputId="preferredVendor"
+                    parties={vendorClientList}
+                    partyKind="vendor"
+                    loading={vendorClientsLoading}
+                    selectedId={preferredVendorSelectedId}
+                    placeholder="Search vendor by name, code, city…"
+                    allowFreeText
+                    freeTextValue={formData.preferredVendor}
+                    onFreeTextChange={(name) => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        preferredVendor: name,
+                        preferredVendorClientId:
+                          name.trim() === prev.preferredVendor.trim() ? prev.preferredVendorClientId : '',
+                      }));
+                      if (errors.preferredVendor) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.preferredVendor;
+                          return next;
+                        });
+                      }
+                    }}
+                    onSelect={(party) => {
+                      if (!party) {
+                        setFormData((prev) => ({
+                          ...prev,
+                          preferredVendor: '',
+                          preferredVendorClientId: '',
+                        }));
+                        return;
+                      }
+                      const loc = [party.city, party.country].filter(Boolean).join(', ').trim();
+                      setFormData((prev) => ({
+                        ...prev,
+                        preferredVendor: party.name?.trim() ?? '',
+                        preferredVendorClientId: party.id,
+                        pmSupplyLocation: prev.pmSupplyLocation?.trim() || loc || prev.pmSupplyLocation,
+                      }));
+                      if (errors.preferredVendor) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.preferredVendor;
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                  {errors.preferredVendor ? (
+                    <p className="mt-1 text-xs text-red-600" role="alert">
+                      {errors.preferredVendor}
+                    </p>
+                  ) : null}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InputField label="Actives Compatible" id="compActives" value={formData.compActives} onChange={handleInputChange} />
-                  <InputField label="Risk Level" id="compRisk" value={formData.compRisk} onChange={handleInputChange} />
+                <div>
+                  <label htmlFor="alternateVendor" className="block text-sm font-medium text-gray-700 mb-1">
+                    Alternate vendor
+                  </label>
+                  <VendorClientNameTypeahead
+                    inputId="alternateVendor"
+                    parties={vendorClientList}
+                    partyKind="vendor"
+                    loading={vendorClientsLoading}
+                    selectedId={alternateVendorSelectedId}
+                    disabledIds={alternateVendorDisabledIds}
+                    placeholder="Search alternate vendor…"
+                    allowFreeText
+                    freeTextValue={formData.alternateVendor}
+                    onFreeTextChange={(name) => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        alternateVendor: name,
+                        alternateVendorClientId:
+                          name.trim() === prev.alternateVendor.trim() ? prev.alternateVendorClientId : '',
+                      }));
+                    }}
+                    onSelect={(party) => {
+                      if (!party) {
+                        setFormData((prev) => ({
+                          ...prev,
+                          alternateVendor: '',
+                          alternateVendorClientId: '',
+                        }));
+                        return;
+                      }
+                      setFormData((prev) => ({
+                        ...prev,
+                        alternateVendor: party.name?.trim() ?? '',
+                        alternateVendorClientId: party.id,
+                      }));
+                    }}
+                  />
                 </div>
+                <InputField
+                  label="Supply location"
+                  id="pmSupplyLocation"
+                  value={formData.pmSupplyLocation}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Mumbai, Guangzhou"
+                />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px,1fr] md:gap-6 md:items-start">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 pt-2">
-                Compatibility Remarks
-              </p>
-              <TextareaField label="" id="compRemarks" value={formData.compRemarks} onChange={handleInputChange} />
-            </div>
+            <VendorCommercialEditor
+              variant="pm"
+              vendors={formData.vendors}
+              tempFields={tempVendor}
+              tempTiers={tempVendorTiers}
+              vendorClientList={vendorClientList}
+              onTempFieldChange={handlePmVendorTempFieldChange}
+              onTempTierChange={handleTempVendorTierChange}
+              onAddTempTierRow={handleAddTempVendorTierRow}
+              onAddVendor={handleAddVendor}
+              onRemoveVendor={handleRemoveVendor}
+              errors={errors}
+            />
           </div>
         );
 
-      case 6: // Vendors & Commercial
-        return (
-          <VendorCommercialEditor
-            variant="pm"
-            vendors={formData.vendors}
-            tempFields={tempVendor}
-            tempTiers={tempVendorTiers}
-            vendorClientList={vendorClientList}
-            onTempFieldChange={handlePmVendorTempFieldChange}
-            onTempTierChange={handleTempVendorTierChange}
-            onAddTempTierRow={handleAddTempVendorTierRow}
-            onAddVendor={handleAddVendor}
-            onRemoveVendor={handleRemoveVendor}
-            errors={errors}
-          />
-        );
-
-      case 7: // Secondary Packaging
+      case 8: // Secondary Packaging
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1318,7 +1899,7 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 8: // Tertiary Packaging
+      case 9: // Tertiary Packaging
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1331,10 +1912,187 @@ const PackagingRefactored: React.FC = () => {
           </div>
         );
 
-      case 9: // Testing & Approval
+      case 10: // QA Testing & Documents
         return (
-          <>
-            <div className="mb-6">
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">References</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="AR number"
+                  id="qaArNumber"
+                  value={formData.qaArNumber}
+                  onChange={handleInputChange}
+                  placeholder="e.g. AR-2026-PM-0042"
+                  requiredMark
+                  error={errors.qaArNumber}
+                />
+                <InputField
+                  label="QC test plan reference"
+                  id="qaQcTestPlanRef"
+                  value={formData.qaQcTestPlanRef}
+                  onChange={handleInputChange}
+                  placeholder="Plan ID or document link"
+                />
+                <SelectField
+                  label="COA required"
+                  id="qaCoaRequired"
+                  value={formData.qaCoaRequired}
+                  onChange={handleInputChange}
+                  options={[...PM_COA_REQUIRED_OPTIONS]}
+                  requiredMark
+                  error={errors.qaCoaRequired}
+                  emptyLabel="Select…"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Checks</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Dimensional checks (tolerance)"
+                  id="qaDimensionalChecks"
+                  value={formData.qaDimensionalChecks}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Height ±0.5 mm, neck finish 24/410"
+                />
+                <InputField
+                  label="Functional checks (drop / leak / torque / dose)"
+                  id="qaFunctionalChecks"
+                  value={formData.qaFunctionalChecks}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Drop 1.2 m, torque 15–20 N·cm"
+                />
+                <InputField
+                  label="Print / decoration checks (ΔE / barcode)"
+                  id="qaPrintDecorationChecks"
+                  value={formData.qaPrintDecorationChecks}
+                  onChange={handleInputChange}
+                  placeholder="e.g. ΔE under 2, barcode grade A"
+                />
+                <SelectField
+                  label="Drop / leak test"
+                  id="qaDropLeakTest"
+                  value={formData.qaDropLeakTest}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_DROP_LEAK_TEST_OPTIONS,
+                    ...(formData.qaDropLeakTest &&
+                    !PM_DROP_LEAK_TEST_OPTIONS.some((o) => o === formData.qaDropLeakTest)
+                      ? [{ value: formData.qaDropLeakTest, label: `${formData.qaDropLeakTest} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select result…"
+                />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Documents</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="COA document reference"
+                  id="qaCoaDocumentRef"
+                  value={formData.qaCoaDocumentRef}
+                  onChange={handleInputChange}
+                  placeholder="Link or document ID"
+                />
+                <InputField
+                  label="Inspection report reference"
+                  id="qaInspectionReportRef"
+                  value={formData.qaInspectionReportRef}
+                  onChange={handleInputChange}
+                  placeholder="Link or report number"
+                />
+                <PmFileNameCaptureField
+                  label="Specification file"
+                  id="qaSpecFile"
+                  value={formData.qaSpecFile}
+                  accept=".pdf,.doc,.docx,.xlsx,.xlsm,image/*"
+                  onFileSelect={(file) => handlePmFileNameCapture('qaSpecFile', file)}
+                />
+                <PmFileNameCaptureField
+                  label="Sample image / 3D mock"
+                  id="qaSampleImageMock"
+                  value={formData.qaSampleImageMock}
+                  accept="image/*,.pdf,.glb,.gltf"
+                  onFileSelect={(file) => handlePmFileNameCapture('qaSampleImageMock', file)}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                File fields store the selected file name in this draft; attach permanent links in the reference fields above when
+                documents are hosted elsewhere.
+              </p>
+            </div>
+          </div>
+        );
+
+      case 11: // Catalogue / Website
+        return (
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Catalogue</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <SelectField
+                  label="Listed in catalogue"
+                  id="catListedInCatalogue"
+                  value={formData.catListedInCatalogue}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_LISTED_IN_CATALOGUE_OPTIONS,
+                    ...(formData.catListedInCatalogue &&
+                    !PM_LISTED_IN_CATALOGUE_OPTIONS.some((o) => o === formData.catListedInCatalogue)
+                      ? [{ value: formData.catListedInCatalogue, label: `${formData.catListedInCatalogue} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select…"
+                />
+                <SelectField
+                  label="Catalogue visibility"
+                  id="catCatalogueVisibility"
+                  value={formData.catCatalogueVisibility}
+                  onChange={handleInputChange}
+                  options={[
+                    ...PM_CATALOGUE_VISIBILITY_OPTIONS,
+                    ...(formData.catCatalogueVisibility &&
+                    !PM_CATALOGUE_VISIBILITY_OPTIONS.some((o) => o === formData.catCatalogueVisibility)
+                      ? [{ value: formData.catCatalogueVisibility, label: `${formData.catCatalogueVisibility} (legacy)` }]
+                      : []),
+                  ]}
+                  emptyLabel="Select visibility…"
+                />
+                <div className="sm:col-span-2">
+                  <InputField
+                    label="Catalogue photo"
+                    id="catCataloguePhoto"
+                    value={formData.catCataloguePhoto}
+                    onChange={handleInputChange}
+                    placeholder="Image URL, asset ID, or file name"
+                  />
+                  <div className="mt-2">
+                    <PmFileNameCaptureField
+                      label="Or pick image file"
+                      id="catCataloguePhotoPick"
+                      value={formData.catCataloguePhoto}
+                      accept="image/*"
+                      onFileSelect={(file) => handlePmFileNameCapture('catCataloguePhoto', file)}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4">
+                <TextareaField
+                  label="Catalogue custom notes"
+                  id="catCatalogueCustomNotes"
+                  value={formData.catCatalogueCustomNotes}
+                  onChange={handleInputChange}
+                  placeholder="Client-facing notes, listing restrictions, or merchandising guidance"
+                />
+              </div>
+            </div>
+
+            <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Approvals</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <CheckboxField label="Approved by Packaging" id="apprPack" checked={formData.apprPack} onChange={handleInputChange} />
@@ -1343,40 +2101,113 @@ const PackagingRefactored: React.FC = () => {
                 <CheckboxField label="Lock for Modification" id="apprLock" checked={formData.apprLock} onChange={handleInputChange} />
               </div>
             </div>
-            <ArrayItemManager
-              masterType="packaging"
-              itemType="test"
-              items={formData.tests}
-              tempFields={tempTest}
-              onTempFieldChange={(field, value) => setTempTest(prev => ({ ...prev, [field]: value }))}
-              onAdd={handleAddTest}
-              onRemove={handleRemoveTest}
-              errors={errors}
-              itemLabel="Test"
-              columns={[
-                { key: 'name', label: 'Test Name', required: true },
-                { key: 'result', label: 'Result', required: true },
-                { key: 'date', label: 'Test Date', type: 'date' },
-                { key: 'by', label: 'Tested By' },
-                { key: 'remarks', label: 'Remarks' },
-              ]}
-            />
-          </>
+          </div>
         );
 
-      case 10: // Catalogue / Website
+      case 12: // Regulatory
         return (
-          <div className="space-y-4">
-            <div className="flex gap-6">
-              <CheckboxField label="Visible on Catalogue" id="catVisible" checked={formData.catVisible} onChange={handleInputChange} />
-              <CheckboxField label="Share with Clients" id="catShare" checked={formData.catShare} onChange={handleInputChange} />
-            </div>
+          <div className="min-w-0 space-y-5 sm:space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Web Display Name" id="catWebName" value={formData.catWebName} onChange={handleInputChange} />
-              <InputField label="Tags (comma-separated)" id="catTags" value={formData.catTags} onChange={handleInputChange} />
-              <InputField label="Recommended Product Types" id="catRecoTypes" value={formData.catRecoTypes} onChange={handleInputChange} />
+              <SelectField
+                label="Migration test status"
+                id="regMigrationTestStatus"
+                value={formData.regMigrationTestStatus}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_MIGRATION_TEST_STATUS_OPTIONS,
+                  ...(formData.regMigrationTestStatus &&
+                  !PM_MIGRATION_TEST_STATUS_OPTIONS.some((o) => o === formData.regMigrationTestStatus)
+                    ? [{ value: formData.regMigrationTestStatus, label: `${formData.regMigrationTestStatus} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select migration test status…"
+              />
+              <SelectField
+                label="BPA free / phthalate free"
+                id="regBpaPhthalateFree"
+                value={formData.regBpaPhthalateFree}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_BPA_PHTHALATE_OPTIONS,
+                  ...(formData.regBpaPhthalateFree &&
+                  !PM_BPA_PHTHALATE_OPTIONS.some((o) => o === formData.regBpaPhthalateFree)
+                    ? [{ value: formData.regBpaPhthalateFree, label: `${formData.regBpaPhthalateFree} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select declaration…"
+              />
+              <InputField
+                label="Recyclability code"
+                id="regRecyclabilityCode"
+                value={formData.regRecyclabilityCode}
+                onChange={handleInputChange}
+                placeholder="e.g. SPI resin ID, MRF code"
+              />
+              <InputField
+                label="EPR registration"
+                id="regEprRegistration"
+                value={formData.regEprRegistration}
+                onChange={handleInputChange}
+                placeholder="EPR / PRO registration number"
+              />
             </div>
-            <TextareaField label="Web Images" id="catWebImages" value={formData.catWebImages} onChange={handleInputChange} />
+            <PmConditionalFieldBlocks
+              section="regulatory"
+              visibility={pmConditionalVisibility}
+              formData={formData}
+              errors={errors}
+              onChange={handleInputChange}
+            />
+          </div>
+        );
+
+      case 13: // Lifecycle & Ownership
+        return (
+          <div className="min-w-0 space-y-5 sm:space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SelectField
+                label="Lifecycle status"
+                id="pmLifecycleStatus"
+                value={formData.pmLifecycleStatus}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_LIFECYCLE_STATUS_OPTIONS,
+                  ...(formData.pmLifecycleStatus &&
+                  !PM_LIFECYCLE_STATUS_OPTIONS.some((o) => o === formData.pmLifecycleStatus)
+                    ? [{ value: formData.pmLifecycleStatus, label: `${formData.pmLifecycleStatus} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select lifecycle status…"
+              />
+              <SelectField
+                label="Client specific / generic"
+                id="pmClientScope"
+                value={formData.pmClientScope}
+                onChange={handleInputChange}
+                options={[
+                  ...PM_CLIENT_SCOPE_OPTIONS,
+                  ...(formData.pmClientScope &&
+                  !PM_CLIENT_SCOPE_OPTIONS.some((o) => o === formData.pmClientScope)
+                    ? [{ value: formData.pmClientScope, label: `${formData.pmClientScope} (legacy)` }]
+                    : []),
+                ]}
+                emptyLabel="Select scope…"
+              />
+              <InputField
+                label="Owner"
+                id="pmOwner"
+                value={formData.pmOwner}
+                onChange={handleInputChange}
+                placeholder="e.g. Packaging team, SKU owner name"
+              />
+              <InputField
+                label="Version"
+                id="version"
+                value={formData.version}
+                onChange={handleInputChange}
+                placeholder="e.g. v1.0"
+              />
+            </div>
           </div>
         );
 
@@ -1417,22 +2248,34 @@ const PackagingRefactored: React.FC = () => {
         normalizePmSkuCategoryForSelect(pm.material || '') ||
         '';
 
-      const fdInci = String((fdObj as { inciName?: string })?.inciName ?? '').trim();
       const fdTrade = String(
         (fdObj as { tradeCommercialName?: string })?.tradeCommercialName ?? ''
       ).trim();
       const tradeName = fdTrade || String(pm.description ?? '').trim();
+      const fdStatus = String((fdObj as { status?: string })?.status ?? '').trim();
       const baseFromRecord = {
         itemCode: pm.code,
-        inciName: fdInci,
         tradeCommercialName: tradeName,
         name: tradeName,
+        status: fdStatus || 'Active',
+        pmLifecycleStatus: normalizePmLifecycleStatus(
+          String(
+            (fdObj as { pmLifecycleStatus?: string }).pmLifecycleStatus ?? fdStatus ?? 'Active'
+          )
+        ),
+        pmClientScope: String((fdObj as { pmClientScope?: string }).pmClientScope ?? '').trim(),
+        pmOwner: String((fdObj as { pmOwner?: string }).pmOwner ?? '').trim(),
+        intendedUse: String((fdObj as { intendedUse?: string }).intendedUse ?? '').trim(),
+        reusability: String((fdObj as { reusability?: string }).reusability ?? '').trim(),
         itemCategory: pm.type || '',
         level: pmLevelForSubCategory(skuCatResolved) || pm.level || '',
         pmSkuCategory: skuCatResolved,
         subCategory: skuCatResolved || resolvedPmCats.subCategory,
         optionalPmSubCategory: resolvedPmCats.optionalPmSubCategory,
-        matBody: resolvedPmCats.optionalPmSubCategory || pm.material || '',
+        optionalPmSubSubCategory: resolvedPmCats.optionalPmSubSubCategory,
+        matBody: normalizePmMaterial(
+          String((fdObj as { matBody?: string }).matBody ?? pm.material ?? '').trim()
+        ),
         specNominal: pm.sizeSpec || '',
         deco: pm.printStatus || '',
         zohoId: pm.zohoId ?? '',
@@ -1501,11 +2344,33 @@ const PackagingRefactored: React.FC = () => {
           normalizePmDetailSubCategoryForSelect(merged.pmSkuCategory, merged.optionalPmSubCategory) ||
           merged.optionalPmSubCategory ||
           '';
-        merged.matBody = merged.optionalPmSubCategory || merged.matBody || '';
+        if (!String(merged.matBody ?? '').trim() && pm.material) {
+          merged.matBody = normalizePmMaterial(pm.material);
+        } else if (String(merged.matBody ?? '').trim()) {
+          merged.matBody = normalizePmMaterial(merged.matBody);
+        }
+        if (!String(merged.qcGroup ?? '').trim()) {
+          merged.qcGroup = 'Packaging QC only';
+        }
+        merged.optionalPmSubSubCategory =
+          normalizePmSubSubCategoryForSelect(
+            merged.optionalPmSubCategory,
+            merged.optionalPmSubSubCategory ||
+              (fdObj as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
+              ''
+          ) ||
+          merged.optionalPmSubSubCategory ||
+          '';
         const rawReturnable: unknown = merged.pkgReturnable;
         if (rawReturnable === true) merged.pkgReturnable = 'Yes';
         else if (rawReturnable === false) merged.pkgReturnable = 'No';
         else if (rawReturnable !== 'Yes' && rawReturnable !== 'No') merged.pkgReturnable = '';
+        applyPmCustomizationLegacyFields(merged as Record<string, unknown>);
+        applyPmVendorSourcingLegacyFields(merged as Record<string, unknown>);
+        applyPmCatalogueLegacyFields(merged as Record<string, unknown>);
+        applyPmRegulatoryLegacyFields(merged as Record<string, unknown>);
+        applyPmLifecycleLegacyFields(merged as Record<string, unknown>);
+        applyPmConditionalLegacyFields(merged as Record<string, unknown>);
         return merged;
       });
 
@@ -1680,31 +2545,9 @@ const PackagingRefactored: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex gap-2">
-                    <div className="flex-1">
-                      <label className="block text-[10px] text-gray-500 mb-1">Item Status</label>
-                      <select
-                        id="status"
-                        value={formData.status}
-                        onChange={handleInputChange}
-                        className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      >
-                        {['Draft', 'Active', 'Discontinued', 'Under Review'].map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-12">
-                      <label className="block text-[10px] text-gray-500 mb-1">Version</label>
-                      <div className="text-xs font-medium text-gray-700 pt-1">{formData.version}</div>
-                    </div>
-                  </div>
-
-                  <nav className="flex-1 px-2 py-2 min-h-0 overflow-y-auto">
+                  <nav className="flex-1 px-2 py-2 min-h-0 overflow-y-auto pt-2">
                     {SECTIONS.map((section, idx) => {
-                      const navLocked = isNewPm && idx > 0 && !canAdvancePastPrimary;
+                      const navLocked = isPmSectionNavLocked(idx);
                       return (
                         <button
                           key={idx}
@@ -1737,7 +2580,7 @@ const PackagingRefactored: React.FC = () => {
                     {[
                       { label: 'Variants', value: formData.variants.length },
                       { label: 'Vendors', value: formData.vendors.length },
-                      { label: 'Tests Logged', value: formData.tests.length },
+                      { label: 'AR #', value: formData.qaArNumber?.trim() || '—' },
                       { label: 'Last Saved', value: lastSaved },
                     ].map((stat) => (
                       <div key={stat.label}>
@@ -1766,12 +2609,15 @@ const PackagingRefactored: React.FC = () => {
                           onClick={() => setCurrentSection((prev) => Math.min(SECTIONS.length - 1, prev + 1))}
                           disabled={
                             currentSection === SECTIONS.length - 1 ||
-                            (isNewPm && currentSection === 0 && !canAdvancePastPrimary)
+                            (isNewPm && currentSection === 0 && !canAdvancePastPrimary) ||
+                            (isNewPm && currentSection === 1 && !canAdvancePastUnitsTaxes)
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete all required step-0 fields first (category, item name, returnable item, tax preference, and taxable HSN/GST when applicable).'
-                              : undefined
+                              ? 'Complete required primary fields (category, PM name, intended use).'
+                              : isNewPm && currentSection === 1 && !canAdvancePastUnitsTaxes
+                                ? 'Complete Units & Taxes (UoM, returnable item, tax preference, and HSN/GST when taxable).'
+                                : undefined
                           }
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                         >
@@ -1869,6 +2715,62 @@ function getCategoryStyle(category: string): { bg: string; text: string; border:
   return CATEGORY_STYLE_PALETTE[index];
 }
 
+function normalizePmMaterial(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (PM_MATERIAL_OPTIONS.some((o) => o === s)) return s;
+  const lower = s.toLowerCase();
+  const aliases: Record<string, (typeof PM_MATERIAL_OPTIONS)[number]> = {
+    pet: 'PET',
+    hdpe: 'HDPE',
+    ldpe: 'LDPE',
+    pp: 'PP',
+    pvc: 'PVC',
+    petg: 'PETG',
+    glass: 'Glass',
+    aluminium: 'Aluminium',
+    aluminum: 'Aluminium',
+    alluminium: 'Aluminium',
+    abl: 'ABL',
+    acrylic: 'Acrylic',
+    'duplex/sbs': 'Duplex/SBS',
+    duplex: 'Duplex/SBS',
+    sbs: 'Duplex/SBS',
+    fbb: 'FBB',
+    kraft: 'Kraft',
+    bopp: 'BOPP',
+    bopet: 'BOPET',
+    corrugated: 'Corrugated',
+    wood: 'Wood',
+    metal: 'Metal',
+    'silica gel': 'Silica gel',
+    silica: 'Silica gel',
+  };
+  return aliases[lower] ?? s;
+}
+
+function normalizePmLifecycleStatus(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return 'Active';
+  if (PM_LIFECYCLE_STATUS_OPTIONS.some((o) => o === s)) return s;
+  if (/^phase[\s-]?out$/i.test(s)) return 'Phase-Out';
+  if (/^prefer/i.test(s)) return 'Preferred';
+  if (/^condition/i.test(s)) return 'Conditional';
+  if (/^discontinu/i.test(s)) return 'Discontinued';
+  if (/^inactive$/i.test(s)) return 'Conditional';
+  if (/^active$/i.test(s)) return 'Active';
+  return s;
+}
+
+function pmLifecycleStatusLabel(pm: PackMaterialRecord): string {
+  const fd =
+    pm.form_data && typeof pm.form_data === 'object'
+      ? (pm.form_data as { pmLifecycleStatus?: string; status?: string })
+      : null;
+  const s = normalizePmLifecycleStatus(fd?.pmLifecycleStatus ?? fd?.status);
+  return s || '—';
+}
+
 function pmSubtitleLine(pm: PackMaterialRecord): string {
   const parts = [pm.material, pm.sizeSpec].map((s) => String(s ?? '').trim()).filter(Boolean);
   if (parts.length > 0) return parts.join(' · ');
@@ -1928,15 +2830,139 @@ function normalizePmVendors(input: any): PmCommercialVendor[] {
   });
 }
 
-function normalizePmVariants(input: any): Array<{ id: string; volume: number; sameMold: string; moq: number; status: string }> {
+/** Map removed spec fields into new conditional field ids when present in saved form_data. */
+function applyPmConditionalLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, string | undefined>;
+  const copyIfEmpty = (target: string, source: string | undefined): void => {
+    if (!String(row[target] ?? '').trim() && source?.trim()) row[target] = source.trim();
+  };
+  copyIfEmpty('pmOverallHeightMm', row.specHeight);
+  copyIfEmpty('pmOuterDiameterMm', row.specDia);
+  copyIfEmpty('pmInnerDiameterNeckMm', row.specNeck);
+  copyIfEmpty('pmSuitableContainerType', row.secLabelType);
+  copyIfEmpty('pmAdhesiveCompatibility', row.secLabelCompat);
+  copyIfEmpty('pmGsm', row.secGsm);
+  copyIfEmpty('pmLamination', row.secCartonFinish);
+  copyIfEmpty('pmPrintingCmykPantones', row.secArtLink);
+}
+
+/** Map legacy `status` and catalogue visibility into lifecycle & ownership fields. */
+function applyPmLifecycleLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, unknown>;
+  const statusRaw = row.pmLifecycleStatus ?? row.status;
+  row.pmLifecycleStatus = normalizePmLifecycleStatus(statusRaw);
+  row.status = row.pmLifecycleStatus;
+  if (!String(row.pmClientScope ?? '').trim()) {
+    const vis = String(row.catCatalogueVisibility ?? '').trim();
+    if (vis === 'Client-locked') row.pmClientScope = 'Client-locked';
+    else if (vis === 'Public' || vis === 'Internal') row.pmClientScope = 'Generic';
+  }
+  if (!String(row.version ?? '').trim()) {
+    row.version = 'v1.0';
+  }
+}
+
+/** Map legacy material flags / regulatory text into the regulatory step fields. */
+function applyPmRegulatoryLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, unknown>;
+  if (!String(row.regBpaPhthalateFree ?? '').trim() && row.matBpa === true) {
+    row.regBpaPhthalateFree = 'Declared';
+  }
+  if (!String(row.regRecyclabilityCode ?? '').trim() && row.matRecycle === true) {
+    row.regRecyclabilityCode = 'Recyclable (legacy flag)';
+  }
+  const regNotes = String(row.regulatory ?? '').trim();
+  if (regNotes && !String(row.regEprRegistration ?? '').trim() && /epr/i.test(regNotes)) {
+    row.regEprRegistration = regNotes;
+  }
+}
+
+/** Map legacy catalogue checkboxes / web fields into the current catalogue shape. */
+function applyPmCatalogueLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, unknown>;
+  if (!String(row.catListedInCatalogue ?? '').trim()) {
+    if (row.catVisible === true) row.catListedInCatalogue = 'Yes';
+    else if (row.catVisible === false) row.catListedInCatalogue = 'No';
+  }
+  if (!String(row.catCataloguePhoto ?? '').trim()) {
+    const webImg = String(row.catWebImages ?? '').trim();
+    const webName = String(row.catWebName ?? '').trim();
+    if (webImg) row.catCataloguePhoto = webImg;
+    else if (webName) row.catCataloguePhoto = webName;
+  }
+  if (!String(row.catCatalogueCustomNotes ?? '').trim()) {
+    const tags = String(row.catTags ?? '').trim();
+    const reco = String(row.catRecoTypes ?? '').trim();
+    const parts = [tags && `Tags: ${tags}`, reco && `Recommended types: ${reco}`].filter(Boolean);
+    if (parts.length) row.catCatalogueCustomNotes = parts.join('\n');
+  }
+  if (!String(row.catCatalogueVisibility ?? '').trim()) {
+    if (row.catShare === true) row.catCatalogueVisibility = 'Client-locked';
+    else if (row.catVisible === true) row.catCatalogueVisibility = 'Public';
+    else if (row.catVisible === false) row.catCatalogueVisibility = 'Internal';
+  }
+}
+
+/** Map legacy vendor rows into preferred vendor / supply location when missing. */
+function applyPmVendorSourcingLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, string | PmCommercialVendor[] | undefined>;
+  const vendors = Array.isArray(row.vendors) ? row.vendors : [];
+  const first = vendors[0];
+  if (!String(row.preferredVendor ?? '').trim() && first?.name) {
+    row.preferredVendor = String(first.name).trim();
+  }
+  if (!String(row.pmSupplyLocation ?? '').trim() && first?.location) {
+    row.pmSupplyLocation = String(first.location).trim();
+  }
+  const alt = row.alternateVendor ?? row.alternateVendors;
+  if (typeof alt === 'string' && alt.trim() && !String(row.alternateVendor ?? '').trim()) {
+    row.alternateVendor = alt.trim();
+  }
+}
+
+/** Map pre-2026 customization field keys into the current PM form shape. */
+function applyPmCustomizationLegacyFields(merged: Record<string, unknown>): void {
+  const row = merged as Record<string, string | undefined>;
+  if (!String(row.cusCustomisedMoq ?? '').trim() && row.cusCustomMoq) {
+    row.cusCustomisedMoq = String(row.cusCustomMoq);
+  }
+  if (!String(row.cusCustomisationLeadTimeDays ?? '').trim() && row.cusBulkLTCustom) {
+    row.cusCustomisationLeadTimeDays = String(row.cusBulkLTCustom);
+  }
+  if (!String(row.cusSampleLeadTimeDays ?? '').trim() && row.cusSamplingLT) {
+    row.cusSampleLeadTimeDays = String(row.cusSamplingLT);
+  }
+}
+
+function normalizePmVariantStatus(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (PM_VARIANT_STATUS_OPTIONS.some((o) => o.value === s)) return s;
+  if (/^discontinued$/i.test(s)) return 'Discontinued';
+  if (/^sample/i.test(s)) return 'Sample only';
+  return s || 'Active';
+}
+
+function normalizePmVariants(input: unknown): PmVariantRow[] {
   if (!Array.isArray(input)) return [];
-  return input.map((r: any, idx: number) => ({
-    id: String(r?.id ?? r?.varId ?? `V${idx + 1}`),
-    volume: Number(r?.volume ?? r?.varVolume ?? 0),
-    sameMold: String(r?.sameMold ?? r?.varSameMold ?? ''),
-    moq: Number(r?.moq ?? r?.varMoq ?? 0),
-    status: String(r?.status ?? r?.varStatus ?? 'Active'),
-  }));
+  return input.map((row: unknown, idx: number) => {
+    const r = row as Record<string, unknown>;
+    const legacyVolume = r?.volume ?? r?.varVolume;
+    const legacyMold = r?.sameMold ?? r?.varSameMold;
+    let name = String(r?.name ?? r?.variantName ?? r?.varName ?? '').trim();
+    if (!name && legacyVolume != null && String(legacyVolume).trim() !== '') {
+      const vol = String(legacyVolume).trim();
+      const mold = String(legacyMold ?? '').trim();
+      name = mold ? `Vol ${vol} ml (${mold})` : `Vol ${vol} ml`;
+    }
+    return {
+      id: String(r?.id ?? r?.varId ?? `V${idx + 1}`),
+      name,
+      moq: Number(r?.moq ?? r?.varMoq ?? 0),
+      status: normalizePmVariantStatus(r?.status ?? r?.varStatus),
+      leadTimeDays: Number(r?.leadTimeDays ?? r?.leadTime ?? r?.varLeadTime ?? 0),
+      notes: String(r?.notes ?? r?.variantNotes ?? r?.varNotes ?? ''),
+    };
+  });
 }
 
 function normalizePmTests(input: any): Array<{ name: string; result: string; date: string; by: string; remarks: string }> {
@@ -1950,6 +2976,8 @@ function normalizePmTests(input: any): Array<{ name: string; result: string; dat
   }));
 }
 
+type PmListSortColumn = 'code' | 'name' | 'subCategory' | 'type' | 'uom' | 'category' | 'status' | 'products';
+
 const BprDashboard: React.FC<{
   refreshKey?: number;
   onSwitchToForm: () => void;
@@ -1962,6 +2990,11 @@ const BprDashboard: React.FC<{
   const [linkedSkusModalPm, setLinkedSkusModalPm] = useState<PackMaterialRecord | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<PmListSortColumn | null>('code');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  /** Stat card filter: null = all, else pack level (Primary, Secondary, Tertiary, …). */
+  const [statFilter, setStatFilter] = useState<string | null>(null);
+  const [statCardSort, setStatCardSort] = useState<MasterStatCardSort>('count-desc');
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const itemRefFileInputRef = useRef<HTMLInputElement>(null);
@@ -2039,7 +3072,12 @@ const BprDashboard: React.FC<{
         const s = res.summary;
         const rmSkip = res.raw_material_rows_skipped ?? 0;
         const rmNote = rmSkip > 0 ? ` (${rmSkip} raw material row(s) ignored.)` : '';
-        const label = res.format === 'multi_sheet' ? 'Pack materials (multi-sheet)' : 'Pack materials (Item Reference)';
+        const label =
+          res.format === 'pm_fill_worksheet'
+            ? 'Pack materials (fill workbook)'
+            : res.format === 'multi_sheet'
+              ? 'Pack materials (multi-sheet)'
+              : 'Pack materials (Item Reference)';
         addToast(
           'success',
           `${label}: ${s.packaging_created} created, ${s.packaging_updated} updated, ${s.skipped} skipped, ${s.errors} errors.${rmNote}`
@@ -2072,41 +3110,129 @@ const BprDashboard: React.FC<{
   });
 
   const filteredRows = useMemo(() => {
+    let rows = allRows;
+    if (statFilter) {
+      rows = rows.filter((p) => {
+        const lvl = String(p.level ?? '').trim() || 'Unset';
+        return lvl === statFilter;
+      });
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return allRows;
-    return allRows.filter((p) =>
+    if (!q) return rows;
+    return rows.filter((p) =>
       [p.code, p.description, p.type, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode, p.unit].some((s) =>
         (s ?? '').toLowerCase().includes(q)
       )
     );
-  }, [allRows, search]);
+  }, [allRows, search, statFilter]);
 
-  const totalFiltered = filteredRows.length;
+  const togglePmSort = useCallback((column: PmListSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  }, [sortColumn]);
+
+  const sortedFilteredRows = useMemo(() => {
+    if (!sortColumn) return filteredRows;
+    const dir = sortDirection;
+    const cmp = (a: PackMaterialRecord, b: PackMaterialRecord): number => {
+      switch (sortColumn) {
+        case 'code':
+          return compareMasterTableSort(a.code ?? '', b.code ?? '', dir);
+        case 'name':
+          return compareMasterTableSort(a.description ?? '', b.description ?? '', dir);
+        case 'subCategory':
+        case 'category':
+          return compareMasterTableSort(a.type ?? '', b.type ?? '', dir);
+        case 'type':
+          return compareMasterTableSort(a.level ?? '', b.level ?? '', dir);
+        case 'uom':
+          return compareMasterTableSort(a.unit ?? 'PCS', b.unit ?? 'PCS', dir);
+        case 'status':
+          return compareMasterTableSort(pmLifecycleStatusLabel(a), pmLifecycleStatusLabel(b), dir);
+        case 'products':
+          return compareMasterTableSort(a.products?.length ?? 0, b.products?.length ?? 0, dir);
+        default:
+          return 0;
+      }
+    };
+    return [...filteredRows].sort(cmp);
+  }, [filteredRows, sortColumn, sortDirection]);
+
+  const totalFiltered = sortedFilteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const rows = filteredRows.slice(startIndex, startIndex + pageSize);
+  const rows = sortedFilteredRows.slice(startIndex, startIndex + pageSize);
 
   // Reset to page 1 when search or page size changes (same pattern as Products PR page).
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, pageSize, refreshKey]);
+  }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter]);
 
-  const stats = {
-    total: allRows.length,
-    primary: allRows.filter((p) => (p.level || '') === 'Primary').length,
-    secondary: allRows.filter((p) => (p.level || '') === 'Secondary').length,
-    groups: allRows.filter((p) => p.group).length,
-    types: new Set(allRows.map((p) => p.type).filter(Boolean)).size,
+  const levelBuckets = useMemo(
+    () => buildMasterStatBuckets(allRows, (p) => (p as PackMaterialRecord).level ?? '', statCardSort),
+    [allRows, statCardSort]
+  );
+
+  const toggleStatFilter = useCallback((id: string | null) => {
+    setStatFilter((prev) => (prev === id ? null : id));
+    setCurrentPage(1);
+  }, []);
+
+  type PmStatCard = {
+    id: string | null;
+    label: string;
+    value: number;
+    sub: string;
+    accent: string;
+    num: string;
   };
 
-  const statCards = [
-    { label: 'TOTAL PMS', value: stats.total, sub: 'Unique pack materials', accent: 'border-l-teal-500', num: 'text-teal-600' },
-    { label: 'PRIMARY', value: stats.primary, sub: 'Direct contact', accent: 'border-l-orange-400', num: 'text-orange-500' },
-    { label: 'SECONDARY', value: stats.secondary, sub: 'Outer packaging', accent: 'border-l-blue-500', num: 'text-blue-600' },
-    { label: 'PM GROUPS', value: stats.groups, sub: 'With affinities', accent: 'border-l-violet-500', num: 'text-violet-600' },
-    { label: 'PACK TYPES', value: stats.types, sub: 'Tube, bottle…', accent: 'border-l-rose-500', num: 'text-rose-600' },
-  ];
+  const levelSubLabel = (label: string): string => {
+    const n = label.toLowerCase();
+    if (n === 'primary') return 'Direct contact packaging';
+    if (n === 'secondary') return 'Outer / secondary packaging';
+    if (n === 'tertiary') return 'Shippers & tertiary';
+    if (n === 'unset') return 'Level not set on master';
+    return 'Pack materials at this level';
+  };
+
+  const statCards = useMemo((): PmStatCard[] => {
+    const fixed: PmStatCard[] = [
+      {
+        id: null,
+        label: 'TOTAL PMS',
+        value: allRows.length,
+        sub: 'All pack materials',
+        accent: 'border-l-violet-500',
+        num: 'text-violet-600',
+      },
+    ];
+    const dynamic: PmStatCard[] = levelBuckets.map((b, idx) => {
+      const palette = [
+        { accent: 'border-l-orange-400', num: 'text-orange-500' },
+        { accent: 'border-l-blue-500', num: 'text-blue-600' },
+        { accent: 'border-l-violet-500', num: 'text-violet-600' },
+        { accent: 'border-l-rose-500', num: 'text-rose-600' },
+        { accent: 'border-l-teal-500', num: 'text-teal-600' },
+      ];
+      const tone = palette[idx % palette.length];
+      return {
+        id: b.label,
+        label: b.label.toUpperCase(),
+        value: b.count,
+        sub: levelSubLabel(b.label),
+        accent: tone.accent,
+        num: tone.num,
+      };
+    });
+    return [...fixed, ...dynamic];
+  }, [allRows.length, levelBuckets]);
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -2114,11 +3240,11 @@ const BprDashboard: React.FC<{
 
         {/* ── Page Header ── */}
         <div className="relative">
-          <div className="absolute inset-0 bg-linear-to-r from-teal-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+          <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
               <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">PM Masters</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">PM Masters</span>
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Pack Materials</h1>
             <p className="text-sm text-gray-600">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
@@ -2134,24 +3260,70 @@ const BprDashboard: React.FC<{
         {!isLoading && error && (
           <div className="py-8 text-center">
             <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load pack materials'}</p>
-            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
+            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700">Retry</button>
           </div>
         )}
 
         {!isLoading && !error && (
           <>
-            {/* ── Stat Cards (same card chrome as Raw Material masters) ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {statCards.map(card => (
-                <div key={card.label} className={`group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
-                  <div className={`h-1 bg-linear-to-r from-teal-400 to-teal-600 ${card.accent}`} />
-                  <div className="px-4 py-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
-                    <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
-                    <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
-                  </div>
-                </div>
-              ))}
+            {/* ── Stat Cards (dynamic levels — click to filter table) ── */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] text-gray-500">
+                  Click a card to filter the list
+                  {statFilter != null ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleStatFilter(null)}
+                      className="ml-2 text-violet-700 font-semibold hover:underline"
+                    >
+                      Clear filter
+                    </button>
+                  ) : null}
+                </p>
+                <label className="flex items-center gap-2 text-[11px] text-gray-600">
+                  <span className="font-semibold uppercase tracking-wide text-gray-500">Sort cards</span>
+                  <select
+                    value={statCardSort}
+                    onChange={(e) => setStatCardSort(e.target.value as MasterStatCardSort)}
+                    className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  >
+                    <option value="count-desc">Count (high → low)</option>
+                    <option value="count-asc">Count (low → high)</option>
+                    <option value="name-asc">Name (A → Z)</option>
+                    <option value="name-desc">Name (Z → A)</option>
+                  </select>
+                </label>
+              </div>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+                {statCards.map((card) => {
+                  const isActive = statFilter === card.id;
+                  return (
+                    <button
+                      key={card.id ?? '__all__'}
+                      type="button"
+                      onClick={() => toggleStatFilter(card.id)}
+                      aria-pressed={isActive}
+                      className={`group text-left bg-white rounded-2xl border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                        isActive ? 'border-violet-400 ring-2 ring-violet-200' : 'border-gray-100'
+                      }`}
+                    >
+                      <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
+                      <div className="px-4 py-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors truncate">
+                          {card.label}
+                        </p>
+                        <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-105 transition-transform origin-left`}>
+                          {card.value}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors line-clamp-2">
+                          {card.sub}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* ── Table Card (columns aligned with Raw Material masters list) ── */}
@@ -2161,7 +3333,7 @@ const BprDashboard: React.FC<{
               <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-sm font-semibold text-gray-900">Packaging Material Masters</span>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{rows.length} / {totalFiltered}</span>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">{rows.length} / {totalFiltered}</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
@@ -2184,25 +3356,25 @@ const BprDashboard: React.FC<{
                     type="button"
                     onClick={onPickItemReferenceExcel}
                     disabled={bulkUploadRunning}
-                    title="Multi-tab PM workbook: Primary Packaging, Labels, Monocartons, Shrink Sleeves, Shippers %CFB, Fitness & Misc — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-700 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    title="Multi-tab PM workbook: Primary Packaging, Labels, Monocartons, Shrink Sleeves, Shippers %CFB, Fitments & Misc — row 4 headers, data from row 5 (SKU, Item Name = INCI and trade name, Sub-Category, UOM, HSN, GST%). BOM Name column is ignored. Legacy: sheet Item Reference (cols A–C, row 2+)."
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 bg-white text-violet-700 text-xs font-semibold hover:bg-violet-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
                   </button>
                   <div className="relative group">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-teal-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
                     </svg>
                     <input
                       value={search}
                       onChange={e => setSearch(e.target.value)}
-                      placeholder="Search name, INCI, code…"
-                      className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all w-52"
+                      placeholder="Search PM name, code…"
+                      className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-52"
                     />
                   </div>
                   <button
                     onClick={onSwitchToForm}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
                   >
                     <span className="text-base leading-none">+</span> New PM
                   </button>
@@ -2210,10 +3382,10 @@ const BprDashboard: React.FC<{
               </div>
 
               {bulkUploadRunning && (
-                <div className="px-6 py-3 border-b border-gray-100 bg-teal-50/40">
+                <div className="px-6 py-3 border-b border-gray-100 bg-violet-50/40">
                   <div className="text-xs text-gray-700 mb-1.5 font-medium">Uploading workbook — server is parsing and importing in chunks…</div>
-                  <div className="h-2.5 rounded-full bg-teal-100 overflow-hidden shadow-inner">
-                    <div className="h-full w-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 animate-pulse" />
+                  <div className="h-2.5 rounded-full bg-violet-100 overflow-hidden shadow-inner">
+                    <div className="h-full w-full rounded-full bg-linear-to-r from-violet-500 to-violet-600 animate-pulse" />
                   </div>
                 </div>
               )}
@@ -2222,16 +3394,78 @@ const BprDashboard: React.FC<{
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 select-none whitespace-nowrap hover:text-gray-900 hover:bg-slate-100/50 transition-colors">
-                        CODE <span className="text-teal-500">Asc</span>
-                      </th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600 whitespace-nowrap">Name / INCI</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Sub-category</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Type</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">UOM</th>
-                      <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">GST</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Status</th>
-                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Products</th>
+                      <SortableTableTh
+                        label="Code"
+                        column="code"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="PM Name"
+                        column="name"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="Sub-category"
+                        column="subCategory"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="Type"
+                        column="type"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="UOM"
+                        column="uom"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="Category"
+                        column="category"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="Status"
+                        column="status"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
+                        label="Products"
+                        column="products"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
                       <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
                     </tr>
                   </thead>
@@ -2250,12 +3484,12 @@ const BprDashboard: React.FC<{
                     ) : rows.map((pm) => {
                       const catStyle = getCategoryStyle(pm.type || pm.level || '');
                       const uom = (pm.unit || 'PCS').trim() || 'PCS';
-                      const statusLabel = (pm.printStatus || '').trim() || '—';
+                      const statusLabel = pmLifecycleStatusLabel(pm);
                       return (
-                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
-                          <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-teal-700 whitespace-nowrap group-hover:text-teal-900">{pm.code}</td>
+                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+                          <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">{pm.description}</p>
+                            <p className="font-semibold text-gray-900 group-hover:text-violet-700 transition-colors">{pm.description}</p>
                             <p className="text-gray-400 text-[10px] mt-0.5 italic">{pmSubtitleLine(pm)}</p>
                           </td>
                           <td className="px-4 py-3.5">
@@ -2265,7 +3499,7 @@ const BprDashboard: React.FC<{
                           </td>
                           <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.level || '—'}</td>
                           <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
-                          <td className="px-4 py-3.5 text-right text-gray-600 font-medium">{pmGstDisplay(pm)}</td>
+                          <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.type || '—'}</td>
                           <td className="px-4 py-3.5">
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -2282,7 +3516,7 @@ const BprDashboard: React.FC<{
                                   e.stopPropagation();
                                   setLinkedSkusModalPm(pm);
                                 }}
-                                className="text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-1 rounded"
+                                className="text-xs font-semibold text-violet-600 hover:text-violet-800 hover:underline focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-1 rounded"
                               >
                                 View SKU ({pm.products.length})
                               </button>
@@ -2292,7 +3526,7 @@ const BprDashboard: React.FC<{
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); onEditPm(pm); }}
-                              className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline mr-2"
+                              className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 hover:underline mr-2"
                             >
                               Edit
                             </button>
@@ -2327,7 +3561,7 @@ const BprDashboard: React.FC<{
                         setPageSize(Number(e.target.value));
                         setCurrentPage(1);
                       }}
-                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
                     >
                       <option value={10}>10</option>
                       <option value={25}>25</option>
@@ -2410,9 +3644,9 @@ const BprDashboard: React.FC<{
                         </thead>
                         <tbody className="divide-y divide-gray-100 text-gray-800">
                           {linkedSkuRows.map(({ sku, product }, i) => (
-                            <tr key={`${sku}-${i}`} className="bg-white hover:bg-teal-50/40">
+                            <tr key={`${sku}-${i}`} className="bg-white hover:bg-violet-50/40">
                               <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                              <td className="px-3 py-2 font-mono font-semibold text-teal-800 break-all">{sku}</td>
+                              <td className="px-3 py-2 font-mono font-semibold text-violet-800 break-all">{sku}</td>
                               <td className="px-3 py-2 wrap-break-word">{product?.product_name ?? '—'}</td>
                               <td className="px-3 py-2 text-gray-600">{product?.category ?? '—'}</td>
                               <td className="px-3 py-2 text-gray-600 wrap-break-word">{product?.pr_sub_category?.trim() || '—'}</td>
@@ -2445,6 +3679,28 @@ const BprDashboard: React.FC<{
 };
 
 // ─── Small field helpers ──────────────────────────────────────────────────────
+const PmFileNameCaptureField: React.FC<{
+  label: string;
+  id: string;
+  value: string;
+  accept?: string;
+  onFileSelect: (file: File | null) => void;
+}> = ({ label, id, value, accept, onFileSelect }) => (
+  <div>
+    <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      {label}
+    </label>
+    <input
+      type="file"
+      id={id}
+      accept={accept}
+      onChange={(e) => onFileSelect(e.target.files?.[0] ?? null)}
+      className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+    />
+    {value ? <p className="mt-1 text-xs text-gray-600 font-mono break-all">Selected: {value}</p> : null}
+  </div>
+);
+
 const InputField: React.FC<{
   label: string; id: string; value: any;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;

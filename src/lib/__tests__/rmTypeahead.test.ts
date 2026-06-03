@@ -11,4 +11,33 @@ describe('rmTypeahead', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].code).toBe('RM-A');
   });
+
+  it('matches Zoho SKU code in haystack', () => {
+    const options = buildRmTypeaheadOptions([
+      {
+        id: '10',
+        code: 'EI-RM-ACT-001',
+        name: 'Cucumber Extract',
+        inci: 'Cucumber Extract',
+        category: '',
+        rmType: 'Club Items',
+        uom: 'KG',
+        pricePerKg: 0,
+        gst: 0,
+        shelf: '',
+        leadTimeDays: null,
+        status: '',
+        products: [],
+        group: null,
+        zohoId: null,
+        zohoSkuCode: 'CLUB00023',
+        hsnCode: null,
+        taxPref: null,
+        salesPurchaseAccount: null,
+        specificGravity: null,
+      },
+    ]);
+    expect(filterRmTypeaheadOptions(options, 'club00023', 10)).toHaveLength(1);
+    expect(filterRmTypeaheadOptions(options, 'cucumber', 10)).toHaveLength(1);
+  });
 });

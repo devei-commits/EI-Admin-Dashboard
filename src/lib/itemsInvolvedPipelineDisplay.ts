@@ -3,6 +3,7 @@
  * Uses stage-flow qty from planning-extracted/items-involved API.
  */
 import type { ProcurementRequest } from '../services/procurement.service';
+import { itemsInvolvedUsesDecimalQty, normRmPrimaryUom } from './rmUnitConversion';
 
 export type ItemsInvolvedPipelineItem = {
   itemType: 'RM' | 'PM';
@@ -122,9 +123,11 @@ function prMatchesItem(pr: ProcurementRequest, item: ItemsInvolvedPipelineItem):
 }
 
 function formatQty(n: number, itemType: 'RM' | 'PM', unit: string): string {
-  const isKg = itemType === 'RM' || String(unit ?? '').toUpperCase() === 'KG';
-  if (isKg) return `${n.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unit || 'KG'}`;
-  return `${Math.round(n).toLocaleString()} ${unit || 'PCS'}`;
+  const u = itemType === 'RM' ? normRmPrimaryUom(unit) : String(unit || 'PCS');
+  if (itemsInvolvedUsesDecimalQty(itemType, u)) {
+    return `${n.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${u}`;
+  }
+  return `${Math.round(n).toLocaleString()} ${u}`;
 }
 
 function formatWhen(iso: string | null | undefined): string {
@@ -284,6 +287,21 @@ function buildPipelineSteps(item: ItemsInvolvedPipelineItem): ItemsInvolvedProcu
     done: Boolean(done[i]),
     active: i === activeIdx,
   }));
+}
+
+/** Open PR with Planning quotation note (legacy path before planning_quotation_asks). */
+export function itemHasOpenPlanningQuotationPr(
+  item: ItemsInvolvedPipelineItem,
+  procurementRequests: ProcurementRequest[]
+): boolean {
+  for (const pr of procurementRequests) {
+    if (!prMatchesItem(pr, item)) continue;
+    if (!String(pr.notes ?? '').includes(QUOTATION_NOTE_TAG)) continue;
+    const st = String(pr.status ?? '').trim().toLowerCase();
+    if (st === 'cancelled' || st === 'rejected' || st === 'closed') continue;
+    return true;
+  }
+  return false;
 }
 
 export function getItemsInvolvedProcurementDisplay(

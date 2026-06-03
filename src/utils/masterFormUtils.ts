@@ -40,9 +40,9 @@ export const AUTO_POPULATE_RULES = {
 export const TEMP_FIELD_MAPPINGS = {
  packaging: {
   variant: {
-   tempFields: ['varId', 'varVolume', 'varSameMold', 'varMoq', 'varStatus'],
+   tempFields: ['varId', 'varName', 'varMoq', 'varStatus', 'varLeadTimeDays', 'varNotes'],
    arrayField: 'variants',
-   itemType: { id: '', volume: 0, sameMold: '', moq: 0, status: 'Active' }
+   itemType: { id: '', name: '', moq: 0, status: 'Active', leadTimeDays: 0, notes: '' },
   },
   vendor: {
    tempFields: ['venName', 'venLocation', 'venMoq', 'venPrice', 'venLT', 'venApproved', 'venPriceType', 'venValid', 'venSampleCost'],
@@ -225,8 +225,8 @@ export function validateMasterTaxDetails(
 ): { valid: boolean; errors: Record<string, string> } {
  const errors: Record<string, string> = {};
 
- /** RM and PM tax validation both point users to stage index 0. */
- const taxStepRm = 0;
+ /** RM tax fields live on stage index 1 (Units, Tax & Procurement). */
+ const taxStepRm = 2;
  const taxStepPm = 0;
 
  if (masterType === 'rawMaterial') {
@@ -242,11 +242,11 @@ export function validateMasterTaxDetails(
   if (!hsn) {
    errors.hsnCode = formatStepFieldMessage(
     taxStepRm,
-    'HSN code',
+    'HSN/SAC',
     'is required when Tax Preference is Taxable'
    );
   } else if (!isValidHsnOrSacCode(hsn)) {
-   errors.hsnCode = formatStepFieldMessage(taxStepRm, 'HSN code', 'must be 4–12 digits');
+   errors.hsnCode = formatStepFieldMessage(taxStepRm, 'HSN/SAC', 'must be 4–12 digits');
   }
   const gstRaw = formData.gst;
   const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
@@ -323,7 +323,7 @@ const PRIMARY_FIELD_LABEL: Record<'packaging' | 'rawMaterial' | 'bom', Record<st
   pkgSku: 'SKU',
   name: 'Item Name',
   level: 'Level',
-  matBody: 'Material (Body)',
+  matBody: 'Material',
   matClosure: 'Material (Closure)',
  },
  bom: {
