@@ -83,6 +83,76 @@ function typeBadgeClass(type: RequestType): string {
     : 'bg-violet-50 text-violet-700 border-violet-200';
 }
 
+type IssuedPOItemRow = {
+  record: IssuedPOViewRecord;
+  line: DraftPOLineItem;
+  lineIndex: number;
+  vendorName: string;
+  rowKey: string;
+};
+
+function parseLocalDate(value: string | undefined): Date | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Per-line ETA from line lead time when available; otherwise PO-level ETA. */
+function computeItemRowEta(
+  record: IssuedPOViewRecord,
+  line: DraftPOLineItem,
+): { etaDays: number; etaDateDisplay: string } {
+  const lead = line.leadTimeDays;
+  const anchor = parseLocalDate(record.createdDate) ?? new Date();
+  if (lead != null && Number.isFinite(lead) && lead >= 0) {
+    const eta = new Date(anchor.getTime());
+    eta.setDate(eta.getDate() + Math.round(lead));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const etaMid = new Date(eta.getTime());
+    etaMid.setHours(0, 0, 0, 0);
+    const etaDays = Math.round((etaMid.getTime() - today.getTime()) / 86_400_000);
+    return {
+      etaDays,
+      etaDateDisplay: eta.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+  }
+  return {
+    etaDays: record.etaDays,
+    etaDateDisplay: record.etaDateDisplay ?? '—',
+  };
+}
+
+function ItemTimelineMini({
+  completedIdx,
+}: {
+  completedIdx: number;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-wrap items-center gap-0.5" title={`Step ${completedIdx + 1} of ${TIMELINE_STAGE_LABELS.length}`}>
+      {TIMELINE_STAGE_LABELS.map((label, idx) => {
+        const done = idx <= completedIdx;
+        const current = idx === completedIdx;
+        return (
+          <span
+            key={label}
+            title={label}
+            className={`h-2 w-2 rounded-full shrink-0 ${
+              current
+                ? 'bg-sky-500 ring-2 ring-sky-200'
+                : done
+                  ? 'bg-emerald-500'
+                  : 'bg-gray-200'
+            }`}
+            aria-hidden
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export type IssuedPOsViewProps = {
   kpis: IssuedPoOverviewKpis;
   records: IssuedPOViewRecord[];
@@ -137,29 +207,60 @@ export default function IssuedPOsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const lineCount = useMemo(
-    () => records.reduce((sum, r) => sum + r.lineItems.length, 0),
-    [records],
-  );
-
-  const groupedByVendor = useMemo(() => {
-    const map = new Map<string, IssuedPOViewRecord[]>();
+  const itemRows = useMemo((): IssuedPOItemRow[] => {
+    const rows: IssuedPOItemRow[] = [];
     for (const record of records) {
       const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
-      const list = map.get(vendorName) ?? [];
-      list.push(record);
-      map.set(vendorName, list);
+      const lines =
+        record.lineItems.length > 0
+          ? record.lineItems
+          : [
+              {
+                item: '—',
+                itemCode: '—',
+                type: record.request.type,
+                qty: '—',
+                pricePerUnit: 0,
+                gstPercent: 0,
+                gstAmount: 0,
+                lineTotal: 0,
+              } satisfies DraftPOLineItem,
+            ];
+      lines.forEach((line, lineIndex) => {
+        rows.push({
+          record,
+          line,
+          lineIndex,
+          vendorName,
+          rowKey: `${record.backendPoId ?? 'noid'}-${record.poNumber}-L${lineIndex}`,
+        });
+      });
+    }
+    return rows;
+  }, [records]);
+
+  const lineCount = itemRows.length;
+
+  const groupedByVendor = useMemo(() => {
+    const map = new Map<string, IssuedPOItemRow[]>();
+    for (const row of itemRows) {
+      const list = map.get(row.vendorName) ?? [];
+      list.push(row);
+      map.set(row.vendorName, list);
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([vendorName, orders]) => ({
-        vendorName,
-        orders,
-        poCount: orders.length,
-        lineCount: orders.reduce((sum, o) => sum + o.lineItems.length, 0),
-        totalValue: orders.reduce((sum, o) => sum + o.grandTotal, 0),
-      }));
-  }, [records]);
+      .map(([vendorName, rows]) => {
+        const poKeys = new Set(rows.map((r) => `${r.record.backendPoId ?? ''}|${r.record.poNumber}`));
+        return {
+          vendorName,
+          rows,
+          poCount: poKeys.size,
+          lineCount: rows.length,
+          totalValue: rows.reduce((sum, r) => sum + (r.line.lineTotal || 0), 0),
+        };
+      });
+  }, [itemRows]);
 
   const totalPages = Math.max(1, Math.ceil(groupedByVendor.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
@@ -169,8 +270,8 @@ export default function IssuedPOsView({
     [groupedByVendor, startIndex, pageSize],
   );
 
-  const pagedPoCount = useMemo(
-    () => pagedVendorGroups.reduce((sum, g) => sum + g.poCount, 0),
+  const pagedLineCount = useMemo(
+    () => pagedVendorGroups.reduce((sum, g) => sum + g.lineCount, 0),
     [pagedVendorGroups],
   );
 
@@ -199,11 +300,11 @@ export default function IssuedPOsView({
         <div>
           <h2 className="text-lg font-bold text-gray-800">Issued POs Overview</h2>
           <p className="text-xs text-gray-500 mt-1">
-            Purchase orders grouped by vendor — same layout as Order Fulfillment sale orders.
+            Itemised PO lines grouped by vendor — each material has its own row, pipeline stage, and tracking.
           </p>
         </div>
         <span className="text-xs text-gray-500">
-          {lineCount} line{lineCount !== 1 ? 's' : ''} · {records.length} PO
+          {lineCount} item{lineCount !== 1 ? 's' : ''} · {records.length} PO
           {records.length !== 1 ? 's' : ''} · {groupedByVendor.length} vendor
           {groupedByVendor.length !== 1 ? 's' : ''}
         </span>
@@ -349,7 +450,7 @@ export default function IssuedPOsView({
                           <div className="text-sm font-semibold text-blue-900">{vendorGroup.vendorName}</div>
                           <div className="text-xs text-blue-800">
                             {vendorGroup.poCount} PO{vendorGroup.poCount !== 1 ? 's' : ''} ·{' '}
-                            {vendorGroup.lineCount} line{vendorGroup.lineCount !== 1 ? 's' : ''} ·{' '}
+                            {vendorGroup.lineCount} item{vendorGroup.lineCount !== 1 ? 's' : ''} ·{' '}
                             <span className="font-semibold text-blue-900">
                               ₹{vendorGroup.totalValue.toLocaleString('en-IN')}
                             </span>
@@ -359,7 +460,8 @@ export default function IssuedPOsView({
                     </tr>
                   );
 
-                  const poRows = vendorGroup.orders.flatMap((record) => {
+                  const itemTableRows = vendorGroup.rows.map((itemRow) => {
+                    const { record, line, lineIndex, rowKey } = itemRow;
                     const completedIdx = getTimelineCompletedIndex(record);
                     const stageLabel = TIMELINE_STAGE_LABELS[completedIdx] ?? 'PO Released';
                     const backendPoId = resolveBackendPoId(record);
@@ -369,69 +471,76 @@ export default function IssuedPOsView({
                         : undefined;
                     const lrRef = tr?.orderTrackingRef?.trim() || '—';
                     const shipNote = tr?.shippedNote?.trim() || '';
+                    const vendorNote = tr?.vendorConfirmedNote?.trim() || '';
                     const hasVendorConfirmed = hasPoTrackingTimestamp(tr?.vendorConfirmedAt);
                     const hasShipped =
                       hasPoTrackingTimestamp(tr?.shippedAt) || record.status === 'In Transit';
-                    const etaLabel = record.etaDateDisplay ?? '—';
-                    const primaryLine = record.lineItems[0];
-                    const extraLines = record.lineItems.length > 1 ? record.lineItems.length - 1 : 0;
+                    const lineEta = computeItemRowEta(record, line);
+                    const lineType = line.type ?? record.request.type;
 
                     return (
-                      <tr key={`${record.backendPoId ?? 'noid'}-${record.poNumber}`} className="hover:bg-gray-50/80">
+                      <tr key={rowKey} className="hover:bg-gray-50/80">
                         <td className="px-4 py-3 align-top">
                           <div className="font-mono text-[12px] text-gray-900 font-semibold">{record.poNumber}</div>
                           <div className="text-[10px] text-gray-500 mt-0.5">{record.requestCode}</div>
                           <span
-                            className={`inline-flex mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${typeBadgeClass(record.request.type)}`}
+                            className={`inline-flex mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${typeBadgeClass(lineType)}`}
                           >
-                            {record.request.type}
+                            {lineType}
                           </span>
+                          <div className="text-[10px] text-gray-400 mt-1">Line {lineIndex + 1}</div>
                         </td>
-                        <td className="px-4 py-3 align-top">
-                          {primaryLine ? (
-                            <>
-                              <div className="font-semibold text-gray-900 text-[13px]">{primaryLine.item}</div>
-                              <div className="text-[10px] text-gray-500 font-mono">{primaryLine.itemCode}</div>
-                              {extraLines > 0 ? (
-                                <div className="text-[10px] text-gray-500 mt-0.5">+{extraLines} more line(s)</div>
-                              ) : null}
-                            </>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
+                        <td className="px-4 py-3 align-top min-w-[180px]">
+                          <div className="font-semibold text-gray-900 text-[13px]">{line.item}</div>
+                          <div className="text-[10px] text-gray-500 font-mono">{line.itemCode}</div>
+                          {line.unit ? (
+                            <div className="text-[10px] text-gray-500 mt-0.5">UoM {line.unit}</div>
+                          ) : null}
                         </td>
-                        <td className="px-4 py-3 text-right align-top font-mono text-[12px] text-gray-900">
-                          {primaryLine?.qty ?? '—'}
+                        <td className="px-4 py-3 text-right align-top font-mono text-[12px] text-gray-900 whitespace-nowrap">
+                          {line.qty ?? '—'}
                         </td>
-                        <td className="px-4 py-3 align-top">
+                        <td className="px-4 py-3 align-top min-w-[140px]">
                           <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-sky-50 text-sky-800 border-sky-200">
                             {stageLabel}
                           </span>
+                          <div className="mt-1.5">
+                            <ItemTimelineMini completedIdx={completedIdx} />
+                          </div>
                           <div className="text-[10px] text-gray-500 mt-1">
-                            Step {completedIdx + 1} of {TIMELINE_STAGE_LABELS.length}
+                            {stageLabel} · step {completedIdx + 1}/{TIMELINE_STAGE_LABELS.length}
                           </div>
                         </td>
                         <td className="px-4 py-3 align-top">
                           <div
                             className={`text-[12px] font-medium ${
-                              record.etaDays < 0 ? 'text-rose-600' : 'text-gray-800'
+                              lineEta.etaDays < 0 ? 'text-rose-600' : 'text-gray-800'
                             }`}
                           >
-                            {record.etaDays >= 0 ? `${record.etaDays}d` : 'Overdue'}
+                            {lineEta.etaDays >= 0 ? `${lineEta.etaDays}d` : 'Overdue'}
                           </div>
-                          <div className="text-[10px] text-gray-500">{etaLabel}</div>
+                          <div className="text-[10px] text-gray-500">{lineEta.etaDateDisplay}</div>
+                          {line.leadTimeDays != null && Number.isFinite(line.leadTimeDays) ? (
+                            <div className="text-[10px] text-gray-400 mt-0.5">Lead {line.leadTimeDays}d</div>
+                          ) : null}
                           <span
                             className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBadgeClass(record.status)}`}
                           >
                             {record.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right align-top font-semibold text-amber-700">
-                          ₹{record.grandTotal.toLocaleString('en-IN')}
+                        <td className="px-4 py-3 text-right align-top font-semibold text-amber-700 whitespace-nowrap">
+                          ₹{(line.lineTotal || 0).toLocaleString('en-IN')}
                         </td>
-                        <td className="px-4 py-3 align-top text-[11px] text-gray-700">
+                        <td className="px-4 py-3 align-top text-[11px] text-gray-700 min-w-[150px]">
                           <div className="text-gray-500">LR / ref</div>
                           <div className="break-all">{lrRef}</div>
+                          {vendorNote ? (
+                            <>
+                              <div className="text-gray-500 mt-1">Vendor note</div>
+                              <div className="break-words max-w-[12rem]">{vendorNote}</div>
+                            </>
+                          ) : null}
                           {shipNote ? (
                             <>
                               <div className="text-gray-500 mt-1">Courier note</div>
@@ -445,6 +554,7 @@ export default function IssuedPOsView({
                               type="button"
                               onClick={() => onOpenDetail(record)}
                               className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-slate-300 text-slate-800 hover:bg-slate-50"
+                              title={`Full PO timeline — ${line.item}`}
                             >
                               Timeline
                             </button>
@@ -495,7 +605,7 @@ export default function IssuedPOsView({
                     );
                   });
 
-                  return [headerRow, ...poRows];
+                  return [headerRow, ...itemTableRows];
                 })}
               </tbody>
             </table>
@@ -504,7 +614,7 @@ export default function IssuedPOsView({
           <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50 rounded-b-lg">
             <div className="text-xs text-gray-600">
               Page {safePage} of {totalPages} · Showing {pagedVendorGroups.length} of {groupedByVendor.length}{' '}
-              vendors ({pagedPoCount} PO{pagedPoCount !== 1 ? 's' : ''} on this page)
+              vendors ({pagedLineCount} item{pagedLineCount !== 1 ? 's' : ''} on this page)
             </div>
             <div className="flex items-center gap-2">
               <select

@@ -152,6 +152,17 @@ function formatDocuments(docs: unknown): string {
     .join('\n');
 }
 
+function formatArNumbers(entries: unknown): string {
+  if (!Array.isArray(entries) || entries.length === 0) return '—';
+  return entries
+    .map((item, i) => {
+      if (typeof item === 'string') return `${i + 1}. ${item}`;
+      const row = item as Record<string, unknown>;
+      return `${i + 1}. ${String(row.number ?? row.arNumber ?? '—')}`;
+    })
+    .join('\n');
+}
+
 /** Format a single form field for preview display. */
 export function formatMasterPreviewValue(value: unknown, key?: string): string {
   if (isEmptyPreviewValue(value)) return '—';
@@ -159,6 +170,7 @@ export function formatMasterPreviewValue(value: unknown, key?: string): string {
   if (key === 'vendors') return formatVendorRows(value);
   if (key === 'tests') return formatTestRows(value);
   if (key === 'documents') return formatDocuments(value);
+  if (key === 'arNumbers') return formatArNumbers(value);
   if (key === 'formulaIngredients') return formatFormulaLines(value);
   if (key === 'skuBomLines') return formatSkuBomLines(value);
   if (key === 'packingComponents') return formatPackLines(value);

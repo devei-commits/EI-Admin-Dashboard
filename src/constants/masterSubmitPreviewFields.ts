@@ -115,12 +115,12 @@ export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
     title: 'Quality Specifications',
     fields: fieldDefs([
-      'arNumber',
+      'arNumbers',
       'coaRequired',
       'acceptanceSpecMin',
       'acceptanceSpecMax',
     ], {
-      arNumber: 'AR Number',
+      arNumbers: 'AR Numbers',
       coaRequired: 'COA Required',
       acceptanceSpecMin: 'Acceptance Spec (MIN)',
       acceptanceSpecMax: 'Acceptance Spec (MAX)',

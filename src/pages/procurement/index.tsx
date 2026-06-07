@@ -2534,6 +2534,15 @@ const Procurement: React.FC = () => {
                 const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
                 const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
                 const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
+                const lineLead = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
+                const quoteLine = linkedQuote?.lines?.[idx] ?? linkedQuote?.lines?.find(
+                  (l) => l.item && String(l.item).trim() === String(i.itemName ?? i.name ?? '').trim(),
+                );
+                const resolvedLead =
+                  lineLead ??
+                  normalizeLeadTimeDays(quoteLine?.leadTimeDays) ??
+                  normalizeLeadTimeDays(request.itemDetails?.[idx]?.leadTimeDays) ??
+                  normalizeLeadTimeDays(linkedQuote?.leadTimeDays);
                 return {
                   item: i.itemName ?? i.name ?? request.items[idx] ?? '',
                   itemCode: resolveItemCodeFromSources(
@@ -2547,8 +2556,10 @@ const Procurement: React.FC = () => {
                   gstPercent: gstPct,
                   gstAmount,
                   lineTotal,
+                  ...(resolvedLead !== undefined ? { leadTimeDays: resolvedLead } : {}),
                   ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
                   ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+                  ...(i.unit ? { unit: String(i.unit) } : {}),
                 } as DraftPOLineItem;
               })
               : fallbackLineItems,
@@ -2687,6 +2698,7 @@ const Procurement: React.FC = () => {
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
         const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
         const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
+        const lineLead = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
         return {
           item: i.itemName ?? i.name ?? '',
           itemCode: resolveItemCodeFromSources(
@@ -2700,8 +2712,10 @@ const Procurement: React.FC = () => {
           gstPercent: gstPct,
           gstAmount,
           lineTotal,
+          ...(lineLead !== undefined ? { leadTimeDays: lineLead } : {}),
           ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
           ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+          ...(i.unit ? { unit: String(i.unit) } : {}),
         } as DraftPOLineItem;
       });
 

@@ -7,6 +7,9 @@ export interface BOMRmLine {
   inci_name?: string;
   rm_code?: string;
   raw_material_id?: number;
+  /** Item group reference when formula line is a group (not a fixed RM). */
+  item_group_id?: number;
+  item_group_name?: string;
   pct_w_w?: number;
   pct?: number;
   uom?: string;

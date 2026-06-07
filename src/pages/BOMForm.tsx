@@ -13,6 +13,7 @@ import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahe
 import { buildPmTypeaheadOptions, pmTypeaheadLabelForId } from '../lib/pmTypeahead';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
 import {
   createPRRegistration,
   fetchPRProductDetail,
@@ -30,6 +31,8 @@ import {
   getEffectiveSkuBomLimitForPersist,
   formulaRowsToSkuBomLines,
 } from '../lib/skuBomMath';
+import { computeSkuBomQtyDisplay, formatSkuBomStdQtyWithUnit } from '../lib/skuBomDisplay';
+import { formatQtyWithUnit } from '../utils/formatQty';
 import {
   PR_CATEGORY_OPTIONS,
   PR_SUB_CATEGORY_OPTIONS,
@@ -94,6 +97,9 @@ interface BOMFormState {
     uom: string;
     /** Per-RM specific gravity (vs water) — used at Planning BOM confirmation for vessel volume. */
     specificGravity: string;
+    /** When set, line is an item group (swap among members at Planning). */
+    itemGroupId?: string;
+    itemGroupName?: string;
   }>;
 
   /** Per 1 finished SKU unit (separate from formula % w/w). */
@@ -223,14 +229,22 @@ function parseFormulaIngredientSg(raw: string): number | null {
 function bomFormToRmLines(fd: BOMFormState) {
   return fd.formulaIngredients.map((ing) => {
     const sg = parseFormulaIngredientSg(ing.specificGravity);
+    const isGroup = ing.itemGroupId != null && String(ing.itemGroupId).trim() !== '';
     return {
       phase: ing.phase,
       inci_name: ing.inciName,
       rm_code: ing.rmCode || '',
-      raw_material_id: ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
+      raw_material_id:
+        !isGroup && ing.rawMaterialId ? parseInt(ing.rawMaterialId, 10) : undefined,
       pct_w_w: parseFloat(ing.percentWW) || 0,
       uom: 'KG',
       ...(sg != null ? { specific_gravity: sg } : {}),
+      ...(isGroup
+        ? {
+            item_group_id: parseInt(String(ing.itemGroupId), 10),
+            item_group_name: ing.itemGroupName ?? ing.inciName,
+          }
+        : {}),
     };
   });
 }
@@ -460,6 +474,13 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
           ing.specific_gravity != null && Number(ing.specific_gravity) > 0
             ? String(ing.specific_gravity)
             : '1',
+        ...(ing.item_group_id != null && Number(ing.item_group_id) > 0
+          ? {
+              itemGroupId: String(ing.item_group_id),
+              itemGroupName: ing.item_group_name ?? ing.inci_name,
+              rawMaterialId: undefined,
+            }
+          : {}),
       });
     });
   });
@@ -659,8 +680,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
+  const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
   const [masterLoading, setMasterLoading] = useState(true);
   const [selectedRmId, setSelectedRmId] = useState<string>('');
+  const [selectedItemGroupId, setSelectedItemGroupId] = useState<string>('');
+  const [formulaLineKind, setFormulaLineKind] = useState<'rm' | 'item_group'>('rm');
   const [selectedPmId, setSelectedPmId] = useState<string>('');
   const [ingredientRmQuery, setIngredientRmQuery] = useState('');
   const [packPmQuery, setPackPmQuery] = useState('');
@@ -713,11 +737,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   useEffect(() => {
     let cancelled = false;
     setMasterLoading(true);
-    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()])
-      .then(([rms, pms]) => {
+    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList(), fetchItemGroups('RM')])
+      .then(([rms, pms, groupsRes]) => {
         if (cancelled) return;
         setRawMaterials(rms || []);
         setPackMaterials(pms || []);
+        setItemGroupsRm(groupsRes.success && groupsRes.data ? groupsRes.data : []);
       })
       .catch((err) => {
         console.error(err);
@@ -812,10 +837,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const getFormulaIngredientSku = useCallback(
     (ing: BOMFormState['formulaIngredients'][number]): string => {
+      if (ing.itemGroupId) return ing.rmCode || '';
       const byId = ing.rawMaterialId ? rawMaterialById.get(String(ing.rawMaterialId)) : undefined;
       if (byId?.zohoSkuCode) return String(byId.zohoSkuCode).trim();
       const byCode = ing.rmCode ? rawMaterialByCode.get(String(ing.rmCode).trim().toLowerCase()) : undefined;
-      return byCode?.zohoSkuCode ? String(byCode.zohoSkuCode).trim() : '';
+      return byCode?.zohoSkuCode ? String(byCode.zohoSkuCode).trim() : ing.rmCode || '';
     },
     [rawMaterialByCode, rawMaterialById]
   );
@@ -944,7 +970,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
     const ing = formData.formulaIngredients.find((i) => i.id === id);
     if (!ing) return;
+    const isGroup = Boolean(ing.itemGroupId);
     setEditingIngredientId(id);
+    setFormulaLineKind(isGroup ? 'item_group' : 'rm');
     setTempIngredient({
       inciName: ing.inciName,
       phase: ing.phase,
@@ -952,12 +980,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       uom: ing.uom || 'KG',
       specificGravity: ing.specificGravity || '1',
     });
-    setSelectedRmId(ing.rawMaterialId || '');
-    setIngredientRmQuery(
-      ing.rawMaterialId
-        ? rmTypeaheadLabelForId(rawMaterials, ing.rawMaterialId)
-        : ing.inciName
-    );
+    if (isGroup) {
+      setSelectedItemGroupId(ing.itemGroupId || '');
+      setSelectedRmId('');
+      setIngredientRmQuery('');
+    } else {
+      setSelectedItemGroupId('');
+      setSelectedRmId(ing.rawMaterialId || '');
+      setIngredientRmQuery(
+        ing.rawMaterialId
+          ? rmTypeaheadLabelForId(rawMaterials, ing.rawMaterialId)
+          : ing.inciName
+      );
+    }
   };
 
   const saveIngredientEdit = () => {
@@ -967,19 +1002,70 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const cancelIngredientEdit = () => {
     setEditingIngredientId(null);
     setSelectedRmId('');
+    setSelectedItemGroupId('');
+    setFormulaLineKind('rm');
     setIngredientRmQuery('');
     setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
   };
 
-  const flushIngredientDraft = (): boolean => {
+  const buildIngredientFromDraft = (): BOMFormState['formulaIngredients'][number] | null => {
+    if (formulaLineKind === 'item_group') {
+      const grp = itemGroupsRm.find((g) => String(g.id) === selectedItemGroupId);
+      if (!grp) {
+        addToast('error', 'Select an item group');
+        return null;
+      }
+      if (!tempIngredient.percentWW.trim()) {
+        addToast('error', 'Enter % w/w for the item group line');
+        return null;
+      }
+      return {
+        id: editingIngredientId ?? Date.now().toString(),
+        itemGroupId: String(grp.id),
+        itemGroupName: grp.name,
+        inciName: grp.name,
+        rmCode: grp.code,
+        phase: tempIngredient.phase,
+        percentWW: tempIngredient.percentWW,
+        uom: 'KG',
+        specificGravity: tempIngredient.specificGravity || '1',
+      };
+    }
+
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
     const manualInci = tempIngredient.inciName.trim() || ingredientRmQuery.trim();
-    if (!rm && !manualInci) return false;
+    if (!rm && !manualInci) return null;
+    return {
+      id: editingIngredientId ?? Date.now().toString(),
+      rawMaterialId: rm ? String(rm.id) : undefined,
+      rmCode: rm ? rm.code : '',
+      inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
+      phase: tempIngredient.phase,
+      percentWW: tempIngredient.percentWW,
+      uom: 'KG',
+      specificGravity: tempIngredient.specificGravity || '1',
+    };
+  };
+
+  const flushIngredientDraft = (): boolean => {
+    const draft = buildIngredientFromDraft();
+    if (!draft) {
+      if (formulaLineKind === 'rm') return false;
+      return false;
+    }
 
     if (editingIngredientId) {
-      if (rm) {
+      if (draft.itemGroupId) {
         const conflict = formData.formulaIngredients.some(
-          (ing) => ing.id !== editingIngredientId && String(ing.rawMaterialId) === String(rm.id)
+          (ing) => ing.id !== editingIngredientId && String(ing.itemGroupId) === String(draft.itemGroupId)
+        );
+        if (conflict) {
+          addToast('error', 'This item group is already added in Formula BOM');
+          return false;
+        }
+      } else if (draft.rawMaterialId) {
+        const conflict = formData.formulaIngredients.some(
+          (ing) => ing.id !== editingIngredientId && String(ing.rawMaterialId) === String(draft.rawMaterialId)
         );
         if (conflict) {
           addToast('error', 'This raw material is already added in Formula BOM');
@@ -989,51 +1075,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       setFormData((prev) => ({
         ...prev,
         formulaIngredients: prev.formulaIngredients.map((item) =>
-          item.id === editingIngredientId
-            ? {
-                ...item,
-                rawMaterialId: rm ? String(rm.id) : undefined,
-                rmCode: rm ? rm.code : '',
-                inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
-                phase: tempIngredient.phase,
-                percentWW: tempIngredient.percentWW,
-                uom: 'KG',
-                specificGravity: tempIngredient.specificGravity || '1',
-              }
-            : item
+          item.id === editingIngredientId ? draft : item
         ),
       }));
-      setEditingIngredientId(null);
-      setSelectedRmId('');
-      setIngredientRmQuery('');
-      setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
+      cancelIngredientEdit();
       return true;
     }
 
-    if (rm && selectedRmIds.has(String(rm.id))) {
+    if (draft.itemGroupId) {
+      const conflict = formData.formulaIngredients.some(
+        (ing) => String(ing.itemGroupId) === String(draft.itemGroupId)
+      );
+      if (conflict) {
+        addToast('error', 'This item group is already added in Formula BOM');
+        return false;
+      }
+    } else if (draft.rawMaterialId && selectedRmIds.has(String(draft.rawMaterialId))) {
       addToast('error', 'This raw material is already added in Formula BOM');
       return false;
     }
+
     setFormData((prev) => ({
       ...prev,
-      formulaIngredients: [
-        ...prev.formulaIngredients,
-        {
-          id: Date.now().toString(),
-          rawMaterialId: rm ? String(rm.id) : undefined,
-          rmCode: rm ? rm.code : '',
-          inciName: rm ? (rm.inci || rm.name || manualInci) : manualInci,
-          phase: tempIngredient.phase,
-          percentWW: tempIngredient.percentWW,
-          // Keep operator-selected UOM; fallback to RM UOM only if no explicit input.
-          uom: 'KG',
-          specificGravity: tempIngredient.specificGravity || '1',
-        },
-      ],
+      formulaIngredients: [...prev.formulaIngredients, draft],
     }));
-    setSelectedRmId('');
-    setIngredientRmQuery('');
-    setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
+    cancelIngredientEdit();
     return true;
   };
 
@@ -1045,6 +1111,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingIngredientId((cur) => {
       if (cur === id) {
         setSelectedRmId('');
+        setSelectedItemGroupId('');
+        setFormulaLineKind('rm');
         setIngredientRmQuery('');
         setTempIngredient({ inciName: '', phase: '', percentWW: '', uom: 'KG', specificGravity: '1' });
         return null;
@@ -1112,6 +1180,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   ]);
 
   const beginEditComponent = (id: string) => {
+    if (editingComponentId && editingComponentId !== id) {
+      cancelComponentEdit();
+    }
     const c = formData.packingComponents.find((x) => x.id === id);
     if (!c) return;
     setEditingComponentId(id);
@@ -1128,9 +1199,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setPackPmQuery(
       c.packMaterialId ? pmTypeaheadLabelForId(packMaterials, c.packMaterialId) : c.pmDescription
     );
-    window.setTimeout(() => {
-      packDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 0);
+  };
+
+  const saveComponentEdit = (): void => {
+    flushComponentDraft();
   };
 
   const cancelComponentEdit = () => {
@@ -1231,6 +1303,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setEditingComponentId((cur) => {
       if (cur === id) {
         setSelectedPmId('');
+        setPackPmQuery('');
         setTempComponent(emptyPackComponentDraft());
         return null;
       }
@@ -1368,7 +1441,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     try {
       if (pending.mode === 'update' && productIdFromRoute) {
         const res = await updatePRProduct(productIdFromRoute, pending.body);
-        if (res.success) {
+        if (res.success && res.data) {
+          setFormData(productDetailToBomForm(res.data));
           setSaveSuccessIsEdit(true);
           setSaveSuccessCode(formData.skuCode.trim() || '');
           setSaveSuccessRows([
@@ -1664,14 +1738,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </p>
                 </div>
                 <p className="text-xs text-slate-600 mb-2">
-                  Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line. Formula amounts are always <strong>% w/w on a kg batch</strong>; SG converts litre-based RMs to kg at Planning BOM confirmation (e.g. SG 0.9 → 9 kg = 10 L). Total % w/w should equal 100%. Use{' '}
-                  <strong>Import from Formula BOM</strong> on the SKU BOM step to derive per-unit quantities from these % w/w lines.
+                  Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line. Choose <strong>RM</strong> for a fixed raw material, or <strong>Item group</strong> to reference a group name (e.g. Glycerine Group) — at Planning BOM confirm you pick which group member to use. Formula amounts are always <strong>% w/w on a kg batch</strong>. Total % w/w should equal 100%.
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
                   <div className="grid min-w-[860px] grid-cols-12 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
-                    <div className="col-span-3 min-w-0">INCI Name / Raw Material</div>
-                    <div className="col-span-2 min-w-0">SKU</div>
+                    <div className="col-span-3 min-w-0">INCI / Group name</div>
+                    <div className="col-span-2 min-w-0">SKU / Group code</div>
                     <div className="col-span-2 min-w-0">Phase</div>
                     <div className="col-span-2 min-w-0">% W/W</div>
                     <div className="col-span-1 min-w-0">SG</div>
@@ -1691,29 +1764,59 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             key={ing.id}
                             className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-start p-2 rounded bg-blue-50 ring-2 ring-blue-200 sm:min-w-0"
                           >
-                            <div className="col-span-3 min-w-0">
-                              <RmMasterTypeahead
-                                options={formulaRmTypeaheadOptions}
-                                value={ingredientRmQuery}
-                                loading={masterLoading}
-                                selectedId={selectedRmId}
-                                onValueChange={(next) => {
-                                  setIngredientRmQuery(next);
-                                  setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                            <div className="col-span-3 min-w-0 space-y-1">
+                              <select
+                                value={formulaLineKind}
+                                onChange={(e) => {
+                                  const kind = e.target.value === 'item_group' ? 'item_group' : 'rm';
+                                  setFormulaLineKind(kind);
+                                  setSelectedRmId('');
+                                  setSelectedItemGroupId('');
+                                  setIngredientRmQuery('');
+                                  setTempIngredient((prev) => ({ ...prev, inciName: '' }));
                                 }}
-                                onSelect={(opt) => {
-                                  setSelectedRmId(opt.id);
-                                  setIngredientRmQuery(opt.label);
-                                  const rm = rawMaterialById.get(opt.id);
-                                  setTempIngredient((prev) => ({
-                                    ...prev,
-                                    inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
-                                    uom: prev.uom || rm?.uom || 'KG',
-                                  }));
-                                }}
-                                onClearSelection={() => setSelectedRmId('')}
-                                placeholder="RM code or INCI"
-                              />
+                                className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-white"
+                              >
+                                <option value="rm">RM</option>
+                                <option value="item_group">Item group</option>
+                              </select>
+                              {formulaLineKind === 'item_group' ? (
+                                <select
+                                  value={selectedItemGroupId}
+                                  onChange={(e) => setSelectedItemGroupId(e.target.value)}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                >
+                                  <option value="">— Select item group —</option>
+                                  {itemGroupsRm.map((g) => (
+                                    <option key={g.id} value={g.id}>
+                                      {g.name} ({g.code})
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <RmMasterTypeahead
+                                  options={formulaRmTypeaheadOptions}
+                                  value={ingredientRmQuery}
+                                  loading={masterLoading}
+                                  selectedId={selectedRmId}
+                                  onValueChange={(next) => {
+                                    setIngredientRmQuery(next);
+                                    setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                                  }}
+                                  onSelect={(opt) => {
+                                    setSelectedRmId(opt.id);
+                                    setIngredientRmQuery(opt.label);
+                                    const rm = rawMaterialById.get(opt.id);
+                                    setTempIngredient((prev) => ({
+                                      ...prev,
+                                      inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                                      uom: prev.uom || rm?.uom || 'KG',
+                                    }));
+                                  }}
+                                  onClearSelection={() => setSelectedRmId('')}
+                                  placeholder="RM code or INCI"
+                                />
+                              )}
                             </div>
                             <div className="col-span-2 min-w-0 pt-1.5 text-slate-600 font-mono text-xs break-all">
                               {inlineSku || '—'}
@@ -1788,7 +1891,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           key={ing.id}
                           className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
                         >
-                          <div className="col-span-3 min-w-0 text-slate-900 break-words">{ing.inciName}</div>
+                          <div className="col-span-3 min-w-0 text-slate-900 break-words">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{ing.inciName}</span>
+                              {ing.itemGroupId ? (
+                                <span className="text-[9px] font-bold uppercase text-violet-700 bg-violet-100 px-1 py-0.5 rounded">
+                                  Group
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
                           <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs break-all">
                             {getFormulaIngredientSku(ing) || '—'}
                           </div>
@@ -1837,29 +1949,62 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                   >
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
-                    <RmMasterTypeahead
-                      className="sm:col-span-2"
-                      options={formulaRmTypeaheadOptions}
-                      value={ingredientRmQuery}
-                      loading={masterLoading}
-                      selectedId={selectedRmId}
-                      onValueChange={(next) => {
-                        setIngredientRmQuery(next);
-                        setTempIngredient((prev) => ({ ...prev, inciName: next }));
-                      }}
-                      onSelect={(opt) => {
-                        setSelectedRmId(opt.id);
-                        setIngredientRmQuery(opt.label);
-                        const rm = rawMaterialById.get(opt.id);
-                        setTempIngredient((prev) => ({
-                          ...prev,
-                          inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
-                          uom: prev.uom || rm?.uom || 'KG',
-                        }));
-                      }}
-                      onClearSelection={() => setSelectedRmId('')}
-                      placeholder="Search RM by code or INCI — pick from list or type manual name"
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-600">Line type</label>
+                      <select
+                        value={formulaLineKind}
+                        onChange={(e) => {
+                          const kind = e.target.value === 'item_group' ? 'item_group' : 'rm';
+                          setFormulaLineKind(kind);
+                          setSelectedRmId('');
+                          setSelectedItemGroupId('');
+                          setIngredientRmQuery('');
+                          setTempIngredient((prev) => ({ ...prev, inciName: '' }));
+                        }}
+                        className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                      >
+                        <option value="rm">Raw material (RM)</option>
+                        <option value="item_group">Item group</option>
+                      </select>
+                    </div>
+                    {formulaLineKind === 'item_group' ? (
+                      <select
+                        value={selectedItemGroupId}
+                        onChange={(e) => setSelectedItemGroupId(e.target.value)}
+                        className="w-full px-2 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      >
+                        <option value="">— Select item group (e.g. Glycerine Group) —</option>
+                        {itemGroupsRm.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name} · {g.code} · {(g.approvedMembers ?? []).length} member(s)
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <RmMasterTypeahead
+                        className="sm:col-span-2"
+                        options={formulaRmTypeaheadOptions}
+                        value={ingredientRmQuery}
+                        loading={masterLoading}
+                        selectedId={selectedRmId}
+                        onValueChange={(next) => {
+                          setIngredientRmQuery(next);
+                          setTempIngredient((prev) => ({ ...prev, inciName: next }));
+                        }}
+                        onSelect={(opt) => {
+                          setSelectedRmId(opt.id);
+                          setIngredientRmQuery(opt.label);
+                          const rm = rawMaterialById.get(opt.id);
+                          setTempIngredient((prev) => ({
+                            ...prev,
+                            inciName: rm ? (rm.inci || rm.name || opt.label) : opt.label,
+                            uom: prev.uom || rm?.uom || 'KG',
+                          }));
+                        }}
+                        onClearSelection={() => setSelectedRmId('')}
+                        placeholder="Search RM by code or INCI — pick from list or type manual name"
+                      />
+                    )}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                       <input
                         type="text"
@@ -1944,9 +2089,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <span className="font-normal text-violet-600">(optional — derived from Formula BOM)</span>
               </label>
               <p className="text-xs text-slate-600 mb-3">
-                Read-only view of per-unit RM quantities for <strong>one</strong> finished unit. Lines are populated only via{' '}
-                <strong>Import from Formula BOM</strong> below (Formula % w/w must total 100%). When present, the sum must match net per unit (±0.001).
-                Pack size on sale orders uses this net per unit.
+                Per-unit RM required for <strong>one</strong> finished unit. First qty column is always <strong>kg</strong> (planning/BOM basis); second column is the same amount in each RM&apos;s{' '}
+                <strong>standard UoM</strong> from Raw Materials master (L, KG, etc.). Lines are populated via <strong>Import from Formula BOM</strong> (Formula % w/w must total 100%).
+                When present, stored qtys must match net per unit (±0.001). Pack size on sale orders uses this net per unit.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100">
@@ -2014,33 +2159,54 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
               ) : null}
 
-              <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                <div className="grid min-w-[400px] grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
-                  <div>INCI / Raw Material</div>
-                  <div>Qty / unit</div>
-                  <div>UOM</div>
-                </div>
-                <div className="space-y-2">
-                  {formData.skuBomLines.length === 0 ? (
-                    <p className="text-sm text-slate-500 py-4 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
-                      Import from Formula BOM to populate this list.
-                    </p>
-                  ) : (
-                    formData.skuBomLines.map((row) => (
-                      <div
-                        key={row.id}
-                        className="grid min-w-[400px] grid-cols-3 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
-                      >
-                        <div className="text-slate-900">
-                          {row.inciName}
-                          {row.rmCode ? <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span> : null}
-                        </div>
-                        <div className="text-slate-800 font-mono">{row.qtyPerUnit}</div>
-                        <div className="text-slate-600">{row.uom}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
+              <div className="mb-4 overflow-x-auto [-webkit-overflow-scrolling:touch] border border-slate-200 rounded-lg">
+                <table className="w-full text-sm min-w-[560px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase">
+                      <th className="text-left p-2">INCI / Raw Material</th>
+                      <th className="text-right p-2">Required / unit (kg)</th>
+                      <th className="text-right p-2">Required / unit (Std UoM)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formData.skuBomLines.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="p-4 text-center text-sm text-slate-500">
+                          Import from Formula BOM to populate this list.
+                        </td>
+                      </tr>
+                    ) : (
+                      formData.skuBomLines.map((row) => {
+                        const rmMaster = row.rawMaterialId
+                          ? rawMaterialById.get(String(row.rawMaterialId))
+                          : row.rmCode
+                            ? rawMaterialByCode.get(row.rmCode.trim().toLowerCase())
+                            : undefined;
+                        const display = computeSkuBomQtyDisplay({
+                          row,
+                          formulaIngredients: formData.formulaIngredients,
+                          rmMaster,
+                        });
+                        return (
+                          <tr key={row.id} className="border-t border-slate-100">
+                            <td className="p-2 text-slate-900">
+                              {row.inciName}
+                              {row.rmCode ? (
+                                <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span>
+                              ) : null}
+                            </td>
+                            <td className="p-2 text-right font-mono font-bold text-violet-700">
+                              {formatQtyWithUnit(display.kgQty, 'kg')}
+                            </td>
+                            <td className="p-2 text-right font-mono font-bold text-indigo-700">
+                              {formatSkuBomStdQtyWithUnit(display.stdQty, display.stdUom)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
         );
@@ -2051,7 +2217,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
                 <p className="text-xs text-slate-600 mb-3">
-                  List primary, secondary, and label components. Rows are added only when you click the Add button.
+                  List primary, secondary, and label components. Click the pencil on a row to edit in place (like Formula BOM), or add a new line below.
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
@@ -2065,12 +2231,193 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div>Qty / Unit</div>
                   </div>
                   <div className="space-y-2">
-                    {formData.packingComponents.map(comp => (
+                    {formData.packingComponents.map((comp) => {
+                      const isEditing = comp.id === editingComponentId;
+                      const inlineSku =
+                        selectedPmId && isEditing
+                          ? packMaterialById.get(String(selectedPmId))?.code || getPackComponentSku(comp)
+                          : getPackComponentSku(comp);
+
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={comp.id}
+                            className="min-w-[980px] rounded-lg border border-blue-200 bg-blue-50 p-3 ring-2 ring-blue-200 space-y-2 sm:min-w-0"
+                          >
+                            <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto] lg:items-start">
+                              <PmMasterTypeahead
+                                options={packPmTypeaheadOptions}
+                                value={packPmQuery}
+                                loading={masterLoading}
+                                selectedId={selectedPmId}
+                                onValueChange={(next) => {
+                                  setPackPmQuery(next);
+                                  setTempComponent((prev) => ({ ...prev, pmDescription: next }));
+                                }}
+                                onSelect={(opt) => {
+                                  setSelectedPmId(opt.id);
+                                  setPackPmQuery(opt.label);
+                                  const pm = packMaterialById.get(opt.id);
+                                  const pmCats = pm ? packCategoriesFromPmRecord(pm) : null;
+                                  setTempComponent((prev) => ({
+                                    ...prev,
+                                    pmDescription: pm ? (pm.description || opt.label) : opt.label,
+                                    pmSkuCategory: pmCats?.pmSkuCategory || prev.pmSkuCategory,
+                                    optionalPmSubCategory: pmCats?.optionalPmSubCategory || prev.optionalPmSubCategory,
+                                    optionalPmSubSubCategory: pmCats?.optionalPmSubSubCategory || prev.optionalPmSubSubCategory,
+                                    type: prev.type || pmCats?.type || pm?.level || pm?.type || '',
+                                    uom: prev.uom || pm?.unit || 'PCS',
+                                  }));
+                                }}
+                                onClearSelection={() => setSelectedPmId('')}
+                                placeholder="Search PM by code or description"
+                              />
+                              <div className="flex items-center justify-end gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={saveComponentEdit}
+                                  className="text-emerald-700 hover:text-emerald-900 p-1.5 rounded"
+                                  title="Save line"
+                                  aria-label="Save line"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelComponentEdit}
+                                  className="text-slate-600 hover:text-slate-900 p-1.5 rounded text-xs font-medium"
+                                  title="Cancel edit"
+                                  aria-label="Cancel edit"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeComponent(comp.id)}
+                                  className="text-red-600 hover:text-red-800 p-1.5 rounded"
+                                  title="Remove line"
+                                  aria-label="Remove line"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-xs font-mono text-slate-600">SKU: {inlineSku || '—'}</p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+                                <select
+                                  value={tempComponent.pmSkuCategory}
+                                  onChange={(e) => {
+                                    const canon = normalizePmSkuCategoryForSelect(e.target.value) || '';
+                                    const level = pmLevelForSubCategory(canon);
+                                    setTempComponent((prev) => ({
+                                      ...prev,
+                                      pmSkuCategory: canon,
+                                      optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(
+                                        canon,
+                                        prev.optionalPmSubCategory
+                                      ),
+                                      optionalPmSubSubCategory: '',
+                                      type: level || prev.type,
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                >
+                                  <option value="">Select category…</option>
+                                  {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Sub-category</label>
+                                <select
+                                  value={tempComponent.optionalPmSubCategory}
+                                  disabled={!tempComponent.pmSkuCategory.trim()}
+                                  onChange={(e) => {
+                                    const detail =
+                                      normalizePmDetailSubCategoryForSelect(
+                                        tempComponent.pmSkuCategory,
+                                        e.target.value
+                                      ) || e.target.value;
+                                    setTempComponent((prev) => ({
+                                      ...prev,
+                                      optionalPmSubCategory: detail,
+                                      optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
+                                        detail,
+                                        prev.optionalPmSubSubCategory
+                                      ),
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white disabled:bg-slate-50"
+                                >
+                                  <option value="">Select sub-category…</option>
+                                  {packDraftSubCategoryOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Sub-sub category</label>
+                                <select
+                                  value={tempComponent.optionalPmSubSubCategory}
+                                  disabled={
+                                    !tempComponent.optionalPmSubCategory.trim() ||
+                                    !pmDetailSubCategoryHasSubSubCategory(tempComponent.optionalPmSubCategory)
+                                  }
+                                  onChange={(e) =>
+                                    setTempComponent((prev) => ({
+                                      ...prev,
+                                      optionalPmSubSubCategory: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white disabled:bg-slate-50"
+                                >
+                                  <option value="">Select sub-sub category…</option>
+                                  {packDraftSubSubCategoryOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <input
+                                type="text"
+                                placeholder="Type (Primary / Secondary / Tertiary)"
+                                value={tempComponent.type}
+                                onChange={(e) => setTempComponent((prev) => ({ ...prev, type: e.target.value }))}
+                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Qty / Unit"
+                                value={tempComponent.qtyUnit}
+                                onChange={(e) => setTempComponent((prev) => ({ ...prev, qtyUnit: e.target.value }))}
+                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                              />
+                              <input
+                                type="text"
+                                placeholder="UOM"
+                                value={tempComponent.uom}
+                                onChange={(e) => setTempComponent((prev) => ({ ...prev, uom: e.target.value }))}
+                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                              />
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
                       <div
                         key={comp.id}
-                        className={`grid min-w-[980px] grid-cols-8 gap-2 text-sm items-center p-2 rounded sm:min-w-0 ${
-                          comp.id === editingComponentId ? 'bg-blue-50 ring-2 ring-blue-200' : 'bg-slate-50'
-                        }`}
+                        className="grid min-w-[980px] grid-cols-8 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
                       >
                         <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
                         <div className="text-slate-600 font-mono text-xs break-all">
@@ -2089,7 +2436,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           <button
                             type="button"
                             onClick={() => beginEditComponent(comp.id)}
-                            className="text-blue-600 hover:text-blue-800 p-1 rounded"
+                            disabled={Boolean(editingComponentId)}
+                            className="text-blue-600 hover:text-blue-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                             title="Edit line"
                             aria-label="Edit line"
                           >
@@ -2098,7 +2446,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           <button
                             type="button"
                             onClick={() => removeComponent(comp.id)}
-                            className="text-red-600 hover:text-red-800 p-1 rounded"
+                            disabled={Boolean(editingComponentId)}
+                            className="text-red-600 hover:text-red-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                             title="Remove line"
                             aria-label="Remove line"
                           >
@@ -2106,24 +2455,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
+                {!editingComponentId ? (
                 <div
                   ref={packDraftRef}
                   className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      {editingComponentId ? 'Edit line' : 'New line'}
-                    </p>
-                    {editingComponentId ? (
-                      <button type="button" onClick={cancelComponentEdit} className="text-xs text-slate-600 hover:text-slate-900 underline">
-                        Cancel edit
-                      </button>
-                    ) : null}
-                  </div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
                   <PmMasterTypeahead
                     className="sm:col-span-2"
                     options={packPmTypeaheadOptions}
@@ -2283,16 +2625,21 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     />
                   </div>
                 </div>
+                ) : (
+                  <p className="text-xs text-blue-700">Editing in place — save with ✓ on the row or Cancel.</p>
+                )}
 
                 <div className="flex justify-end mt-3">
+                  {!editingComponentId ? (
                   <button
                     type="button"
                     onClick={addComponent}
                     className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
                   >
-                    {editingComponentId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                    {editingComponentId ? 'Update component' : 'Add component to list'}
+                    <Plus className="w-4 h-4" />
+                    Add component to list
                   </button>
+                  ) : null}
                 </div>
               </div>
             </div>

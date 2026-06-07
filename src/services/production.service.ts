@@ -174,17 +174,35 @@ export async function fetchBatchById(pk: number): Promise<BatchRow | null> {
   }
 }
 
-/** Reserved qty for this production batch by material code (for MTR modal). */
-export async function fetchBatchMtrReserved(pk: number): Promise<Record<string, number>> {
+export type BatchReservedStockMaps = {
+  /** Reserved for this production batch (reserved_batch_items). */
+  byCode: Record<string, number>;
+  /** Reserved by other batches — not available for this batch's reserve/MTR. */
+  otherBatchesByCode: Record<string, number>;
+};
+
+/** Reserved qty maps for this production batch by material code (MTR + Reserve modals). */
+export async function fetchBatchMtrReserved(pk: number): Promise<BatchReservedStockMaps> {
   try {
-    const res = await api.get<{ success?: boolean; byCode?: Record<string, number> }>(
-      `${BASE}/batches/${pk}/mtr-reserved`,
-    );
-    const data = (res as { data?: { byCode?: Record<string, number> } })?.data ?? res;
-    const byCode = (data as { byCode?: Record<string, number> })?.byCode;
-    return byCode && typeof byCode === 'object' ? byCode : {};
+    const res = await api.get<{
+      success?: boolean;
+      byCode?: Record<string, number>;
+      otherBatchesByCode?: Record<string, number>;
+    }>(`${BASE}/batches/${pk}/mtr-reserved`);
+    const data = (res as { data?: BatchReservedStockMaps })?.data ?? res;
+    const byCode =
+      (data as { byCode?: Record<string, number> })?.byCode &&
+      typeof (data as { byCode?: Record<string, number> }).byCode === 'object'
+        ? (data as { byCode: Record<string, number> }).byCode
+        : {};
+    const otherBatchesByCode =
+      (data as { otherBatchesByCode?: Record<string, number> })?.otherBatchesByCode &&
+      typeof (data as { otherBatchesByCode?: Record<string, number> }).otherBatchesByCode === 'object'
+        ? (data as { otherBatchesByCode: Record<string, number> }).otherBatchesByCode
+        : {};
+    return { byCode, otherBatchesByCode };
   } catch {
-    return {};
+    return { byCode: {}, otherBatchesByCode: {} };
   }
 }
 

@@ -17,6 +17,10 @@ import {
   flattenFormulaBomPhases,
 } from '../lib/skuBomMath';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
+import { computeSkuBomQtyDisplay, formatSkuBomStdQtyWithUnit, resolveRmMasterForSkuLine } from '../lib/skuBomDisplay';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
+import { formatQtyWithUnit } from '../utils/formatQty';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { compareMasterTableSort } from '../lib/masterTableSort';
 import {
@@ -81,6 +85,59 @@ const BOMDashboard: React.FC = () => {
   /** 0–100 while chunked Formula BOM import runs */
   const [formulaBomUploadPercent, setFormulaBomUploadPercent] = useState<number | null>(null);
   const formulaRmFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
+  const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
+
+  const rmById = useMemo(() => {
+    const map = new Map<number, RawMaterialRecord>();
+    for (const rm of rawMaterials) {
+      const id = Number(rm.id);
+      if (Number.isFinite(id)) map.set(id, rm);
+    }
+    return map;
+  }, [rawMaterials]);
+
+  const rmByCode = useMemo(() => {
+    const map = new Map<string, RawMaterialRecord>();
+    for (const rm of rawMaterials) {
+      const code = rm.code?.trim();
+      if (code) map.set(code.toUpperCase(), rm);
+    }
+    return map;
+  }, [rawMaterials]);
+
+  const reloadRawMaterialsMaster = useCallback(async (): Promise<void> => {
+    try {
+      const [rows, groupsRes] = await Promise.all([
+        fetchRawMaterialsList(),
+        fetchItemGroups('RM'),
+      ]);
+      setRawMaterials(rows ?? []);
+      setItemGroupsRm(groupsRes.success && groupsRes.data ? groupsRes.data : []);
+    } catch {
+      setRawMaterials([]);
+      setItemGroupsRm([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadRawMaterialsMaster();
+  }, [reloadRawMaterialsMaster]);
+
+  const refreshOpenProductDetail = useCallback(
+    async (productId?: number | string): Promise<void> => {
+      const id = productId ?? selectedProduct?.product_id;
+      if (id == null || !isPanelOpen) return;
+      const res = await fetchPRProductDetail(id);
+      if (res.success && res.data) {
+        setSelectedProduct(res.data);
+        if (isEditMode) {
+          setEditDraft({ ...res.data });
+        }
+      }
+    },
+    [selectedProduct?.product_id, isPanelOpen, isEditMode]
+  );
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -103,12 +160,15 @@ const BOMDashboard: React.FC = () => {
     setEditDraft(null);
     setIsEditMode(false);
     setPanelTab(0);
-    const res = await fetchPRProductDetail(product.product_id);
+    const [res] = await Promise.all([
+      fetchPRProductDetail(product.product_id),
+      reloadRawMaterialsMaster(),
+    ]);
     setDetailLoading(false);
     if (res.success && res.data) {
       setSelectedProduct(res.data);
     }
-  }, []);
+  }, [reloadRawMaterialsMaster]);
 
   const handleClosePanel = () => {
     setIsPanelOpen(false);
@@ -147,8 +207,75 @@ const BOMDashboard: React.FC = () => {
       if (!fb[phaseIdx]) return prev;
       fb[phaseIdx] = {
         ...fb[phaseIdx],
-        ingredients: [...fb[phaseIdx].ingredients, { inci_name: '', rm_code: '', pct_w_w: 0, uom: 'kg' }],
+        ingredients: [
+          ...fb[phaseIdx].ingredients,
+          { inci_name: '', rm_code: '', pct_w_w: 0, uom: 'kg' },
+        ],
       };
+      return { ...prev, formulaBom: fb };
+    });
+  };
+  const setFormulaIngredientKind = (phaseIdx: number, ingIdx: number, kind: 'rm' | 'item_group') => {
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const fb = (prev.formulaBom ?? []).map((p, i) => {
+        if (i !== phaseIdx) return p;
+        return {
+          ...p,
+          ingredients: p.ingredients.map((ing, j) => {
+            if (j !== ingIdx) return ing;
+            if (kind === 'item_group') {
+              return {
+                ...ing,
+                raw_material_id: null,
+                inci_name: '',
+                rm_code: '',
+                item_group_id: null,
+                item_group_name: null,
+              };
+            }
+            return {
+              ...ing,
+              item_group_id: null,
+              item_group_name: null,
+            };
+          }),
+        };
+      });
+      return { ...prev, formulaBom: fb };
+    });
+  };
+  const setFormulaIngredientItemGroup = (phaseIdx: number, ingIdx: number, groupId: string) => {
+    const grp = itemGroupsRm.find((g) => String(g.id) === groupId);
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const fb = (prev.formulaBom ?? []).map((p, i) => {
+        if (i !== phaseIdx) return p;
+        return {
+          ...p,
+          ingredients: p.ingredients.map((ing, j) => {
+            if (j !== ingIdx) return ing;
+            if (!grp) {
+              return {
+                ...ing,
+                item_group_id: null,
+                item_group_name: null,
+                raw_material_id: null,
+                inci_name: '',
+                rm_code: '',
+              };
+            }
+            return {
+              ...ing,
+              item_group_id: Number(grp.id),
+              item_group_name: grp.name,
+              inci_name: grp.name,
+              rm_code: grp.code,
+              raw_material_id: null,
+            };
+          }),
+        };
+      });
       return { ...prev, formulaBom: fb };
     });
   };
@@ -587,6 +714,12 @@ const BOMDashboard: React.FC = () => {
         pct_w_w: ing.pct_w_w,
         uom: ing.uom || 'kg',
         ...(ing.raw_material_id != null ? { raw_material_id: ing.raw_material_id } : {}),
+        ...(ing.item_group_id != null && Number(ing.item_group_id) > 0
+          ? {
+              item_group_id: Number(ing.item_group_id),
+              item_group_name: ing.item_group_name ?? ing.inci_name,
+            }
+          : {}),
       }))
     );
     const sku_rm_lines = skuBom.map((r) => ({
@@ -640,12 +773,12 @@ const BOMDashboard: React.FC = () => {
       setSelectedProduct(res.data);
       setEditDraft(null);
       setIsEditMode(false);
-      loadProducts();
+      await Promise.all([loadProducts(), reloadRawMaterialsMaster()]);
       toast.success('Product updated');
     } else {
       toast.error(res.error ?? 'Update failed');
     }
-  }, [selectedProduct, editDraft, loadProducts]);
+  }, [selectedProduct, editDraft, loadProducts, reloadRawMaterialsMaster]);
 
   const displayProduct = isEditMode && editDraft ? editDraft : selectedProduct;
 
@@ -1396,24 +1529,88 @@ const BOMDashboard: React.FC = () => {
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">INCI Name</th><th className="text-left p-2">RM Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2 w-24">Type</th><th className="text-left p-2">INCI / Group</th><th className="text-left p-2">RM / Group Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                               <tbody>
-                                {phase.ingredients.map((ing, i) => (
+                                {phase.ingredients.map((ing, i) => {
+                                  const isGroupLine =
+                                    ing.item_group_id != null && Number(ing.item_group_id) > 0;
+                                  return (
                                   <tr key={i} className="border-t border-gray-100">
                                     <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
                                     {isEditMode ? (
                                       <>
-                                        <td className="p-2"><input value={ing.inci_name} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'inci_name', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
-                                        <td className="p-2"><input value={ing.rm_code} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'rm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                        <td className="p-2">
+                                          <select
+                                            value={isGroupLine ? 'item_group' : 'rm'}
+                                            onChange={(e) =>
+                                              setFormulaIngredientKind(
+                                                phaseIdx,
+                                                i,
+                                                e.target.value === 'item_group' ? 'item_group' : 'rm'
+                                              )
+                                            }
+                                            className="w-full px-1 py-1 border rounded text-xs bg-white"
+                                          >
+                                            <option value="rm">RM</option>
+                                            <option value="item_group">Item group</option>
+                                          </select>
+                                        </td>
+                                        {isGroupLine ? (
+                                          <>
+                                            <td className="p-2" colSpan={2}>
+                                              <select
+                                                value={
+                                                  ing.item_group_id != null ? String(ing.item_group_id) : ''
+                                                }
+                                                onChange={(e) =>
+                                                  setFormulaIngredientItemGroup(phaseIdx, i, e.target.value)
+                                                }
+                                                className="w-full px-2 py-1 border rounded text-xs bg-white"
+                                              >
+                                                <option value="">— Select item group —</option>
+                                                {itemGroupsRm.map((g) => (
+                                                  <option key={g.id} value={g.id}>
+                                                    {g.name} ({g.code}) · {(g.approvedMembers ?? []).length} member(s)
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </td>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <td className="p-2"><input value={ing.inci_name} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'inci_name', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
+                                            <td className="p-2"><input value={ing.rm_code} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'rm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                          </>
+                                        )}
                                         <td className="p-2"><input type="number" step="0.01" value={ing.pct_w_w} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'pct_w_w', Number(e.target.value) || 0)} className="w-16 px-2 py-1 border rounded text-right text-xs" /></td>
                                         <td className="p-2"><input value={ing.uom} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'uom', e.target.value)} className="w-14 px-2 py-1 border rounded text-xs" /></td>
                                         <td className="p-2"><button type="button" onClick={() => removeFormulaIngredient(phaseIdx, i)} className="text-red-600 hover:text-red-700"><Trash2 className="w-3.5 h-3.5" /></button></td>
                                       </>
                                     ) : (
-                                      <><td className="p-2 font-medium">{ing.inci_name}</td><td className="p-2 font-mono text-xs text-indigo-600">{ing.rm_code}</td><td className="p-2 text-right font-mono">{ing.pct_w_w}</td><td className="p-2 text-gray-500">{ing.uom}</td></>
+                                      <>
+                                        <td className="p-2">
+                                          {isGroupLine ? (
+                                            <span className="text-[10px] font-semibold uppercase text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">Group</span>
+                                          ) : (
+                                            <span className="text-[10px] font-semibold uppercase text-gray-500">RM</span>
+                                          )}
+                                        </td>
+                                        <td className="p-2 font-medium">
+                                          {ing.inci_name}
+                                          {isGroupLine && ing.item_group_name ? (
+                                            <span className="block text-[10px] text-violet-600 font-normal">
+                                              Swap among group members at Planning BOM confirm
+                                            </span>
+                                          ) : null}
+                                        </td>
+                                        <td className="p-2 font-mono text-xs text-indigo-600">{ing.rm_code}</td>
+                                        <td className="p-2 text-right font-mono">{ing.pct_w_w}</td>
+                                        <td className="p-2 text-gray-500">{ing.uom}</td>
+                                      </>
                                     )}
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -1431,7 +1628,7 @@ const BOMDashboard: React.FC = () => {
                   return (
                     <div className="space-y-4">
                       <p className="text-xs text-gray-600">
-                        Read-only per-unit RM quantities derived from <strong>Formula BOM</strong> via Import below. Net per unit is set on SKU BOM (used as pack size on sale orders). When lines exist, the sum must match net (±0.001).
+                        Per-unit RM required for <strong>1 finished product</strong>, derived from <strong>Formula BOM</strong> via Import below. First qty column is always <strong>kg</strong>; second column is the same requirement in each RM&apos;s <strong>standard UoM</strong> from Raw Materials master (e.g. L for liquids, KG for solids). Net per unit is used as pack size on sale orders.
                       </p>
                       {hasNet ? (
                         <div className="p-3 bg-violet-50 border border-violet-100 rounded-lg space-y-1">
@@ -1513,20 +1710,34 @@ const BOMDashboard: React.FC = () => {
                               <th className="text-left p-2 w-8">#</th>
                               <th className="text-left p-2">INCI / Name</th>
                               <th className="text-left p-2">RM Code</th>
-                              <th className="text-right p-2">Qty / unit</th>
-                              <th className="text-left p-2">UOM</th>
+                              <th className="text-right p-2">Required / unit (kg)</th>
+                              <th className="text-right p-2">Required / unit (Std UoM)</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {skuList.map((row, i) => (
-                              <tr key={i} className="border-t border-gray-100">
-                                <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
-                                <td className="p-2 font-medium">{row.inci_name}</td>
-                                <td className="p-2 font-mono text-xs text-violet-700">{row.rm_code}</td>
-                                <td className="p-2 text-right font-mono font-bold text-violet-700">{row.qty_per_unit}</td>
-                                <td className="p-2 text-gray-500">{row.uom}</td>
-                              </tr>
-                            ))}
+                            {skuList.map((row, i) => {
+                              const formulaBom =
+                                (isEditMode ? editDraft?.formulaBom : selectedProduct?.formulaBom) ?? [];
+                              const rmMaster = resolveRmMasterForSkuLine(row, rmById, rmByCode);
+                              const display = computeSkuBomQtyDisplay({
+                                row,
+                                formulaBom,
+                                rmMaster,
+                              });
+                              return (
+                                <tr key={i} className="border-t border-gray-100">
+                                  <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
+                                  <td className="p-2 font-medium">{row.inci_name}</td>
+                                  <td className="p-2 font-mono text-xs text-violet-700">{row.rm_code}</td>
+                                  <td className="p-2 text-right font-mono font-bold text-violet-700">
+                                    {formatQtyWithUnit(display.kgQty, 'kg')}
+                                  </td>
+                                  <td className="p-2 text-right font-mono font-bold text-indigo-700">
+                                    {formatSkuBomStdQtyWithUnit(display.stdQty, display.stdUom)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1755,7 +1966,14 @@ const BOMDashboard: React.FC = () => {
             <BOMForm
               productId={bomEditPopupId}
               onClose={() => setBomEditPopupId(null)}
-              onSaved={() => loadProducts()}
+              onSaved={async () => {
+                await loadProducts();
+                const pid = bomEditPopupId ?? selectedProduct?.product_id;
+                if (pid != null) {
+                  await refreshOpenProductDetail(pid);
+                }
+                await reloadRawMaterialsMaster();
+              }}
             />
           </div>
         </div>

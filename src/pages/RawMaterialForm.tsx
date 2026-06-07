@@ -71,18 +71,6 @@ const RM_TECHNICAL_REQUIRED_FIELDS = [
   'storageCondition',
 ] as const;
 
-type RmTechnicalRequiredField = (typeof RM_TECHNICAL_REQUIRED_FIELDS)[number];
-
-function isRmTechnicalAdvanceReady(data: {
-  rmState?: string;
-  appearance?: string;
-  specificGravity?: string;
-  msdsSdsNotesLink?: string;
-  storageCondition?: string;
-}): boolean {
-  return RM_TECHNICAL_REQUIRED_FIELDS.every((f) => String(data[f] ?? '').trim() !== '');
-}
-
 const RM_PHYSICAL_FORM_SOLID_OPTIONS = [
   'pellets',
   'crystals',
@@ -102,13 +90,32 @@ const RM_PHYSICAL_FORM_LIQUID_OPTIONS = [
   'Serum',
 ] as const;
 
-const RM_QUALITY_REQUIRED_FIELDS = ['arNumber', 'coaRequired'] as const;
+const RM_QUALITY_REQUIRED_FIELDS = ['coaRequired'] as const;
 
-function isRmQualityAdvanceReady(data: { arNumber?: string; coaRequired?: string }): boolean {
-  return (
-    String(data.arNumber ?? '').trim() !== '' &&
-    (data.coaRequired === 'Yes' || data.coaRequired === 'No')
-  );
+type RmArNumberEntry = { id: string; number: string };
+
+function normalizeRmArNumbers(source: Record<string, unknown> | null | undefined): RmArNumberEntry[] {
+  if (!source || typeof source !== 'object') return [];
+  const raw = source.arNumbers;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const out: RmArNumberEntry[] = [];
+    raw.forEach((item, idx) => {
+      if (typeof item === 'string') {
+        const n = item.trim();
+        if (n) out.push({ id: `ar-${idx}`, number: n });
+        return;
+      }
+      if (item && typeof item === 'object') {
+        const row = item as Record<string, unknown>;
+        const n = String(row.number ?? row.arNumber ?? '').trim();
+        if (n) out.push({ id: String(row.id ?? `ar-${idx}`), number: n });
+      }
+    });
+    if (out.length > 0) return out;
+  }
+  const legacy = String(source.arNumber ?? '').trim();
+  if (legacy) return [{ id: 'ar-legacy', number: legacy }];
+  return [];
 }
 
 const RM_SOURCING_CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'] as const;
@@ -120,19 +127,6 @@ const RM_MASTER_LIFECYCLE_OPTIONS = [
   'Phase-out',
   'Discontinued',
 ] as const;
-
-function isRmVendorsAdvanceReady(data: { vendors?: RmCommercialVendor[] }): boolean {
-  return Array.isArray(data.vendors) && data.vendors.length > 0;
-}
-
-function isValidRmMasterLifecycleStatus(value: string | undefined): boolean {
-  const v = String(value ?? '').trim();
-  return (RM_MASTER_LIFECYCLE_OPTIONS as readonly string[]).includes(v);
-}
-
-function isRmLifecycleAdvanceReady(data: { masterLifecycleStatus?: string }): boolean {
-  return isValidRmMasterLifecycleStatus(data.masterLifecycleStatus);
-}
 
 function hydrateRmSourcingFromVendor(
   party: VendorClientRecord,
@@ -169,6 +163,18 @@ function inferRmCategoryKeyFromCode(code: string): string {
   return '';
 }
 
+function parseRmLinkedProductsFromForm(form: {
+  products?: string[];
+  rmAssociateItems?: string;
+}): string[] {
+  if (Array.isArray(form.products) && form.products.length > 0) {
+    return form.products.map((c) => String(c).trim()).filter(Boolean);
+  }
+  const assoc = String(form.rmAssociateItems ?? '').trim();
+  if (!assoc) return [];
+  return [...new Set(assoc.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean))];
+}
+
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
   if (input == null) return null;
   if (typeof input === 'string') {
@@ -195,6 +201,7 @@ function createEmptyRmFormData() {
     rmTaxPreference: '',
     rmReturnable: '' as '' | 'Yes' | 'No',
     rmAssociateItems: '',
+    products: [] as string[],
     rmCategoryKey: '',
     rmCategory: '',
     qcInspectionGroup: '',
@@ -258,7 +265,7 @@ function createEmptyRmFormData() {
     msdsSdsNotesLink: '',
     storageCondition: '',
     dispensingDirection: '',
-    arNumber: '',
+    arNumbers: [] as RmArNumberEntry[],
     coaRequired: '' as '' | 'Yes' | 'No',
     acceptanceSpecMin: '',
     acceptanceSpecMax: '',
@@ -328,6 +335,8 @@ const RawMaterialRefactored: React.FC = () => {
  const [currentStage, setCurrentStage] = useState(0);
  const [pageTab, setPageTab] = useState<'dashboard' | 'form'>('dashboard');
  const [existingRmId, setExistingRmId] = useState<string | null>(null);
+ const [masterRefreshKey, setMasterRefreshKey] = useState(0);
+ const [rmReloadToken, setRmReloadToken] = useState(0);
  const [editRmLoading, setEditRmLoading] = useState(false);
  const [formData, setFormData] = useState(createEmptyRmFormData);
 
@@ -353,6 +362,7 @@ const RawMaterialRefactored: React.FC = () => {
  const [tempTest, setTempTest] = useState({ 
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
+ const [tempArNumber, setTempArNumber] = useState('');
  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
  const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
  const [submitConfirming, setSubmitConfirming] = useState(false);
@@ -388,6 +398,7 @@ const RawMaterialRefactored: React.FC = () => {
   setTempVendorTiers(defaultTempVendorTiers(4));
   setTempDocument({ type: '', link: '', date: '' });
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
+  setTempArNumber('');
   setErrors({});
   setCurrentStage(0);
  }, []);
@@ -450,11 +461,6 @@ const RawMaterialRefactored: React.FC = () => {
     formData.rmReturnable?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
- const canAdvancePastRegulatory = !isNewRm || Boolean(formData.grade?.trim());
- const canAdvancePastTechnical = !isNewRm || isRmTechnicalAdvanceReady(formData);
- const canAdvancePastQuality = !isNewRm || isRmQualityAdvanceReady(formData);
- const canAdvancePastVendors = !isNewRm || isRmVendorsAdvanceReady(formData);
- const canAdvancePastLifecycle = !isNewRm || isRmLifecycleAdvanceReady(formData);
  const preferredVendorSelectedId = useMemo(() => {
   if (formData.preferredVendorClientId) return formData.preferredVendorClientId;
   const row = findVendorClientByName(vendorClientList, formData.preferredVendor);
@@ -823,6 +829,39 @@ const RawMaterialRefactored: React.FC = () => {
   }));
  };
 
+ const handleAddArNumber = () => {
+  const number = tempArNumber.trim();
+  if (!number) {
+   setErrors((prev) => ({ ...prev, arNumbers: 'Step 5 — AR number is required' }));
+   addToast('error', 'Step 5 — Enter an AR number before adding');
+   return;
+  }
+  const duplicate = formData.arNumbers.some(
+    (entry) => entry.number.trim().toLowerCase() === number.toLowerCase()
+  );
+  if (duplicate) {
+   addToast('error', 'This AR number is already listed');
+   return;
+  }
+  setFormData((prev) => ({
+   ...prev,
+   arNumbers: [...prev.arNumbers, { id: Date.now().toString(), number }],
+  }));
+  setTempArNumber('');
+  setErrors((prev) => {
+   const next = { ...prev };
+   delete next.arNumbers;
+   return next;
+  });
+ };
+
+ const handleRemoveArNumber = (id: string) => {
+  setFormData((prev) => ({
+   ...prev,
+   arNumbers: prev.arNumbers.filter((entry) => entry.id !== id),
+  }));
+ };
+
  const buildRmSavePayload = (): Record<string, unknown> | null => {
   if (!existingRmId) {
    if (!formData.subCategory?.trim()) {
@@ -851,83 +890,6 @@ const RawMaterialRefactored: React.FC = () => {
    addToast('error', `Step 1 — Primary UoM is required (pick ${uomHint})`);
    setCurrentStage(0);
    focusFieldById('primaryUom');
-   return null;
-  }
-  if (!formData.grade?.trim()) {
-   setErrors((prev) => ({
-    ...prev,
-    grade: 'Step 3 — Grade is required (pick Cosmetic, IP, BP, USP, EP, FCC, or Pharma)',
-   }));
-   addToast('error', 'Step 3 — Grade is required');
-   setCurrentStage(2);
-   focusFieldById('grade');
-   return null;
-  }
-  const missingTechnical = RM_TECHNICAL_REQUIRED_FIELDS.filter(
-    (f) => !String(formData[f] ?? '').trim()
-  );
-  if (missingTechnical.length > 0) {
-   const first = missingTechnical[0] as RmTechnicalRequiredField;
-   const labels: Record<RmTechnicalRequiredField, string> = {
-    rmState: 'State',
-    appearance: 'Appearance',
-    specificGravity: 'Specific gravity',
-    msdsSdsNotesLink: 'MSDS/SDS Notes & Link',
-    storageCondition: 'Storage condition',
-   };
-   setErrors((prev) => ({
-    ...prev,
-    [first]: `Step 4 — ${labels[first]} is required`,
-   }));
-   addToast('error', `Step 4 — ${labels[first]} is required`);
-   setCurrentStage(3);
-   focusFieldById(first);
-   return null;
-  }
-  if (!formData.arNumber?.trim()) {
-   setErrors((prev) => ({ ...prev, arNumber: 'Step 5 — AR Number is required' }));
-   addToast('error', 'Step 5 — AR Number is required');
-   setCurrentStage(4);
-   focusFieldById('arNumber');
-   return null;
-  }
-  if (formData.coaRequired !== 'Yes' && formData.coaRequired !== 'No') {
-   setErrors((prev) => ({
-    ...prev,
-    coaRequired: 'Step 5 — COA Required is required (pick Yes or No)',
-   }));
-   addToast('error', 'Step 5 — COA Required is required (pick Yes or No)');
-   setCurrentStage(4);
-   focusFieldById('coaRequired');
-   return null;
-  }
-  if (!formData.vendors?.length) {
-   setErrors((prev) => ({
-    ...prev,
-    vendors: 'Step 6 — Add at least one vendor in Sourcing & Cost',
-   }));
-   addToast('error', 'Step 6 — Add at least one vendor (Sourcing & Cost)');
-   setCurrentStage(5);
-   return null;
-  }
-  if (!formData.shelfLife?.trim()) {
-   setErrors((prev) => ({
-    ...prev,
-    shelfLife: 'Step 7 — Shelf Life (Months) is required',
-   }));
-   addToast('error', 'Step 7 — Shelf Life (Months) is required');
-   setCurrentStage(6);
-   focusFieldById('shelfLife');
-   return null;
-  }
-  if (!isValidRmMasterLifecycleStatus(formData.masterLifecycleStatus)) {
-   setErrors((prev) => ({
-    ...prev,
-    masterLifecycleStatus: 'Step 8 — Lifecycle Status is required',
-   }));
-   addToast('error', 'Step 8 — Lifecycle Status is required');
-   setCurrentStage(7);
-   focusFieldById('masterLifecycleStatus');
    return null;
   }
   const validation = validatePrimaryFields(formData, 'rawMaterial', {
@@ -974,10 +936,17 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return null;
   }
+  const linkedProducts = parseRmLinkedProductsFromForm(formData);
+  const arNumbers = formData.arNumbers
+    .map((entry) => ({ ...entry, number: entry.number.trim() }))
+    .filter((entry) => entry.number.length > 0);
   const payload: Record<string, unknown> = {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
    category: formData.subCategory?.trim() || formData.rmCategory,
+   arNumbers,
+   arNumber: arNumbers[0]?.number ?? '',
+   ...(linkedProducts.length > 0 ? { products: linkedProducts } : {}),
   };
   if (isNewRm) {
    delete payload.rmSku;
@@ -1063,6 +1032,10 @@ const RawMaterialRefactored: React.FC = () => {
     }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+   setMasterRefreshKey((k) => k + 1);
+   if (existingRmId) {
+    setRmReloadToken((t) => t + 1);
+   }
    setSubmitPreviewOpen(false);
    setPendingSavePayload(null);
    setSaveSuccessOpen(true);
@@ -1339,7 +1312,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.grade}
          onChange={handleInputChange}
          options={rmGradeSelectOptions}
-         requiredMark
          error={errors.grade}
         />
         <InputField
@@ -1514,7 +1486,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.rmState}
          onChange={handleInputChange}
          options={[...RM_STATE_OPTIONS]}
-         requiredMark
          error={errors.rmState}
         />
         {rmConditionalVisibility.rmPhysicalFormSolid ? (
@@ -1541,7 +1512,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.appearance}
          onChange={handleInputChange}
          placeholder="e.g. White powder, clear liquid"
-         requiredMark
          error={errors.appearance}
         />
         <InputField
@@ -1605,7 +1575,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.specificGravity}
          onChange={handleInputChange}
          placeholder="e.g. 1.02"
-         requiredMark
          error={errors.specificGravity}
         />
         <InputField
@@ -1712,7 +1681,6 @@ const RawMaterialRefactored: React.FC = () => {
           onChange={handleInputChange}
           placeholder="Notes and URL or document reference"
           rows={3}
-          requiredMark
           error={errors.msdsSdsNotesLink}
          />
         </div>
@@ -1724,7 +1692,6 @@ const RawMaterialRefactored: React.FC = () => {
           onChange={handleInputChange}
           placeholder="e.g. Store below 25°C, protect from light"
           rows={2}
-          requiredMark
           error={errors.storageCondition}
          />
         </div>
@@ -1749,22 +1716,71 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality</h3>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="AR Number"
-         id="arNumber"
-         value={formData.arNumber}
-         onChange={handleInputChange}
-         placeholder="Analytical reference number"
-         requiredMark
-         error={errors.arNumber}
-        />
+        <div className="sm:col-span-2 space-y-3">
+         <label htmlFor="tempArNumber" className="block text-sm font-medium text-gray-700">
+          AR Numbers
+         </label>
+         <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[12rem]">
+           <input
+            id="tempArNumber"
+            type="text"
+            value={tempArNumber}
+            onChange={(e) => setTempArNumber(e.target.value)}
+            onKeyDown={(e) => {
+             if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddArNumber();
+             }
+            }}
+            placeholder="Analytical reference number"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+           />
+          </div>
+          <button
+           type="button"
+           onClick={handleAddArNumber}
+           className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          >
+           Add AR number
+          </button>
+         </div>
+         {errors.arNumbers ? (
+          <p className="text-xs text-red-600" role="alert">
+           {errors.arNumbers}
+          </p>
+         ) : null}
+         {formData.arNumbers.length > 0 ? (
+          <ul className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+           {formData.arNumbers.map((entry, idx) => (
+            <li
+             key={entry.id}
+             className="flex items-center justify-between gap-3 px-3 py-2 bg-white text-sm"
+            >
+             <span className="font-medium text-gray-800">
+              <span className="text-gray-400 mr-2">{idx + 1}.</span>
+              {entry.number}
+             </span>
+             <button
+              type="button"
+              onClick={() => handleRemoveArNumber(entry.id)}
+              className="text-xs font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300 rounded px-2 py-1"
+             >
+              Remove
+             </button>
+            </li>
+           ))}
+          </ul>
+         ) : (
+          <p className="text-xs text-gray-400">No AR numbers added yet.</p>
+         )}
+        </div>
         <SelectField
          label="COA Required"
          id="coaRequired"
          value={formData.coaRequired}
          onChange={handleInputChange}
          options={['Yes', 'No']}
-         requiredMark
          error={errors.coaRequired}
         />
         <InputField
@@ -1792,7 +1808,7 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sourcing</h3>
        <p className="text-xs text-gray-500 mb-3">
-        Pick preferred and alternate suppliers from vendor master suggestions. Add at least one commercial vendor with pricing below.
+        Pick preferred and alternate suppliers from vendor master suggestions. Add commercial vendors and pricing when available.
        </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -1908,17 +1924,12 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
         Vendors &amp; commercial
-        <span className="text-red-600 ml-0.5 normal-case" aria-hidden>*</span>
        </h3>
        {errors.vendors ? (
         <p className="text-xs text-red-600 mb-2" role="alert">
          {errors.vendors}
         </p>
-       ) : (
-        <p className="text-xs text-gray-500 mb-2">
-         At least one vendor with MOQ / price tiers is required before submit.
-        </p>
-       )}
+       ) : null}
        <VendorCommercialEditor
         variant="rm"
         vendors={formData.vendors}
@@ -1948,7 +1959,6 @@ const RawMaterialRefactored: React.FC = () => {
          value={formData.shelfLife}
          onChange={handleInputChange}
          placeholder="e.g. 24"
-         requiredMark
          error={errors.shelfLife}
         />
         <InputField
@@ -1990,7 +2000,6 @@ const RawMaterialRefactored: React.FC = () => {
         value={formData.masterLifecycleStatus}
         onChange={handleInputChange}
         options={[...RM_MASTER_LIFECYCLE_OPTIONS]}
-        requiredMark
         error={errors.masterLifecycleStatus}
        />
        <InputField
@@ -2191,6 +2200,7 @@ const RawMaterialRefactored: React.FC = () => {
         ? String(r.specificGravity)
         : '',
      /** Linked PR / product codes from list row when `form_data` is missing (legacy imports). */
+     products: productsList,
      rmAssociateItems: productsList.length > 0 ? productsList.join('\n') : '',
      masterLifecycleStatus:
       r.masterLifecycleStatus &&
@@ -2272,6 +2282,24 @@ const RawMaterialRefactored: React.FC = () => {
       (merged as { coaRequired: string }).coaRequired = '';
     }
 
+    const normalizedArNumbers = normalizeRmArNumbers(merged as Record<string, unknown>);
+    if (normalizedArNumbers.length > 0) {
+      merged.arNumbers = normalizedArNumbers;
+    } else {
+      merged.arNumbers = normalizeRmArNumbers(fdObj);
+    }
+
+    const preservedProducts = parseRmLinkedProductsFromForm(merged);
+    if (preservedProducts.length > 0) {
+      merged.products = preservedProducts;
+      if (!String(merged.rmAssociateItems ?? '').trim()) {
+        merged.rmAssociateItems = preservedProducts.join('\n');
+      }
+    } else if (productsList.length > 0) {
+      merged.products = productsList;
+      merged.rmAssociateItems = productsList.join('\n');
+    }
+
     const rawSwapElig: unknown = (merged as { universalSwapEligibility?: unknown }).universalSwapEligibility;
     if (rawSwapElig === true) (merged as { universalSwapEligibility: string }).universalSwapEligibility = 'Yes';
     else if (rawSwapElig === false) (merged as { universalSwapEligibility: string }).universalSwapEligibility = 'No';
@@ -2320,11 +2348,11 @@ const RawMaterialRefactored: React.FC = () => {
    setEditRmLoading(false);
   });
   return () => { cancelled = true; };
- }, [pageTab, existingRmId]);
+ }, [pageTab, existingRmId, rmReloadToken]);
 
   const dashboardNode = (
     <RawMaterialDashboard
-      refreshKey={0}
+      refreshKey={masterRefreshKey}
       onSwitchToForm={() => {
         setExistingRmId(null);
         resetRmFormToEmpty();
@@ -2404,13 +2432,7 @@ const RawMaterialRefactored: React.FC = () => {
                   nextDisabledTitle="Fill all required step-1 fields (category, sub-category when applicable, INCI, trade/commercial name, and primary UoM). For new RMs, internal code is assigned on save."
                   isStageDisabled={(idx) =>
                     isNewRm &&
-                    ((idx > 0 && !canAdvancePastPrimary) ||
-                      (idx > 1 && !canAdvancePastUnitsTax) ||
-                      (idx > 2 && !canAdvancePastRegulatory) ||
-                      (idx > 3 && !canAdvancePastTechnical) ||
-                      (idx > 4 && !canAdvancePastQuality) ||
-                      (idx > 5 && !canAdvancePastVendors) ||
-                      (idx > 7 && !canAdvancePastLifecycle))
+                    ((idx > 0 && !canAdvancePastPrimary) || (idx > 1 && !canAdvancePastUnitsTax))
                   }
                 >
                   {renderStageContent()}

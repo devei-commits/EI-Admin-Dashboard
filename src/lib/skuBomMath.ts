@@ -114,13 +114,15 @@ export function countMeaningfulFormulaRmLines(lines: unknown[] | undefined | nul
     const L = line as Record<string, unknown>;
     const inci = String(L?.inci_name ?? L?.inciName ?? '').trim();
     const code = String(L?.rm_code ?? L?.rmCode ?? '').trim();
+    const groupId = L?.item_group_id ?? L?.itemGroupId;
+    const hasGroup = groupId != null && String(groupId).trim() !== '' && !Number.isNaN(Number(groupId));
     const pctRaw = L?.pct_w_w ?? L?.pctWw ?? L?.pct;
     const pct =
       pctRaw != null && pctRaw !== ''
         ? parseFloat(String(pctRaw).replace(/[^\d.-]/g, ''))
         : NaN;
     const hasPct = !Number.isNaN(pct) && pct > 0;
-    return Boolean(inci || code || hasPct);
+    return Boolean(inci || code || hasGroup || hasPct);
   }).length;
 }
 
@@ -451,6 +453,8 @@ export type FormulaLineInput = {
   rmCode?: string;
   raw_material_id?: number | string | null;
   rawMaterialId?: string;
+  item_group_id?: number | string | null;
+  item_group_name?: string | null;
   pct_w_w?: number | string;
   pctWw?: number | string;
   pct?: number | string;
@@ -500,12 +504,17 @@ function collectMeaningfulFormulaLines(
     const line = (arr[i] || {}) as FormulaLineInput;
     const inci = String(line.inci_name ?? line.inciName ?? '').trim();
     const code = String(line.rm_code ?? line.rmCode ?? '').trim();
+    const groupId = line.item_group_id ?? (line as { itemGroupId?: unknown }).itemGroupId;
+    const groupName = String(line.item_group_name ?? '').trim();
+    const hasGroup =
+      (groupId != null && String(groupId).trim() !== '' && !Number.isNaN(Number(groupId))) ||
+      groupName.length > 0;
     const pctRaw = line.pct_w_w ?? line.pctWw ?? line.pct;
     const pct =
       pctRaw != null && pctRaw !== ''
         ? parseFloat(String(pctRaw).replace(/[^\d.-]/g, ''))
         : NaN;
-    if (!Number.isNaN(pct) && pct > 0 && (inci || code)) {
+    if (!Number.isNaN(pct) && pct > 0 && (inci || code || hasGroup)) {
       const rid = line.raw_material_id ?? line.rawMaterialId;
       out.push({
         inciName: inci,
@@ -546,6 +555,20 @@ export function formulaRowsToSkuBomLines(args: {
   limitQty: string | number;
   limitUom: string;
 }): { ok: true; rows: SkuBomFromFormulaRow[]; limitQty: number; limitUom: string } | { ok: false; error: string } {
+  const arr = Array.isArray(args.formulaLines) ? args.formulaLines : [];
+  for (const raw of arr) {
+    const line = (raw || {}) as FormulaLineInput;
+    const groupId = line.item_group_id ?? (line as { itemGroupId?: unknown }).itemGroupId;
+    const hasGroup = groupId != null && String(groupId).trim() !== '' && !Number.isNaN(Number(groupId));
+    const rid = line.raw_material_id ?? line.rawMaterialId;
+    if (hasGroup && (rid == null || String(rid).trim() === '')) {
+      const label = String(line.item_group_name ?? line.inci_name ?? line.rm_code ?? 'Item group').trim();
+      return {
+        ok: false,
+        error: `Formula BOM line "${label}" is an item group — resolve to a specific RM in Planning (or assign raw_material_id) before importing to SKU BOM.`,
+      };
+    }
+  }
   const collected = collectMeaningfulFormulaLines(args.formulaLines);
   if (collected.length === 0) {
     return { ok: false, error: 'No Formula BOM lines with % w/w and INCI/RM code to import.' };

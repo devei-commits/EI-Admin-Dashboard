@@ -289,6 +289,34 @@ function canReservePmForBatch(batch: Batch): boolean {
   return batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved';
 }
 
+function batchHasRmDispensed(batch: Batch): boolean {
+  return batch.dispensingRM.some((l) => (Number(l.dispensed) || 0) > 0);
+}
+
+function batchHasPmDispensed(batch: Batch): boolean {
+  return batch.dispensingPM.some((l) => (Number(l.dispensed) || 0) > 0);
+}
+
+/** Remove RM reservation only before connect / MTR / dispensing. */
+function canUnreserveRmForBatch(batch: Batch, outboundMrns: MRNRecordFromApi[] = []): boolean {
+  if (!batch.rmReserved) return false;
+  if (batch.rmConnected) return false;
+  if (batchHasRmDispensed(batch)) return false;
+  if (!['batch_confirmed', 'rm_reserved'].includes(batch.bmrStatus)) return false;
+  if (findAnyRmMtrForBatch(batch.bmrNo, outboundMrns)) return false;
+  return true;
+}
+
+/** Remove PM reservation only before connect / MTR / dispensing. */
+function canUnreservePmForBatch(batch: Batch, outboundMrns: MRNRecordFromApi[] = []): boolean {
+  if (!batch.pmReserved) return false;
+  if (batch.pmConnected) return false;
+  if (batchHasPmDispensed(batch)) return false;
+  if (batch.bprStatus !== 'pm_reserved') return false;
+  if (findAnyPmMtrForBatch(batch.bmrNo, outboundMrns)) return false;
+  return true;
+}
+
 /** BPR is mid-flight before FG; used for copy in dispensing / schedule. */
 function bprAwaitingBmrRelease(batch: Batch): boolean {
   return !bmrBulkQcReleased(batch) && ['pm_dispensing', 'scheduled', 'filling'].includes(batch.bprStatus);
@@ -420,6 +448,8 @@ function batchActionLabelFromModalType(modalType: string | null): string {
 }
 
 function batchActionLabelFromUpdates(updates: Partial<Batch>): string {
+  if (updates.rmReserved === false) return 'Removing RM reservation…';
+  if (updates.pmReserved === false) return 'Removing PM reservation…';
   if (updates.rmReserved) return 'Reserving raw materials…';
   if (updates.pmReserved) return 'Reserving packaging materials…';
   if (updates.dispensingRM !== undefined) return 'Saving RM dispensing…';
@@ -1378,6 +1408,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
   const [rmLoadError, setRmLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [planningCoverageByCode, setPlanningCoverageByCode] = useState<Record<string, number>>({});
+  const [batchReservedByCode, setBatchReservedByCode] = useState<Record<string, number>>({});
+  const [otherBatchesReservedByCode, setOtherBatchesReservedByCode] = useState<Record<string, number>>({});
+  const [loadingBatchReserveMaps, setLoadingBatchReserveMaps] = useState(false);
+  const batchPk = (batch as Batch & { _pk?: number })._pk;
 
   const needLoadRm = type === 'rm' && batchItems.length === 0;
   const needLoadPm = type === 'pm' && batchItems.length === 0;
@@ -1588,6 +1622,25 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
     };
   }, [batch.soNo, batch.productName, batch.sku, batch.batchNo, type]);
 
+  useEffect(() => {
+    if (!batchPk) {
+      setBatchReservedByCode({});
+      setOtherBatchesReservedByCode({});
+      return;
+    }
+    setLoadingBatchReserveMaps(true);
+    fetchBatchMtrReserved(batchPk)
+      .then(({ byCode, otherBatchesByCode }) => {
+        setBatchReservedByCode(byCode || {});
+        setOtherBatchesReservedByCode(otherBatchesByCode || {});
+      })
+      .catch(() => {
+        setBatchReservedByCode({});
+        setOtherBatchesReservedByCode({});
+      })
+      .finally(() => setLoadingBatchReserveMaps(false));
+  }, [batchPk, batch.bmrNo, batch.bprNo, type]);
+
   const items = type === 'rm'
     ? (batchItems.length > 0 ? batchItems : derivedRm)
     : (batchItems.length > 0 ? batchItems : derivedPm);
@@ -1682,20 +1735,31 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
   const title = type === 'rm' ? `Reserve RM — ${batch.bmrNo}` : `Reserve PM — ${batch.bprNo}`;
   const alertMsg = type === 'rm'
-    ? <>Select RM items to reserve in Warehouse against BMR <b>{batch.bmrNo}</b>. Available = WH SIH − Reserved. Reserved stock won&apos;t be allocated to other orders. After reserving, use <b>RM Transfer</b> in batch detail to raise a transfer request.</>
-    : <>Reserve Packaging Materials for BPR <b>{batch.bprNo}</b>. Available = SIH − Reserved.</>;
+    ? <>Reserve RM for BMR <b>{batch.bmrNo}</b> only. <b>Available = SIH − reserved by other batches.</b> This batch&apos;s own reservation is tracked separately and cannot be used by other BMR/BPR cards. After reserving, use <b>RM Transfer</b> for this batch.</>
+    : <>Reserve PM for BPR <b>{batch.bprNo}</b> only. <b>Available = SIH − reserved by other batches.</b> Other production batches cannot consume this allocation.</>;
 
-  /** Reserve allocates warehouse free stock only — Planning “coverage” must not override SIH − reserved. */
+  const otherReservedForCode = (code: string): number => {
+    const trimmed = String(code ?? '').trim();
+    if (!trimmed) return 0;
+    if (Object.prototype.hasOwnProperty.call(otherBatchesReservedByCode, trimmed)) {
+      return otherBatchesReservedByCode[trimmed] ?? 0;
+    }
+    const global = reservedMap?.[trimmed] ?? 0;
+    const self = batchReservedByCode[trimmed] ?? 0;
+    return Math.max(0, global - self);
+  };
+
+  /** Reserve allocates warehouse free stock excluding other batches' RBI rows. */
   const itemHasWhShort = (r: DispensingItem) => {
     const code = String(r.code ?? '').trim();
     const sih = stockMap[code] ?? 0;
-    const reserved = reservedMap?.[code] ?? 0;
-    const available = qtyAvailable(sih, reserved);
+    const otherReserved = otherReservedForCode(code);
+    const available = qtyAvailable(sih, otherReserved);
     return isQtyShort(available, r.required, qtyKind);
   };
   const rmHasShort = type === 'rm' && items.some(itemHasWhShort);
   const pmHasShort = type === 'pm' && items.some(itemHasWhShort);
-  const reserveDisabled = items.length === 0 || rmHasShort || pmHasShort;
+  const reserveDisabled = items.length === 0 || loadingBatchReserveMaps || rmHasShort || pmHasShort;
   const processOwnerText = (parts: { underGrn: number; inTransit: number; poOpen: number }) => {
     if (parts.underGrn > 0) return 'Contact Warehouse GRN/QC team';
     if (parts.inTransit > 0) return 'Contact Procurement logistics follow-up';
@@ -1725,19 +1789,21 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'RM / INCI' : 'PM'}</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'Required KG' : 'Required'}</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'WH SIH' : 'SIH'}</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Reserved</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Available</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Other batches</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">This batch</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Free</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Status</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {items.map((r, i) => {
                 const code = String(r.code ?? '').trim();
                 const sih = stockMap[code] ?? 0;
-                const reserved = reservedMap?.[code] ?? 0;
+                const otherReserved = otherReservedForCode(code);
+                const thisBatchReserved = batchReservedByCode[code] ?? 0;
                 const requiredQty = normalizeQtyForCompare(r.required, qtyKind);
                 const available = qtyAvailable(
                   normalizeQtyForCompare(sih, qtyKind),
-                  normalizeQtyForCompare(reserved, qtyKind),
+                  normalizeQtyForCompare(otherReserved, qtyKind),
                 );
                 const planningCoverage = planningCoverageByCode[code] ?? 0;
                 const whOk = !isQtyShort(available, requiredQty, qtyKind);
@@ -1760,8 +1826,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                     </td>
                     <td className="px-3 py-2.5 font-mono font-semibold">{fmtQtyU(requiredQty)}</td>
                     <td className="px-3 py-2.5 font-mono text-gray-700">{fmtQtyU(sih)}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-600">{fmtQtyU(reserved)}</td>
-                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`}>{fmtQtyU(available)}</td>
+                    <td className="px-3 py-2.5 font-mono text-amber-700" title="Reserved by other BMR/BPR batches">{fmtQtyU(otherReserved)}</td>
+                    <td className="px-3 py-2.5 font-mono text-indigo-700" title="Already reserved for this batch">{fmtQtyU(thisBatchReserved)}</td>
+                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`} title="SIH minus other batches' reservation">{fmtQtyU(available)}</td>
                     <td className="px-3 py-2.5">
                       {whOk ? (
                         <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
@@ -1796,10 +1863,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
       )}
       <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         {type === 'rm' && rmHasShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve RM while free warehouse stock is below required (SIH − Reserved). Match Planning Items Involved — receive stock or release procurement first.</span>
+          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve RM — free stock (SIH − other batches&apos; reservation) is below required. Another batch may already hold this material.</span>
         )}
         {type === 'pm' && pmHasShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve PM while free warehouse stock is below required (SIH − Reserved).</span>
+          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve PM — free stock (SIH − other batches&apos; reservation) is below required.</span>
         )}
         <button onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">Cancel</button>
         <button onClick={() => void handleSave()} disabled={reserveDisabled || saving} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -3891,7 +3958,7 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
     }
     setLoadingBatchReserved(true);
     fetchBatchMtrReserved(batchPk)
-      .then((byCode) => setBatchReservedMap(byCode || {}))
+      .then(({ byCode }) => setBatchReservedMap(byCode || {}))
       .catch(() => setBatchReservedMap({}))
       .finally(() => setLoadingBatchReserved(false));
   }, [batchPk, batch.bmrNo, type]);
@@ -5840,6 +5907,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
                     {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns) && (
+                      <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
+                    )}
                     {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
                       <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>
                     )}
@@ -5865,6 +5935,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
                     {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns) && (
+                      <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
+                    )}
                     {type === 'bpr' && canReservePmForBatch(batch) && (
                       <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>
                     )}
@@ -6066,7 +6139,13 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {batch.bmrStatus === 'draft' && canConfirmProductionBatch(batch) && (
             <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>
           )}
+          {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns) && (
+            <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
+          )}
           {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
+          {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns) && (
+            <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
+          )}
           {type === 'bpr' && canReservePmForBatch(batch) && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
           {canAdjustBatchSize(batch) && (
             <Btn color="orange" icon={<Settings size={12} />} onClick={() => { onClose(); onAction('adjustBatch', batch); }}>Adjust batch size</Btn>
@@ -6154,13 +6233,18 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
 function Btn({ color, icon, onClick, children }: { color: string; icon?: React.ReactNode; onClick: () => void; children: React.ReactNode }) {
   const cm: Record<string, string> = {
-    orange: 'bg-orange-500 hover:bg-orange-600', amber: 'bg-amber-500 hover:bg-amber-600',
-    teal: 'bg-teal-500 hover:bg-teal-600', purple: 'bg-purple-500 hover:bg-purple-600',
-    blue: 'bg-blue-500 hover:bg-blue-600', red: 'bg-red-500 hover:bg-red-600',
+    orange: 'bg-orange-500 hover:bg-orange-600',
+    amber: 'bg-amber-500 hover:bg-amber-600',
+    teal: 'bg-teal-500 hover:bg-teal-600',
+    purple: 'bg-purple-500 hover:bg-purple-600',
+    blue: 'bg-blue-500 hover:bg-blue-600',
+    red: 'bg-red-500 hover:bg-red-600',
     emerald: 'bg-emerald-500 hover:bg-emerald-600',
+    gray: 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300',
   };
+  const textClass = color === 'gray' ? '' : 'text-white';
   return (
-    <button onClick={onClick} className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs text-white rounded-lg font-semibold transition-colors ${cm[color] || cm.orange}`}>
+    <button onClick={onClick} className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg font-semibold transition-colors ${textClass} ${cm[color] || cm.orange}`}>
       {icon}{children}
     </button>
   );
@@ -6657,6 +6741,9 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {b.bmrStatus === 'draft' && canConfirmProductionBatch(b) && (
                       <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>
                     )}
+                    {canUnreserveRmForBatch(b, outboundMrns) && (
+                      <Btn color="gray" icon={<X size={11} />} onClick={() => onAction('unreserveRM', b)}>Remove RM reserve</Btn>
+                    )}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !hasProductionBatchSchedule(b) && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
@@ -6827,6 +6914,9 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
+                    {canUnreservePmForBatch(b, outboundMrns) && (
+                      <Btn color="gray" icon={<X size={11} />} onClick={() => onAction('unreservePM', b)}>Remove PM reserve</Btn>
+                    )}
                     {canReservePmForBatch(b) && (
                       <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reservePM', b)}>Reserve PM</Btn>
                     )}
@@ -8379,9 +8469,79 @@ const Production = () => {
     setModalType('schedule');
   }, []);
 
-  const handleAction = useCallback((action: string, batch: Batch) => {
-    setModalBatch(batch); setModalType(action);
-  }, []);
+  const handleUnreserveRm = useCallback(
+    (batch: Batch) => {
+      if (!canUnreserveRmForBatch(batch, outboundMrns)) {
+        addToast('error', 'RM reservation cannot be removed — check connect, MTR, or dispensing status.');
+        return;
+      }
+      const ok = window.confirm(
+        `Remove RM reservation for ${batch.bmrNo}? Warehouse stock will be released for other batches.`,
+      );
+      if (!ok) return;
+      void updateBatch(
+        batch.bmrNo,
+        {
+          rmReserved: false,
+          bmrStatus: batch.bmrStatus === 'rm_reserved' ? 'batch_confirmed' : batch.bmrStatus,
+        },
+        'Removing RM reservation…',
+      ).then(() => {
+        addToast('success', `RM reservation removed for ${batch.bmrNo}`);
+        fetchWarehouseInventory()
+          .then((invResult) => {
+            if (invResult.success && invResult.data?.rows?.length) setWhInventory(invResult.data.rows);
+          })
+          .catch(() => { /* non-fatal */ });
+      });
+    },
+    [addToast, outboundMrns, updateBatch],
+  );
+
+  const handleUnreservePm = useCallback(
+    (batch: Batch) => {
+      if (!canUnreservePmForBatch(batch, outboundMrns)) {
+        addToast('error', 'PM reservation cannot be removed — check connect, MTR, or dispensing status.');
+        return;
+      }
+      const ok = window.confirm(
+        `Remove PM reservation for ${batch.bprNo}? Warehouse stock will be released for other batches.`,
+      );
+      if (!ok) return;
+      void updateBatch(
+        batch.bmrNo,
+        {
+          pmReserved: false,
+          bprStatus: batch.bprStatus === 'pm_reserved' ? 'draft' : batch.bprStatus,
+        },
+        'Removing PM reservation…',
+      ).then(() => {
+        addToast('success', `PM reservation removed for ${batch.bprNo}`);
+        fetchWarehouseInventory()
+          .then((invResult) => {
+            if (invResult.success && invResult.data?.rows?.length) setWhInventory(invResult.data.rows);
+          })
+          .catch(() => { /* non-fatal */ });
+      });
+    },
+    [addToast, outboundMrns, updateBatch],
+  );
+
+  const handleAction = useCallback(
+    (action: string, batch: Batch) => {
+      if (action === 'unreserveRM') {
+        handleUnreserveRm(batch);
+        return;
+      }
+      if (action === 'unreservePM') {
+        handleUnreservePm(batch);
+        return;
+      }
+      setModalBatch(batch);
+      setModalType(action);
+    },
+    [handleUnreservePm, handleUnreserveRm],
+  );
 
   const handleModalSave = useCallback(async (updates: Partial<Batch>) => {
     if (!modalBatch) return;

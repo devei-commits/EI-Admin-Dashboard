@@ -177,31 +177,6 @@ const PM_REQUIRED_FIELDS: Array<{
   },
   { id: 'intendedUse', label: 'Intended use', section: 0, toastMessage: 'Step 1 — Intended use is required' },
   { id: 'pkgUnit', label: 'Primary UoM', section: 1, toastMessage: 'Step 2 — Primary UoM is required' },
-  {
-    id: 'storeLoc',
-    label: 'Storage condition',
-    section: 2,
-    toastMessage: 'Step 3 — Storage condition is required',
-  },
-  { id: 'matBody', label: 'Material', section: 2, toastMessage: 'Step 3 — Material is required' },
-  {
-    id: 'preferredVendor',
-    label: 'Preferred vendor',
-    section: 7,
-    toastMessage: 'Vendors & Commercial — Preferred vendor is required',
-  },
-  {
-    id: 'qaArNumber',
-    label: 'AR number',
-    section: 10,
-    toastMessage: 'QA Testing & Documents — AR number is required',
-  },
-  {
-    id: 'qaCoaRequired',
-    label: 'COA required',
-    section: 10,
-    toastMessage: 'QA Testing & Documents — COA required (Yes or No) is required',
-  },
 ];
 
 function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | null {
@@ -246,6 +221,7 @@ function createEmptyPackagingFormData() {
     pkgTaxPreference: '',
     pkgReturnable: '' as '' | 'Yes' | 'No',
     pkgAssociateItems: '',
+    products: [] as string[],
     inciName: '',
     tradeCommercialName: '',
     name: '',
@@ -418,6 +394,8 @@ const PackagingRefactored: React.FC = () => {
   const queryClient = useQueryClient();
   const [pageTab, setPageTab] = useState<'bpr' | 'form'>('bpr');
   const [existingPmId, setExistingPmId] = useState<string | null>(null);
+  const [masterRefreshKey, setMasterRefreshKey] = useState(0);
+  const [pmReloadToken, setPmReloadToken] = useState(0);
   const [editPmLoading, setEditPmLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [currentSection, setCurrentSection] = useState(0);
@@ -866,6 +844,9 @@ const PackagingRefactored: React.FC = () => {
       taxPref: formData.pkgTaxPreference ?? undefined,
       pkgReturnable: formData.pkgReturnable === 'Yes' ? true : formData.pkgReturnable === 'No' ? false : null,
       pkgAssociateItems: formData.pkgAssociateItems?.trim() ? formData.pkgAssociateItems.trim() : undefined,
+      ...(Array.isArray(formData.products) && formData.products.length > 0
+        ? { products: formData.products }
+        : {}),
       form_data: (() => {
         const {
           pmCategory: _pmCat,
@@ -920,18 +901,6 @@ const PackagingRefactored: React.FC = () => {
         continue;
       }
       if (field.id === 'optionalPmSubCategory') {
-        continue;
-      }
-      if (field.id === 'qaCoaRequired') {
-        const coa = String(formData.qaCoaRequired ?? '').trim();
-        if (!PM_COA_REQUIRED_OPTIONS.some((o) => o === coa)) {
-          const stepNo = field.section + 1;
-          setErrors((prev) => ({ ...prev, qaCoaRequired: `Step ${stepNo} — ${field.label} is required` }));
-          addToast('error', field.toastMessage);
-          setCurrentSection(field.section);
-          focusPmField('qaCoaRequired');
-          return null;
-        }
         continue;
       }
       if (field.id === 'tradeCommercialName') {
@@ -1045,6 +1014,10 @@ const PackagingRefactored: React.FC = () => {
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      setMasterRefreshKey((k) => k + 1);
+      if (existingPmId) {
+        setPmReloadToken((t) => t + 1);
+      }
       setSubmitPreviewOpen(false);
       setPendingPmPayload(null);
       setSaveSuccessOpen(true);
@@ -1360,7 +1333,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.storeLoc}
                   onChange={handleInputChange}
                   options={STORAGE_TYPES}
-                  requiredMark
                   error={errors.storeLoc}
                   emptyLabel="Select storage condition…"
                 />
@@ -1376,7 +1348,6 @@ const PackagingRefactored: React.FC = () => {
                       ? [{ value: formData.matBody, label: `${formData.matBody} (legacy)` }]
                       : []),
                   ]}
-                  requiredMark
                   error={errors.matBody}
                   emptyLabel="Select material…"
                 />
@@ -1758,9 +1729,6 @@ const PackagingRefactored: React.FC = () => {
                 <div>
                   <label htmlFor="preferredVendor" className="block text-sm font-medium text-gray-700 mb-1">
                     Preferred vendor
-                    <span className="text-red-600 ml-0.5" aria-hidden>
-                      *
-                    </span>
                   </label>
                   <VendorClientNameTypeahead
                     inputId="preferredVendor"
@@ -1924,7 +1892,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.qaArNumber}
                   onChange={handleInputChange}
                   placeholder="e.g. AR-2026-PM-0042"
-                  requiredMark
                   error={errors.qaArNumber}
                 />
                 <InputField
@@ -1940,7 +1907,6 @@ const PackagingRefactored: React.FC = () => {
                   value={formData.qaCoaRequired}
                   onChange={handleInputChange}
                   options={[...PM_COA_REQUIRED_OPTIONS]}
-                  requiredMark
                   error={errors.qaCoaRequired}
                   emptyLabel="Select…"
                 />
@@ -2287,6 +2253,7 @@ const PackagingRefactored: React.FC = () => {
         pkgReturnable:
           pm.pkgReturnable === true ? 'Yes' : pm.pkgReturnable === false ? 'No' : ('' as '' | 'Yes' | 'No'),
         pkgAssociateItems: pm.pkgAssociateItems ?? '',
+        products: Array.isArray(pm.products) ? pm.products : [],
       };
 
       const vendorsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).vendors : undefined;
@@ -2361,6 +2328,14 @@ const PackagingRefactored: React.FC = () => {
           ) ||
           merged.optionalPmSubSubCategory ||
           '';
+        const pmProducts = Array.isArray(pm.products) ? pm.products : [];
+        if (
+          (!Array.isArray(merged.products) || merged.products.length === 0) &&
+          pmProducts.length > 0
+        ) {
+          merged.products = pmProducts;
+        }
+
         const rawReturnable: unknown = merged.pkgReturnable;
         if (rawReturnable === true) merged.pkgReturnable = 'Yes';
         else if (rawReturnable === false) merged.pkgReturnable = 'No';
@@ -2379,7 +2354,7 @@ const PackagingRefactored: React.FC = () => {
       setEditPmLoading(false);
     });
     return () => { cancelled = true; };
-  }, [pageTab, existingPmId]);
+  }, [pageTab, existingPmId, pmReloadToken]);
 
   const isEditingPm = !!existingPmId;
   const closePmFormPopup = () => {
@@ -2393,7 +2368,7 @@ const PackagingRefactored: React.FC = () => {
     return (
       <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
         <BprDashboard
-          refreshKey={0}
+          refreshKey={masterRefreshKey}
           onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
           onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
           onDeletePm={async (pm) => {
@@ -2439,7 +2414,7 @@ const PackagingRefactored: React.FC = () => {
   // ── BPR tab ──────────────────────────────────────────────────────────────────
   const bprNode = (
     <BprDashboard
-      refreshKey={0}
+      refreshKey={masterRefreshKey}
       onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
       onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
       onDeletePm={async (pm) => {
@@ -2778,6 +2753,18 @@ function pmSubtitleLine(pm: PackMaterialRecord): string {
   return z || '—';
 }
 
+/** Sub-category label for list stat cards / table badge (aligned with RM masters `category`). */
+function pmListSubCategoryLabel(pm: PackMaterialRecord): string {
+  const cats = resolvePmEditCategories(pm);
+  const fromForm = cats.optionalPmSubCategory.trim();
+  if (fromForm) return fromForm;
+  const fromType = String(pm.type ?? '').trim();
+  if (fromType) {
+    return normalizePmDetailSubCategoryForSelect(cats.subCategory, fromType) || fromType;
+  }
+  return '';
+}
+
 function pmGstDisplay(pm: PackMaterialRecord): string {
   const fd = pm.form_data;
   if (fd && typeof fd === 'object') {
@@ -2992,7 +2979,7 @@ const BprDashboard: React.FC<{
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<PmListSortColumn | null>('code');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  /** Stat card filter: null = all, else pack level (Primary, Secondary, Tertiary, …). */
+  /** Stat card filter: null = all, else PM detail sub-category label (Tubes, Bottles, …). */
   const [statFilter, setStatFilter] = useState<string | null>(null);
   const [statCardSort, setStatCardSort] = useState<MasterStatCardSort>('count-desc');
   const queryClient = useQueryClient();
@@ -3113,8 +3100,8 @@ const BprDashboard: React.FC<{
     let rows = allRows;
     if (statFilter) {
       rows = rows.filter((p) => {
-        const lvl = String(p.level ?? '').trim() || 'Unset';
-        return lvl === statFilter;
+        const sub = pmListSubCategoryLabel(p) || 'Unset';
+        return sub === statFilter;
       });
     }
     const q = search.trim().toLowerCase();
@@ -3174,8 +3161,8 @@ const BprDashboard: React.FC<{
     setCurrentPage(1);
   }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter]);
 
-  const levelBuckets = useMemo(
-    () => buildMasterStatBuckets(allRows, (p) => (p as PackMaterialRecord).level ?? '', statCardSort),
+  const categoryBuckets = useMemo(
+    () => buildMasterStatBuckets(allRows, (p) => pmListSubCategoryLabel(p as PackMaterialRecord), statCardSort),
     [allRows, statCardSort]
   );
 
@@ -3191,15 +3178,7 @@ const BprDashboard: React.FC<{
     sub: string;
     accent: string;
     num: string;
-  };
-
-  const levelSubLabel = (label: string): string => {
-    const n = label.toLowerCase();
-    if (n === 'primary') return 'Direct contact packaging';
-    if (n === 'secondary') return 'Outer / secondary packaging';
-    if (n === 'tertiary') return 'Shippers & tertiary';
-    if (n === 'unset') return 'Level not set on master';
-    return 'Pack materials at this level';
+    badge?: { bg: string; text: string; border: string };
   };
 
   const statCards = useMemo((): PmStatCard[] => {
@@ -3213,26 +3192,20 @@ const BprDashboard: React.FC<{
         num: 'text-violet-600',
       },
     ];
-    const dynamic: PmStatCard[] = levelBuckets.map((b, idx) => {
-      const palette = [
-        { accent: 'border-l-orange-400', num: 'text-orange-500' },
-        { accent: 'border-l-blue-500', num: 'text-blue-600' },
-        { accent: 'border-l-violet-500', num: 'text-violet-600' },
-        { accent: 'border-l-rose-500', num: 'text-rose-600' },
-        { accent: 'border-l-teal-500', num: 'text-teal-600' },
-      ];
-      const tone = palette[idx % palette.length];
+    const dynamic: PmStatCard[] = categoryBuckets.map((b) => {
+      const style = getCategoryStyle(b.label);
       return {
         id: b.label,
-        label: b.label.toUpperCase(),
+        label: b.label,
         value: b.count,
-        sub: levelSubLabel(b.label),
-        accent: tone.accent,
-        num: tone.num,
+        sub: b.count === 1 ? '1 material in sub-category' : `${b.count} materials`,
+        accent: 'border-l-violet-400',
+        num: 'text-slate-800',
+        badge: style,
       };
     });
     return [...fixed, ...dynamic];
-  }, [allRows.length, levelBuckets]);
+  }, [allRows.length, categoryBuckets]);
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -3266,7 +3239,7 @@ const BprDashboard: React.FC<{
 
         {!isLoading && !error && (
           <>
-            {/* ── Stat Cards (dynamic levels — click to filter table) ── */}
+            {/* ── Stat Cards (dynamic sub-categories — click to filter table) ── */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] text-gray-500">
@@ -3310,10 +3283,18 @@ const BprDashboard: React.FC<{
                     >
                       <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
                       <div className="px-4 py-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors truncate">
-                          {card.label}
-                        </p>
-                        <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-105 transition-transform origin-left`}>
+                        {card.badge ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold border mb-1.5 max-w-full truncate ${card.badge.bg} ${card.badge.text} ${card.badge.border}`}
+                          >
+                            {card.label}
+                          </span>
+                        ) : (
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors truncate">
+                            {card.label}
+                          </p>
+                        )}
+                        <p className={`text-3xl font-extrabold mt-1 ${card.num} group-hover:scale-105 transition-transform origin-left`}>
                           {card.value}
                         </p>
                         <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors line-clamp-2">
@@ -3482,7 +3463,8 @@ const BprDashboard: React.FC<{
                         </td>
                       </tr>
                     ) : rows.map((pm) => {
-                      const catStyle = getCategoryStyle(pm.type || pm.level || '');
+                      const subCategoryLabel = pmListSubCategoryLabel(pm);
+                      const catStyle = getCategoryStyle(subCategoryLabel);
                       const uom = (pm.unit || 'PCS').trim() || 'PCS';
                       const statusLabel = pmLifecycleStatusLabel(pm);
                       return (
@@ -3494,12 +3476,12 @@ const BprDashboard: React.FC<{
                           </td>
                           <td className="px-4 py-3.5">
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all group-hover:shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border} whitespace-nowrap`}>
-                              {pm.type || '—'}
+                              {subCategoryLabel || '—'}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.level || '—'}</td>
                           <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
-                          <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.type || '—'}</td>
+                          <td className="px-4 py-3.5 text-gray-700 font-medium">{subCategoryLabel || '—'}</td>
                           <td className="px-4 py-3.5">
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />

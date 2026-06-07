@@ -17,7 +17,6 @@ import type { PackMaterialRecord } from '../services/packMaterials.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
-import { isClubItemsRawMaterial } from '../lib/rmClubItems';
 
 const EMPTY_FORM = {
   name: '',
@@ -68,9 +67,6 @@ const ItemGroups: React.FC = () => {
       .finally(() => setMastersLoading(false));
   }, []);
 
-  const clubOnlyRawMaterials = useMemo(() => rawMaterials.filter(isClubItemsRawMaterial), [rawMaterials]);
-  const clubOnlyRmAllowedIds = useMemo(() => new Set(clubOnlyRawMaterials.map((r) => parseInt(r.id, 10))), [clubOnlyRawMaterials]);
-
   useEffect(() => {
     // Reset to page 1 when filters change.
     setCurrentPage(1);
@@ -106,7 +102,7 @@ const ItemGroups: React.FC = () => {
     return rawMaterials.map(r => ({ id: r.id, name: r.name || r.code }));
   }, [form.type, rawMaterials, packMaterials]);
 
-  const rmTypeaheadOptions = useMemo(() => buildRmTypeaheadOptions(clubOnlyRawMaterials), [clubOnlyRawMaterials]);
+  const rmTypeaheadOptions = useMemo(() => buildRmTypeaheadOptions(rawMaterials), [rawMaterials]);
 
   const stockByItemKey = useMemo(() => {
     const index = new Map<string, WarehouseInventoryRow>();
@@ -123,8 +119,8 @@ const ItemGroups: React.FC = () => {
       ...editForm.member_ids.map((id) => String(id)),
       ...editForm.proposedAlternates.map((a) => String(a.item_id)),
     ]);
-    return buildRmTypeaheadOptions(clubOnlyRawMaterials, { excludeIds });
-  }, [clubOnlyRawMaterials, editForm.member_ids, editForm.proposedAlternates]);
+    return buildRmTypeaheadOptions(rawMaterials, { excludeIds });
+  }, [rawMaterials, editForm.member_ids, editForm.proposedAlternates]);
 
   useEffect(() => {
     if (!showCreateModal) return;
@@ -230,20 +226,13 @@ const ItemGroups: React.FC = () => {
         name: p.description || p.code,
       }));
     }
-    const selectedIds = new Set(editForm.member_ids);
-    const merged = [
-      ...clubOnlyRawMaterials,
-      ...rawMaterials.filter(
-        (r) => selectedIds.has(parseInt(r.id, 10)) && !clubOnlyRawMaterials.some((c) => c.id === r.id)
-      ),
-    ];
-    return merged.map((r) => ({
+    return rawMaterials.map((r) => ({
       id: parseInt(r.id, 10),
       code: r.code,
       sku: String(r.zohoSkuCode ?? '').trim(),
       name: r.name || r.inci || r.code,
     }));
-  }, [editingGroup, editForm.member_ids, rawMaterials, packMaterials, clubOnlyRawMaterials]);
+  }, [editingGroup, rawMaterials, packMaterials]);
 
   const selectedMembersForEdit = useMemo((): EditMemberRow[] => {
     const byId = new Map(memberPoolForEdit.map((m) => [m.id, m]));
@@ -276,26 +265,15 @@ const ItemGroups: React.FC = () => {
   const availableAlternatesForEdit = useMemo(() => {
     const memberIds = new Set(editForm.member_ids);
     const alternateIds = new Set(editForm.proposedAlternates.map(a => a.item_id));
-    return memberPoolForEdit.filter((m) => {
-      if (editingGroup?.type !== 'RM') return !memberIds.has(m.id) && !alternateIds.has(m.id);
-      // RM groups: alternates must be club items.
-      if (!clubOnlyRmAllowedIds.has(m.id)) return false;
-      return !memberIds.has(m.id) && !alternateIds.has(m.id);
-    });
-  }, [memberPoolForEdit, editForm.member_ids, editForm.proposedAlternates, editingGroup?.type, clubOnlyRmAllowedIds]);
+    return memberPoolForEdit.filter((m) => !memberIds.has(m.id) && !alternateIds.has(m.id));
+  }, [memberPoolForEdit, editForm.member_ids, editForm.proposedAlternates]);
 
   const toggleEditMember = (id: number) => {
     setEditForm(prev => ({
       ...prev,
-      member_ids: (() => {
-        const selected = prev.member_ids.includes(id);
-        // RM groups: prevent adding non-club items.
-        if (editingGroup?.type === 'RM' && !selected && !clubOnlyRmAllowedIds.has(id)) {
-          addToast('error', 'RM Item Groups can only include raw materials with a CLUB SKU code.');
-          return prev.member_ids;
-        }
-        return selected ? prev.member_ids.filter(m => m !== id) : [...prev.member_ids, id];
-      })(),
+      member_ids: prev.member_ids.includes(id)
+        ? prev.member_ids.filter(m => m !== id)
+        : [...prev.member_ids, id],
     }));
   };
 
@@ -318,10 +296,6 @@ const ItemGroups: React.FC = () => {
   const validateEditBeforeSubmit = (): boolean => {
     if (!editForm.name.trim()) {
       addToast('error', 'Group name is required.');
-      return false;
-    }
-    if (editingGroup?.type === 'RM' && !editForm.member_ids.every((id) => clubOnlyRmAllowedIds.has(id))) {
-      addToast('error', 'RM Item Groups can only include raw materials with a CLUB SKU code.');
       return false;
     }
     return true;
@@ -864,7 +838,7 @@ const ItemGroups: React.FC = () => {
                                 ? 'No more materials match your search.'
                                 : selectedMembersForEdit.length > 0
                                   ? 'All available materials are already selected.'
-                                  : `No ${editingGroup.type === 'RM' ? 'club' : 'pack'} materials available to add.`}
+                                  : `No ${editingGroup.type === 'RM' ? 'raw' : 'pack'} materials available to add.`}
                             </p>
                           )}
                         </div>
@@ -1144,7 +1118,7 @@ const ItemGroups: React.FC = () => {
                       />
                       {!mastersLoading && rmTypeaheadOptions.length === 0 ? (
                         <p className="mt-1 text-xs text-amber-700" role="status">
-                          No club raw materials in master (CLUB-prefixed SKU codes).
+                          No raw materials in master.
                         </p>
                       ) : null}
                     </>
