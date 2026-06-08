@@ -171,6 +171,249 @@ export function isBatchMaterialsAvailable(
   return rmOk && pmOk;
 }
 
+const AVAIL_EPS = 1e-6;
+
+export interface InTransitBreakdownLike {
+  quantity: number;
+  expectedDate?: string | null;
+}
+
+/** Warehouse row shape for computing when a material line is fully available at WH. */
+export interface WarehouseInventoryForAvailabilityLike {
+  code: string;
+  type: 'RM' | 'PM';
+  available?: number;
+  stockInHand?: number;
+  reserved?: number;
+  underGrn?: number;
+  poQuantity?: number;
+  inTransitBreakdown?: InTransitBreakdownLike[];
+}
+
+export interface MaterialAvailableByResult {
+  code: string;
+  required: number;
+  availableNow: number;
+  /** ISO date when cumulative WH supply covers required; null if cannot determine */
+  availableBy: string | null;
+  coveredNow: boolean;
+  shortfall: number;
+  needsUnknownPipeline: boolean;
+}
+
+export interface BatchMaterialsAvailableBySummary {
+  rm: MaterialAvailableByResult[];
+  pm: MaterialAvailableByResult[];
+  maxRmAvailableBy: string | null;
+  maxPmAvailableBy: string | null;
+  allRmCoveredNow: boolean;
+  allPmCoveredNow: boolean;
+  rmIncomplete: boolean;
+  pmIncomplete: boolean;
+}
+
+function compareIsoDate(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
+export function normalizeIsoDateOnly(d: string | null | undefined): string | null {
+  if (!d) return null;
+  const s = String(d).trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/** Latest non-null ISO date from a list. */
+export function maxIsoDate(...dates: (string | null | undefined)[]): string | null {
+  const valid = dates.filter((d): d is string => Boolean(normalizeIsoDateOnly(d)));
+  if (!valid.length) return null;
+  return [...valid].sort(compareIsoDate).pop() ?? null;
+}
+
+/**
+ * When a batch line needs more than WH available now, walk Under GRN → in-transit (GRN/PO ETA) → open PO
+ * pipeline in date order until required qty is covered. Returns the date of the last slice needed.
+ */
+export function computeLineAvailableByDate(
+  required: number,
+  inventory: WarehouseInventoryForAvailabilityLike | undefined,
+  todayIso: string,
+): MaterialAvailableByResult {
+  const req = Math.max(0, Number(required) || 0);
+  const code = String(inventory?.code ?? '').trim();
+
+  const availableNow =
+    inventory != null
+      ? Math.max(
+          0,
+          Number(
+            inventory.available ??
+              (Number(inventory.stockInHand) || 0) - (Number(inventory.reserved) || 0),
+          ) || 0,
+        )
+      : 0;
+
+  if (req <= AVAIL_EPS) {
+    return {
+      code,
+      required: req,
+      availableNow,
+      availableBy: todayIso,
+      coveredNow: true,
+      shortfall: 0,
+      needsUnknownPipeline: false,
+    };
+  }
+
+  if (availableNow + AVAIL_EPS >= req) {
+    return {
+      code,
+      required: req,
+      availableNow,
+      availableBy: todayIso,
+      coveredNow: true,
+      shortfall: 0,
+      needsUnknownPipeline: false,
+    };
+  }
+
+  type Slice = { date: string | null; qty: number; unknown: boolean };
+  const slices: Slice[] = [];
+
+  const underGrn = Math.max(0, Number(inventory?.underGrn) || 0);
+  if (underGrn > AVAIL_EPS) {
+    slices.push({ date: todayIso, qty: underGrn, unknown: false });
+  }
+
+  for (const b of inventory?.inTransitBreakdown ?? []) {
+    const qty = Math.max(0, Number(b.quantity) || 0);
+    if (qty <= AVAIL_EPS) continue;
+    slices.push({ date: normalizeIsoDateOnly(b.expectedDate), qty, unknown: !normalizeIsoDateOnly(b.expectedDate) });
+  }
+
+  const poOpen = Math.max(0, Number(inventory?.poQuantity) || 0);
+  if (poOpen > AVAIL_EPS) {
+    slices.push({ date: null, qty: poOpen, unknown: true });
+  }
+
+  slices.sort((a, b) => {
+    if (a.unknown && b.unknown) return 0;
+    if (a.unknown) return 1;
+    if (b.unknown) return -1;
+    return compareIsoDate(a.date!, b.date!);
+  });
+
+  let pool = availableNow;
+  let lastKnownDate: string | null = null;
+  let needsUnknownPipeline = false;
+
+  for (const s of slices) {
+    if (pool + AVAIL_EPS >= req) break;
+    pool += s.qty;
+    if (s.unknown) {
+      needsUnknownPipeline = true;
+    } else if (s.date) {
+      lastKnownDate = s.date;
+    }
+  }
+
+  if (pool + AVAIL_EPS >= req) {
+    return {
+      code,
+      required: req,
+      availableNow,
+      availableBy: needsUnknownPipeline ? null : (lastKnownDate ?? todayIso),
+      coveredNow: false,
+      shortfall: 0,
+      needsUnknownPipeline,
+    };
+  }
+
+  return {
+    code,
+    required: req,
+    availableNow,
+    availableBy: null,
+    coveredNow: false,
+    shortfall: Math.max(0, req - pool),
+    needsUnknownPipeline: true,
+  };
+}
+
+export function computeBatchMaterialsAvailableBy(
+  dispensingRm: DispensingItemLike[],
+  dispensingPm: DispensingItemLike[],
+  inventoryRows: WarehouseInventoryForAvailabilityLike[],
+  todayIso: string,
+): BatchMaterialsAvailableBySummary {
+  const rmByCode = new Map(
+    inventoryRows
+      .filter((r) => r.type === 'RM')
+      .map((r) => [String(r.code).trim(), r]),
+  );
+  const pmByCode = new Map(
+    inventoryRows
+      .filter((r) => r.type === 'PM')
+      .map((r) => [String(r.code).trim(), r]),
+  );
+
+  const rm = (dispensingRm ?? []).map((line) =>
+    computeLineAvailableByDate(
+      line.required,
+      rmByCode.get(String(line.code).trim()),
+      todayIso,
+    ),
+  );
+  const pm = (dispensingPm ?? []).map((line) =>
+    computeLineAvailableByDate(
+      line.required,
+      pmByCode.get(String(line.code).trim()),
+      todayIso,
+    ),
+  );
+
+  const rmIncomplete = rm.some((l) => l.availableBy == null);
+  const pmIncomplete = pm.some((l) => l.availableBy == null);
+
+  return {
+    rm,
+    pm,
+    maxRmAvailableBy: rm.length === 0 || rmIncomplete ? null : maxIsoDate(...rm.map((l) => l.availableBy)),
+    maxPmAvailableBy: pm.length === 0 || pmIncomplete ? null : maxIsoDate(...pm.map((l) => l.availableBy)),
+    allRmCoveredNow: rm.every((l) => l.coveredNow),
+    allPmCoveredNow: pm.every((l) => l.coveredNow),
+    rmIncomplete,
+    pmIncomplete,
+  };
+}
+
+/** RM connect @ WH: latest of warehouse availability and 2 days before MFG. */
+export function suggestedRmConnectDate(
+  mfgDate: string,
+  maxRmAvailableBy: string | null,
+  todayIso: string,
+): string {
+  const fromMfg = addDaysToDateStr(mfgDate, -2);
+  if (!maxRmAvailableBy) return fromMfg || todayIso;
+  return maxIsoDate(fromMfg, maxRmAvailableBy, todayIso) ?? fromMfg ?? todayIso;
+}
+
+/** PM connect @ WH: latest of warehouse availability and 2 days before fill. */
+export function suggestedPmConnectDate(
+  fillDate: string,
+  maxPmAvailableBy: string | null,
+  todayIso: string,
+): string {
+  const fromFill = addDaysToDateStr(fillDate, -2);
+  if (!maxPmAvailableBy) return fromFill || todayIso;
+  return maxIsoDate(fromFill, maxPmAvailableBy, todayIso) ?? fromFill ?? todayIso;
+}
+
+/** Earliest MFG date once all RM are at WH (2-day buffer after last RM arrival). */
+export function earliestMfgDateAfterRmAvailable(maxRmAvailableBy: string | null): string | null {
+  if (!maxRmAvailableBy) return null;
+  return addDaysToDateStr(maxRmAvailableBy, 2);
+}
+
 export interface ScheduleRecommendationResult {
   mfgDate: string;
   fillDate: string;

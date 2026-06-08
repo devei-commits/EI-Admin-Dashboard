@@ -20,6 +20,7 @@ import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import {
   fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
+  fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
   updateBatch as apiBatchUpdate,
   createRworkBatch as apiCreateRworkBatch,
   createEquipment as apiCreateEquipment,
@@ -78,6 +79,11 @@ import {
 import { fetchPRProducts } from '../services/productsMaster.service';
 import { fetchBOMByProductId, type BOMRecord, type BOMRmLine, type BOMPmLine } from '../services/bom.service';
 import { fetchBOMByBatchId, fetchBatchDispensingMuStock } from '../services/production.service';
+import {
+  batchHasReservedMaterial,
+  batchLineFullyReserved,
+  type ProductionReservedItemRow,
+} from '../lib/productionBatchReserve';
 import { parseQtyInputString } from '../utils/qtyInput';
 import {
   capPmDispenseConsumption,
@@ -99,6 +105,11 @@ import {
   computeRmVolumeBreakdown,
   computeVolumeFromBomRmLines,
   isBatchMaterialsAvailable,
+  computeBatchMaterialsAvailableBy,
+  suggestedRmConnectDate,
+  suggestedPmConnectDate,
+  earliestMfgDateAfterRmAvailable,
+  type BatchMaterialsAvailableBySummary,
   getFillLineCapacityUsedOnDate,
   getFillLineRemainingCapacity,
   getFillLineDailyCapacity,
@@ -111,7 +122,7 @@ import {
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
-type Section = 'calendar' | 'bmr' | 'bpr' | 'yield-report' | 'equipment' | 'team' | 'transfers';
+type Section = 'calendar' | 'bmr' | 'bpr' | 'material-reservation' | 'yield-report' | 'equipment' | 'team' | 'transfers';
 export type ScheduleSlot = { equipId: string; category: 'mfg' | 'fill' | 'pack'; dateIso: string };
 type BMRStatus = 'draft' | 'batch_confirmed' | 'rm_reserved' | 'scheduled' | 'rm_connected' | 'dispensing' | 'in_production' | 'bulk_qc' | 'qc_failed' | 'cleared';
 type BPRStatus = 'draft' | 'pm_reserved' | 'scheduled' | 'pm_connected' | 'pm_dispensing' | 'filling' | 'fill_qc' | 'packaging' | 'pack_qc' | 'qc_failed' | 'fg_ready';
@@ -297,25 +308,34 @@ function batchHasPmDispensed(batch: Batch): boolean {
   return batch.dispensingPM.some((l) => (Number(l.dispensed) || 0) > 0);
 }
 
-/** Remove RM reservation only before connect / MTR / dispensing. */
-function canUnreserveRmForBatch(batch: Batch, outboundMrns: MRNRecordFromApi[] = []): boolean {
-  if (!batch.rmReserved) return false;
+/** Remove RM reservation only before connect / MTR / dispensing (batch or line-level). */
+function canUnreserveRmForBatch(
+  batch: Batch,
+  outboundMrns: MRNRecordFromApi[] = [],
+  reservedItems: ProductionReservedItemRow[] = [],
+): boolean {
+  if (!batchHasReservedMaterial(batch, reservedItems, 'RM')) return false;
   if (batch.rmConnected) return false;
   if (batchHasRmDispensed(batch)) return false;
-  if (!['batch_confirmed', 'rm_reserved'].includes(batch.bmrStatus)) return false;
+  if (!['batch_confirmed', 'rm_reserved', 'scheduled'].includes(batch.bmrStatus)) return false;
   if (findAnyRmMtrForBatch(batch.bmrNo, outboundMrns)) return false;
   return true;
 }
 
 /** Remove PM reservation only before connect / MTR / dispensing. */
-function canUnreservePmForBatch(batch: Batch, outboundMrns: MRNRecordFromApi[] = []): boolean {
-  if (!batch.pmReserved) return false;
+function canUnreservePmForBatch(
+  batch: Batch,
+  outboundMrns: MRNRecordFromApi[] = [],
+  reservedItems: ProductionReservedItemRow[] = [],
+): boolean {
+  if (!batchHasReservedMaterial(batch, reservedItems, 'PM')) return false;
   if (batch.pmConnected) return false;
   if (batchHasPmDispensed(batch)) return false;
-  if (batch.bprStatus !== 'pm_reserved') return false;
+  if (!['draft', 'pm_reserved'].includes(batch.bprStatus)) return false;
   if (findAnyPmMtrForBatch(batch.bmrNo, outboundMrns)) return false;
   return true;
 }
+
 
 /** BPR is mid-flight before FG; used for copy in dispensing / schedule. */
 function bprAwaitingBmrRelease(batch: Batch): boolean {
@@ -775,6 +795,44 @@ function makeDefaultBatches(): Batch[] {
 /* ─────────────────────── UTILITIES ─────────────────────────── */
 
 function today(): string { return new Date().toISOString().split('T')[0]; }
+
+function warehouseRowsForMaterialAvailability(
+  inventoryRows: WarehouseInventoryRow[] | undefined,
+): Parameters<typeof computeBatchMaterialsAvailableBy>[2] {
+  return (inventoryRows ?? [])
+    .filter((r) => r.type === 'RM' || r.type === 'PM')
+    .map((r) => ({
+      code: r.code,
+      type: r.type,
+      available: r.available ?? Math.max(0, (Number(r.stockInHand) || 0) - (Number(r.reserved) || 0)),
+      stockInHand: r.stockInHand,
+      reserved: r.reserved,
+      underGrn: r.underGrn,
+      poQuantity: r.poQuantity,
+      inTransitBreakdown: r.inTransitBreakdown,
+    }));
+}
+
+function formatMaterialAvailableByLabel(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function lookupMaterialAvailableBy(
+  summary: BatchMaterialsAvailableBySummary | null,
+  code: string,
+  kind: 'rm' | 'pm',
+): string {
+  if (!summary) return '—';
+  const line = (kind === 'rm' ? summary.rm : summary.pm).find((l) => l.code === String(code).trim());
+  if (!line) return '—';
+  if (line.coveredNow) return 'Now';
+  if (line.availableBy) return formatMaterialAvailableByLabel(line.availableBy);
+  if (line.needsUnknownPipeline) return 'Pending ETA';
+  return 'Short';
+}
 function fmt(n: number): string { return n.toLocaleString('en-IN'); }
 
 const YIELD_KG_DECIMALS = 8;
@@ -1390,11 +1448,12 @@ function findPlanningRowForBatch(
   return byProductName ?? null;
 }
 
-function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRows, onClose, onSave }: {
+function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRows, onClose, onReserved }: {
   batch: Batch; type: 'rm' | 'pm'; stockMap: Record<string, number>; reservedMap?: Record<string, number>;
   inventoryRows?: WarehouseInventoryRow[];
-  onClose: () => void; onSave: (updates: Partial<Batch>) => void;
+  onClose: () => void; onReserved: () => Promise<void>;
 }) {
+  const { addToast } = useToast();
   const batchItems = type === 'rm' ? batch.dispensingRM : batch.dispensingPM;
   const unit = type === 'rm' ? 'KG' : 'pcs';
   const qtyKind = type === 'rm' ? ('kg' as const) : ('pcs' as const);
@@ -1644,8 +1703,6 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
   const items = type === 'rm'
     ? (batchItems.length > 0 ? batchItems : derivedRm)
     : (batchItems.length > 0 ? batchItems : derivedPm);
-  const usedDerived = type === 'rm' && batchItems.length === 0 && derivedRm.length > 0;
-
   const reserveItemsFingerprint = useMemo(() => {
     const src =
       type === 'rm'
@@ -1711,22 +1768,65 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
   useEffect(() => {
     const next: Record<number, boolean> = {};
-    items.forEach((_, i) => { next[i] = selected[i] !== false; });
+    items.forEach((it, i) => {
+      const code = String(it.code ?? '').trim();
+      const alreadyFull = batchLineFullyReserved(
+        normalizeQtyForCompare(it.required, qtyKind),
+        normalizeQtyForCompare(batchReservedByCode[code] ?? 0, qtyKind),
+        qtyKind,
+      );
+      next[i] = alreadyFull ? false : selected[i] !== false;
+    });
     setSelected(prev => (Object.keys(next).length ? next : prev));
-  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items.length, reserveItemsFingerprint, batchReservedByCode, qtyKind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const linesToReserve = useMemo(
+    () =>
+      items.filter((it, i) => {
+        if (selected[i] === false) return false;
+        const code = String(it.code ?? '').trim();
+        if (!code) return false;
+        return !batchLineFullyReserved(
+          normalizeQtyForCompare(it.required, qtyKind),
+          normalizeQtyForCompare(batchReservedByCode[code] ?? 0, qtyKind),
+          qtyKind,
+        );
+      }),
+    [items, selected, batchReservedByCode, qtyKind],
+  );
 
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || !batchPk) return;
+    const codesToReserve = linesToReserve
+      .map((it) => String(it.code ?? '').trim())
+      .filter(Boolean);
+    if (codesToReserve.length === 0) {
+      addToast('error', 'Select at least one RM/PM line that is not already fully reserved.');
+      return;
+    }
+    const selectedShort = linesToReserve.some((r) => itemHasWhShort(r));
+    if (selectedShort) {
+      addToast('error', 'Cannot reserve — free warehouse stock is below required for one or more selected lines.');
+      return;
+    }
     setSaving(true);
     try {
-      if (type === 'rm') {
-        const updates: Partial<Batch> = { rmReserved: true, bmrStatus: batch.bmrStatus === 'batch_confirmed' ? 'rm_reserved' : batch.bmrStatus };
-        if (usedDerived) updates.dispensingRM = derivedRm;
-        await Promise.resolve(onSave(updates));
-      } else {
-        await Promise.resolve(onSave({ pmReserved: true, bprStatus: 'pm_reserved' }));
+      const res = await reserveProductionBatchLines(batchPk, {
+        kind: type === 'rm' ? 'RM' : 'PM',
+        codes: codesToReserve,
+      });
+      if (!res.success) {
+        addToast('error', res.error || 'Reserve failed');
+        return;
       }
+      await onReserved();
+      addToast(
+        'success',
+        type === 'rm'
+          ? `Reserved ${codesToReserve.length} RM line(s) for ${batch.bmrNo}`
+          : `Reserved ${codesToReserve.length} PM line(s) for ${batch.bprNo}`,
+      );
       onClose();
     } finally {
       setSaving(false);
@@ -1757,9 +1857,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
     const available = qtyAvailable(sih, otherReserved);
     return isQtyShort(available, r.required, qtyKind);
   };
-  const rmHasShort = type === 'rm' && items.some(itemHasWhShort);
-  const pmHasShort = type === 'pm' && items.some(itemHasWhShort);
-  const reserveDisabled = items.length === 0 || loadingBatchReserveMaps || rmHasShort || pmHasShort;
+  const selectedShort = linesToReserve.some(itemHasWhShort);
+  const reserveDisabled = linesToReserve.length === 0 || loadingBatchReserveMaps || saving || selectedShort;
   const processOwnerText = (parts: { underGrn: number; inTransit: number; poOpen: number }) => {
     if (parts.underGrn > 0) return 'Contact Warehouse GRN/QC team';
     if (parts.inTransit > 0) return 'Contact Procurement logistics follow-up';
@@ -1807,7 +1906,8 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 );
                 const planningCoverage = planningCoverageByCode[code] ?? 0;
                 const whOk = !isQtyShort(available, requiredQty, qtyKind);
-                const checked = selected[i] !== false;
+                const alreadyFull = batchLineFullyReserved(requiredQty, thisBatchReserved, qtyKind);
+                const checked = alreadyFull || selected[i] !== false;
                 const stageRows = (inventoryRows ?? []).filter((row) =>
                   row.type === (type === 'rm' ? 'RM' : 'PM') && String(row.code ?? '').trim() === code
                 );
@@ -1818,7 +1918,14 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 return (
                   <tr key={i} className={!whOk ? 'bg-red-50/50' : ''}>
                     <td className="px-3 py-2.5">
-                      <input type="checkbox" id={`res-${i}`} checked={checked} onChange={e => setSelected(prev => ({ ...prev, [i]: e.target.checked }))} className="rounded border-gray-300 text-amber-500 focus:ring-amber-400" />
+                      <input
+                        type="checkbox"
+                        id={`res-${i}`}
+                        checked={checked}
+                        disabled={alreadyFull}
+                        onChange={(e) => setSelected((prev) => ({ ...prev, [i]: e.target.checked }))}
+                        className="rounded border-gray-300 text-amber-500 focus:ring-amber-400 disabled:opacity-40"
+                      />
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="font-semibold text-gray-800">{r.inci || r.name || r.code}</div>
@@ -1830,7 +1937,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                     <td className="px-3 py-2.5 font-mono text-indigo-700" title="Already reserved for this batch">{fmtQtyU(thisBatchReserved)}</td>
                     <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`} title="SIH minus other batches' reservation">{fmtQtyU(available)}</td>
                     <td className="px-3 py-2.5">
-                      {whOk ? (
+                      {alreadyFull ? (
+                        <Badge className="bg-indigo-100 text-indigo-700 text-[8.5px]">Fully reserved</Badge>
+                      ) : whOk ? (
                         <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
                       ) : (
                         <div className="space-y-1.5">
@@ -1862,15 +1971,14 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         </div>
       )}
       <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        {type === 'rm' && rmHasShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve RM — free stock (SIH − other batches&apos; reservation) is below required. Another batch may already hold this material.</span>
+        {selectedShort && (
+          <span className="text-xs text-red-600 font-medium mr-auto">
+            Cannot reserve selected lines — free stock (SIH − other batches&apos; reservation) is below required.
+          </span>
         )}
-        {type === 'pm' && pmHasShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">Cannot reserve PM — free stock (SIH − other batches&apos; reservation) is below required.</span>
-        )}
-        <button onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">Cancel</button>
-        <button onClick={() => void handleSave()} disabled={reserveDisabled || saving} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-          {saving ? <><Loader2 size={13} className="animate-spin" /> Reserving…</> : <>Reserve {type === 'rm' ? 'RM' : 'PM'}</>}
+        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">Cancel</button>
+        <button type="button" onClick={() => void handleSave()} disabled={reserveDisabled} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving ? <><Loader2 size={13} className="animate-spin" /> Reserving…</> : <>Reserve selected ({linesToReserve.length})</>}
         </button>
       </div>
     </Modal>
@@ -1881,9 +1989,10 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
 interface SalesOrderOption { orderId: string; customerName?: string; }
 
-function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stockPM, sentSummary, onClose, onSave, onBatchChange }: {
+function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange }: {
   batch: Batch | null; equipment: EquipmentData; batches: Batch[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
+  inventoryRows?: WarehouseInventoryRow[];
   sentSummary: SentBatchSummaryRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onBatchChange: (bmrNo: string) => void;
@@ -1938,6 +2047,20 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     ? computeBestScheduleRecommendation(batchWithUnits, equipment, scheduledBatchesWithUnits)
     : null;
 
+  const materialsAvailability = useMemo((): BatchMaterialsAvailableBySummary | null => {
+    if (!batch) return null;
+    return computeBatchMaterialsAvailableBy(
+      batch.dispensingRM,
+      batch.dispensingPM,
+      warehouseRowsForMaterialAvailability(inventoryRows),
+      today(),
+    );
+  }, [batch?.bmrNo, batch?.dispensingRM, batch?.dispensingPM, inventoryRows]);
+
+  const earliestMfgAfterRm = materialsAvailability?.maxRmAvailableBy
+    ? earliestMfgDateAfterRmAvailable(materialsAvailability.maxRmAvailableBy)
+    : null;
+
   const [mfgDate, setMfgDate] = useState(batch?.mfgDate || today());
   const [fillDate, setFillDate] = useState(batch?.fillDate || addDaysStr(batch?.mfgDate || today(), 3));
   const [packDate, setPackDate] = useState(batch?.packDate || addDaysStr(batch?.fillDate || addDaysStr(today(), 3), 1));
@@ -1964,19 +2087,24 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
   useEffect(() => {
     if (!batch) return;
-    setMfgDate(batch.mfgDate || today());
-    setFillDate(batch.fillDate || addDaysStr(batch.mfgDate || today(), 3));
-    setPackDate(batch.packDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), 1));
-    setFgDate(batch.fgDate || addDaysStr(batch.packDate || addDaysStr(today(), 4), 1));
-    setRmDate(batch.rmConnectDate || addDaysStr(batch.mfgDate || today(), -2));
-    setPmDate(batch.pmConnectDate || addDaysStr(batch.fillDate || addDaysStr(today(), 3), -2));
+    const todayIso = today();
+    const mfg = batch.mfgDate || todayIso;
+    const fill = batch.fillDate || addDaysStr(mfg, 3);
+    const maxRm = materialsAvailability?.maxRmAvailableBy ?? null;
+    const maxPm = materialsAvailability?.maxPmAvailableBy ?? null;
+    setMfgDate(mfg);
+    setFillDate(fill);
+    setPackDate(batch.packDate || addDaysStr(fill, 1));
+    setFgDate(batch.fgDate || addDaysStr(batch.packDate || addDaysStr(fill, 1), 1));
+    setRmDate(batch.rmConnectDate || suggestedRmConnectDate(mfg, maxRm, todayIso));
+    setPmDate(batch.pmConnectDate || suggestedPmConnectDate(fill, maxPm, todayIso));
     setVessel(batch.mainVessel || compatV[0] || '');
     setFillLine(batch.fillingLine || compatF[0] || '');
     setPackLine(batch.packagingLine || compatP[0] || '');
     setScheduledMuZone(batch.scheduledMuZone || '');
     setScheduleRemarks(batch.scheduleRemarks || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch?.bmrNo]);
+  }, [batch?.bmrNo, materialsAvailability?.maxRmAvailableBy, materialsAvailability?.maxPmAvailableBy]);
 
   useEffect(() => {
     if (scheduledMuZone || allProductionZones.length === 0) return;
@@ -1986,9 +2114,13 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
   const handleMfgChange = (val: string) => {
     setMfgDate(val);
-    setRmDate(addDaysStr(val, -2));
-    const f = addDaysStr(val, 3); setFillDate(f); setPmDate(addDaysStr(f, -2));
-    const p = addDaysStr(f, 1); setPackDate(p); setFgDate(addDaysStr(p, 1));
+    setRmDate(suggestedRmConnectDate(val, materialsAvailability?.maxRmAvailableBy ?? null, today()));
+    const f = addDaysStr(val, 3);
+    setFillDate(f);
+    setPmDate(suggestedPmConnectDate(f, materialsAvailability?.maxPmAvailableBy ?? null, today()));
+    const p = addDaysStr(f, 1);
+    setPackDate(p);
+    setFgDate(addDaysStr(p, 1));
   };
 
   const buildSchedulePayload = (dates: {
@@ -2019,13 +2151,22 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
   const handleConfirmRecommendation = () => {
     if (!batch || !bestRecommendation) return;
     if (!String(scheduledMuZone || '').trim()) return;
+    const todayIso = today();
     onSave(buildSchedulePayload({
       mfgDate: bestRecommendation.mfgDate,
       fillDate: bestRecommendation.fillDate,
       packDate: bestRecommendation.packDate,
       fgDate: bestRecommendation.fgDate,
-      rmConnectDate: bestRecommendation.rmConnectDate,
-      pmConnectDate: bestRecommendation.pmConnectDate,
+      rmConnectDate: suggestedRmConnectDate(
+        bestRecommendation.mfgDate,
+        materialsAvailability?.maxRmAvailableBy ?? null,
+        todayIso,
+      ),
+      pmConnectDate: suggestedPmConnectDate(
+        bestRecommendation.fillDate,
+        materialsAvailability?.maxPmAvailableBy ?? null,
+        todayIso,
+      ),
       mainVessel: bestRecommendation.vessel,
       fillingLine: bestRecommendation.fillLine,
       packagingLine: bestRecommendation.packLine,
@@ -2223,15 +2364,39 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
           {/* Material Availability from DB */}
           <div className="mb-5">
             <SectionLabel icon={<Package size={13} />} color="text-orange-600">Material Availability - Warehouse Inventory</SectionLabel>
+            {materialsAvailability && batch.dispensingRM.length > 0 && (
+              <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-3">
+                <p className="text-xs font-bold text-orange-900">
+                  All RM available at WH by:{' '}
+                  {materialsAvailability.maxRmAvailableBy ? (
+                    <span className="font-mono text-sm">{formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)}</span>
+                  ) : materialsAvailability.rmIncomplete ? (
+                    <span className="text-amber-800">Pending — some RMs lack GRN/PO arrival dates</span>
+                  ) : (
+                    <span className="text-emerald-800">Now (warehouse covers batch)</span>
+                  )}
+                </p>
+                <p className="text-[10px] text-orange-800/90 mt-1 leading-relaxed">
+                  Schedule manufacturing after the latest RM arrival. Uses WH stock, Under GRN, in-transit GRN/PO ETAs, and open PO pipeline.
+                  {earliestMfgAfterRm ? (
+                    <>
+                      {' '}
+                      Earliest suggested MFG: <span className="font-semibold font-mono">{formatMaterialAvailableByLabel(earliestMfgAfterRm)}</span>
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials</SectionLabel>
                 {batch.dispensingRM.length > 0 ? (
                   <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
                         const sih = stockRM[r.code] ?? 0; const ok = !isQtyShort(sih, r.required);
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        const availBy = lookupMaterialAvailableBy(materialsAvailability, r.code, 'rm');
+                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 font-medium text-orange-800 whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
@@ -2241,10 +2406,11 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
                 <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials</SectionLabel>
                 {batch.dispensingPM.length > 0 ? (
                   <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
                         const sih = stockPM[p.code] ?? 0; const ok = !isQtyShort(sih, p.required);
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        const availBy = lookupMaterialAvailableBy(materialsAvailability, p.code, 'pm');
+                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 font-medium text-purple-800 whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
@@ -2260,18 +2426,52 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
             {scheduleRow(<FlaskConical size={16} />, 'STAGE 1 - Manufacturing', 'border-teal-200 bg-teal-50/40', mfgDate, handleMfgChange, compatV, vessel, setVessel)}
 
-            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 mb-2">
-              <Package size={14} className="text-gray-400" /><div className="text-[10px] text-gray-500 font-semibold">RM Ready at WH by</div>
-              <div><input type="date" className={INP} value={rmDate} onChange={e => setRmDate(e.target.value)} /></div>
-              <div className="text-[10px] text-gray-400">Suggest: 2 days before MFG</div>
+            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-orange-200 bg-orange-50/50 mb-2">
+              <Package size={14} className="text-orange-500" />
+              <div>
+                <div className="text-[10px] text-orange-900 font-bold">RM will be available at WH by</div>
+                <div className="text-[9px] text-orange-800/80">Latest date across all batch RMs (warehouse + pipeline)</div>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-orange-900 font-mono mb-1">
+                  {materialsAvailability?.maxRmAvailableBy
+                    ? formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)
+                    : materialsAvailability?.allRmCoveredNow
+                      ? 'Now'
+                      : 'Pending ETA'}
+                </div>
+                <label className={LBL}>RM connect date</label>
+                <input type="date" className={INP} value={rmDate} onChange={e => setRmDate(e.target.value)} />
+              </div>
+              <div className="text-[10px] text-orange-800/90 leading-snug">
+                {earliestMfgAfterRm && mfgDate && mfgDate < earliestMfgAfterRm ? (
+                  <span className="font-semibold text-amber-800">MFG is before all RM are ready — move MFG to {formatMaterialAvailableByLabel(earliestMfgAfterRm)} or later.</span>
+                ) : (
+                  <>Prefilled from latest RM arrival (or 2 days before MFG).</>
+                )}
+              </div>
             </div>
 
             {scheduleRow(<Droplets size={16} />, 'STAGE 2 - Filling', 'border-purple-200 bg-purple-50/40', fillDate, setFillDate, compatF, fillLine, setFillLine)}
 
             <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 mb-2">
-              <Package size={14} className="text-gray-400" /><div className="text-[10px] text-gray-500 font-semibold">PM Ready at WH by</div>
-              <div><input type="date" className={INP} value={pmDate} onChange={e => setPmDate(e.target.value)} /></div>
-              <div className="text-[10px] text-gray-400">Suggest: 2 days before Fill</div>
+              <Package size={14} className="text-gray-400" />
+              <div>
+                <div className="text-[10px] text-gray-500 font-semibold">PM available at WH by</div>
+                <div className="text-[9px] text-gray-400">Latest across all batch PMs</div>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-purple-900 font-mono mb-1">
+                  {materialsAvailability?.maxPmAvailableBy
+                    ? formatMaterialAvailableByLabel(materialsAvailability.maxPmAvailableBy)
+                    : materialsAvailability?.allPmCoveredNow
+                      ? 'Now'
+                      : 'Pending ETA'}
+                </div>
+                <label className={LBL}>PM connect date</label>
+                <input type="date" className={INP} value={pmDate} onChange={e => setPmDate(e.target.value)} />
+              </div>
+              <div className="text-[10px] text-gray-400">Prefilled from latest PM arrival (or 2 days before Fill)</div>
             </div>
 
             {scheduleRow(<Package size={16} />, 'STAGE 3 - Packaging', 'border-emerald-200 bg-emerald-50/40', packDate, setPackDate, compatP, packLine, setPackLine)}
@@ -2307,9 +2507,10 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
 /* ──────────── SMART SCHEDULE MODAL (from calendar cell) ─────── */
 
-function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, stockRM, stockPM, sentSummary, onClose, onSave, onBatchChange }: {
+function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange }: {
   slot: ScheduleSlot; batch: Batch | null; equipment: EquipmentData; batches: Batch[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
+  inventoryRows?: WarehouseInventoryRow[];
   sentSummary: SentBatchSummaryRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onBatchChange: (bmrNo: string) => void;
@@ -2356,6 +2557,20 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
     : null;
   const recommendation: ScheduleRecommendationResult | null = batchWithUnits
     ? computeRecommendedScheduleForSlot(slot, batchWithUnits, equipment, scheduledBatchesWithUnits)
+    : null;
+
+  const materialsAvailability = useMemo((): BatchMaterialsAvailableBySummary | null => {
+    if (!batch) return null;
+    return computeBatchMaterialsAvailableBy(
+      batch.dispensingRM,
+      batch.dispensingPM,
+      warehouseRowsForMaterialAvailability(inventoryRows),
+      today(),
+    );
+  }, [batch?.bmrNo, batch?.dispensingRM, batch?.dispensingPM, inventoryRows]);
+
+  const earliestMfgAfterRm = materialsAvailability?.maxRmAvailableBy
+    ? earliestMfgDateAfterRmAvailable(materialsAvailability.maxRmAvailableBy)
     : null;
 
   const [bomVolumeRequired, setBomVolumeRequired] = useState<number | null>(null);
@@ -2423,16 +2638,30 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
 
   useEffect(() => {
     if (!recommendation) return;
-    setMfgDate(recommendation.mfgDate ?? today());
-    setFillDate(recommendation.fillDate ?? addDaysStr(today(), 3));
-    setPackDate(recommendation.packDate ?? addDaysStr(today(), 4));
-    setFgDate(recommendation.fgDate ?? addDaysStr(today(), 5));
-    setRmDate(recommendation.rmConnectDate ?? addDaysStr(today(), -2));
-    setPmDate(recommendation.pmConnectDate ?? addDaysStr(today(), 3));
+    const todayIso = today();
+    const mfg = recommendation.mfgDate ?? todayIso;
+    const fill = recommendation.fillDate ?? addDaysStr(todayIso, 3);
+    const maxRm = materialsAvailability?.maxRmAvailableBy ?? null;
+    const maxPm = materialsAvailability?.maxPmAvailableBy ?? null;
+    setMfgDate(mfg);
+    setFillDate(fill);
+    setPackDate(recommendation.packDate ?? addDaysStr(todayIso, 4));
+    setFgDate(recommendation.fgDate ?? addDaysStr(todayIso, 5));
+    setRmDate(suggestedRmConnectDate(mfg, maxRm, todayIso));
+    setPmDate(suggestedPmConnectDate(fill, maxPm, todayIso));
     setVessel(recommendation.vessel ?? '');
     setFillLine(recommendation.fillLine ?? '');
     setPackLine(recommendation.packLine ?? '');
-  }, [recommendation?.mfgDate, recommendation?.fillDate, recommendation?.packDate, recommendation?.vessel, recommendation?.fillLine, recommendation?.packLine]);
+  }, [
+    recommendation?.mfgDate,
+    recommendation?.fillDate,
+    recommendation?.packDate,
+    recommendation?.vessel,
+    recommendation?.fillLine,
+    recommendation?.packLine,
+    materialsAvailability?.maxRmAvailableBy,
+    materialsAvailability?.maxPmAvailableBy,
+  ]);
 
   const batchVolLNum = batch ? (batch.requiredVolumeLiters ?? batch.batchSize) : 0;
   const mfgList = equipment?.manufacturing ?? [];
@@ -2444,9 +2673,19 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
   const handleAcceptRecommendation = () => {
     if (!recommendation || !batch) return;
     const canMoveToScheduled = batch.rmReserved && batch.pmReserved;
+    const todayIso = today();
     onSave({
       mfgDate: recommendation.mfgDate, fillDate: recommendation.fillDate, packDate: recommendation.packDate, fgDate: recommendation.fgDate,
-      rmConnectDate: recommendation.rmConnectDate, pmConnectDate: recommendation.pmConnectDate,
+      rmConnectDate: suggestedRmConnectDate(
+        recommendation.mfgDate,
+        materialsAvailability?.maxRmAvailableBy ?? null,
+        todayIso,
+      ),
+      pmConnectDate: suggestedPmConnectDate(
+        recommendation.fillDate,
+        materialsAvailability?.maxPmAvailableBy ?? null,
+        todayIso,
+      ),
       mainVessel: recommendation.vessel, fillingLine: recommendation.fillLine, packagingLine: recommendation.packLine,
       ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
@@ -2466,9 +2705,13 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
 
   const handleMfgChange = (val: string) => {
     setMfgDate(val);
-    setRmDate(addDaysStr(val, -2));
-    const f = addDaysStr(val, 3); setFillDate(f); setPmDate(addDaysStr(f, -2));
-    const p = addDaysStr(f, 1); setPackDate(p); setFgDate(addDaysStr(p, 1));
+    setRmDate(suggestedRmConnectDate(val, materialsAvailability?.maxRmAvailableBy ?? null, today()));
+    const f = addDaysStr(val, 3);
+    setFillDate(f);
+    setPmDate(suggestedPmConnectDate(f, materialsAvailability?.maxPmAvailableBy ?? null, today()));
+    const p = addDaysStr(f, 1);
+    setPackDate(p);
+    setFgDate(addDaysStr(p, 1));
   };
 
   const modalTitle = batch ? `Smart Schedule — ${batch.bmrNo}` : 'Smart Schedule — Select batch';
@@ -2529,6 +2772,28 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
           </div>
 
           {batch && <ScheduleYieldContextBanner batch={batch} />}
+          {batch && materialsAvailability && batch.dispensingRM.length > 0 && (
+            <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-3">
+              <p className="text-xs font-bold text-orange-900">
+                All RM available at WH by:{' '}
+                {materialsAvailability.maxRmAvailableBy ? (
+                  <span className="font-mono text-sm">{formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)}</span>
+                ) : materialsAvailability.rmIncomplete ? (
+                  <span className="text-amber-800">Pending — check GRN/PO ETAs</span>
+                ) : (
+                  <span className="text-emerald-800">Now</span>
+                )}
+              </p>
+              {earliestMfgAfterRm && (
+                <p className="text-[10px] text-orange-800/90 mt-1">
+                  Earliest suggested MFG: <span className="font-semibold font-mono">{formatMaterialAvailableByLabel(earliestMfgAfterRm)}</span>
+                  {mfgDate && mfgDate < earliestMfgAfterRm ? (
+                    <span className="text-amber-800 font-semibold"> — current MFG date is earlier than all RM are ready.</span>
+                  ) : null}
+                </p>
+              )}
+            </div>
+          )}
           {batch && bprAwaitingBmrRelease(batch) && (
             <div className="mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50/80 text-[11px] text-amber-900">
               <span className="font-semibold">Awaiting BMR QC release</span> — you can still adjust <b>fill / pack / FG dates</b> (and MFG if shown) to absorb BPR-side delays.
@@ -2578,8 +2843,22 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                   </div>
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] text-gray-600 mb-3">
-                  <div className="rec-item">RM at WH: <b>{recommendation.rmConnectDate ?? '—'}</b></div>
-                  <div className="rec-item">PM at WH: <b>{recommendation.pmConnectDate ?? '—'}</b></div>
+                  <div className="rec-item">
+                    RM at WH:{' '}
+                    <b>
+                      {materialsAvailability?.maxRmAvailableBy
+                        ? formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)
+                        : (recommendation.rmConnectDate ?? '—')}
+                    </b>
+                  </div>
+                  <div className="rec-item">
+                    PM at WH:{' '}
+                    <b>
+                      {materialsAvailability?.maxPmAvailableBy
+                        ? formatMaterialAvailableByLabel(materialsAvailability.maxPmAvailableBy)
+                        : (recommendation.pmConnectDate ?? '—')}
+                    </b>
+                  </div>
                   <div className="rec-item">FG Ready: <b>{recommendation.fgDate ?? '—'}</b></div>
                 </div>
                 <div className="flex flex-wrap gap-2 mb-3">
@@ -5689,11 +5968,12 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
 
 /* ──────────── BATCH DETAIL MODAL — 6 tabs ──────────────────── */
 
-function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, outboundMrns, onClose, onSave, onAction, initialTab = 'bmr' }: {
+function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, outboundMrns, reservedItems, onClose, onSave, onAction, initialTab = 'bmr' }: {
   batch: Batch; team: TeamMember[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   reservedRM: Record<string, number>; reservedPM: Record<string, number>;
   outboundMrns: MRNRecordFromApi[];
+  reservedItems: ProductionReservedItemRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onAction: (action: string, batch: Batch, extra?: { mtrRmItems?: DispensingItem[]; mtrPmItems?: DispensingItem[] }) => void;
   initialTab?: 'bmr' | 'bpr';
@@ -5907,7 +6187,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
                     {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-                    {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns) && (
+                    {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
                     )}
                     {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && (
@@ -5935,7 +6215,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
                     {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
-                    {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns) && (
+                    {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
                     )}
                     {type === 'bpr' && canReservePmForBatch(batch) && (
@@ -6139,11 +6419,11 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {batch.bmrStatus === 'draft' && canConfirmProductionBatch(batch) && (
             <Btn color="orange" icon={<Zap size={12} />} onClick={() => { onClose(); onAction('confirm', batch); }}>Confirm Batch</Btn>
           )}
-          {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns) && (
+          {type === 'bmr' && canUnreserveRmForBatch(batch, outboundMrns, reservedItems) && (
             <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
           )}
-          {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
-          {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns) && (
+          {type === 'bmr' && (batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
+          {type === 'bpr' && canUnreservePmForBatch(batch, outboundMrns, reservedItems) && (
             <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
           )}
           {type === 'bpr' && canReservePmForBatch(batch) && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
@@ -6156,7 +6436,12 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {canShowRescheduleFooterButton(batch) && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>Reschedule dates</Btn>
           )}
-          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && batch.rmReserved && !effectiveRmConnectedUi && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
+          {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled' || batch.bmrStatus === 'batch_confirmed') && !batch.rmReserved && !anyRmMtrForBatch && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+              <Info size={14} className="shrink-0" /> Reserve all RM lines before RM Transfer
+            </span>
+          )}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && openRmMtrForBatch && (
             <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
@@ -6188,7 +6473,12 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           )}
           {/* {canOfferRmDispensingUi(batch) && <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>} */}
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
-          {batch.bprStatus === 'pm_reserved' && !effectivePmConnectedUi && !anyPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && batch.pmReserved && !effectivePmConnectedUi && !anyPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
+          {batch.bprStatus === 'pm_reserved' && !batch.pmReserved && !anyPmMtrForBatch && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+              <Info size={14} className="shrink-0" /> Reserve all PM lines before PM Transfer
+            </span>
+          )}
           {batch.bprStatus === 'pm_reserved' && !effectivePmConnectedUi && openPmMtrForBatch && (
             <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
@@ -6594,9 +6884,10 @@ function CreateNewBatchModal({
 
 /* ──────────── BMR VIEW ─────────────────────────────────────── */
 
-function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }: {
+function BMRView({ batches, outboundMrns, reservedItems, onAction, onCreateBatch, onExportBMR }: {
   batches: Batch[];
   outboundMrns: MRNRecordFromApi[];
+  reservedItems: ProductionReservedItemRow[];
   onAction: (action: string, batch: Batch) => void;
   onCreateBatch?: () => void;
   onExportBMR?: () => void;
@@ -6741,10 +7032,10 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {b.bmrStatus === 'draft' && canConfirmProductionBatch(b) && (
                       <Btn color="orange" icon={<Zap size={11} />} onClick={() => onAction('confirm', b)}>Confirm</Btn>
                     )}
-                    {canUnreserveRmForBatch(b, outboundMrns) && (
+                    {canUnreserveRmForBatch(b, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={11} />} onClick={() => onAction('unreserveRM', b)}>Remove RM reserve</Btn>
                     )}
-                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
+                    {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved' || b.bmrStatus === 'scheduled') && !b.rmReserved && <Btn color="amber" icon={<Package size={11} />} onClick={() => onAction('reserveRM', b)}>Reserve RM</Btn>}
                     {(b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved') && !hasProductionBatchSchedule(b) && (
                       <Btn color="teal" icon={<Calendar size={11} />} onClick={() => onAction('schedule', b)}>Schedule</Btn>
                     )}
@@ -6754,7 +7045,12 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
                     {canAdjustBatchSize(b) && (
                       <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
                     )}
-                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !effectiveRm && !anyRmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && b.rmReserved && !effectiveRm && !anyRmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrRM', b)}>RM Transfer</Btn>}
+                    {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved' || b.bmrStatus === 'batch_confirmed') && !b.rmReserved && !anyRmMtr && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+                        <Info size={10} /> Reserve all RM first
+                      </span>
+                    )}
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') && !effectiveRm && openRmMtr && (
                       <span
                         className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]"
@@ -6805,9 +7101,10 @@ function BMRView({ batches, outboundMrns, onAction, onCreateBatch, onExportBMR }
 
 /* ──────────── BPR VIEW ─────────────────────────────────────── */
 
-function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
+function BPRView({ batches, outboundMrns, reservedItems, onAction, onExportBPR }: {
   batches: Batch[];
   outboundMrns: MRNRecordFromApi[];
+  reservedItems: ProductionReservedItemRow[];
   onAction: (action: string, batch: Batch) => void;
   onExportBPR?: () => void;
 }) {
@@ -6914,7 +7211,7 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5" onClick={e => e.stopPropagation()}>
-                    {canUnreservePmForBatch(b, outboundMrns) && (
+                    {canUnreservePmForBatch(b, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={11} />} onClick={() => onAction('unreservePM', b)}>Remove PM reserve</Btn>
                     )}
                     {canReservePmForBatch(b) && (
@@ -6926,7 +7223,12 @@ function BPRView({ batches, outboundMrns, onAction, onExportBPR }: {
                     {canAdjustBatchSize(b) && (
                       <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>Adjust size</Btn>
                     )}
-                    {b.bprStatus === 'pm_reserved' && !effectivePm && !anyPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && b.pmReserved && !effectivePm && !anyPmMtr && <Btn color="teal" icon={<Send size={11} />} onClick={() => onAction('mtrPM', b)}>PM Transfer</Btn>}
+                    {b.bprStatus === 'pm_reserved' && !b.pmReserved && !anyPmMtr && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+                        <Info size={10} /> Reserve all PM first
+                      </span>
+                    )}
                     {b.bprStatus === 'pm_reserved' && !effectivePm && openPmMtr && (
                       <span className="inline-flex flex-col gap-0.5 items-start px-2 py-1 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-[min(100%,28rem)]" title={outboundMtrStageHint(openPmMtr)}>
                         <span className="inline-flex items-center gap-1">
@@ -8059,12 +8361,433 @@ function TeamView({ team, onUpdate, onRefresh, canEdit, departmentList }: {
   );
 }
 
+/* ──────────── MATERIAL RESERVATION VIEW ─────────────────────── */
+
+function batchEligibleForMaterialReserve(batch: Batch, kind: 'rm' | 'pm'): boolean {
+  const pk = (batch as Batch & { _pk?: number })._pk;
+  if (!pk) return false;
+  if (kind === 'rm') {
+    if (batch.rmConnected || batch.bmrStatus === 'cleared') return false;
+    if (!['batch_confirmed', 'rm_reserved', 'scheduled'].includes(batch.bmrStatus)) return false;
+    return !batch.rmReserved;
+  }
+  if (batch.pmConnected || batch.bprStatus === 'fg_ready') return false;
+  if (batch.pmReserved) return false;
+  return canReservePmForBatch(batch) || batch.bprStatus === 'pm_reserved';
+}
+
+function ReserveForBatchPickerModal({
+  batches,
+  onClose,
+  onContinue,
+}: {
+  batches: Batch[];
+  onClose: () => void;
+  onContinue: (batch: Batch, type: 'rm' | 'pm') => void;
+}) {
+  const [materialType, setMaterialType] = useState<'rm' | 'pm'>('rm');
+  const [batchSearch, setBatchSearch] = useState('');
+  const [selectedBmr, setSelectedBmr] = useState('');
+
+  const eligibleBatches = useMemo(() => {
+    const q = batchSearch.trim().toLowerCase();
+    return batches
+      .filter((b) => batchEligibleForMaterialReserve(b, materialType))
+      .filter((b) => {
+        if (!q) return true;
+        return [b.bmrNo, b.bprNo, b.batchNo, b.productName, b.soNo, b.sku]
+          .some((v) => String(v ?? '').toLowerCase().includes(q));
+      })
+      .sort((a, b) => a.bmrNo.localeCompare(b.bmrNo));
+  }, [batches, materialType, batchSearch]);
+
+  useEffect(() => {
+    if (eligibleBatches.length === 0) {
+      setSelectedBmr('');
+      return;
+    }
+    if (!eligibleBatches.some((b) => b.bmrNo === selectedBmr)) {
+      setSelectedBmr(eligibleBatches[0].bmrNo);
+    }
+  }, [eligibleBatches, selectedBmr]);
+
+  const selectedBatch = eligibleBatches.find((b) => b.bmrNo === selectedBmr) ?? null;
+
+  return (
+    <Modal onClose={onClose} title="Reserve for batch" size="md">
+      <p className="text-xs text-gray-500 mb-4">
+        Choose a production batch and material type, then select which RM or PM lines to reserve from warehouse stock.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider self-center">Material:</span>
+        {(['rm', 'pm'] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setMaterialType(k)}
+            className={`text-[11px] px-3 py-1.5 rounded-lg font-semibold border transition-colors ${
+              materialType === k
+                ? k === 'rm'
+                  ? 'bg-teal-500 text-white border-teal-500'
+                  : 'bg-purple-500 text-white border-purple-500'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {k === 'rm' ? 'Raw materials (RM)' : 'Packaging (PM)'}
+          </button>
+        ))}
+      </div>
+      <div className="mb-3">
+        <label htmlFor="reserve-batch-search" className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+          Search batch
+        </label>
+        <input
+          id="reserve-batch-search"
+          type="text"
+          value={batchSearch}
+          onChange={(e) => setBatchSearch(e.target.value)}
+          placeholder="BMR, BPR, product, SO…"
+          className="w-full text-xs px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-300"
+        />
+      </div>
+      <div className="mb-4">
+        <label htmlFor="reserve-batch-select" className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+          Batch
+        </label>
+        {eligibleBatches.length === 0 ? (
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-4 text-xs text-gray-500 text-center">
+            No batches eligible for {materialType === 'rm' ? 'RM' : 'PM'} reservation with current filters.
+          </div>
+        ) : (
+          <select
+            id="reserve-batch-select"
+            value={selectedBmr}
+            onChange={(e) => setSelectedBmr(e.target.value)}
+            className="w-full text-xs px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-800 outline-none focus:ring-1 focus:ring-amber-300"
+          >
+            {eligibleBatches.map((b) => (
+              <option key={b.bmrNo} value={b.bmrNo}>
+                {b.bmrNo} · {b.batchNo} · {b.productName} ({b.bmrStatus}{materialType === 'pm' ? ` / ${b.bprStatus}` : ''})
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {selectedBatch && (
+        <div className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2.5 text-xs text-amber-900 mb-4">
+          <div className="font-semibold">{selectedBatch.productName}</div>
+          <div className="text-[10px] text-amber-800/90 mt-0.5">
+            SO {selectedBatch.soNo} · Batch {selectedBatch.batchIndex}/{selectedBatch.totalBatches}
+            {materialType === 'rm' ? ` · ${selectedBatch.batchSize} KG` : ''}
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!selectedBatch}
+          onClick={() => { if (selectedBatch) onContinue(selectedBatch, materialType); }}
+          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Package size={13} /> Continue to select lines
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function MaterialReservationView({
+  batches,
+  outboundMrns,
+  inventoryRows,
+  stockRM,
+  stockPM,
+  reservedRM,
+  reservedPM,
+  onAction,
+  onRefresh,
+  onReserved,
+}: {
+  batches: Batch[];
+  outboundMrns: MRNRecordFromApi[];
+  inventoryRows: WarehouseInventoryRow[];
+  stockRM: Record<string, number>;
+  stockPM: Record<string, number>;
+  reservedRM: Record<string, number>;
+  reservedPM: Record<string, number>;
+  onAction: (action: string, batch: Batch) => void;
+  onRefresh: () => void;
+  onReserved: () => Promise<void>;
+}) {
+  const { addToast } = useToast();
+  const [rows, setRows] = useState<ProductionReservedItemRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'RM' | 'PM'>('all');
+  const [search, setSearch] = useState('');
+  const [removingId, setRemovingId] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [reserveTarget, setReserveTarget] = useState<{ batch: Batch; type: 'rm' | 'pm' } | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    fetchProductionReservedItems()
+      .then((data) => setRows(data))
+      .catch(() => setError('Failed to load reserved items'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const batchByPk = useMemo(() => {
+    const map = new Map<number, Batch>();
+    batches.forEach((b) => {
+      const pk = (b as Batch & { _pk?: number })._pk;
+      if (pk) map.set(pk, b);
+    });
+    return map;
+  }, [batches]);
+
+  const filtered = useMemo(() => {
+    let list = rows;
+    if (filter !== 'all') list = list.filter((r) => r.itemType === filter);
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((r) =>
+      [r.bmrNo, r.bprNo, r.soNo, r.productName, r.code, r.name].some((v) =>
+        String(v ?? '').toLowerCase().includes(q),
+      ),
+    );
+  }, [rows, filter, search]);
+
+  const canRemoveRow = (row: ProductionReservedItemRow): boolean => {
+    const batch = batchByPk.get(row.productionBatchId);
+    if (!batch) return false;
+    if (row.itemType === 'RM') return canUnreserveRmForBatch(batch, outboundMrns, rows);
+    return canUnreservePmForBatch(batch, outboundMrns, rows);
+  };
+
+  const handleRemove = async (row: ProductionReservedItemRow): Promise<void> => {
+    if (!canRemoveRow(row)) {
+      addToast('error', 'This reservation cannot be removed — check connect, MTR, or dispensing status.');
+      return;
+    }
+    const batchLabel = row.bmrNo || row.bprNo || `batch #${row.productionBatchId}`;
+    const ok = window.confirm(`Remove ${row.itemType} reservation for ${row.code} (${row.name}) on ${batchLabel}?`);
+    if (!ok) return;
+    setRemovingId(row.id);
+    try {
+      const res = await unreserveProductionBatchLines(row.productionBatchId, {
+        kind: row.itemType,
+        codes: [row.code],
+      });
+      if (!res.success) {
+        addToast('error', res.error || 'Failed to remove reservation');
+        return;
+      }
+      addToast('success', `Removed ${row.itemType} reservation for ${row.code}`);
+      load();
+      onRefresh();
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  const handleReserveMore = (row: ProductionReservedItemRow): void => {
+    const batch = batchByPk.get(row.productionBatchId);
+    if (!batch) {
+      addToast('error', 'Batch not found — refresh and try again.');
+      return;
+    }
+    onAction(row.itemType === 'RM' ? 'reserveRM' : 'reservePM', batch);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden section" id="section-material-reservation">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
+        <div>
+          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Material Reservation</div>
+          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">
+            All RM/PM reserved for production batches · remove individual lines or reserve more per batch
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors"
+          >
+            <Plus size={13} /> Reserve for batch
+          </button>
+          <button
+            type="button"
+            onClick={() => { load(); onRefresh(); }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <RotateCcw size={13} /> Refresh
+          </button>
+        </div>
+      </div>
+      <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-gray-100 bg-white shrink-0">
+        <span className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider">Type:</span>
+        {(['all', 'RM', 'PM'] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setFilter(k)}
+            className={`chip text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${
+              filter === k ? 'active bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {k === 'all' ? 'All' : k}
+          </button>
+        ))}
+        <input
+          type="text"
+          className="search-box flex-1 min-w-[120px] max-w-[220px] text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-300 ml-auto"
+          placeholder="Search BMR, code, product…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Badge className="bg-gray-100 text-gray-600 border border-gray-200">{filtered.length} lines</Badge>
+      </div>
+      <div className="flex-1 overflow-auto p-5">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+            <Loader2 size={28} className="animate-spin mb-2 opacity-40" />
+            <p className="text-sm">Loading reserved items…</p>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-40 text-red-500">
+            <AlertTriangle size={28} className="mb-2 opacity-60" />
+            <p className="text-sm">{error}</p>
+            <button type="button" onClick={load} className="mt-3 text-xs text-amber-600 font-semibold hover:underline">Retry</button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+            <Layers size={32} className="mb-2 opacity-20" />
+            <p className="text-sm text-center max-w-md">No reserved materials match this filter. Use <b>Reserve for batch</b> or reserve from BMR/BPR cards.</p>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors"
+            >
+              <Plus size={13} /> Reserve for batch
+            </button>
+          </div>
+        ) : (
+          <div className="tbl-wrap overflow-x-auto rounded-xl border border-gray-100 bg-white">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-100">
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Type</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">BMR / BPR</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Product</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Code</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Material</th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Qty reserved</th>
+                  <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map((row) => {
+                  const batch = batchByPk.get(row.productionBatchId);
+                  const removable = canRemoveRow(row);
+                  return (
+                    <tr key={row.id} className="hover:bg-gray-50/50">
+                      <td className="px-3 py-2.5">
+                        <Badge className={row.itemType === 'RM' ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-purple-50 text-purple-700 border border-purple-200'}>
+                          {row.itemType}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-[10px] text-gray-700">
+                        {row.bmrNo && <div>{row.bmrNo}</div>}
+                        {row.bprNo && <div className="text-gray-400">{row.bprNo}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-700 max-w-[10rem] truncate" title={row.productName || undefined}>
+                        {row.productName || '—'}
+                        {row.soNo && <div className="text-[9px] text-gray-400">{row.soNo}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono font-semibold text-gray-800">{row.code}</td>
+                      <td className="px-3 py-2.5 text-gray-600 max-w-[12rem] truncate" title={row.name}>{row.name}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-800">
+                        {formatQtyExact(row.quantityReserved, row.itemType === 'RM' ? 'kg' : 'pcs')} {row.unit}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {batch && (
+                            <button
+                              type="button"
+                              onClick={() => handleReserveMore(row)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                            >
+                              <Package size={10} /> Reserve more
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={!removable || removingId === row.id}
+                            title={removable ? 'Remove this reservation line' : 'Blocked by connect, MTR, or dispensing'}
+                            onClick={() => void handleRemove(row)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {removingId === row.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <ReserveForBatchPickerModal
+          batches={batches}
+          onClose={() => setPickerOpen(false)}
+          onContinue={(batch, type) => {
+            setPickerOpen(false);
+            setReserveTarget({ batch, type });
+          }}
+        />
+      )}
+      {reserveTarget && (
+        <ReserveMaterialModal
+          batch={reserveTarget.batch}
+          type={reserveTarget.type}
+          stockMap={reserveTarget.type === 'rm' ? stockRM : stockPM}
+          reservedMap={reserveTarget.type === 'rm' ? reservedRM : reservedPM}
+          inventoryRows={inventoryRows}
+          onClose={() => setReserveTarget(null)}
+          onReserved={async () => {
+            await onReserved();
+            load();
+            onRefresh();
+            setReserveTarget(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ──────────── SIDEBAR & HEADER ─────────────────────────────── */
 
 const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'calendar', label: 'Production Calendar', icon: <Calendar size={15} /> },
   { id: 'bmr', label: 'BMR - Manufacturing', icon: <FlaskConical size={15} /> },
   { id: 'bpr', label: 'BPR - Filling & Packing', icon: <Package size={15} /> },
+  { id: 'material-reservation', label: 'Material Reservation', icon: <Layers size={15} /> },
   { id: 'yield-report', label: 'Yield Report', icon: <Activity size={15} /> },
   { id: 'transfers', label: 'Transfer orders', icon: <Truck size={15} /> },
   { id: 'equipment', label: 'Equipment & Capacity', icon: <Wrench size={15} /> },
@@ -8149,6 +8872,7 @@ const Production = () => {
       NAV_ITEMS.filter((item) => {
         if (item.id === 'bmr') return canViewBmr;
         if (item.id === 'bpr') return canViewBpr;
+        if (item.id === 'material-reservation') return canViewBmr || canViewBpr;
         if (item.id === 'yield-report' || item.id === 'transfers') return canViewTransferYield;
         return true;
       }),
@@ -8171,6 +8895,7 @@ const Production = () => {
   const [state, setState] = useState<ProductionState>(defaultState);
   const [whInventory, setWhInventory] = useState<WarehouseInventoryRow[]>([]);
   const [outboundMrns, setOutboundMrns] = useState<MRNRecordFromApi[]>([]);
+  const [reservedItems, setReservedItems] = useState<ProductionReservedItemRow[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modalBatch, setModalBatch] = useState<Batch | null>(null);
   const [modalType, setModalType] = useState<string | null>(null);
@@ -8251,8 +8976,9 @@ const Production = () => {
         fetchDepartments(),
         fetchSentBatchSummary(),
         fetchMRNList({ transferType: 'outbound' }),
+        fetchProductionReservedItems(),
       ]))
-      .then(([batchRows, equipData, teamRows, invResult, deptRows, sent, outboundList]) => {
+      .then(([batchRows, equipData, teamRows, invResult, deptRows, sent, outboundList, reservedRows]) => {
         const batches = batchRows.length ? batchRows.map(apiBatchToBatch) : [];
         const equipment = apiEquipToEquipData(equipData);
         const team = teamRows.length ? apiTeamToTeam(teamRows) : DEFAULT_TEAM;
@@ -8261,6 +8987,7 @@ const Production = () => {
         if (deptRows.length) setDeptList(deptRows.filter(d => d.is_active).map(d => d.name).sort());
         setSentSummary(Array.isArray(sent) ? sent : []);
         setOutboundMrns(Array.isArray(outboundList) ? outboundList : []);
+        setReservedItems(Array.isArray(reservedRows) ? reservedRows : []);
       })
       .catch(() => {
         setState(defaultState());
@@ -8283,6 +9010,12 @@ const Production = () => {
       .catch(() => { });
   }, []);
 
+  const refreshReservedItems = useCallback(() => {
+    fetchProductionReservedItems()
+      .then((items) => setReservedItems(items))
+      .catch(() => { /* keep stale list */ });
+  }, []);
+
   const refreshBatches = useCallback(() => {
     fetchBatches()
       .then(rows => {
@@ -8290,7 +9023,8 @@ const Production = () => {
         setState(prev => ({ ...prev, batches, lastUpdated: new Date().toISOString() }));
       })
       .catch(() => { });
-  }, []);
+    refreshReservedItems();
+  }, [refreshReservedItems]);
 
   const refreshOutboundMrns = useCallback(() => {
     fetchMRNList({ transferType: 'outbound' })
@@ -8469,78 +9203,128 @@ const Production = () => {
     setModalType('schedule');
   }, []);
 
+  const refreshInventory = useCallback(() => {
+    fetchWarehouseInventory()
+      .then((invResult) => {
+        if (invResult.success && invResult.data?.rows?.length) setWhInventory(invResult.data.rows);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
   const handleUnreserveRm = useCallback(
-    (batch: Batch) => {
-      if (!canUnreserveRmForBatch(batch, outboundMrns)) {
+    async (batch: Batch) => {
+      if (!canUnreserveRmForBatch(batch, outboundMrns, reservedItems)) {
         addToast('error', 'RM reservation cannot be removed — check connect, MTR, or dispensing status.');
         return;
       }
-      const ok = window.confirm(
-        `Remove RM reservation for ${batch.bmrNo}? Warehouse stock will be released for other batches.`,
-      );
-      if (!ok) return;
-      void updateBatch(
-        batch.bmrNo,
-        {
-          rmReserved: false,
-          bmrStatus: batch.bmrStatus === 'rm_reserved' ? 'batch_confirmed' : batch.bmrStatus,
-        },
-        'Removing RM reservation…',
-      ).then(() => {
-        addToast('success', `RM reservation removed for ${batch.bmrNo}`);
-        fetchWarehouseInventory()
-          .then((invResult) => {
-            if (invResult.success && invResult.data?.rows?.length) setWhInventory(invResult.data.rows);
-          })
-          .catch(() => { /* non-fatal */ });
-      });
-    },
-    [addToast, outboundMrns, updateBatch],
-  );
-
-  const handleUnreservePm = useCallback(
-    (batch: Batch) => {
-      if (!canUnreservePmForBatch(batch, outboundMrns)) {
-        addToast('error', 'PM reservation cannot be removed — check connect, MTR, or dispensing status.');
+      const pk = (batch as Batch & { _pk?: number })._pk;
+      if (!pk) {
+        addToast('error', 'Batch id missing — refresh and try again.');
+        return;
+      }
+      const { byCode } = await fetchBatchMtrReserved(pk);
+      const codes = Object.entries(byCode || {})
+        .filter(([, qty]) => (Number(qty) || 0) > 0)
+        .map(([code]) => code);
+      if (codes.length === 0) {
+        addToast('error', 'No RM lines reserved for this batch.');
         return;
       }
       const ok = window.confirm(
-        `Remove PM reservation for ${batch.bprNo}? Warehouse stock will be released for other batches.`,
+        `Remove RM reservation for ${codes.length} line(s) on ${batch.bmrNo}? Warehouse stock will be released for other batches.`,
       );
       if (!ok) return;
-      void updateBatch(
-        batch.bmrNo,
-        {
-          pmReserved: false,
-          bprStatus: batch.bprStatus === 'pm_reserved' ? 'draft' : batch.bprStatus,
-        },
-        'Removing PM reservation…',
-      ).then(() => {
-        addToast('success', `PM reservation removed for ${batch.bprNo}`);
-        fetchWarehouseInventory()
-          .then((invResult) => {
-            if (invResult.success && invResult.data?.rows?.length) setWhInventory(invResult.data.rows);
-          })
-          .catch(() => { /* non-fatal */ });
-      });
+      beginBatchAction('Removing RM reservation…', batch.bmrNo);
+      try {
+        const res = await unreserveProductionBatchLines(pk, { kind: 'RM', codes });
+        if (!res.success) {
+          addToast('error', res.error || 'Failed to remove RM reservation');
+          return;
+        }
+        addToast('success', `RM reservation removed for ${batch.bmrNo}`);
+        refreshBatches();
+        refreshInventory();
+      } finally {
+        endBatchAction();
+      }
     },
-    [addToast, outboundMrns, updateBatch],
+    [addToast, outboundMrns, reservedItems, refreshBatches, refreshInventory, beginBatchAction, endBatchAction],
   );
+
+  const handleUnreservePm = useCallback(
+    async (batch: Batch) => {
+      if (!canUnreservePmForBatch(batch, outboundMrns, reservedItems)) {
+        addToast('error', 'PM reservation cannot be removed — check connect, MTR, or dispensing status.');
+        return;
+      }
+      const pk = (batch as Batch & { _pk?: number })._pk;
+      if (!pk) {
+        addToast('error', 'Batch id missing — refresh and try again.');
+        return;
+      }
+      const { byCode } = await fetchBatchMtrReserved(pk);
+      const codes = Object.entries(byCode || {})
+        .filter(([, qty]) => (Number(qty) || 0) > 0)
+        .map(([code]) => code);
+      if (codes.length === 0) {
+        addToast('error', 'No PM lines reserved for this batch.');
+        return;
+      }
+      const ok = window.confirm(
+        `Remove PM reservation for ${codes.length} line(s) on ${batch.bprNo}? Warehouse stock will be released for other batches.`,
+      );
+      if (!ok) return;
+      beginBatchAction('Removing PM reservation…', batch.bmrNo);
+      try {
+        const res = await unreserveProductionBatchLines(pk, { kind: 'PM', codes });
+        if (!res.success) {
+          addToast('error', res.error || 'Failed to remove PM reservation');
+          return;
+        }
+        addToast('success', `PM reservation removed for ${batch.bprNo}`);
+        refreshBatches();
+        refreshInventory();
+      } finally {
+        endBatchAction();
+      }
+    },
+    [addToast, outboundMrns, reservedItems, refreshBatches, refreshInventory, beginBatchAction, endBatchAction],
+  );
+
+  const handleReserveRefresh = useCallback(async () => {
+    try {
+      const rows = await fetchBatches();
+      const batches = rows.length ? rows.map(apiBatchToBatch) : [];
+      setState((prev) => ({ ...prev, batches, lastUpdated: new Date().toISOString() }));
+    } catch {
+      refreshBatches();
+    }
+    refreshInventory();
+    refreshReservedItems();
+  }, [refreshBatches, refreshInventory, refreshReservedItems]);
 
   const handleAction = useCallback(
     (action: string, batch: Batch) => {
       if (action === 'unreserveRM') {
-        handleUnreserveRm(batch);
+        void handleUnreserveRm(batch);
         return;
       }
       if (action === 'unreservePM') {
-        handleUnreservePm(batch);
+        void handleUnreservePm(batch);
+        return;
+      }
+      if (action === 'mtrRM' && !batch.rmReserved) {
+        addToast('error', 'Reserve all RM lines for this batch before starting RM Transfer.');
+        return;
+      }
+      if (action === 'mtrPM' && !batch.pmReserved) {
+        addToast('error', 'Reserve all PM lines for this batch before starting PM Transfer.');
         return;
       }
       setModalBatch(batch);
       setModalType(action);
     },
-    [handleUnreservePm, handleUnreserveRm],
+    [handleUnreservePm, handleUnreserveRm, addToast],
   );
 
   const handleModalSave = useCallback(async (updates: Partial<Batch>) => {
@@ -8648,10 +9432,31 @@ const Production = () => {
         );
       case 'bmr':
         if (!canViewBmr) return <div className="p-8 text-sm text-gray-500">You do not have permission to view BMR.</div>;
-        return <BMRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onCreateBatch={() => { setCreateBatchPreset(null); setShowCreateBatchModal(true); }} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
+        return <BMRView batches={state.batches} outboundMrns={outboundMrns} reservedItems={reservedItems} onAction={handleAction} onCreateBatch={() => { setCreateBatchPreset(null); setShowCreateBatchModal(true); }} onExportBMR={() => addToast('info', 'Export BMR coming soon')} />;
       case 'bpr':
         if (!canViewBpr) return <div className="p-8 text-sm text-gray-500">You do not have permission to view BPR.</div>;
-        return <BPRView batches={state.batches} outboundMrns={outboundMrns} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
+        return <BPRView batches={state.batches} outboundMrns={outboundMrns} reservedItems={reservedItems} onAction={handleAction} onExportBPR={() => addToast('info', 'Export BPR coming soon')} />;
+      case 'material-reservation':
+        if (!canViewBmr && !canViewBpr) {
+          return <div className="p-8 text-sm text-gray-500">You do not have permission to view Material Reservation.</div>;
+        }
+        return (
+          <MaterialReservationView
+            batches={state.batches}
+            outboundMrns={outboundMrns}
+            inventoryRows={whInventory}
+            stockRM={whStockRM}
+            stockPM={whStockPM}
+            reservedRM={whReservedRM}
+            reservedPM={whReservedPM}
+            onAction={handleAction}
+            onRefresh={() => {
+              refreshBatches();
+              refreshInventory();
+            }}
+            onReserved={handleReserveRefresh}
+          />
+        );
       case 'yield-report':
         if (!canViewTransferYield) return <div className="p-8 text-sm text-gray-500">You do not have permission to view Yield Report.</div>;
         return (
@@ -8697,7 +9502,7 @@ const Production = () => {
           reservedMap={whReservedRM}
           inventoryRows={whInventory}
           onClose={closeModal}
-          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
+          onReserved={handleReserveRefresh}
         />
       )}
       {modalBatch && modalType === 'reservePM' && (
@@ -8708,12 +9513,12 @@ const Production = () => {
           reservedMap={whReservedPM}
           inventoryRows={whInventory}
           onClose={closeModal}
-          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
+          onReserved={handleReserveRefresh}
         />
       )}
       {modalType === 'schedule' && scheduleSlot && (
         <SmartScheduleModal slot={scheduleSlot} batch={modalBatch} equipment={state.equipment} batches={state.batches}
-          stockRM={whStockRM} stockPM={whStockPM} sentSummary={sentSummary}
+          stockRM={whStockRM} stockPM={whStockPM} inventoryRows={whInventory} sentSummary={sentSummary}
           onClose={closeModal}
           onSave={async (updates) => {
             await handleModalSave(updates);
@@ -8760,7 +9565,7 @@ const Production = () => {
       )}
       {modalType === 'schedule' && !scheduleSlot && (
         <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches}
-          stockRM={whStockRM} stockPM={whStockPM} sentSummary={sentSummary}
+          stockRM={whStockRM} stockPM={whStockPM} inventoryRows={whInventory} sentSummary={sentSummary}
           onClose={closeModal}
           onSave={async (updates) => {
             await handleModalSave(updates);
@@ -8846,7 +9651,7 @@ const Production = () => {
         />
       )}
       {modalBatch && modalType === 'detail' && (
-        <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} outboundMrns={outboundMrns} onClose={closeModal}
+        <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} outboundMrns={outboundMrns} reservedItems={reservedItems} onClose={closeModal}
           onSave={async (updates) => { await handleModalSave(updates); }}
           onAction={(action, batch, extra) => { closeModal(); if (extra?.mtrRmItems) setPendingMtrItems(extra.mtrRmItems); else if (extra?.mtrPmItems) setPendingMtrItems(extra.mtrPmItems); else setPendingMtrItems(null); setTimeout(() => handleAction(action, batch), 100); }}
           initialTab={activeSection === 'bpr' ? 'bpr' : 'bmr'} />

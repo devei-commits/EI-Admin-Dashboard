@@ -18,6 +18,10 @@ import {
   computeRecommendedScheduleForSlot,
   computeRmVolumeBreakdown,
   computeVolumeFromBomRmLines,
+  computeLineAvailableByDate,
+  computeBatchMaterialsAvailableBy,
+  suggestedRmConnectDate,
+  earliestMfgDateAfterRmAvailable,
   type BatchForScheduleLike,
   type BatchWithDispensingLike,
   type ScheduledBatchLike,
@@ -449,5 +453,92 @@ describe('computeRecommendedScheduleForSlot (integration)', () => {
     expect(r.packLine).toBe('PL-01');
     expect(r.fillDate).toBe('2026-03-27');
     expect(r.mfgDate).toBe('2026-03-24');
+  });
+});
+
+describe('computeLineAvailableByDate', () => {
+  const today = '2026-06-05';
+
+  it('returns today when WH available covers required', () => {
+    const r = computeLineAvailableByDate(
+      100,
+      { code: 'RM-1', type: 'RM', available: 150 },
+      today,
+    );
+    expect(r.coveredNow).toBe(true);
+    expect(r.availableBy).toBe(today);
+  });
+
+  it('uses latest in-transit ETA when SIH is short', () => {
+    const r = computeLineAvailableByDate(
+      100,
+      {
+        code: 'RM-2',
+        type: 'RM',
+        available: 20,
+        inTransitBreakdown: [
+          { quantity: 30, expectedDate: '2026-06-08' },
+          { quantity: 60, expectedDate: '2026-06-12' },
+        ],
+      },
+      today,
+    );
+    expect(r.coveredNow).toBe(false);
+    expect(r.availableBy).toBe('2026-06-12');
+  });
+
+  it('returns null when pipeline cannot cover and includes unknown PO qty', () => {
+    const r = computeLineAvailableByDate(
+      500,
+      {
+        code: 'RM-3',
+        type: 'RM',
+        available: 10,
+        inTransitBreakdown: [{ quantity: 50, expectedDate: '2026-06-10' }],
+        poQuantity: 200,
+      },
+      today,
+    );
+    expect(r.availableBy).toBeNull();
+    expect(r.needsUnknownPipeline).toBe(true);
+  });
+});
+
+describe('computeBatchMaterialsAvailableBy', () => {
+  const today = '2026-06-05';
+
+  it('max RM date is the latest across all batch RM lines', () => {
+    const summary = computeBatchMaterialsAvailableBy(
+      [
+        { code: 'A', required: 10 },
+        { code: 'B', required: 50 },
+      ],
+      [],
+      [
+        { code: 'A', type: 'RM', available: 100 },
+        {
+          code: 'B',
+          type: 'RM',
+          available: 5,
+          inTransitBreakdown: [{ quantity: 60, expectedDate: '2026-06-15' }],
+        },
+      ],
+      today,
+    );
+    expect(summary.maxRmAvailableBy).toBe('2026-06-15');
+    expect(summary.allRmCoveredNow).toBe(false);
+  });
+});
+
+describe('suggestedRmConnectDate', () => {
+  it('uses max of mfg-2 and warehouse latest RM date', () => {
+    expect(suggestedRmConnectDate('2026-06-20', '2026-06-15', '2026-06-05')).toBe('2026-06-18');
+    expect(suggestedRmConnectDate('2026-06-20', '2026-06-19', '2026-06-05')).toBe('2026-06-19');
+  });
+});
+
+describe('earliestMfgDateAfterRmAvailable', () => {
+  it('adds 2-day buffer after last RM at WH', () => {
+    expect(earliestMfgDateAfterRmAvailable('2026-06-15')).toBe('2026-06-17');
   });
 });

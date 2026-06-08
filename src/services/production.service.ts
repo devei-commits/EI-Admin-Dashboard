@@ -1,4 +1,5 @@
 import { api } from '../lib/apiClient';
+import type { BatchMaterialCoverage, ProductionReservedItemRow } from '../lib/productionBatchReserve';
 
 const BASE = '/api/v1/production';
 
@@ -353,5 +354,74 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load batch BOM';
     return { success: false, data: undefined, error: message };
+  }
+}
+
+export async function fetchProductionReservedItems(): Promise<ProductionReservedItemRow[]> {
+  try {
+    const res = await api.get<{ success?: boolean; data?: ProductionReservedItemRow[] }>(`${BASE}/reserved-items`);
+    const data = (res as { data?: ProductionReservedItemRow[] })?.data ?? res;
+    const items = (data as { data?: ProductionReservedItemRow[] })?.data ?? data;
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function reserveProductionBatchLines(
+  batchPk: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] },
+): Promise<{ success: boolean; error?: string; shortages?: unknown }> {
+  try {
+    await api.post(`${BASE}/batches/${batchPk}/reserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string; shortages?: unknown } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Reserve failed'),
+      shortages: err?.body?.shortages,
+    };
+  }
+}
+
+export async function unreserveProductionBatchLines(
+  batchPk: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await api.post(`${BASE}/batches/${batchPk}/unreserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Unreserve failed'),
+    };
+  }
+}
+
+export async function fetchBatchReservationCoverage(
+  batchPk: number,
+): Promise<{ rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } | null> {
+  try {
+    const res = await api.get<{
+      success?: boolean;
+      data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage };
+    }>(`${BASE}/batches/${batchPk}/reservation-coverage`);
+    const body = (res as { data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } })?.data ?? res;
+    const data = (body as { data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } })?.data ?? body;
+    if (data && typeof data === 'object' && 'rm' in data && 'pm' in data) {
+      return data as { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
