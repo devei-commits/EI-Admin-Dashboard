@@ -61,6 +61,7 @@ import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMa
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import PlanningItemsInvolvedProductFilter from '../components/planning/PlanningItemsInvolvedProductFilter';
+import { ItemsInvolvedReleaseInventoryPanel } from '../components/planning/ItemsInvolvedReleaseInventoryPanel';
 import {
   formatPlanningProductFilterDisplay,
   mergeItemsInvolvedRows,
@@ -6416,6 +6417,16 @@ const Planning = () => {
                 </button>
               </div>
               <div className="p-3 sm:p-5 overflow-auto min-h-0">
+                <ItemsInvolvedReleaseInventoryPanel
+                  item={item}
+                  vendorHint={
+                    releaseToPlanningForm.vendorName.trim()
+                      ? `${releaseToPlanningForm.vendorName.trim()} · ${releaseToPlanningForm.leadTimeDays || 0}d lead`
+                      : slabs[0]
+                        ? `${slabs[0].vendorName} · ${slabs[0].leadTimeDays}d lead`
+                        : null
+                  }
+                />
                 <div className={`grid grid-cols-1 gap-4 xl:gap-5 ${isQuotationOnlyModal ? 'max-w-xl mx-auto' : 'xl:grid-cols-2'}`}>
                   {!isQuotationOnlyModal && (
                   <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0">
