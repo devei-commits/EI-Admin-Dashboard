@@ -631,7 +631,11 @@ const BOMDashboard: React.FC = () => {
         return {
           ...row,
           pm_sub_category: detail,
-          pm_sub_sub_category: normalizePmSubSubCategoryForSelect(detail, row.pm_sub_sub_category ?? ''),
+          pm_sub_sub_category: normalizePmSubSubCategoryForSelect(
+            detail,
+            row.pm_sub_sub_category ?? '',
+            row.pm_sku_category ?? ''
+          ),
         };
       });
       return { ...prev, packBom };
@@ -1768,7 +1772,8 @@ const BOMDashboard: React.FC = () => {
                             {packList.map((row, i) => {
                               const subCategoryOpts = pmDetailSubCategoryOptionsForSkuCategory(row.pm_sku_category ?? '');
                               const subSubCategoryOpts = pmSubSubCategoryOptionsForDetailSubCategory(
-                                row.pm_sub_category ?? ''
+                                row.pm_sub_category ?? '',
+                                row.pm_sku_category ?? ''
                               );
                               const categoryLabel =
                                 PM_SKU_CATEGORY_SELECT_OPTIONS.find((o) => o.value === row.pm_sku_category)?.label ||

@@ -19,12 +19,19 @@ import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../ut
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { getRmConditionalVisibility } from '../lib/rmConditionalFields';
+import { RmQualitySpecSection } from '../components/masters/RmQualitySpecSection';
+import {
+  flattenRmQualitySpecsForPayload,
+  groupVisibleRmQualitySpecFields,
+  hydrateRmQualitySpecs,
+} from '../lib/rmQualitySpecVisibility';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import {
   RM_SUB_CATEGORY_SKU_SELECT_OPTIONS,
   normalizeRmSubCategoryForSelect,
+  rmBulkUsesFunctionalCategoryTaxonomy,
   normalizeRmDetailSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
   rmDetailSubCategoryHasSubSubCategory,
@@ -269,6 +276,7 @@ function createEmptyRmFormData() {
     coaRequired: '' as '' | 'Yes' | 'No',
     acceptanceSpecMin: '',
     acceptanceSpecMax: '',
+    rmQualitySpecs: {} as Record<string, string>,
     physicalFormSolid: '' as '' | (typeof RM_PHYSICAL_FORM_SOLID_OPTIONS)[number],
     physicalFormLiquid: '' as '' | (typeof RM_PHYSICAL_FORM_LIQUID_OPTIONS)[number],
     preferredVendor: '',
@@ -446,6 +454,11 @@ const RawMaterialRefactored: React.FC = () => {
   }
   return base;
  }, [formData.optionalRmSubCategory, formData.optionalRmSubSubCategory]);
+ const rmUsesBulkFunctionalTaxonomy = rmBulkUsesFunctionalCategoryTaxonomy(formData.subCategory);
+ const rmFunctionalCategoryLabel = rmUsesBulkFunctionalTaxonomy ? 'Category' : 'Sub-category (optional)';
+ const rmFunctionalSubCategoryLabel = rmUsesBulkFunctionalTaxonomy
+  ? 'Sub-category'
+  : 'Sub-sub category (optional)';
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
@@ -481,10 +494,40 @@ const RawMaterialRefactored: React.FC = () => {
    getRmConditionalVisibility({
     subCategory: formData.subCategory,
     optionalRmSubCategory: formData.optionalRmSubCategory,
+    optionalRmSubSubCategory: formData.optionalRmSubSubCategory,
     rmState: formData.rmState,
    }),
-  [formData.subCategory, formData.optionalRmSubCategory, formData.rmState]
+  [
+   formData.subCategory,
+   formData.optionalRmSubCategory,
+   formData.optionalRmSubSubCategory,
+   formData.rmState,
+  ]
  );
+ const rmQualitySpecCtx = useMemo(
+  () => ({
+   subCategory: formData.subCategory,
+   optionalRmSubCategory: formData.optionalRmSubCategory,
+   optionalRmSubSubCategory: formData.optionalRmSubSubCategory,
+  }),
+  [formData.subCategory, formData.optionalRmSubCategory, formData.optionalRmSubSubCategory]
+ );
+ const rmQualitySpecGroups = useMemo(
+  () => groupVisibleRmQualitySpecFields(rmQualitySpecCtx),
+  [rmQualitySpecCtx]
+ );
+ const handleRmQualitySpecChange = useCallback((fieldId: string, value: string) => {
+  setFormData((prev) => ({
+   ...prev,
+   rmQualitySpecs: { ...prev.rmQualitySpecs, [fieldId]: value },
+  }));
+  setErrors((prev) => {
+   if (!prev[fieldId]) return prev;
+   const next = { ...prev };
+   delete next[fieldId];
+   return next;
+  });
+ }, []);
  const rmPhysicalFormSolidOptions = useMemo(() => {
   const base = RM_PHYSICAL_FORM_SOLID_OPTIONS.map((v) => ({ value: v, label: v }));
   const cur = String(formData.physicalFormSolid ?? '').trim();
@@ -940,12 +983,15 @@ const RawMaterialRefactored: React.FC = () => {
   const arNumbers = formData.arNumbers
     .map((entry) => ({ ...entry, number: entry.number.trim() }))
     .filter((entry) => entry.number.length > 0);
+  const flatQcSpecs = flattenRmQualitySpecsForPayload(formData.rmQualitySpecs ?? {});
   const payload: Record<string, unknown> = {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
    category: formData.subCategory?.trim() || formData.rmCategory,
    arNumbers,
    arNumber: arNumbers[0]?.number ?? '',
+   rmQualitySpecs: flatQcSpecs,
+   ...flatQcSpecs,
    ...(linkedProducts.length > 0 ? { products: linkedProducts } : {}),
   };
   if (isNewRm) {
@@ -960,12 +1006,16 @@ const RawMaterialRefactored: React.FC = () => {
   return payload;
  };
 
+ const rmPreviewFormData = useMemo(() => {
+  const flatQc = flattenRmQualitySpecsForPayload(formData.rmQualitySpecs ?? {});
+  return { ...(formData as Record<string, unknown>), ...flatQc };
+ }, [formData]);
  const rmPreviewSections = useMemo(
   () =>
-   buildMasterPreviewSections(formData as Record<string, unknown>, RM_PREVIEW_SECTIONS, {
-    omitKeys: isNewRm ? ['rmSku', 'sku'] : undefined,
+   buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS, {
+    omitKeys: isNewRm ? ['rmSku', 'sku', 'rmQualitySpecs'] : ['rmQualitySpecs'],
    }),
-  [formData, isNewRm]
+  [rmPreviewFormData, isNewRm]
  );
 
  const handleSubmit = () => {
@@ -1056,11 +1106,13 @@ const RawMaterialRefactored: React.FC = () => {
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-       Category, sub-category &amp; sub-sub category
+       {rmUsesBulkFunctionalTaxonomy
+        ? 'SKU series, category & sub-category'
+        : 'Category, sub-category & sub-sub category'}
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
        <SelectField
-        label="Category"
+        label={rmUsesBulkFunctionalTaxonomy ? 'SKU series' : 'Category'}
         id="subCategory"
         value={formData.subCategory}
         onChange={handleInputChange}
@@ -1071,7 +1123,7 @@ const RawMaterialRefactored: React.FC = () => {
        />
        {rmDetailSubCategoryRequired ? (
         <SelectField
-         label="Sub-category (optional)"
+         label={rmFunctionalCategoryLabel}
          id="optionalRmSubCategory"
          value={formData.optionalRmSubCategory}
          onChange={handleInputChange}
@@ -1081,7 +1133,7 @@ const RawMaterialRefactored: React.FC = () => {
         />
        ) : (
         <InputField
-         label="Sub-category (optional)"
+         label={rmFunctionalCategoryLabel}
          id="optionalRmSubCategory"
          value={formData.optionalRmSubCategory}
          onChange={handleInputChange}
@@ -1092,7 +1144,7 @@ const RawMaterialRefactored: React.FC = () => {
        )}
        {rmSubSubCategoryRequired ? (
         <SelectField
-         label="Sub-sub category (optional)"
+         label={rmFunctionalSubCategoryLabel}
          id="optionalRmSubSubCategory"
          value={formData.optionalRmSubSubCategory}
          onChange={handleInputChange}
@@ -1102,14 +1154,18 @@ const RawMaterialRefactored: React.FC = () => {
         />
        ) : (
         <InputField
-         label="Sub-sub category (optional)"
+         label={rmFunctionalSubCategoryLabel}
          id="optionalRmSubSubCategory"
          value={formData.optionalRmSubSubCategory}
          onChange={handleInputChange}
          placeholder={
           formData.optionalRmSubCategory?.trim()
-            ? 'No sub-sub options for this sub-category'
-            : 'Select sub-category first'
+            ? rmUsesBulkFunctionalTaxonomy
+              ? 'No sub-categories for this category'
+              : 'No sub-sub options for this sub-category'
+            : rmUsesBulkFunctionalTaxonomy
+              ? 'Select category first'
+              : 'Select sub-category first'
          }
          error={errors.optionalRmSubSubCategory}
          readOnly
@@ -1118,9 +1174,18 @@ const RawMaterialRefactored: React.FC = () => {
        )}
       </div>
       <p className="text-xs text-gray-500 mt-2">
-       Category drives the internal SKU prefix (<span className="font-mono">1</span> bulk,{' '}
-       <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colors). Sub-category and
-       sub-sub category lists depend on the category you pick.
+       {rmUsesBulkFunctionalTaxonomy ? (
+        <>
+         SKU series drives the internal code prefix (<span className="font-mono">1</span> bulk). Pick a functional
+         category (Surfactant, Active, Polymer, …) and sub-category (Anionic, Vitamin, Carbomer, …).
+        </>
+       ) : (
+        <>
+         Category drives the internal SKU prefix (<span className="font-mono">1</span> bulk,{' '}
+         <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colors). Sub-category
+         lists depend on the category you pick.
+        </>
+       )}
       </p>
      </div>
 
@@ -1799,6 +1864,16 @@ const RawMaterialRefactored: React.FC = () => {
         />
        </div>
       </div>
+      {rmConditionalVisibility.showQualityConditional ? (
+       <RmQualitySpecSection
+        groups={rmQualitySpecGroups}
+        categoryLabel={formData.optionalRmSubCategory}
+        subCategoryLabel={formData.optionalRmSubSubCategory}
+        specs={formData.rmQualitySpecs ?? {}}
+        errors={errors}
+        onChange={handleRmQualitySpecChange}
+       />
+      ) : null}
      </div>
     );
 
@@ -2342,6 +2417,7 @@ const RawMaterialRefactored: React.FC = () => {
          merged.seriesPrefix = RM_CATEGORIES[inferred]?.prefix ?? merged.seriesPrefix;
        }
      }
+     merged.rmQualitySpecs = hydrateRmQualitySpecs(merged as Record<string, unknown>);
      return merged;
    });
   }).catch(() => {

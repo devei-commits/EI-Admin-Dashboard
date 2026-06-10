@@ -1,4 +1,6 @@
 import { fieldDefs, type MasterPreviewSectionDef } from '../utils/masterSubmitPreview';
+import { PM_QUALITY_SPEC_FIELD_IDS, PM_QUALITY_SPEC_FIELD_LABELS } from './pmQualitySpecFields';
+import { RM_QUALITY_SPEC_FIELD_IDS, RM_QUALITY_SPEC_FIELD_LABELS } from './rmQualitySpecFields';
 
 export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
@@ -27,9 +29,9 @@ export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         rmSku: 'Internal RM code (SKU)',
         inciName: 'INCI name',
         tradeCommercialName: 'Trade / commercial name',
-        subCategory: 'Category',
-        optionalRmSubCategory: 'Sub-category',
-        optionalRmSubSubCategory: 'Sub-sub category',
+        subCategory: 'SKU series / category',
+        optionalRmSubCategory: 'Category (bulk) / sub-category',
+        optionalRmSubSubCategory: 'Sub-category (bulk) / sub-sub category',
       }
     ),
   },
@@ -114,17 +116,16 @@ export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   },
   {
     title: 'Quality Specifications',
-    fields: fieldDefs([
-      'arNumbers',
-      'coaRequired',
-      'acceptanceSpecMin',
-      'acceptanceSpecMax',
-    ], {
-      arNumbers: 'AR Numbers',
-      coaRequired: 'COA Required',
-      acceptanceSpecMin: 'Acceptance Spec (MIN)',
-      acceptanceSpecMax: 'Acceptance Spec (MAX)',
-    }),
+    fields: fieldDefs(
+      ['arNumbers', 'coaRequired', 'acceptanceSpecMin', 'acceptanceSpecMax', ...RM_QUALITY_SPEC_FIELD_IDS],
+      {
+        arNumbers: 'AR Numbers',
+        coaRequired: 'COA Required',
+        acceptanceSpecMin: 'Acceptance Spec (MIN)',
+        acceptanceSpecMax: 'Acceptance Spec (MAX)',
+        ...RM_QUALITY_SPEC_FIELD_LABELS,
+      }
+    ),
   },
   {
     title: 'Sourcing & Cost',
@@ -212,8 +213,8 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         intendedUse: 'Intended use',
         reusability: 'Reusability',
         pmSkuCategory: 'Category',
-        optionalPmSubCategory: 'Sub-category',
-        optionalPmSubSubCategory: 'Sub-sub category',
+        optionalPmSubCategory: 'Category (functional) / sub-category',
+        optionalPmSubSubCategory: 'Sub-category (functional) / sub-sub category',
       }
     ),
   },
@@ -410,6 +411,7 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         'qaInspectionReportRef',
         'qaSpecFile',
         'qaSampleImageMock',
+        ...PM_QUALITY_SPEC_FIELD_IDS,
       ],
       {
         qaArNumber: 'AR number',
@@ -423,6 +425,7 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         qaInspectionReportRef: 'Inspection report reference',
         qaSpecFile: 'Specification file',
         qaSampleImageMock: 'Sample image / 3D mock',
+        ...PM_QUALITY_SPEC_FIELD_LABELS,
       }
     ),
   },
@@ -501,6 +504,8 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
         skuCode: 'Internal PR code',
         prRecordType: 'Record type',
         bomCompositeItem: 'Composite item',
+        category: 'Category',
+        prSubCategory: 'Sub-category',
       }
     ),
   },

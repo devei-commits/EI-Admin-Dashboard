@@ -15,6 +15,7 @@ import type {
   DraftPOLineItem,
   ItemDetail,
 } from '../../types/procurement.types';
+import { formatIsoWeekLabel, isoWeekFromDateString } from '../../lib/isoWeek';
 import { procurementItemMergeKey } from '../../lib/procurementRequestMerge';
 import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '../../services/procurement.service';
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
@@ -102,7 +103,13 @@ export function parseDateStringToLocalDate(raw: string | undefined | null): Date
 }
 
 /** Normalize API/UI date strings to YYYY-MM-DD for `<input type="date">` and storage. */
-export function normalizeDateOnlyString(raw: string | undefined | null): string {
+export function normalizeDateOnlyString(raw: string | Date | undefined | null): string {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    const y = raw.getFullYear();
+    const m = String(raw.getMonth() + 1).padStart(2, '0');
+    const day = String(raw.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
   const d = parseDateStringToLocalDate(raw);
   if (!d) return '';
   const y = d.getFullYear();
@@ -115,6 +122,18 @@ export function formatDateEnInSafe(raw: string | Date | null | undefined): strin
   const d = raw instanceof Date ? raw : parseDateStringToLocalDate(String(raw ?? ''));
   if (!d) return '—';
   return d.toLocaleDateString('en-IN');
+}
+
+/** Calendar date (en-IN) plus ISO week label, e.g. `1/10/2025 · Week 40, 2025`. */
+export function formatDateWithIsoWeek(raw: string | Date | null | undefined): string {
+  const normalized =
+    raw instanceof Date
+      ? normalizeDateOnlyString(raw)
+      : normalizeDateOnlyString(String(raw ?? ''));
+  const dateLabel = formatDateEnInSafe(normalized || raw);
+  if (dateLabel === '—') return '—';
+  const weekLabel = formatIsoWeekLabel(isoWeekFromDateString(normalized));
+  return weekLabel === '—' ? dateLabel : `${dateLabel} · ${weekLabel}`;
 }
 
 function calendarDaysBetween(from: Date, to: Date): number {
@@ -506,6 +525,8 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     if (c) return c;
     return 'Item';
   });
+  const requestDueDate = normalizeDateOnlyString(pr.requiredByDate) || '';
+
   return {
     id: String(pr.id),
     code,
@@ -513,7 +534,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     priority: (pr.priority as ProcurementRequest['priority']) ?? 'Medium',
     status: PR_STATUS_MAP[pr.status ?? ''] ?? 'New',
     items: itemLabels,
-    dueDate: normalizeDateOnlyString(pr.requiredByDate) || '',
+    dueDate: requestDueDate,
     createdDate: normalizeDateOnlyString(pr.createdAt) || String(pr.createdAt ?? ''),
     requestedBy: pr.requestedBy ?? undefined,
     preferredVendor:
@@ -534,6 +555,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
         moq_min?: number;
         planned_unit_price?: number;
         lead_time_days?: number;
+        required_by_date?: string | null;
         raw_material_id?: number;
         pack_material_id?: number;
         type?: string;
@@ -563,6 +585,8 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
             : i?.type === 'FG'
               ? 'FG'
               : 'RM';
+        const lineExpected =
+          normalizeDateOnlyString(i?.required_by_date ?? null) || requestDueDate;
         return {
           itemCode: i?.code ?? '',
           itemName: i?.name ?? '',
@@ -572,6 +596,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
           packSize: '',
           plannedPrice,
           leadTimeDays,
+          expectedDate: lineExpected,
           estValue: reqQty * plannedPrice,
           raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
           pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,

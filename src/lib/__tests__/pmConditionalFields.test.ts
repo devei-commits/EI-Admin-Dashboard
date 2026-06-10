@@ -5,7 +5,8 @@ describe('getPmConditionalVisibility', () => {
   it('shows PPM primary fields for ppm category', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
-      optionalPmSubCategory: 'Bottles',
+      optionalPmSubCategory: 'Primary Pack',
+      optionalPmSubSubCategory: 'Bottle',
     });
     expect(v.primaryAssemblyCode).toBe(true);
     expect(v.technicalEmptyWeight).toBe(true);
@@ -15,12 +16,22 @@ describe('getPmConditionalVisibility', () => {
   it('shows bottle-specific technical fields', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
-      optionalPmSubCategory: 'Bottles',
+      optionalPmSubCategory: 'Primary Pack',
+      optionalPmSubSubCategory: 'Bottle',
     });
     expect(v.technicalNominalVolume).toBe(true);
     expect(v.technicalShoulderHeight).toBe(true);
     expect(v.technicalBrimfulVolume).toBe(true);
     expect(v.technicalClosureType).toBe(false);
+  });
+
+  it('supports legacy bottle detail sub-category', () => {
+    const v = getPmConditionalVisibility({
+      pmSkuCategory: 'ppm',
+      optionalPmSubCategory: 'Bottles',
+      optionalPmSubSubCategory: '',
+    });
+    expect(v.technicalNominalVolume).toBe(true);
   });
 
   it('limits adhesive compatibility to labels and other secondary', () => {

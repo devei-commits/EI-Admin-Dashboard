@@ -35,10 +35,11 @@ import { computeSkuBomQtyDisplay, formatSkuBomStdQtyWithUnit } from '../lib/skuB
 import { formatQtyWithUnit } from '../utils/formatQty';
 import {
   PR_CATEGORY_OPTIONS,
-  PR_SUB_CATEGORY_OPTIONS,
   inferPrCategoryFromLegacyCode,
   normalizePrCategoryForSelect,
   normalizePrSubCategoryForSelect,
+  prSubCategoryOptionsForCategory,
+  resolvePrCategoryAndSub,
 } from '../constants/prMasterCategoryOptions';
 import {
   PR_PRODUCT_FORM_OPTIONS,
@@ -549,7 +550,8 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
           rowExtra.pm_sub_sub_category ||
             rowExtra.optional_pm_sub_sub_category ||
             (rowExtra as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
-            ''
+            '',
+          pmSkuCategory
         ) ||
         String(
           rowExtra.pm_sub_sub_category ||
@@ -569,9 +571,15 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     duration: String(step.duration_minutes ?? ''),
   }));
   const skuCode = p.product_code || '';
-  const categoryFromDb = normalizePrCategoryForSelect(p.category || '') || p.category || '';
   const categoryFromCode = inferPrCategoryFromLegacyCode(skuCode);
-  const category = categoryFromDb || categoryFromCode || '';
+  const prSubRaw = (p as unknown as { pr_sub_category?: string | null }).pr_sub_category || '';
+  const resolvedCats = resolvePrCategoryAndSub(p.category || categoryFromCode || '', prSubRaw);
+  const category =
+    resolvedCats.category ||
+    normalizePrCategoryForSelect(p.category || '') ||
+    categoryFromCode ||
+    p.category ||
+    '';
   const zi = p.zoho_item_id;
   const rawComposite = (p as unknown as { bom_composite_item?: unknown }).bom_composite_item;
   const compositeFromBackend: '' | 'Yes' | 'No' =
@@ -582,7 +590,10 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
         : '';
   const bomCompositeItem: '' | 'Yes' | 'No' =
     compositeFromBackend || inferPrCompositeFromCode(skuCode);
-  const prSubRaw = (p as unknown as { pr_sub_category?: string | null }).pr_sub_category || '';
+  const prSubCategory =
+    resolvedCats.prSubCategory ||
+    normalizePrSubCategoryForSelect(category, prSubRaw) ||
+    prSubRaw;
   return {
     ...emptyBomForm(),
     bomCompositeItem,
@@ -624,7 +635,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     phototability: (p as unknown as { photostability?: string | null }).photostability || '',
     freezeThawCycles: (p as unknown as { freeze_thaw_cycles?: string | null }).freeze_thaw_cycles || '',
     packConfiguration: (p as unknown as { pack_configuration?: string | null }).pack_configuration || '',
-    prSubCategory: normalizePrSubCategoryForSelect(prSubRaw) || prSubRaw,
+    prSubCategory,
     applicableRegulation: (p as unknown as { applicable_regulation?: string | null }).applicable_regulation || '',
     claimsSubstantiation: (p as unknown as { claims_substantiation?: string | null }).claims_substantiation || '',
     cosmosNaturalCertification: (p as unknown as { cosmos_natural_certification?: string | null }).cosmos_natural_certification || '',
@@ -722,6 +733,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData.bomCompositeItem &&
         formData.productName.trim()
     );
+  const prSubCategoryOptions = useMemo(() => {
+    const base = prSubCategoryOptionsForCategory(formData.category);
+    const cur = String(formData.prSubCategory ?? '').trim();
+    if (cur && !base.some((o) => o.value === cur)) {
+      return [{ value: cur, label: cur }, ...base];
+    }
+    return base;
+  }, [formData.category, formData.prSubCategory]);
   // Existing products normally keep identity/code fields locked.
   // Exception: legacy rows that have no BOM payload loaded (all edit arrays empty)
   // need a bootstrap edit pass to set missing composite/returnable/code metadata.
@@ -823,13 +842,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     [tempComponent.pmSkuCategory]
   );
   const packDraftSubSubCategoryOptions = useMemo(() => {
-    const base = pmSubSubCategoryOptionsForDetailSubCategory(tempComponent.optionalPmSubCategory);
+    const base = pmSubSubCategoryOptionsForDetailSubCategory(
+      tempComponent.optionalPmSubCategory,
+      tempComponent.pmSkuCategory
+    );
     const cur = String(tempComponent.optionalPmSubSubCategory ?? '').trim();
     if (cur && !base.some((o) => o.value === cur)) {
       return [{ value: cur, label: cur }, ...base];
     }
     return base;
-  }, [tempComponent.optionalPmSubCategory, tempComponent.optionalPmSubSubCategory]);
+  }, [tempComponent.pmSkuCategory, tempComponent.optionalPmSubCategory, tempComponent.optionalPmSubSubCategory]);
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
@@ -943,6 +965,33 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
+    if (field === 'category') {
+      const nextCategory = normalizePrCategoryForSelect(String(value)) || String(value);
+      setFormData((prev) => ({
+        ...prev,
+        category: nextCategory,
+        prSubCategory: normalizePrSubCategoryForSelect(nextCategory, prev.prSubCategory),
+      }));
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.category;
+        delete next.prSubCategory;
+        return next;
+      });
+      return;
+    }
+    if (field === 'prSubCategory') {
+      const detail =
+        normalizePrSubCategoryForSelect(formData.category, String(value)) || String(value);
+      setFormData((prev) => ({ ...prev, prSubCategory: detail }));
+      setErrors((prev) => {
+        if (!prev.prSubCategory) return prev;
+        const next = { ...prev };
+        delete next.prSubCategory;
+        return next;
+      });
+      return;
+    }
     if (field === 'bomCompositeItem') {
       setFormData((prev) => ({ ...prev, bomCompositeItem: value as '' | 'Yes' | 'No' }));
       setErrors((prev) => {
@@ -1540,10 +1589,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             </div>
 
             <div className="min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">PR Category</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+                Category &amp; sub-category
+              </h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PR Category <span className="text-red-600">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category <span className="text-red-600">*</span></label>
                   <select
                     id="category"
                     value={formData.category}
@@ -1565,27 +1616,30 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   {errors.category ? <p className="mt-1 text-xs text-red-600">{errors.category}</p> : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub‑Category (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub-category</label>
                   <select
                     id="prSubCategory"
                     value={formData.prSubCategory}
                     onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
+                    disabled={!formData.category.trim()}
                     aria-invalid={errors.prSubCategory ? true : undefined}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
                       errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
                     }`}
                   >
-                    <option value="">Select sub-category</option>
-                    {PR_SUB_CATEGORY_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                    <option value="">
+                      {formData.category.trim() ? 'Select sub-category…' : 'Select category first'}
+                    </option>
+                    {prSubCategoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
-                    {formData.prSubCategory &&
-                    !PR_SUB_CATEGORY_OPTIONS.includes(formData.prSubCategory as (typeof PR_SUB_CATEGORY_OPTIONS)[number]) ? (
-                      <option value={formData.prSubCategory}>{formData.prSubCategory} (legacy)</option>
-                    ) : null}
                   </select>
                   {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
                 </div>
+                <p className="text-xs text-gray-500 sm:col-span-2">
+                  Pick a product category (Skin Care, Hair Care, Cleansing, …) then the format sub-category (Cream,
+                  Shampoo, Facewash, …).
+                </p>
                 <div className="sm:col-span-2">
                   <label htmlFor="bomCompositeItem" className="block text-sm font-medium text-gray-700 mb-1">
                     Composite Item
@@ -2348,7 +2402,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                       optionalPmSubCategory: detail,
                                       optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
                                         detail,
-                                        prev.optionalPmSubSubCategory
+                                        prev.optionalPmSubSubCategory,
+                                        prev.pmSkuCategory
                                       ),
                                     }));
                                   }}
@@ -2545,7 +2600,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             optionalPmSubCategory: detail,
                             optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
                               detail,
-                              prev.optionalPmSubSubCategory
+                              prev.optionalPmSubSubCategory,
+                              prev.pmSkuCategory
                             ),
                           }));
                         }}

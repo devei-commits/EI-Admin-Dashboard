@@ -6,20 +6,11 @@ import {
   type ProcurementRequest,
   type ProcurementRequestItem,
 } from '../../services/procurement.service';
+import { computeInventoryAuditGap } from '../../lib/inventoryAuditGap';
+import { parseStockCheckNotes } from '../../lib/stockCheckNotes';
 import { fetchWarehouseInventory, updateWarehouseStock, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
 
 type StockCheckOutcome = 'all_ok' | 'not_ok';
-
-type ParsedStockCheckNotes = {
-  outcome?: StockCheckOutcome;
-  lines?: Array<{
-    itemCode?: string;
-    itemName?: string;
-    physicalQty?: number;
-    updatedStockQty?: number;
-    remarks?: string;
-  }>;
-};
 
 type LineDraft = {
   key: string;
@@ -28,8 +19,10 @@ type LineDraft = {
   requestedQty: number;
   systemQty: number;
   physicalQty: number;
+  consumptionQty: number;
   updatedStockQty: number;
   remarks: string;
+  location: string;
   warehouseInventoryId: number | null;
   unit: string;
 };
@@ -37,17 +30,6 @@ type LineDraft = {
 function parseNumber(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
-}
-
-function parseStockCheckNotes(raw: string | null | undefined): ParsedStockCheckNotes | null {
-  if (!raw || !raw.trim()) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return parsed as ParsedStockCheckNotes;
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function isPendingStockCheck(status: string | null | undefined): boolean {
@@ -133,8 +115,11 @@ const StockCheckRequests: React.FC = () => {
       );
       const systemQty = parseNumber(inv?.stockInHand);
       const physicalQty = existingLine?.physicalQty != null ? parseNumber(existingLine.physicalQty) : systemQty;
+      const consumptionQty =
+        existingLine?.consumptionQty != null ? parseNumber(existingLine.consumptionQty) : 0;
       const updatedStockQty =
         existingLine?.updatedStockQty != null ? parseNumber(existingLine.updatedStockQty) : physicalQty;
+      const location = String(existingLine?.location ?? existingLine?.zone ?? inv?.zone ?? 'MAIN').trim() || 'MAIN';
       return {
         key: `${req.id}-${itemCode}-${idx}`,
         itemCode,
@@ -142,8 +127,10 @@ const StockCheckRequests: React.FC = () => {
         requestedQty: parseNumber(line.quantity_requested),
         systemQty,
         physicalQty,
+        consumptionQty,
         updatedStockQty,
         remarks: String(existingLine?.remarks ?? ''),
+        location,
         warehouseInventoryId: inv?.warehouseInventoryId ?? null,
         unit: String(line.unit ?? inv?.whUnit ?? '').trim() || 'KG',
       };
@@ -163,8 +150,10 @@ const StockCheckRequests: React.FC = () => {
           requestedQty: 0,
           systemQty,
           physicalQty: systemQty,
+          consumptionQty: 0,
           updatedStockQty: systemQty,
           remarks: '',
+          location: String(inv?.zone ?? 'MAIN').trim() || 'MAIN',
           warehouseInventoryId: inv?.warehouseInventoryId ?? null,
           unit: String(inv?.whUnit ?? 'KG'),
         },
@@ -209,13 +198,21 @@ const StockCheckRequests: React.FC = () => {
         outcome: statusDraft === 'Completed' ? outcomeDraft : undefined,
         updatedAt: new Date().toISOString(),
         updatedBy: 'Warehouse Team',
-        lines: lineDrafts.map((l) => ({
-          itemCode: l.itemCode,
-          itemName: l.itemName,
-          physicalQty: l.physicalQty,
-          updatedStockQty: l.updatedStockQty,
-          remarks: l.remarks || undefined,
-        })),
+        lines: lineDrafts.map((l) => {
+          const gapQty = computeInventoryAuditGap(l.systemQty, l.physicalQty, l.consumptionQty);
+          return {
+            itemCode: l.itemCode,
+            itemName: l.itemName,
+            systemQty: l.systemQty,
+            physicalQty: l.physicalQty,
+            consumptionQty: l.consumptionQty,
+            gapQty,
+            location: l.location,
+            zone: l.location,
+            updatedStockQty: l.updatedStockQty,
+            remarks: l.remarks || undefined,
+          };
+        }),
       };
 
       const upd = await updateProcurementRequest(activeRequest.id, {
@@ -338,7 +335,9 @@ const StockCheckRequests: React.FC = () => {
                         </div>
                         <p className="text-xs text-slate-600">Requested: {line.requestedQty} {line.unit}</p>
                       </div>
-                      <div className={`grid grid-cols-1 ${showStockUpdateField ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3`}>
+                      <div
+                        className={`grid grid-cols-1 ${showStockUpdateField ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-2 lg:grid-cols-3'} gap-3`}
+                      >
                         <label className="text-xs text-slate-600">
                           System Qty
                           <input
@@ -355,6 +354,22 @@ const StockCheckRequests: React.FC = () => {
                             onChange={(e) =>
                               setLineDrafts((prev) =>
                                 prev.map((x) => (x.key === line.key ? { ...x, physicalQty: parseNumber(e.target.value) } : x)),
+                              )
+                            }
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                          />
+                        </label>
+                        <label className="text-xs text-slate-600">
+                          Consumption (window)
+                          <input
+                            type="number"
+                            min={0}
+                            value={line.consumptionQty}
+                            onChange={(e) =>
+                              setLineDrafts((prev) =>
+                                prev.map((x) =>
+                                  x.key === line.key ? { ...x, consumptionQty: parseNumber(e.target.value) } : x
+                                ),
                               )
                             }
                             className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
@@ -377,6 +392,24 @@ const StockCheckRequests: React.FC = () => {
                           </label>
                         ) : null}
                       </div>
+                      {(() => {
+                        const gap = computeInventoryAuditGap(
+                          line.systemQty,
+                          line.physicalQty,
+                          line.consumptionQty
+                        );
+                        if (Math.abs(gap) < 1e-6) return null;
+                        return (
+                          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                            Gap (auto):{' '}
+                            <span className="font-semibold tabular-nums">
+                              {gap > 0 ? '+' : ''}
+                              {gap.toLocaleString('en-IN')} {line.unit}
+                            </span>
+                            {gap > 0 ? ' — procurement may approve to add to PR / PO qty' : ''}
+                          </p>
+                        );
+                      })()}
                       <label className="text-xs text-slate-600 block">
                         Remarks
                         <input

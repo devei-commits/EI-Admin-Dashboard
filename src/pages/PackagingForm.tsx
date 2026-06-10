@@ -41,9 +41,17 @@ import {
   pmSubCategorySkuPrefix,
   pmSubSubCategoryOptionsForDetailSubCategory,
   normalizePmSubSubCategoryForSelect,
+  pmUsesFunctionalCategoryTaxonomy,
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 import { getPmConditionalVisibility } from '../lib/pmConditionalFields';
+import { PmQualitySpecSection } from '../components/masters/PmQualitySpecSection';
+import {
+  flattenPmQualitySpecsForPayload,
+  groupVisiblePmQualitySpecFields,
+  hasPmQualitySpecFields,
+  hydratePmQualitySpecs,
+} from '../lib/pmQualitySpecVisibility';
 import PmConditionalFieldBlocks from '../components/packaging/PmConditionalFieldBlocks';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
@@ -306,6 +314,7 @@ function createEmptyPackagingFormData() {
     qaInspectionReportRef: '',
     qaSpecFile: '',
     qaSampleImageMock: '',
+    pmQualitySpecs: {} as Record<string, string>,
     apprPack: false,
     apprRd: false,
     apprFin: false,
@@ -433,24 +442,77 @@ const PackagingRefactored: React.FC = () => {
     return base;
   }, [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]);
   const pmSubSubCategoryRequired = pmDetailSubCategoryHasSubSubCategory(formData.optionalPmSubCategory);
+  const pmUsesFunctionalTaxonomy = pmUsesFunctionalCategoryTaxonomy(
+    formData.pmSkuCategory || formData.subCategory
+  );
+  const pmFunctionalCategoryLabel = pmUsesFunctionalTaxonomy ? 'Category' : 'Sub-category';
+  const pmFunctionalSubCategoryLabel = pmUsesFunctionalTaxonomy ? 'Sub-category' : 'Sub-sub category';
   const pmConditionalVisibility = useMemo(
     () =>
       getPmConditionalVisibility({
         pmSkuCategory: formData.pmSkuCategory || formData.subCategory,
         subCategory: formData.subCategory,
         optionalPmSubCategory: formData.optionalPmSubCategory,
+        optionalPmSubSubCategory: formData.optionalPmSubSubCategory,
       }),
-    [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]
+    [
+      formData.pmSkuCategory,
+      formData.subCategory,
+      formData.optionalPmSubCategory,
+      formData.optionalPmSubSubCategory,
+    ]
   );
+  const pmQualitySpecCtx = useMemo(
+    () => ({
+      pmSkuCategory: formData.pmSkuCategory || formData.subCategory,
+      subCategory: formData.subCategory,
+      optionalPmSubCategory: formData.optionalPmSubCategory,
+      optionalPmSubSubCategory: formData.optionalPmSubSubCategory,
+    }),
+    [
+      formData.pmSkuCategory,
+      formData.subCategory,
+      formData.optionalPmSubCategory,
+      formData.optionalPmSubSubCategory,
+    ]
+  );
+  const pmQualitySpecGroups = useMemo(
+    () => groupVisiblePmQualitySpecFields(pmQualitySpecCtx),
+    [pmQualitySpecCtx]
+  );
+  const showPmQualitySpecSection = useMemo(
+    () => hasPmQualitySpecFields(pmQualitySpecCtx),
+    [pmQualitySpecCtx]
+  );
+  const handlePmQualitySpecChange = useCallback((fieldId: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      pmQualitySpecs: { ...prev.pmQualitySpecs, [fieldId]: value },
+    }));
+    setErrors((prev) => {
+      if (!prev[fieldId]) return prev;
+      const next = { ...prev };
+      delete next[fieldId];
+      return next;
+    });
+  }, []);
 
   const pmSubSubCategoryOptions = useMemo(() => {
-    const base = pmSubSubCategoryOptionsForDetailSubCategory(formData.optionalPmSubCategory);
+    const base = pmSubSubCategoryOptionsForDetailSubCategory(
+      formData.optionalPmSubCategory,
+      formData.pmSkuCategory || formData.subCategory
+    );
     const cur = String(formData.optionalPmSubSubCategory ?? '').trim();
     if (cur && !base.some((o) => o.value === cur)) {
       return [{ value: cur, label: cur }, ...base];
     }
     return base;
-  }, [formData.optionalPmSubCategory, formData.optionalPmSubSubCategory]);
+  }, [
+    formData.pmSkuCategory,
+    formData.subCategory,
+    formData.optionalPmSubCategory,
+    formData.optionalPmSubSubCategory,
+  ]);
   const canAdvancePastPrimary =
     !isNewPm ||
     Boolean(
@@ -610,7 +672,11 @@ const PackagingRefactored: React.FC = () => {
       setFormData((prev) => ({
         ...prev,
         optionalPmSubCategory: detail,
-        optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(detail, prev.optionalPmSubSubCategory),
+        optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
+          detail,
+          prev.optionalPmSubSubCategory,
+          formData.pmSkuCategory || formData.subCategory
+        ),
       }));
       setErrors((prev) => {
         if (!prev.optionalPmSubCategory && !prev.optionalPmSubSubCategory) return prev;
@@ -848,6 +914,7 @@ const PackagingRefactored: React.FC = () => {
         ? { products: formData.products }
         : {}),
       form_data: (() => {
+        const flatQc = flattenPmQualitySpecsForPayload(formData.pmQualitySpecs ?? {});
         const {
           pmCategory: _pmCat,
           excelCategory: _excelCat,
@@ -861,6 +928,8 @@ const PackagingRefactored: React.FC = () => {
         } = formData as Record<string, unknown>;
         return {
           ...formRest,
+          pmQualitySpecs: flatQc,
+          ...flatQc,
           ...(codeTrim ? { itemCode: codeTrim } : {}),
           ...(skuCat
             ? {
@@ -875,12 +944,16 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
+  const pmPreviewFormData = useMemo(() => {
+    const flatQc = flattenPmQualitySpecsForPayload(formData.pmQualitySpecs ?? {});
+    return { ...(formData as Record<string, unknown>), ...flatQc };
+  }, [formData]);
   const pmPreviewSections = useMemo(
     () =>
-      buildMasterPreviewSections(formData as Record<string, unknown>, PM_PREVIEW_SECTIONS, {
-        omitKeys: isNewPm ? ['itemCode', 'pkgSku'] : undefined,
+      buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS, {
+        omitKeys: isNewPm ? ['itemCode', 'pkgSku', 'pmQualitySpecs'] : ['pmQualitySpecs'],
       }),
-    [formData, isNewPm]
+    [pmPreviewFormData, isNewPm]
   );
 
   const validatePmForSubmit = (): CreatePackMaterialPayload | null => {
@@ -1037,11 +1110,13 @@ const PackagingRefactored: React.FC = () => {
             {/* PM Category — Industry Buckets */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-                Category, sub-category &amp; sub-sub category
+                {pmUsesFunctionalTaxonomy
+                  ? 'SKU series, category & sub-category'
+                  : 'Category, sub-category & sub-sub category'}
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <SelectField
-                  label="Category"
+                  label={pmUsesFunctionalTaxonomy ? 'SKU series' : 'Category'}
                   id="pmSkuCategory"
                   value={formData.pmSkuCategory}
                   onChange={handleInputChange}
@@ -1058,7 +1133,7 @@ const PackagingRefactored: React.FC = () => {
                 ) : null}
                 {pmDetailSubCategoryRequired ? (
                   <SelectField
-                    label="Sub-category"
+                    label={pmFunctionalCategoryLabel}
                     id="optionalPmSubCategory"
                     value={formData.optionalPmSubCategory}
                     onChange={handleInputChange}
@@ -1069,7 +1144,7 @@ const PackagingRefactored: React.FC = () => {
                   />
                 ) : (
                   <InputField
-                    label="Sub-category"
+                    label={pmFunctionalCategoryLabel}
                     id="optionalPmSubCategory"
                     value={formData.optionalPmSubCategory}
                     onChange={handleInputChange}
@@ -1080,7 +1155,7 @@ const PackagingRefactored: React.FC = () => {
                 )}
                 {pmSubSubCategoryRequired ? (
                   <SelectField
-                    label="Sub-sub category"
+                    label={pmFunctionalSubCategoryLabel}
                     id="optionalPmSubSubCategory"
                     value={formData.optionalPmSubSubCategory}
                     onChange={handleInputChange}
@@ -1091,14 +1166,18 @@ const PackagingRefactored: React.FC = () => {
                   />
                 ) : (
                   <InputField
-                    label="Sub-sub category"
+                    label={pmFunctionalSubCategoryLabel}
                     id="optionalPmSubSubCategory"
                     value={formData.optionalPmSubSubCategory}
                     onChange={handleInputChange}
                     placeholder={
                       formData.optionalPmSubCategory?.trim()
-                        ? 'No sub-sub options for this sub-category'
-                        : 'Select sub-category first'
+                        ? pmUsesFunctionalTaxonomy
+                          ? 'No sub-categories for this category'
+                          : 'No sub-sub options for this sub-category'
+                        : pmUsesFunctionalTaxonomy
+                          ? 'Select category first'
+                          : 'Select sub-category first'
                     }
                     error={errors.optionalPmSubSubCategory}
                     readOnly
@@ -1106,10 +1185,11 @@ const PackagingRefactored: React.FC = () => {
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Category sets the SKU series: PPM <span className="font-mono">4XXXXX</span>, SPM Labels{' '}
+                SKU series sets the code prefix: PPM <span className="font-mono">4XXXXX</span>, SPM Labels{' '}
                 <span className="font-mono">5LXXXXX</span>, Monocartons <span className="font-mono">5MXXXXX</span>, Other Secondary{' '}
                 <span className="font-mono">5OXXXXX</span>, TPM Tertiary <span className="font-mono">6TXXXXX</span>, Ancillary{' '}
-                <span className="font-mono">6AXXXX</span>. Level is set automatically from category.
+                <span className="font-mono">6AXXXX</span>. Then pick functional category (Primary Pack, Secondary Pack, …) and
+                sub-category (Bottle, Front Label, …). Conditional spec fields follow your selection.
               </p>
             </div>
 
@@ -1991,6 +2071,17 @@ const PackagingRefactored: React.FC = () => {
                 documents are hosted elsewhere.
               </p>
             </div>
+
+            {showPmQualitySpecSection ? (
+              <PmQualitySpecSection
+                groups={pmQualitySpecGroups}
+                categoryLabel={formData.optionalPmSubCategory}
+                subCategoryLabel={formData.optionalPmSubSubCategory}
+                specs={formData.pmQualitySpecs ?? {}}
+                errors={errors}
+                onChange={handlePmQualitySpecChange}
+              />
+            ) : null}
           </div>
         );
 
@@ -2324,7 +2415,8 @@ const PackagingRefactored: React.FC = () => {
             merged.optionalPmSubCategory,
             merged.optionalPmSubSubCategory ||
               (fdObj as { optionalPmSubSubCategory?: string }).optionalPmSubSubCategory ||
-              ''
+              '',
+            merged.pmSkuCategory || merged.subCategory
           ) ||
           merged.optionalPmSubSubCategory ||
           '';
@@ -2346,6 +2438,7 @@ const PackagingRefactored: React.FC = () => {
         applyPmRegulatoryLegacyFields(merged as Record<string, unknown>);
         applyPmLifecycleLegacyFields(merged as Record<string, unknown>);
         applyPmConditionalLegacyFields(merged as Record<string, unknown>);
+        merged.pmQualitySpecs = hydratePmQualitySpecs(merged as Record<string, unknown>);
         return merged;
       });
 

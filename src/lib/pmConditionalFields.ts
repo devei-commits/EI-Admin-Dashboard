@@ -1,9 +1,14 @@
-import { normalizePmSkuCategoryForSelect, type PmSkuCategoryOption } from '../constants/materialMasterSkuRules';
+import {
+  normalizePmFunctionalSubCategoryKey,
+  normalizePmSkuCategoryForSelect,
+  type PmSkuCategoryOption,
+} from '../constants/materialMasterSkuRules';
 
 export type PmCategoryContext = {
   pmSkuCategory: string;
   subCategory?: string;
   optionalPmSubCategory: string;
+  optionalPmSubSubCategory?: string;
 };
 
 function normSub(raw: string): string {
@@ -14,43 +19,30 @@ function normSub(raw: string): string {
 }
 
 function pmCanonCategory(ctx: PmCategoryContext): PmSkuCategoryOption | '' {
-  return (
-    normalizePmSkuCategoryForSelect(ctx.pmSkuCategory || ctx.subCategory || '') || ''
-  );
+  return normalizePmSkuCategoryForSelect(ctx.pmSkuCategory || ctx.subCategory || '') || '';
+}
+
+/** Packaging item type from functional sub-category, with legacy detail-sub fallback. */
+function pmItemType(ctx: PmCategoryContext): string {
+  const fromSubSub = normalizePmFunctionalSubCategoryKey(ctx.optionalPmSubSubCategory ?? '');
+  if (fromSubSub) return normSub(fromSubSub);
+  const legacy = String(ctx.optionalPmSubCategory ?? '').trim();
+  if (!legacy) return '';
+  const mapped = normalizePmFunctionalSubCategoryKey(legacy);
+  if (mapped) return normSub(mapped);
+  return normSub(legacy);
 }
 
 function pmSubIs(ctx: PmCategoryContext, ...labels: string[]): boolean {
-  const sub = normSub(ctx.optionalPmSubCategory);
-  if (!sub) return false;
-  return labels.some((l) => normSub(l) === sub);
+  const item = pmItemType(ctx);
+  if (!item) return false;
+  return labels.some((l) => normSub(l) === item);
 }
 
 function pmCatIs(ctx: PmCategoryContext, ...cats: PmSkuCategoryOption[]): boolean {
   const c = pmCanonCategory(ctx);
   return Boolean(c && cats.includes(c));
 }
-
-const SUB_TUBES_BOTTLES_JARS_SACHETS_STICKS_PUMPS_DROPPERS = [
-  'Tubes',
-  'Bottles',
-  'Jars',
-  'Sachets',
-  'Sticks',
-  'Pumps',
-  'Droppers',
-] as const;
-
-const SUB_OUTER_DIAM = ['Tubes', 'Bottles', 'Jars', 'Sticks', 'Caps', 'Lids', 'Pumps', 'Droppers'] as const;
-
-const SUB_PACK_WIDTH_HEIGHT = [
-  'Sachets',
-  'Sheet form',
-  'Roll form',
-  'Sleeves',
-  'Leaflets',
-  'Fitments',
-  'Tamper sticker',
-] as const;
 
 export type PmConditionalVisibility = {
   primaryAssemblyCode: boolean;
@@ -111,39 +103,73 @@ export function getPmConditionalVisibility(ctx: PmCategoryContext): PmConditiona
   const primaryComponentBreakdown = isPpm;
   const primarySkuVolume = isPpm;
 
-  const technicalNominalVolume = pmSubIs(ctx, ...SUB_TUBES_BOTTLES_JARS_SACHETS_STICKS_PUMPS_DROPPERS);
-  const technicalShoulderHeight = pmSubIs(ctx, 'Bottles', 'Jars', 'Sticks');
+  const technicalNominalVolume = pmSubIs(
+    ctx,
+    'Tube',
+    'Bottle',
+    'Jar',
+    'Sachet',
+    'Dropper',
+    'Spray (Mist)',
+    'Pump'
+  );
+  const technicalShoulderHeight = pmSubIs(ctx, 'Bottle', 'Jar');
   const technicalOverallHeight = isPpm || isSpm;
-  const technicalOuterDiameter = pmSubIs(ctx, ...SUB_OUTER_DIAM);
+  const technicalOuterDiameter = pmSubIs(
+    ctx,
+    'Tube',
+    'Bottle',
+    'Jar',
+    'Cap',
+    'Pump',
+    'Dropper',
+    'Dropper Cap',
+    'Sprayer'
+  );
   const technicalInnerDiameterNeck = technicalOuterDiameter;
-  const technicalCircumference = pmSubIs(ctx, 'Bottles', 'Jars', 'Sticks');
-  const technicalBrimfulVolume = pmSubIs(ctx, 'Bottles', 'Jars');
+  const technicalCircumference = pmSubIs(ctx, 'Bottle', 'Jar');
+  const technicalBrimfulVolume = pmSubIs(ctx, 'Bottle', 'Jar');
   const technicalEmptyWeight = isPpm;
-  const technicalOrifice = pmSubIs(ctx, 'Tubes', 'Droppers', 'Pumps');
-  const technicalClosureType = pmSubIs(ctx, 'Tubes');
-  const technicalPumpCcDosage = pmSubIs(ctx, 'Pumps', 'Droppers');
-  const technicalPipetteLength = pmSubIs(ctx, 'Droppers');
-  const technicalSleeveHeight = pmSubIs(ctx, 'Tubes', 'Sleeves');
-  const technicalFillVolume = pmSubIs(ctx, 'Sachets');
-  const technicalPackWidth = pmSubIs(ctx, ...SUB_PACK_WIDTH_HEIGHT);
+  const technicalOrifice = pmSubIs(ctx, 'Tube', 'Dropper', 'Pump', 'Dropper Cap', 'Sprayer');
+  const technicalClosureType = pmSubIs(ctx, 'Tube');
+  const technicalPumpCcDosage = pmSubIs(ctx, 'Pump', 'Dropper', 'Dropper Cap', 'Sprayer');
+  const technicalPipetteLength = pmSubIs(ctx, 'Dropper', 'Dropper Cap');
+  const technicalSleeveHeight = pmSubIs(ctx, 'Tube');
+  const technicalFillVolume = pmSubIs(ctx, 'Sachet');
+  const technicalPackWidth = pmSubIs(
+    ctx,
+    'Sachet',
+    'Front Label',
+    'Back Label',
+    'Tamper Sticker',
+    'Leaflet'
+  );
   const technicalPackHeight = technicalPackWidth;
-  const technicalOpenClosedSize = pmSubIs(ctx, 'Leaflets');
-  const technicalSealLaminateWidth = pmSubIs(ctx, 'Sachets');
-  const technicalCartonLength = isMonocarton;
-  const technicalCartonWidth = isMonocarton;
-  const technicalCartonHeight = isMonocarton;
-  const technicalBoardPaperType = isMonocarton || isOtherSecondary;
-  const technicalGsm = isMonocarton || isLabels || isOtherSecondary;
+  const technicalOpenClosedSize = pmSubIs(ctx, 'Leaflet');
+  const technicalSealLaminateWidth = pmSubIs(ctx, 'Sachet');
+  const technicalCartonLength = isMonocarton || pmSubIs(ctx, 'Monocarton');
+  const technicalCartonWidth = technicalCartonLength;
+  const technicalCartonHeight = technicalCartonLength;
+  const technicalBoardPaperType = isMonocarton || isOtherSecondary || pmSubIs(ctx, 'Monocarton');
+  const technicalGsm = isMonocarton || isLabels || isOtherSecondary || pmSubIs(ctx, 'Monocarton');
   const technicalMaterialThickness = isLabels || isOtherSecondary;
-  const technicalLamination = isLabels || isMonocarton;
-  const technicalStickerType = pmSubIs(ctx, 'Tamper sticker', 'Sheet form', 'Roll form');
-  const technicalPrinting = isLabels || isMonocarton;
+  const technicalLamination = isLabels || isMonocarton || pmSubIs(ctx, 'Monocarton');
+  const technicalStickerType = pmSubIs(ctx, 'Tamper Sticker', 'Front Label', 'Back Label');
+  const technicalPrinting = isLabels || isMonocarton || pmSubIs(ctx, 'Monocarton', 'Front Label', 'Back Label');
 
-  const aestheticsShoulderColour = pmSubIs(ctx, 'Tubes');
-  const aestheticsCapOvercapColour = pmSubIs(ctx, 'Pumps', 'Droppers', 'Bottles', 'Caps', 'Lids');
-  const aestheticsActuatorColourStyle = pmSubIs(ctx, 'Pumps', 'Droppers');
-  const aestheticsCollarFinish = pmSubIs(ctx, 'Pumps', 'Droppers');
-  const aestheticsTeatColour = pmSubIs(ctx, 'Droppers');
+  const aestheticsShoulderColour = pmSubIs(ctx, 'Tube');
+  const aestheticsCapOvercapColour = pmSubIs(
+    ctx,
+    'Pump',
+    'Dropper',
+    'Dropper Cap',
+    'Bottle',
+    'Cap',
+    'Sprayer'
+  );
+  const aestheticsActuatorColourStyle = pmSubIs(ctx, 'Pump', 'Dropper', 'Dropper Cap', 'Sprayer');
+  const aestheticsCollarFinish = pmSubIs(ctx, 'Pump', 'Dropper', 'Dropper Cap', 'Sprayer');
+  const aestheticsTeatColour = pmSubIs(ctx, 'Dropper', 'Dropper Cap');
 
   const compatSuitableContainerType = isSpm;
   const compatContainerSurface = isLabels || isOtherSecondary;

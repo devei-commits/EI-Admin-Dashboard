@@ -110,7 +110,7 @@ export function resolvePmEditCategories(record: {
       ''
   );
   const optionalPmSubSubCategory =
-    normalizePmSubSubCategoryForSelect(optionalPmSubCategory, optionalPmSubSubCategoryRaw) ||
+    normalizePmSubSubCategoryForSelect(optionalPmSubCategory, optionalPmSubSubCategoryRaw, subCategory) ||
     optionalPmSubSubCategoryRaw;
 
   return { subCategory, optionalPmSubCategory, optionalPmSubSubCategory };

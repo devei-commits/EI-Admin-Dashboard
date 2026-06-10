@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RM_BULK_FUNCTIONAL_SUB_CATEGORIES,
   normalizeRmDetailSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
   rmDetailSubCategoryHasSubSubCategory,
@@ -8,38 +9,35 @@ import {
 } from '../../constants/materialMasterSkuRules';
 
 describe('RM sub-sub category', () => {
-  it('lists bulk raw material sub-categories in catalog order', () => {
+  it('lists bulk functional categories in catalog order', () => {
     const opts = rmDetailSubCategoryOptionsForSkuCategory('Bulk raw materials').map((o) => o.value);
-    expect(opts).toEqual([
-      'Emulsifiers',
-      'Surfactants',
-      'Preservatives',
-      'Solvents',
-      'Waxes / butters',
-      'UV filters',
-      'Actives',
-      'Botanicals',
-      'Rheology modifiers',
+    expect(opts).toEqual(Object.keys(RM_BULK_FUNCTIONAL_SUB_CATEGORIES));
+  });
+
+  it('exposes surfactant sub-categories', () => {
+    expect(rmDetailSubCategoryHasSubSubCategory('Surfactant')).toBe(true);
+    expect(rmSubSubCategoryOptionsForDetailSubCategory('Surfactant').map((o) => o.value)).toEqual([
+      'Anionic',
+      'Non-ionic',
+      'Amphoteric',
+      'Cationic',
     ]);
   });
 
-  it('exposes preservative sub-sub options', () => {
-    expect(rmDetailSubCategoryHasSubSubCategory('Preservatives')).toBe(true);
-    expect(rmSubSubCategoryOptionsForDetailSubCategory('Preservatives').map((o) => o.value)).toEqual([
-      'Broad spectrum',
-      'Below 4.5',
-    ]);
+  it('exposes active sub-categories including UV Filter', () => {
+    expect(rmSubSubCategoryOptionsForDetailSubCategory('Active').map((o) => o.value)).toContain('UV Filter');
   });
 
-  it('has no sub-sub for fragrance oil / water soluble', () => {
+  it('has no sub-sub for fragrance oil / water soluble SKU tabs', () => {
     expect(normalizeRmDetailSubCategoryForSelect('Fragrance', 'oil soluble')).toBe('Oil soluble');
     expect(rmDetailSubCategoryHasSubSubCategory('Oil soluble')).toBe(false);
     expect(rmSubSubCategoryOptionsForDetailSubCategory('Water soluble')).toEqual([]);
   });
 
-  it('normalizes surfactant and emulsifier sub-sub aliases', () => {
-    expect(normalizeRmSubSubCategoryForSelect('Surfactants', 'non ionic')).toBe('Non-ionic');
-    expect(normalizeRmSubSubCategoryForSelect('Emulsifiers', 'o/w')).toBe('O/W');
-    expect(normalizeRmSubSubCategoryForSelect('UV filters', 'uva')).toBe('UVA');
+  it('normalizes legacy surfactant labels and sub-sub aliases', () => {
+    expect(normalizeRmDetailSubCategoryForSelect('Bulk raw materials', 'surfactants')).toBe('Surfactant');
+    expect(normalizeRmSubSubCategoryForSelect('Surfactant', 'non ionic')).toBe('Non-ionic');
+    expect(normalizeRmSubSubCategoryForSelect('Preservative', 'phenoxyethanol')).toBe('Phenoxyethanol-type');
+    expect(normalizeRmSubSubCategoryForSelect('Active', 'uv filter')).toBe('UV Filter');
   });
 });

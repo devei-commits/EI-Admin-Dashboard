@@ -3,9 +3,22 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query';
 import type { Query } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
 import IssuedPOsView from '../../components/procurement/IssuedPOsView';
+import { WeekVendorConsolidationView } from '../../components/procurement/WeekVendorConsolidationView';
+import { InventoryAuditView } from '../../components/procurement/InventoryAuditView';
+import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inventoryAuditLines';
+import {
+  bumpProcurementRequestItemQty,
+  bumpPurchaseOrderItemsQty,
+  findDraftPurchaseOrderForRequest,
+  mergeGapApprovalIntoStockCheckNotes,
+} from '../../lib/inventoryAuditGapApproval';
+import { findStockCheckNoteForItem } from '../../lib/stockCheckNotes';
+import type { Order } from '../../types/salesPurchase.types';
+import { buildWeekVendorConsolidationLines } from '../../lib/weekVendorConsolidation';
 import procurementData from '../../mocks/procurement-data.json';
 import {
   fetchProcurementRequests as fetchProcurementRequestsApi,
@@ -82,6 +95,7 @@ import {
   sortProcurementRequestsLatestFirst,
   sortPlanningQuotationAsksLatestFirst,
   formatDateEnInSafe,
+  formatDateWithIsoWeek,
   parseDateStringToLocalDate,
   normalizeDateOnlyString,
   resolvePlannedUnitPrice,
@@ -211,6 +225,25 @@ function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
     if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
+}
+
+/** Detect API-driven PR changes that the list sync must apply (stock check, line qty, etc.). */
+function procurementRequestApiSyncKey(req: ProcurementRequest): string {
+  const itemSig = (req.itemDetails ?? [])
+    .map((d) => `${d.itemCode}:${d.itemName}:${d.reqQty}`)
+    .join('|');
+  return [
+    req.id,
+    req.status,
+    req.dueDate,
+    req.priority,
+    req.preferredVendor ?? '',
+    req.stockCheckStatus ?? '',
+    req.stockCheckDueDate ?? '',
+    req.stockCheckAssignedTo ?? '',
+    req.stockCheckNotes ?? '',
+    itemSig,
+  ].join('\0');
 }
 
 /**
@@ -361,7 +394,17 @@ function resolveMasterIdsFromRawItem(raw: any): {
 }
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
-const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor'];
+const SIDE_SECTIONS: SideSection[] = [
+  'Overview',
+  'Requests',
+  'Quotations',
+  'Draft POs',
+  'Issued POs',
+  'GRN Monitor',
+  'Inventory Audit',
+];
+
+type RequestListTab = 'All' | 'Active' | RequestStatus | 'Week + Vendor';
 
 const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
@@ -836,7 +879,7 @@ const Procurement: React.FC = () => {
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
   /** Requests tab: All = no filter; Active = New + Quoted only (excludes PO Draft+ once moved to Draft POs) */
-  const [requestTab, setRequestTab] = useState<'All' | 'Active' | RequestStatus>('New');
+  const [requestTab, setRequestTab] = useState<RequestListTab>('New');
   const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
   const [draftPOSearch, setDraftPOSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1023,6 +1066,7 @@ const Procurement: React.FC = () => {
   >({});
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { dispatch: globalDispatch } = useGlobalState();
   const isIssuedLikePoStatus = useCallback((status: unknown): boolean => {
     const s = String(status ?? '').trim().toLowerCase();
@@ -1543,7 +1587,10 @@ const Procurement: React.FC = () => {
                 d.itemCode,
                 d.unit || (master as { uom?: string } | undefined)?.uom
               );
-        return { ...d, unit };
+        const requestExpected = normalizeDateOnlyString(withLead.dueDate) || '';
+        const expectedDate =
+          normalizeDateOnlyString(d.expectedDate) || requestExpected;
+        return { ...d, unit, expectedDate };
       });
       return { ...withLead, itemDetails };
     });
@@ -1629,20 +1676,12 @@ const Procurement: React.FC = () => {
   useEffect(() => {
     if (backendPrResult === undefined) return;
     setRequests((prev) => {
-      const same =
-        prev.length === requestsFromApi.length &&
-        prev.every((p, i) => {
-          const n = requestsFromApi[i];
-          if (!n) return false;
-          return (
-            p.id === n.id &&
-            p.status === n.status &&
-            p.dueDate === n.dueDate &&
-            p.priority === n.priority &&
-            p.preferredVendor === n.preferredVendor &&
-            p.items.length === n.items.length
-          );
-        });
+      if (prev.length !== requestsFromApi.length) return requestsFromApi;
+      const same = prev.every((p, i) => {
+        const n = requestsFromApi[i];
+        if (!n || p.id !== n.id) return false;
+        return procurementRequestApiSyncKey(p) === procurementRequestApiSyncKey(n);
+      });
       return same ? prev : requestsFromApi;
     });
   }, [backendPrResult, requestsFromApi]);
@@ -1704,6 +1743,109 @@ const Procurement: React.FC = () => {
     lastDraftPOsFromApiKeyRef.current = '';
     await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
   }, [queryClient]);
+
+  const handleApproveInventoryAuditGap = useCallback(
+    async (line: InventoryAuditLine): Promise<boolean> => {
+      if (!(line.gapQty > 1e-6)) {
+        addToast('warning', 'No positive gap to approve on this line.');
+        return false;
+      }
+      if (line.stockCheckStatus.trim().toLowerCase() !== 'completed') {
+        addToast('warning', 'Warehouse must complete the stock check before gap approval.');
+        return false;
+      }
+
+      const prRow = backendPrArray.find((p) => String(p.id) === line.requestId);
+      if (!prRow) {
+        addToast('error', 'Linked procurement request was not found.');
+        return false;
+      }
+
+      const existingNote = findStockCheckNoteForItem(prRow.stockCheckNotes, line.itemCode, line.itemName);
+      if (existingNote?.gapApproved || line.gapApproved) {
+        addToast('warning', 'Gap already approved for this audit line.');
+        await queryClient.refetchQueries({ queryKey: ['procurement-requests'] });
+        return false;
+      }
+
+      const items = Array.isArray(prRow.items) ? [...prRow.items] : [];
+      if (items.length === 0) {
+        addToast('error', 'Request has no item lines to update.');
+        return false;
+      }
+
+      const approvedBy = user?.name?.trim() || 'Procurement';
+      const delta = line.gapQty;
+      const bumpedItems = bumpProcurementRequestItemQty(items, line.itemCode, line.itemName, delta);
+      const didBumpQty = bumpedItems.some((item, idx) => {
+        const nextQty = parseQuantityRequested(item.quantity_requested);
+        const prevQty = parseQuantityRequested(items[idx]?.quantity_requested);
+        return nextQty !== prevQty;
+      });
+      if (!didBumpQty) {
+        addToast('error', 'Could not match this audit line to a procurement request item.');
+        return false;
+      }
+
+      const stockCheckNotes = mergeGapApprovalIntoStockCheckNotes(
+        prRow.stockCheckNotes,
+        line.itemCode,
+        line.itemName,
+        delta,
+        approvedBy
+      );
+
+      const prUpd = await updateProcurementRequestApi(line.requestId, {
+        items: bumpedItems,
+        stockCheckNotes,
+      });
+      if (!prUpd.success) {
+        addToast('error', typeof prUpd.error === 'string' ? prUpd.error : 'Failed to update procurement request');
+        return false;
+      }
+
+      if (prUpd.data) {
+        const updated = mapBackendPrToRequest(prUpd.data);
+        setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      }
+
+      const rawOrders = (purchaseOrdersRaw ?? []) as Order[];
+      const draftPo = findDraftPurchaseOrderForRequest(rawOrders, line.requestId);
+      let poUpdated = false;
+      if (draftPo?.id) {
+        const poItems = bumpPurchaseOrderItemsQty(draftPo.items, line.itemCode, line.itemName, delta);
+        const poRes = await updatePurchaseOrder(draftPo.id, { items: poItems });
+        if (!poRes.success) {
+          addToast(
+            'warning',
+            typeof poRes.error === 'string'
+              ? poRes.error
+              : 'Request updated, but draft PO quantity could not be updated.'
+          );
+        } else {
+          poUpdated = true;
+        }
+      }
+
+      await queryClient.refetchQueries({ queryKey: ['procurement-requests'] });
+      await invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+
+      addToast(
+        'success',
+        `Gap +${delta.toLocaleString('en-IN')} ${line.unit} approved${poUpdated ? ' — request and draft PO qty increased' : ' — request qty increased'}.`
+      );
+      return true;
+    },
+    [
+      addToast,
+      backendPrArray,
+      invalidatePurchaseOrdersQueries,
+      purchaseOrdersRaw,
+      queryClient,
+      user?.name,
+    ]
+  );
 
   const handlePoExcelChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2437,6 +2579,34 @@ const Procurement: React.FC = () => {
     };
   }, [procurementRequestsList]);
 
+  const procurementRequestsMatchingSearchAndCategory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return procurementRequestsList.filter((req) => {
+      if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
+      if (!query) return true;
+      const matchesCode = req.code.toLowerCase().includes(query);
+      const matchesItems = req.items.some((item) => item.toLowerCase().includes(query));
+      const matchesPlanning =
+        (req.planningSoNumber != null && String(req.planningSoNumber).toLowerCase().includes(query)) ||
+        (req.planningCustomerName != null && String(req.planningCustomerName).toLowerCase().includes(query)) ||
+        (req.planningProductName != null && String(req.planningProductName).toLowerCase().includes(query)) ||
+        (req.planningProductCode != null && String(req.planningProductCode).toLowerCase().includes(query));
+      const matchesVendor =
+        req.preferredVendor != null && String(req.preferredVendor).toLowerCase().includes(query);
+      const matchesItemDetails = (req.itemDetails ?? []).some(
+        (d) =>
+          (d.itemName != null && String(d.itemName).toLowerCase().includes(query)) ||
+          (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query))
+      );
+      return matchesCode || matchesItems || matchesPlanning || matchesVendor || matchesItemDetails;
+    });
+  }, [procurementRequestsList, categoryFilter, searchQuery]);
+
+  const weekVendorTabLineCount = useMemo(
+    () => buildWeekVendorConsolidationLines(procurementRequestsMatchingSearchAndCategory).length,
+    [procurementRequestsMatchingSearchAndCategory],
+  );
+
   const quoteStats = useMemo(() => {
     const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
     const totalQuotes =
@@ -2826,15 +2996,16 @@ const Procurement: React.FC = () => {
       'Draft POs': draftPOs.length,
       'Issued POs': issuedPORecords.length,
       'GRN Monitor': (grnListFromApi ?? []).length,
+      'Inventory Audit': buildInventoryAuditLines(procurementRequestsList).length,
     }),
     [
       draftPOs,
       grnListFromApi,
       issuedPORecords,
+      procurementRequestsList,
       filteredPlanningQuotationAsks.length,
       planningQuotationRequestsAwaitingQuote.length,
       procurementRequestTabCounts,
-      procurementRequestsList.length,
       quotes,
     ],
   );
@@ -5247,7 +5418,11 @@ const Procurement: React.FC = () => {
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900 mb-1">Procurement Requests</h2>
-                          <p className="text-xs text-slate-500">Manage and track all procurement requests</p>
+                          <p className="text-xs text-slate-500">
+                            {requestTab === 'Week + Vendor'
+                              ? 'Consolidated view by vendor and ISO week (expected date)'
+                              : 'Manage and track all procurement requests'}
+                          </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-slate-500">Category:</span>
@@ -5301,6 +5476,7 @@ const Procurement: React.FC = () => {
                           return (
                             <button
                               key={tabStatus}
+                              type="button"
                               onClick={() => {
                                 if (tabStatus === 'All') setRequestTab('All');
                                 else if (tabStatus === 'Active') setRequestTab('Active');
@@ -5315,12 +5491,36 @@ const Procurement: React.FC = () => {
                             </button>
                           );
                         })}
+                        <button
+                          type="button"
+                          onClick={() => setRequestTab('Week + Vendor')}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+                            requestTab === 'Week + Vendor'
+                              ? 'bg-indigo-600 text-white shadow-md'
+                              : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          Week + Vendor ({weekVendorTabLineCount})
+                        </button>
                       </div>
                     </div>
 
                     {/* Request Cards */}
                     <div className="p-5 space-y-4 bg-slate-50">
-                      {(() => {
+                      {requestTab === 'Week + Vendor' ? (
+                        <WeekVendorConsolidationView
+                          embedded
+                          requests={procurementRequestsMatchingSearchAndCategory}
+                          categoryFilter={categoryFilter}
+                          searchQuery={searchQuery}
+                          statusBg={statusBg}
+                          requestTypeClass={requestTypeClass}
+                          onOpenRequest={(requestId) => {
+                            const req = requestsFromApi.find((r) => r.id === requestId);
+                            if (req) setSelectedRequest(req);
+                          }}
+                        />
+                      ) : (() => {
                         const filteredRequests = procurementRequestsList.filter(req => {
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
                           if (requestTab === 'Active') {
@@ -5381,7 +5581,7 @@ const Procurement: React.FC = () => {
                         return sortedRequests.map((req, idx) => {
                           const today = new Date();
                           const daysLeft = computeRequestDaysUntilDue(req, today);
-                          const dueDateDisplay = formatDateEnInSafe(req.dueDate);
+                          const dueDateDisplay = formatDateWithIsoWeek(req.dueDate);
                           const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
                           const prefVendorDisplay =
                             req.preferredVendor?.trim() ||
@@ -5450,7 +5650,7 @@ const Procurement: React.FC = () => {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
-                                    <span>Req. {dueDateDisplay}</span>
+                                    <span>Expected {dueDateDisplay}</span>
                                     <span className={`font-bold ${daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
                                       }`}>
                                       {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`}
@@ -5502,6 +5702,9 @@ const Procurement: React.FC = () => {
                                   const leadRaw = detail?.leadTimeDays;
                                   const leadDaysLabel =
                                     typeof leadRaw === 'number' && Number.isFinite(leadRaw) ? `${leadRaw}d` : '—';
+                                  const itemExpectedDisplay = formatDateWithIsoWeek(
+                                    detail?.expectedDate || req.dueDate
+                                  );
                                   return (
                                     <div key={itemIdx} className="mb-4 last:mb-0">
                                       <div className="flex items-start justify-between mb-3 gap-2">
@@ -5555,8 +5758,8 @@ const Procurement: React.FC = () => {
                                           <p className="font-semibold text-amber-600">₹{estValue.toLocaleString('en-IN')}</p>
                                         </div>
                                         <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">GRI</p>
-                                          <p className="font-semibold text-slate-900">—</p>
+                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
+                                          <p className="font-semibold text-slate-900">{itemExpectedDisplay}</p>
                                         </div>
                                       </div>
 
@@ -7258,6 +7461,21 @@ const Procurement: React.FC = () => {
                 );
               })()}
 
+              {sideSection === 'Inventory Audit' && (
+                <InventoryAuditView
+                  requests={procurementRequestsList}
+                  requestTypeClass={requestTypeClass}
+                  onOpenRequest={(requestId) => {
+                    const req = requestsFromApi.find((r) => r.id === requestId);
+                    if (req) {
+                      applyRouteState('Procurement', 'Requests');
+                      setSelectedRequest(req);
+                    }
+                  }}
+                  onApproveGap={handleApproveInventoryAuditGap}
+                />
+              )}
+
             </div>
           </>
         }
@@ -8378,7 +8596,7 @@ const Procurement: React.FC = () => {
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Required Date</span>
                     <span className="text-amber-600 font-bold">
-                      {formatDateEnInSafe(req.dueDate)}
+                      {formatDateWithIsoWeek(req.dueDate)}
                     </span>
                     {!req.dueDate?.trim() && (
                       <p className="text-[10px] text-slate-500 mt-0.5">
@@ -8465,6 +8683,12 @@ const Procurement: React.FC = () => {
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
                                   <p className="text-slate-900 font-bold">
                                     {item.leadTimeDays != null && Number.isFinite(item.leadTimeDays) ? `${item.leadTimeDays}d` : '—'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
+                                  <p className="text-slate-900 font-bold">
+                                    {formatDateWithIsoWeek(item.expectedDate || req.dueDate)}
                                   </p>
                                 </div>
                               </div>

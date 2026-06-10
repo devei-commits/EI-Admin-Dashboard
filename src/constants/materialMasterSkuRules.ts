@@ -73,49 +73,48 @@ export const PM_SKU_CATEGORY_SELECT_OPTIONS = [
   { value: 'tpm-ancillary', label: 'TPM — Ancillary (6AXXXX)' },
 ] as const;
 
-/** Finer sub-category per PM category (stored in `optionalPmSubCategory` / `material`). */
-export const PM_DETAIL_SUB_CATEGORIES: Record<PmSkuCategoryOption, readonly string[]> = {
-  ppm: ['Tubes', 'Bottles', 'Jars', 'Caps', 'Lids', 'Pumps', 'Droppers', 'Sticks', 'Sachets'],
-  'spm-labels': ['Sheet form', 'Roll form'],
-  'spm-monocarton': ['Lock bottom', 'Reverse tuck end', 'Straight tuck end'],
-  'spm-other': ['Sleeves', 'Leaflets', 'Fitments', 'Tamper sticker', 'QR cards'],
-  'tpm-tertiary': ['Shippers', 'Pallets', 'Stretch film', 'Void film', 'Tape', 'Strapping'],
-  'tpm-ancillary': ['Spatulas', 'Brushes', 'Sponges', 'Wands', 'Pipettes', 'Desiccants'],
+/**
+ * PM functional taxonomy (master form: category → sub-category).
+ * Stored in `optionalPmSubCategory` / `optionalPmSubSubCategory`.
+ */
+export const PM_FUNCTIONAL_SUB_CATEGORIES: Record<string, readonly string[]> = {
+  'Primary Pack': ['Bottle', 'Tube', 'Jar', 'Sachet', 'Dropper', 'Spray (Mist)'],
+  'Closures & Pumps': ['Pump', 'Cap', 'Sprayer', 'Dropper Cap', 'Inner Plug'],
+  'Secondary Pack': ['Monocarton', 'Front Label', 'Back Label', 'Tamper Sticker', 'Leaflet'],
+  'Tertiary Pack': ['Master Carton', 'Pallet Material', 'Stretch Film', 'Strapping'],
+  Ancillary: ['Spatula', 'Brush', 'Sponge', 'QR Card / Insert'],
 };
 
-/** Sub-sub options keyed by sub-category (Tubes, Sheet form, Sleeves, …) — stored in `optionalPmSubSubCategory`. */
+/** Functional categories shown per PM SKU series. */
+export const PM_SKU_FUNCTIONAL_CATEGORIES: Record<PmSkuCategoryOption, readonly string[]> = {
+  ppm: ['Primary Pack', 'Closures & Pumps'],
+  'spm-labels': ['Secondary Pack'],
+  'spm-monocarton': ['Secondary Pack'],
+  'spm-other': ['Secondary Pack'],
+  'tpm-tertiary': ['Tertiary Pack'],
+  'tpm-ancillary': ['Ancillary'],
+};
+
+/** Secondary-pack sub-categories allowed per SPM SKU series. */
+export const PM_SECONDARY_SUBS_BY_SKU: Partial<Record<PmSkuCategoryOption, readonly string[]>> = {
+  'spm-labels': ['Front Label', 'Back Label'],
+  'spm-monocarton': ['Monocarton'],
+  'spm-other': ['Tamper Sticker', 'Leaflet'],
+};
+
+/** Functional categories per PM SKU series (stored in `optionalPmSubCategory`). */
+export const PM_DETAIL_SUB_CATEGORIES: Record<PmSkuCategoryOption, readonly string[]> = {
+  ppm: PM_SKU_FUNCTIONAL_CATEGORIES.ppm,
+  'spm-labels': PM_SKU_FUNCTIONAL_CATEGORIES['spm-labels'],
+  'spm-monocarton': PM_SKU_FUNCTIONAL_CATEGORIES['spm-monocarton'],
+  'spm-other': PM_SKU_FUNCTIONAL_CATEGORIES['spm-other'],
+  'tpm-tertiary': PM_SKU_FUNCTIONAL_CATEGORIES['tpm-tertiary'],
+  'tpm-ancillary': PM_SKU_FUNCTIONAL_CATEGORIES['tpm-ancillary'],
+};
+
+/** Sub-category options keyed by functional category — stored in `optionalPmSubSubCategory`. */
 export const PM_SUB_SUB_CATEGORIES: Record<string, readonly string[]> = {
-  Tubes: ['Aluminium', 'Laminate / ABL', 'Plastic'],
-  Bottles: ['PET', 'HDPE', 'Glass', 'Aluminium', 'Acrylic'],
-  Jars: ['PET', 'Glass', 'Acrylic'],
-  Caps: ['Screw', 'Disc-top', 'Flip-top', 'Child-resistant'],
-  Lids: ['Twist-off', 'Snap-on', 'Friction Fit'],
-  Pumps: ['Lotion Pump', 'Foaming pump', 'Mist spray', 'Treatment pump'],
-  Droppers: ['Glass', 'Plastic', 'Calibrated'],
-  Sticks: ['Stick', 'Roll-on'],
-  Sachets: ['Single-Use', 'Refill', 'Stick-pack'],
-  'Sheet form': ['Plain', 'Laminated', 'Foil-stamped'],
-  'Roll form': ['Plain', 'Laminated', 'Foil-stamped'],
-  'Lock bottom': ['Standard', 'Premium'],
-  'Reverse tuck end': ['Standard', 'Premium'],
-  'Straight tuck end': ['Standard', 'Premium'],
-  Sleeves: ['Shrink', 'Stretch', 'Cardboard'],
-  Leaflets: ['Single-fold', 'Multi-fold', 'Booklet'],
-  Fitments: ['Plastic', 'Foam', 'Paper'],
-  'Tamper sticker': ['Round', 'Square', 'Custom'],
-  'QR cards': ['Standard', 'NFC - enabled'],
-  Shippers: ['Corrugated', 'Plastic', 'Wooden'],
-  Pallets: ['Wooden', 'Plastic', 'Metal'],
-  'Stretch film': ['Hand', 'Machine'],
-  'Void film': ['Bubble', 'Foam', 'Paper'],
-  Tape: ['Plastic', 'Paper', 'Reinforced'],
-  Strapping: ['Plastic', 'Steel'],
-  Spatulas: ['Plastic', 'Wooden', 'Metal'],
-  Brushes: ['Synthetic', 'Natural'],
-  Sponges: ['Synthetic', 'Natural'],
-  Wands: ['Plastic', 'Metal'],
-  Pipettes: ['Glass', 'Plastic', 'Disposable'],
-  Desiccants: ['Silica gel', 'Clay', 'Molecular Sieve'],
+  ...PM_FUNCTIONAL_SUB_CATEGORIES,
 };
 
 /** @deprecated Use PM_SKU_CATEGORY_OPTIONS — legacy title-case values still seen in older `group` / form_data. */
@@ -128,34 +127,30 @@ export const RM_SUB_CATEGORY_SKU_SELECT_OPTIONS = [
   { value: 'Colors & Pigments', label: 'Colours (SKU 3XXXXXX)' },
 ] as const;
 
+/**
+ * Bulk RM functional taxonomy (RM master form: category → sub-category).
+ * Stored in `optionalRmSubCategory` / `optionalRmSubSubCategory` when SKU series is Bulk raw materials.
+ */
+export const RM_BULK_FUNCTIONAL_SUB_CATEGORIES: Record<string, readonly string[]> = {
+  Surfactant: ['Anionic', 'Non-ionic', 'Amphoteric', 'Cationic'],
+  'Aqua / Solvent': ['Aqua', 'Glycerin', 'Alcohol', 'Glycol'],
+  Active: ['Vitamin', 'Botanical Extract', 'Synthetic Active', 'Peptide', 'UV Filter'],
+  Polymer: ['Carbomer', 'Cellulose Derivative', 'Xanthan / Gum'],
+  Preservative: ['Phenoxyethanol-type', 'Paraben-type', 'Natural / Organic'],
+  Excipient: ['pH Modifier', 'Chelator', 'Antioxidant', 'Emollient'],
+  Fragrance: ['Synthetic', 'Essential Oil', 'Masking'],
+};
+
 /** Finer sub-category options per RM SKU category (stored in `optionalRmSubCategory` / form_data). */
 export const RM_DETAIL_SUB_CATEGORIES: Record<RmSubCategorySkuOption, readonly string[]> = {
-  'Bulk raw materials': [
-    'Emulsifiers',
-    'Surfactants',
-    'Preservatives',
-    'Solvents',
-    'Waxes / butters',
-    'UV filters',
-    'Actives',
-    'Botanicals',
-    'Rheology modifiers',
-  ],
+  'Bulk raw materials': Object.keys(RM_BULK_FUNCTIONAL_SUB_CATEGORIES),
   Fragrance: ['Oil soluble', 'Water soluble'],
   'Colors & Pigments': ['Oil soluble', 'Water soluble'],
 };
 
 /** Sub-sub options keyed by RM detail sub-category — stored in `optionalRmSubSubCategory`. */
 export const RM_SUB_SUB_CATEGORIES: Record<string, readonly string[]> = {
-  Emulsifiers: ['O/W', 'W/O'],
-  Surfactants: ['Anionic', 'Cationic', 'Non-ionic', 'Amphoteric'],
-  Preservatives: ['Broad spectrum', 'Below 4.5'],
-  Solvents: ['Hydrophobic - light', 'Hydrophobic - heavy', 'Hydrophilic'],
-  'Waxes / butters': ['Natural', 'Synthetic'],
-  'UV filters': ['UVA', 'UVB', 'Broad spectrum'],
-  Actives: ['Hydrophilic', 'Hydrophobic'],
-  Botanicals: ['PG/glycerin base', 'Oil base', 'Aqua base'],
-  'Rheology modifiers': ['ET - low', 'ET - medium', 'ET - high'],
+  ...RM_BULK_FUNCTIONAL_SUB_CATEGORIES,
 };
 
 export function rmSkuCategoryRequiresDetailSubCategory(parent: string): boolean {
@@ -190,41 +185,57 @@ export function normalizeRmDetailSubCategoryForSelect(parent: string, raw: strin
 
 /** Legacy / import aliases → canonical RM detail sub-category. */
 const RM_DETAIL_SUB_CATEGORY_ALIASES: Record<string, string> = {
-  solvent: 'Solvents',
-  solvents: 'Solvents',
-  emulsifier: 'Emulsifiers',
-  emulsifiers: 'Emulsifiers',
-  surfactant: 'Surfactants',
-  surfactants: 'Surfactants',
-  active: 'Actives',
-  actives: 'Actives',
-  preservative: 'Preservatives',
-  preservatives: 'Preservatives',
-  'uv filter': 'UV filters',
-  'uv filters': 'UV filters',
-  'wax / butter': 'Waxes / butters',
-  'waxes / butters': 'Waxes / butters',
-  'waxes/butters': 'Waxes / butters',
-  wax: 'Waxes / butters',
-  waxes: 'Waxes / butters',
-  butter: 'Waxes / butters',
-  butters: 'Waxes / butters',
-  botanical: 'Botanicals',
-  botanicals: 'Botanicals',
-  'rheology modifier': 'Rheology modifiers',
-  'rheology modifiers': 'Rheology modifiers',
+  surfactant: 'Surfactant',
+  surfactants: 'Surfactant',
+  'surfactants / cleansing': 'Surfactant',
+  'aqua / solvent': 'Aqua / Solvent',
+  'aqua solvent': 'Aqua / Solvent',
+  aqua: 'Aqua / Solvent',
+  solvent: 'Aqua / Solvent',
+  solvents: 'Aqua / Solvent',
+  'solvents & carriers': 'Aqua / Solvent',
+  active: 'Active',
+  actives: 'Active',
+  'actives / api': 'Active',
+  polymer: 'Polymer',
+  polymers: 'Polymer',
+  'thickeners / polymers / gums': 'Polymer',
+  'rheology modifier': 'Polymer',
+  'rheology modifiers': 'Polymer',
+  preservative: 'Preservative',
+  preservatives: 'Preservative',
+  'preservatives / chelators': 'Preservative',
+  excipient: 'Excipient',
+  excipients: 'Excipient',
+  emulsifier: 'Excipient',
+  emulsifiers: 'Excipient',
+  'buffers / ph adjusters': 'Excipient',
+  fragrance: 'Fragrance',
+  fragrances: 'Fragrance',
+  'fragrances / perfumes': 'Fragrance',
+  'wax / butter': 'Excipient',
+  'waxes / butters': 'Excipient',
+  'waxes/butters': 'Excipient',
+  wax: 'Excipient',
+  waxes: 'Excipient',
+  butter: 'Excipient',
+  butters: 'Excipient',
+  botanical: 'Active',
+  botanicals: 'Active',
+  'uv filter': 'Active',
+  'uv filters': 'Active',
   'oil soluble': 'Oil soluble',
   'oil-soluble': 'Oil soluble',
   'water soluble': 'Water soluble',
   'water-soluble': 'Water soluble',
-  vitamin: 'Actives',
-  vitamins: 'Actives',
-  'fine fragrance': 'Oil soluble',
-  'fine fragrance compounds': 'Oil soluble',
-  'essential oil': 'Oil soluble',
-  'essential oils': 'Oil soluble',
-  'aroma chemical': 'Oil soluble',
-  'aroma chemicals': 'Oil soluble',
+  vitamin: 'Active',
+  vitamins: 'Active',
+  'fine fragrance': 'Fragrance',
+  'fine fragrance compounds': 'Fragrance',
+  'essential oil': 'Fragrance',
+  'essential oils': 'Fragrance',
+  'aroma chemical': 'Fragrance',
+  'aroma chemicals': 'Fragrance',
   'iron oxide': 'Oil soluble',
   'iron oxides': 'Oil soluble',
   tio2: 'Oil soluble',
@@ -256,6 +267,10 @@ export function rmDetailSubCategoryHasSubSubCategory(detailSub: string): boolean
   return key !== '' && (RM_SUB_SUB_CATEGORIES[key]?.length ?? 0) > 0;
 }
 
+export function rmBulkUsesFunctionalCategoryTaxonomy(parentSkuCategory: string): boolean {
+  return normalizeRmSubCategoryForSelect(parentSkuCategory) === 'Bulk raw materials';
+}
+
 export function rmSubSubCategoryOptionsForDetailSubCategory(
   detailSub: string
 ): { value: string; label: string }[] {
@@ -273,62 +288,89 @@ export function normalizeRmSubSubCategoryForSelect(detailSub: string, raw: strin
   const exact = options.find((o) => o.toLowerCase() === lower);
   if (exact) return exact;
   const aliases: Record<string, string> = {
-    'o/w': 'O/W',
-    'w/o': 'W/O',
     anionic: 'Anionic',
     cationic: 'Cationic',
     'non-ionic': 'Non-ionic',
     'non ionic': 'Non-ionic',
     amphoteric: 'Amphoteric',
-    'broad spectrum': 'Broad spectrum',
-    'below 4.5': 'Below 4.5',
-    'below 4.5 ph': 'Below 4.5',
-    'hydrophobic - light': 'Hydrophobic - light',
-    'hydrophobic light': 'Hydrophobic - light',
-    'hydrophobic - heavy': 'Hydrophobic - heavy',
-    'hydrophobic heavy': 'Hydrophobic - heavy',
-    hydrophilic: 'Hydrophilic',
-    natural: 'Natural',
+    glycerin: 'Glycerin',
+    alcohol: 'Alcohol',
+    glycol: 'Glycol',
+    vitamin: 'Vitamin',
+    vitamins: 'Vitamin',
+    'botanical extract': 'Botanical Extract',
+    botanical: 'Botanical Extract',
+    botanicals: 'Botanical Extract',
+    extract: 'Botanical Extract',
+    'synthetic active': 'Synthetic Active',
+    'synthetic api': 'Synthetic Active',
+    peptide: 'Peptide',
+    peptides: 'Peptide',
+    'uv filter': 'UV Filter',
+    'uv filters': 'UV Filter',
+    carbomer: 'Carbomer',
+    'cellulose derivative': 'Cellulose Derivative',
+    'xanthan / gum': 'Xanthan / Gum',
+    xanthan: 'Xanthan / Gum',
+    gum: 'Xanthan / Gum',
+    'phenoxyethanol-type': 'Phenoxyethanol-type',
+    phenoxyethanol: 'Phenoxyethanol-type',
+    'paraben-type': 'Paraben-type',
+    paraben: 'Paraben-type',
+    parabens: 'Paraben-type',
+    'natural / organic': 'Natural / Organic',
+    natural: 'Natural / Organic',
+    organic: 'Natural / Organic',
+    'ph modifier': 'pH Modifier',
+    'ph adjusters': 'pH Modifier',
+    chelator: 'Chelator',
+    chelators: 'Chelator',
+    antioxidant: 'Antioxidant',
+    antioxidants: 'Antioxidant',
+    emollient: 'Emollient',
+    emollients: 'Emollient',
     synthetic: 'Synthetic',
-    uva: 'UVA',
-    uvb: 'UVB',
-    hydrophobic: 'Hydrophobic',
-    'pg/glycerin base': 'PG/glycerin base',
-    'pg glycerin base': 'PG/glycerin base',
-    'oil base': 'Oil base',
-    'aqua base': 'Aqua base',
-    'et - low': 'ET - low',
-    'et - medium': 'ET - medium',
-    'et - high': 'ET - high',
-    'et low': 'ET - low',
-    'et medium': 'ET - medium',
-    'et high': 'ET - high',
-    paraben: 'Broad spectrum',
-    parabens: 'Broad spectrum',
-    phenoxyethanol: 'Broad spectrum',
-    'organic acid': 'Below 4.5',
-    isothiazolinone: 'Broad spectrum',
-    organic: 'UVA',
-    inorganic: 'UVB',
-    hybrid: 'Broad spectrum',
-    aqueous: 'Hydrophilic',
-    alcohol: 'Hydrophilic',
-    glycol: 'Hydrophilic',
-    hydrocarbon: 'Hydrophobic - heavy',
-    ester: 'Hydrophobic - light',
-    silicone: 'Hydrophobic - light',
-    peptide: 'Hydrophilic',
-    botanical: 'Oil base',
-    vitamin: 'Hydrophilic',
-    mineral: 'Hydrophobic',
-    'synthetic api': 'Hydrophobic',
-    'oil-soluble': 'Oil base',
-    'water-soluble': 'Aqua base',
-    extract: 'PG/glycerin base',
-    oil: 'Oil base',
-    powder: 'Hydrophobic',
-    hydrosol: 'Aqua base',
-    blend: 'Broad spectrum',
+    'essential oil': 'Essential Oil',
+    'essential oils': 'Essential Oil',
+    masking: 'Masking',
+    'broad spectrum': 'Phenoxyethanol-type',
+    'below 4.5': 'Paraben-type',
+    'below 4.5 ph': 'Paraben-type',
+    'hydrophobic - light': 'Alcohol',
+    'hydrophobic light': 'Alcohol',
+    'hydrophobic - heavy': 'Glycol',
+    'hydrophobic heavy': 'Glycol',
+    hydrophilic: 'Glycerin',
+    aqueous: 'Aqua',
+    'o/w': 'Anionic',
+    'w/o': 'Cationic',
+    uva: 'UV Filter',
+    uvb: 'UV Filter',
+    hydrophobic: 'Alcohol',
+    'pg/glycerin base': 'Glycerin',
+    'pg glycerin base': 'Glycerin',
+    'oil base': 'Alcohol',
+    'aqua base': 'Aqua',
+    'et - low': 'Carbomer',
+    'et - medium': 'Cellulose Derivative',
+    'et - high': 'Xanthan / Gum',
+    'et low': 'Carbomer',
+    'et medium': 'Cellulose Derivative',
+    'et high': 'Xanthan / Gum',
+    'organic acid': 'Paraben-type',
+    isothiazolinone: 'Phenoxyethanol-type',
+    inorganic: 'UV Filter',
+    hybrid: 'UV Filter',
+    hydrocarbon: 'Glycol',
+    ester: 'Emollient',
+    silicone: 'Emollient',
+    mineral: 'Synthetic Active',
+    'oil-soluble': 'Alcohol',
+    'water-soluble': 'Aqua',
+    oil: 'Alcohol',
+    powder: 'Synthetic Active',
+    hydrosol: 'Aqua',
+    blend: 'Synthetic',
   };
   const mapped = aliases[lower];
   if (mapped && options.includes(mapped)) return mapped;
@@ -420,6 +462,42 @@ export function pmDetailSubCategoryOptionsForSkuCategory(
   return (PM_DETAIL_SUB_CATEGORIES[canon] ?? []).map((label) => ({ value: label, label }));
 }
 
+const PM_FUNCTIONAL_CATEGORY_ALIASES: Record<string, string> = {
+  'primary pack': 'Primary Pack',
+  'primary packaging': 'Primary Pack',
+  ppm: 'Primary Pack',
+  'closures & pumps': 'Closures & Pumps',
+  'closures and pumps': 'Closures & Pumps',
+  closures: 'Closures & Pumps',
+  'secondary pack': 'Secondary Pack',
+  'secondary packaging': 'Secondary Pack',
+  spm: 'Secondary Pack',
+  'tertiary pack': 'Tertiary Pack',
+  'tertiary packaging': 'Tertiary Pack',
+  tpm: 'Tertiary Pack',
+  ancillary: 'Ancillary',
+  'fitments & misc': 'Ancillary',
+  tubes: 'Primary Pack',
+  bottles: 'Primary Pack',
+  jars: 'Primary Pack',
+  sachets: 'Primary Pack',
+  droppers: 'Primary Pack',
+  pumps: 'Closures & Pumps',
+  caps: 'Closures & Pumps',
+  lids: 'Closures & Pumps',
+  'sheet form': 'Secondary Pack',
+  'roll form': 'Secondary Pack',
+  monocarton: 'Secondary Pack',
+  monocartons: 'Secondary Pack',
+  leaflets: 'Secondary Pack',
+  shippers: 'Tertiary Pack',
+  pallets: 'Tertiary Pack',
+  spatulas: 'Ancillary',
+  brushes: 'Ancillary',
+  sponges: 'Ancillary',
+  'qr cards': 'Ancillary',
+};
+
 export function normalizePmDetailSubCategoryForSelect(parent: string, raw: string): string {
   const detail = String(raw || '').trim();
   if (!detail) return '';
@@ -428,82 +506,12 @@ export function normalizePmDetailSubCategoryForSelect(parent: string, raw: strin
   const lower = detail.toLowerCase();
   const exact = options.find((o) => o.toLowerCase() === lower);
   if (exact) return exact;
-  const aliases: Record<string, string> = {
-    tube: 'Tubes',
-    tubes: 'Tubes',
-    bottle: 'Bottles',
-    bottles: 'Bottles',
-    jar: 'Jars',
-    jars: 'Jars',
-    cap: 'Caps',
-    caps: 'Caps',
-    lid: 'Lids',
-    lids: 'Lids',
-    pump: 'Pumps',
-    pumps: 'Pumps',
-    dropper: 'Droppers',
-    droppers: 'Droppers',
-    stick: 'Sticks',
-    sticks: 'Sticks',
-    sachet: 'Sachets',
-    sachets: 'Sachets',
-    airless: 'Pumps',
-    'sheet form': 'Sheet form',
-    'roll form': 'Roll form',
-    'self-adhesive': 'Roll form',
-    'in-mould': 'Sheet form',
-    'shrink sleeve': 'Roll form',
-    'wrap-around': 'Roll form',
-    'lock bottom': 'Lock bottom',
-    'reverse tuck end': 'Reverse tuck end',
-    'straight tuck end': 'Straight tuck end',
-    'standard duplex / sbs': 'Straight tuck end',
-    'rigid set-up': 'Lock bottom',
-    'window cartons': 'Straight tuck end',
-    sleeve: 'Sleeves',
-    sleeves: 'Sleeves',
-    leaflet: 'Leaflets',
-    leaflets: 'Leaflets',
-    pil: 'Leaflets',
-    fitment: 'Fitments',
-    fitments: 'Fitments',
-    inlay: 'Fitments',
-    inlays: 'Fitments',
-    tray: 'Fitments',
-    trays: 'Fitments',
-    'tamper band': 'Tamper sticker',
-    'tamper bands': 'Tamper sticker',
-    'tamper sticker': 'Tamper sticker',
-    'qr card': 'QR cards',
-    'qr cards': 'QR cards',
-    shipper: 'Shippers',
-    shippers: 'Shippers',
-    'corrugated shippers': 'Shippers',
-    pallet: 'Pallets',
-    pallets: 'Pallets',
-    'stretch film': 'Stretch film',
-    'void film': 'Void film',
-    tape: 'Tape',
-    strapping: 'Strapping',
-    spatula: 'Spatulas',
-    spatulas: 'Spatulas',
-    brush: 'Brushes',
-    brushes: 'Brushes',
-    sponge: 'Sponges',
-    sponges: 'Sponges',
-    wand: 'Wands',
-    wands: 'Wands',
-    pipette: 'Pipettes',
-    pipettes: 'Pipettes',
-    desiccant: 'Desiccants',
-    desiccants: 'Desiccants',
-  };
-  const mapped = aliases[lower];
+  const mapped = PM_FUNCTIONAL_CATEGORY_ALIASES[lower];
   if (mapped && options.includes(mapped)) return mapped;
   return '';
 }
 
-/** Canonical sub-category label (Tubes, Bottles, …) for sub-sub lookups. */
+/** Canonical functional category label for sub-category lookups. */
 export function normalizePmDetailSubCategoryKey(raw: string): string {
   const detail = String(raw || '').trim();
   if (!detail) return '';
@@ -512,54 +520,10 @@ export function normalizePmDetailSubCategoryKey(raw: string): string {
     const exact = list.find((o) => o.toLowerCase() === lower);
     if (exact) return exact;
   }
-  const aliases: Record<string, string> = {
-    tube: 'Tubes',
-    bottle: 'Bottles',
-    jar: 'Jars',
-    cap: 'Caps',
-    lid: 'Lids',
-    pump: 'Pumps',
-    dropper: 'Droppers',
-    stick: 'Sticks',
-    sachet: 'Sachets',
-    'sheet form': 'Sheet form',
-    'roll form': 'Roll form',
-    'lock bottom': 'Lock bottom',
-    'reverse tuck end': 'Reverse tuck end',
-    'straight tuck end': 'Straight tuck end',
-    sleeve: 'Sleeves',
-    sleeves: 'Sleeves',
-    leaflet: 'Leaflets',
-    leaflets: 'Leaflets',
-    fitment: 'Fitments',
-    fitments: 'Fitments',
-    'tamper sticker': 'Tamper sticker',
-    'tamper stickers': 'Tamper sticker',
-    'qr card': 'QR cards',
-    'qr cards': 'QR cards',
-    shipper: 'Shippers',
-    shippers: 'Shippers',
-    pallet: 'Pallets',
-    pallets: 'Pallets',
-    'stretch film': 'Stretch film',
-    'void film': 'Void film',
-    'void fill': 'Void film',
-    tape: 'Tape',
-    strapping: 'Strapping',
-    spatula: 'Spatulas',
-    spatulas: 'Spatulas',
-    brush: 'Brushes',
-    brushes: 'Brushes',
-    sponge: 'Sponges',
-    sponges: 'Sponges',
-    wand: 'Wands',
-    wands: 'Wands',
-    pipette: 'Pipettes',
-    pipettes: 'Pipettes',
-    desiccant: 'Desiccants',
-    desiccants: 'Desiccants',
-  };
-  return aliases[lower] ?? '';
+  for (const key of Object.keys(PM_FUNCTIONAL_SUB_CATEGORIES)) {
+    if (key.toLowerCase() === lower) return key;
+  }
+  return PM_FUNCTIONAL_CATEGORY_ALIASES[lower] ?? '';
 }
 
 export function pmDetailSubCategoryHasSubSubCategory(detailSub: string): boolean {
@@ -567,94 +531,116 @@ export function pmDetailSubCategoryHasSubSubCategory(detailSub: string): boolean
   return key !== '' && (PM_SUB_SUB_CATEGORIES[key]?.length ?? 0) > 0;
 }
 
-export function pmSubSubCategoryOptionsForDetailSubCategory(
-  detailSub: string
+export function pmFunctionalSubCategoryOptionsForSkuCategory(
+  skuCategory: string,
+  functionalCategory: string
 ): { value: string; label: string }[] {
-  const key = normalizePmDetailSubCategoryKey(detailSub);
+  const sku = normalizePmSkuCategoryForSelect(skuCategory);
+  const key = normalizePmDetailSubCategoryKey(functionalCategory);
   if (!key) return [];
-  return (PM_SUB_SUB_CATEGORIES[key] ?? []).map((label) => ({ value: label, label }));
+  let options = PM_FUNCTIONAL_SUB_CATEGORIES[key] ?? PM_SUB_SUB_CATEGORIES[key] ?? [];
+  if (key === 'Secondary Pack' && sku && PM_SECONDARY_SUBS_BY_SKU[sku]) {
+    options = PM_SECONDARY_SUBS_BY_SKU[sku] ?? options;
+  }
+  return options.map((label) => ({ value: label, label }));
 }
 
-export function normalizePmSubSubCategoryForSelect(detailSub: string, raw: string): string {
+export function pmSubSubCategoryOptionsForDetailSubCategory(
+  detailSub: string,
+  skuCategory?: string
+): { value: string; label: string }[] {
+  return pmFunctionalSubCategoryOptionsForSkuCategory(skuCategory ?? '', detailSub);
+}
+
+export function pmUsesFunctionalCategoryTaxonomy(parentSkuCategory: string): boolean {
+  return normalizePmSkuCategoryForSelect(parentSkuCategory) !== '';
+}
+
+export function normalizePmFunctionalSubCategoryKey(raw: string): string {
+  const detail = String(raw || '').trim();
+  if (!detail) return '';
+  const lower = detail.toLowerCase();
+  for (const list of Object.values(PM_FUNCTIONAL_SUB_CATEGORIES)) {
+    const exact = list.find((o) => o.toLowerCase() === lower);
+    if (exact) return exact;
+  }
+  return PM_FUNCTIONAL_SUB_CATEGORY_ALIASES[lower] ?? '';
+}
+
+const PM_FUNCTIONAL_SUB_CATEGORY_ALIASES: Record<string, string> = {
+  bottle: 'Bottle',
+  bottles: 'Bottle',
+  tube: 'Tube',
+  tubes: 'Tube',
+  jar: 'Jar',
+  jars: 'Jar',
+  sachet: 'Sachet',
+  sachets: 'Sachet',
+  dropper: 'Dropper',
+  droppers: 'Dropper',
+  'spray (mist)': 'Spray (Mist)',
+  'mist spray': 'Spray (Mist)',
+  spray: 'Spray (Mist)',
+  pump: 'Pump',
+  pumps: 'Pump',
+  cap: 'Cap',
+  caps: 'Cap',
+  lid: 'Cap',
+  lids: 'Cap',
+  sprayer: 'Sprayer',
+  sprayers: 'Sprayer',
+  'dropper cap': 'Dropper Cap',
+  'inner plug': 'Inner Plug',
+  monocarton: 'Monocarton',
+  monocartons: 'Monocarton',
+  'front label': 'Front Label',
+  'back label': 'Back Label',
+  'sheet form': 'Front Label',
+  'roll form': 'Back Label',
+  label: 'Front Label',
+  labels: 'Front Label',
+  'tamper sticker': 'Tamper Sticker',
+  'tamper band': 'Tamper Sticker',
+  leaflet: 'Leaflet',
+  leaflets: 'Leaflet',
+  pil: 'Leaflet',
+  'master carton': 'Master Carton',
+  shipper: 'Master Carton',
+  shippers: 'Master Carton',
+  'pallet material': 'Pallet Material',
+  pallet: 'Pallet Material',
+  pallets: 'Pallet Material',
+  'stretch film': 'Stretch Film',
+  strapping: 'Strapping',
+  spatula: 'Spatula',
+  spatulas: 'Spatula',
+  brush: 'Brush',
+  brushes: 'Brush',
+  sponge: 'Sponge',
+  sponges: 'Sponge',
+  'qr card / insert': 'QR Card / Insert',
+  'qr card': 'QR Card / Insert',
+  'qr cards': 'QR Card / Insert',
+  insert: 'QR Card / Insert',
+};
+
+export function normalizePmSubSubCategoryForSelect(
+  detailSub: string,
+  raw: string,
+  skuCategory?: string
+): string {
   const detail = String(raw || '').trim();
   if (!detail) return '';
   const key = normalizePmDetailSubCategoryKey(detailSub);
-  const options = PM_SUB_SUB_CATEGORIES[key] ?? [];
+  const sku = normalizePmSkuCategoryForSelect(skuCategory ?? '');
+  let options = PM_FUNCTIONAL_SUB_CATEGORIES[key] ?? PM_SUB_SUB_CATEGORIES[key] ?? [];
+  if (key === 'Secondary Pack' && sku && PM_SECONDARY_SUBS_BY_SKU[sku]) {
+    options = PM_SECONDARY_SUBS_BY_SKU[sku] ?? options;
+  }
   const lower = detail.toLowerCase();
   const exact = options.find((o) => o.toLowerCase() === lower);
   if (exact) return exact;
-  const aliases: Record<string, string> = {
-    aluminum: 'Aluminium',
-    aluminium: 'Aluminium',
-    'laminate / abl': 'Laminate / ABL',
-    'laminate/ abl': 'Laminate / ABL',
-    'laminate abl': 'Laminate / ABL',
-    plastic: 'Plastic',
-    pet: 'PET',
-    hdpe: 'HDPE',
-    glass: 'Glass',
-    acrylic: 'Acrylic',
-    screw: 'Screw',
-    'disc-top': 'Disc-top',
-    'flip-top': 'Flip-top',
-    'child resistant': 'Child-resistant',
-    'child-resistant': 'Child-resistant',
-    'twist-off': 'Twist-off',
-    'twist off': 'Twist-off',
-    'snap-on': 'Snap-on',
-    'snap on': 'Snap-on',
-    'friction fit': 'Friction Fit',
-    'lotion pump': 'Lotion Pump',
-    'foaming pump': 'Foaming pump',
-    'mist spray': 'Mist spray',
-    'treatment pump': 'Treatment pump',
-    calibrated: 'Calibrated',
-    'roll-on': 'Roll-on',
-    'roll on': 'Roll-on',
-    'single-use': 'Single-Use',
-    'single use': 'Single-Use',
-    refill: 'Refill',
-    'stick-pack': 'Stick-pack',
-    'stick pack': 'Stick-pack',
-    plain: 'Plain',
-    laminated: 'Laminated',
-    'foil-stamped': 'Foil-stamped',
-    'foil stamped': 'Foil-stamped',
-    standard: 'Standard',
-    premium: 'Premium',
-    shrink: 'Shrink',
-    stretch: 'Stretch',
-    cardboard: 'Cardboard',
-    'single-fold': 'Single-fold',
-    'single fold': 'Single-fold',
-    'multi-fold': 'Multi-fold',
-    'multi fold': 'Multi-fold',
-    booklet: 'Booklet',
-    foam: 'Foam',
-    paper: 'Paper',
-    round: 'Round',
-    square: 'Square',
-    custom: 'Custom',
-    'nfc - enabled': 'NFC - enabled',
-    'nfc-enabled': 'NFC - enabled',
-    'nfc enabled': 'NFC - enabled',
-    corrugated: 'Corrugated',
-    corrogated: 'Corrugated',
-    wooden: 'Wooden',
-    metal: 'Metal',
-    hand: 'Hand',
-    machine: 'Machine',
-    bubble: 'Bubble',
-    reinforced: 'Reinforced',
-    steel: 'Steel',
-    synthetic: 'Synthetic',
-    natural: 'Natural',
-    disposable: 'Disposable',
-    'silica gel': 'Silica gel',
-    clay: 'Clay',
-    'molecular sieve': 'Molecular Sieve',
-  };
-  const mapped = aliases[lower];
+  const mapped = PM_FUNCTIONAL_SUB_CATEGORY_ALIASES[lower];
   if (mapped && options.includes(mapped)) return mapped;
   return '';
 }

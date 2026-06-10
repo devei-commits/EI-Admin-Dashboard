@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatDateEnInSafe,
+  formatDateWithIsoWeek,
   normalizeDateOnlyString,
   parseDateStringToLocalDate,
   mapBackendPrToRequest,
@@ -149,6 +150,12 @@ describe('procurement date helpers', () => {
       mk(3, '2026-05-26T12:00:00Z'),
     ]);
     expect(sorted.map((a) => a.id)).toEqual([4, 3, 2]);
+  });
+
+  it('formatDateWithIsoWeek appends ISO week label', () => {
+    const formatted = formatDateWithIsoWeek('2025-10-01');
+    expect(formatted).toContain('Week 40, 2025');
+    expect(formatDateWithIsoWeek('')).toBe('—');
   });
 
   it('normalizeDateOnlyString outputs YYYY-MM-DD', () => {

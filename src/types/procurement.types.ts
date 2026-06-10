@@ -3,7 +3,14 @@ export type RequestPriority = 'High' | 'Medium' | 'Low';
 export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending' | 'Under GRN';
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
 export type MainTab = 'Procurement' | 'Vendors' | 'Reports';
-export type SideSection = 'Overview' | 'Requests' | 'Quotations' | 'Draft POs' | 'Issued POs' | 'GRN Monitor';
+export type SideSection =
+  | 'Overview'
+  | 'Requests'
+  | 'Quotations'
+  | 'Draft POs'
+  | 'Issued POs'
+  | 'GRN Monitor'
+  | 'Inventory Audit';
 
 export type ItemDetail = {
   itemCode: string;
@@ -15,6 +22,8 @@ export type ItemDetail = {
   plannedPrice: number;
   /** Set when known (incl. 0). Omitted when not resolved from API/notes/vendor list. */
   leadTimeDays?: number;
+  /** Expected delivery / required-by date (YYYY-MM-DD) from Planning or PR header. */
+  expectedDate?: string;
   estValue: number;
   raw_material_id?: number;
   pack_material_id?: number;
