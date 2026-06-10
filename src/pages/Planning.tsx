@@ -56,7 +56,7 @@ import {
   type BOMRmLine,
   type BOMPmLine,
 } from '../services/bom.service';
-import { fetchBatches, type BatchRow } from '../services/production.service';
+import { fetchBatches, syncBatchesFromPlanning, type BatchRow } from '../services/production.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
@@ -1706,13 +1706,6 @@ function PlanningBatchesTab({
     setSortDirection('asc');
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
   // Show all sent batches, and always include rework batches so production-raised rework
   // appears in Planning even if sent flag comes late/out-of-sync.
   const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => {
@@ -1788,6 +1781,14 @@ function PlanningBatchesTab({
     rawMaterialsList,
     packMaterialsList,
   ]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -3383,7 +3384,7 @@ const Planning = () => {
         batchesRequired,
         batchesConfirmed,
         notPlanned,
-        soValue: '—',
+        soValue: 'N/A',
       },
       'items-involved': {
         confirmedProducts: { value: confirmedCount, total: totalSOs },
@@ -3393,11 +3394,12 @@ const Planning = () => {
         pmShortages: pmShort,
         prsRaised: prCount,
       },
-      'batches': {},
     };
   }, [planningExtractedList, itemsInvolvedRows, procurementRequests]);
 
-  const currentStats = tabStats[activeMainTab];
+  /** PIs + Batches tabs share order-level KPIs; Items Involved uses its own breakdown. */
+  const currentStats =
+    activeMainTab === 'items-involved' ? tabStats['items-involved'] : tabStats['pis-extracted'];
 
   // Fallback when API returns no rows (empty state); all list data comes from planning-extracted API
   const initialSalesOrders: SalesOrder[] = [];
@@ -5018,6 +5020,7 @@ const Planning = () => {
       if (customBatches.length > 0) {
         await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
       }
+      await syncBatchesFromPlanning().catch(() => { /* non-fatal */ });
       queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
       queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
@@ -5077,6 +5080,8 @@ const Planning = () => {
     if (customBatches.length > 0) {
       await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
     }
+
+    await syncBatchesFromPlanning().catch(() => { /* non-fatal — Production page also syncs on load */ });
 
     queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
     queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
@@ -5684,31 +5689,31 @@ const Planning = () => {
             <>
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">TOTAL SOS</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).totalSOs}</p>
+                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).totalSOs ?? 0}</p>
                 <p className="text-xs text-gray-500 mt-1">Approved orders</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PROD. RELEASED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).prodReleased}</p>
+                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).prodReleased ?? 0}</p>
                 <p className="text-xs text-gray-500 mt-1">Ready to plan</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM/PM SHORTAGES</p>
-                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).shortages}</p>
+                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).shortages ?? 0}</p>
                 <p className="text-xs text-gray-500 mt-1">needs below order req</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES REQUIRED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesRequired}</p>
+                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesRequired ?? 0}</p>
                 <p className="text-xs text-gray-500 mt-1">Across all products</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES CONFIRMED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesConfirmed}</p>
+                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesConfirmed ?? 0}</p>
                 <p className="text-xs text-gray-500 mt-1">BOM confirmed & planned</p>
               </div>
 
@@ -5720,7 +5725,8 @@ const Planning = () => {
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">SO VALUE</p>
-                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).soValue}</p>
+                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).soValue ?? 'N/A'}</p>
+                <p className="text-xs text-gray-500 mt-1">Order value not in planning API yet</p>
               </div>
             </>
           )}

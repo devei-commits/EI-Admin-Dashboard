@@ -2104,7 +2104,20 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     setScheduledMuZone(batch.scheduledMuZone || '');
     setScheduleRemarks(batch.scheduleRemarks || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch?.bmrNo, materialsAvailability?.maxRmAvailableBy, materialsAvailability?.maxPmAvailableBy]);
+  }, [
+    batch?.bmrNo,
+    batch?.mfgDate,
+    batch?.fillDate,
+    batch?.packDate,
+    batch?.fgDate,
+    batch?.rmConnectDate,
+    batch?.pmConnectDate,
+    batch?.mainVessel,
+    batch?.fillingLine,
+    batch?.packagingLine,
+    materialsAvailability?.maxRmAvailableBy,
+    materialsAvailability?.maxPmAvailableBy,
+  ]);
 
   useEffect(() => {
     if (scheduledMuZone || allProductionZones.length === 0) return;
@@ -7605,10 +7618,10 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
   const [manualBatchId, setManualBatchId] = useState('');
 
   const weekIsos = useMemo(() => new Set(weekDays.map(d => d.iso)), [weekDays]);
-  // Only show batches that were explicitly scheduled (Schedule modal); ignore draft/confirmed/rm_reserved even if they have dates
+  /** Any batch with stage dates (from Planning sync or Schedule modal) appears on the calendar. */
   const calendarBatches = useMemo(() => batches.filter(b =>
-    b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_connected' || b.bmrStatus === 'dispensing' || b.bmrStatus === 'in_production' || b.bmrStatus === 'bulk_qc' || b.bmrStatus === 'qc_failed' || b.bmrStatus === 'cleared' ||
-    (b.mfgDate && (b.bmrStatus === 'batch_confirmed' || b.bmrStatus === 'rm_reserved'))
+    Boolean(b.mfgDate || b.fillDate || b.packDate)
+    || ['scheduled', 'rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'].includes(b.bmrStatus)
   ), [batches]);
   const weekBatches = useMemo(() => calendarBatches.filter(b =>
     (b.mfgDate && weekIsos.has(b.mfgDate)) ||
@@ -7633,12 +7646,26 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
   const fillBusy = useMemo(() => new Set(calendarBatches.filter(b => b.fillingLine).map(b => b.fillingLine)), [calendarBatches]);
   const fillingLinesIdle = fillTotal - fillBusy.size;
 
+  const CAL_UNASSIGNED = '__unassigned__';
+
   function getBatches(equipId: string, dayIso: string, cat: string): Batch[] {
+    if (equipId === CAL_UNASSIGNED) {
+      if (cat === 'mfg') return calendarBatches.filter(b => b.mfgDate === dayIso && !String(b.mainVessel || '').trim());
+      if (cat === 'fill') return calendarBatches.filter(b => b.fillDate === dayIso && !String(b.fillingLine || '').trim());
+      if (cat === 'pack') return calendarBatches.filter(b => b.packDate === dayIso && !String(b.packagingLine || '').trim());
+      return [];
+    }
     if (cat === 'mfg') return calendarBatches.filter(b => b.mainVessel === equipId && b.mfgDate === dayIso);
     if (cat === 'fill') return calendarBatches.filter(b => b.fillingLine === equipId && b.fillDate === dayIso);
     if (cat === 'pack') return calendarBatches.filter(b => b.packagingLine === equipId && b.packDate === dayIso);
     return [];
   }
+
+  const unassignedInWeek = useMemo(() => ({
+    mfg: calendarBatches.some(b => b.mfgDate && weekIsos.has(b.mfgDate) && !String(b.mainVessel || '').trim()),
+    fill: calendarBatches.some(b => b.fillDate && weekIsos.has(b.fillDate) && !String(b.fillingLine || '').trim()),
+    pack: calendarBatches.some(b => b.packDate && weekIsos.has(b.packDate) && !String(b.packagingLine || '').trim()),
+  }), [calendarBatches, weekIsos]);
 
   const isEquipBusy = (equipId: string, cat: string) => {
     if (cat === 'mfg') return calendarBatches.some(b => b.mainVessel === equipId);
@@ -7762,6 +7789,39 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
           {(['mfg', 'fill', 'pack'] as const).map(cat => (
             <React.Fragment key={cat}>
               <div className="cal-group-hdr text-[11px] font-bold text-gray-600 uppercase tracking-wider py-1.5 px-0 border-b border-gray-100">{catGroupHdr[cat]}</div>
+              {unassignedInWeek[cat] && (
+                <div className="cal-row grid border-b border-amber-100 bg-amber-50/30 hover:bg-amber-50/50 transition-colors" style={{ gridTemplateColumns: colGrid }}>
+                  <div className="cal-label flex items-center justify-between px-3 py-2 border-r border-amber-100">
+                    <div>
+                      <div className="cal-label-name text-xs font-bold text-amber-900">Awaiting line</div>
+                      <div className="cal-label-cap text-[10px] text-amber-700">From Planning — assign in Schedule</div>
+                    </div>
+                    <span className="badge text-[8px] font-semibold px-1.5 py-0.5 rounded-full b-orange bg-amber-100 text-amber-700">TBD</span>
+                  </div>
+                  {weekDays.map((d, i) => {
+                    const dayBatches = getBatches(CAL_UNASSIGNED, d.iso, cat);
+                    return (
+                      <div
+                        key={`unassigned-${cat}-${i}`}
+                        className={`cal-cell min-h-14 border-r border-amber-50 p-0.5 flex flex-col gap-0.5 ${i === todayIndex ? 'today-col bg-orange-50/30' : ''}`}
+                        role="gridcell"
+                      >
+                        {dayBatches.map((batch) => (
+                          <div
+                            key={batch.bmrNo}
+                            className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] border-dashed border-amber-400 bg-amber-100/80`}
+                            onClick={() => onBatchClick(batch)}
+                            title={`${batch.bmrNo} · ${batch.productName} · assign equipment in Schedule`}
+                          >
+                            <div>{batch.bmrNo.replace(/^BMR-\d+-/, 'B')}</div>
+                            <div className="opacity-80 text-[8px]">{batchProductShort(batch)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {allEquip.filter(e => e._cat === cat).map(eq => {
                 const busy = isEquipBusy(eq.id, cat);
                 const capLabel = 'cap' in eq && eq.cap ? `${eq.cap}L` : 'speed' in eq && eq.speed ? `${fmt(eq.speed)}/h` : '';
@@ -8908,6 +8968,7 @@ const Production = () => {
   const [batchActionLoading, setBatchActionLoading] = useState<{ bmrNo: string; label: string } | null>(null);
   const batchActionPendingRef = useRef(0);
   const loadedFromApi = useRef(false);
+  const prevActiveSectionRef = useRef<Section | null>(null);
 
   const beginBatchAction = useCallback((bmrNo: string, label: string) => {
     batchActionPendingRef.current += 1;
@@ -8993,6 +9054,32 @@ const Production = () => {
         setState(defaultState());
       });
   }, []);
+
+  /** When opening Calendar, jump to the nearest week that has scheduled stage dates if the current week is empty. */
+  useEffect(() => {
+    const openedCalendar = activeSection === 'calendar' && prevActiveSectionRef.current !== 'calendar';
+    prevActiveSectionRef.current = activeSection;
+    if (!openedCalendar || state.batches.length === 0) return;
+
+    const monday = addDays(getWeekStart(new Date()), weekOffset * 7);
+    const weekIsos = new Set(buildWeekDays(monday).map((d) => d.iso));
+    const hasInCurrentWeek = state.batches.some((b) =>
+      (b.mfgDate && weekIsos.has(b.mfgDate))
+      || (b.fillDate && weekIsos.has(b.fillDate))
+      || (b.packDate && weekIsos.has(b.packDate)),
+    );
+    if (hasInCurrentWeek) return;
+
+    const stageDates = state.batches
+      .flatMap((b) => [b.mfgDate, b.fillDate, b.packDate])
+      .filter((d): d is string => Boolean(d));
+    if (stageDates.length === 0) return;
+
+    const today = isoDate(new Date());
+    const target = stageDates.filter((d) => d >= today).sort()[0] ?? [...stageDates].sort().pop();
+    if (!target) return;
+    setWeekOffset(getWeekOffsetForDate(target));
+  }, [activeSection, state.batches, weekOffset, setWeekOffset]);
 
   const refreshEquipment = useCallback(() => {
     fetchEquipment()
