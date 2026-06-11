@@ -186,6 +186,10 @@ export interface PlanningBatchRow {
   sizeKg: number | null;
   rmLines: unknown[];
   pmLines: unknown[];
+  /** Linked production BMR status when batch was sent to Production. */
+  productionBmrStatus?: string | null;
+  /** False once Production confirms the batch (`bmr_status` past `draft`). */
+  editable?: boolean;
 }
 
 export async function fetchPlanningBatches(planningExtractedId: string): Promise<PlanningBatchRow[]> {
@@ -255,7 +259,9 @@ export async function updateBatch(
     );
     const data = res?.data ?? res;
     return data ?? null;
-  } catch {
+  } catch (e: unknown) {
+    const msg = errorMessageFromApiCatch(e, 'Could not save batch');
+    if (msg) throw new Error(msg);
     return null;
   }
 }

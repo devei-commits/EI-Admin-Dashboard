@@ -6,7 +6,10 @@ import {
   type ParsedStockCheckNotes,
 } from './stockCheckNotes';
 import { computeInventoryAuditGap } from './inventoryAuditGap';
+import { resolveInventoryStockAfterGapApproval } from './stockCheckGapDisplay';
 import type { Order } from '../types/salesPurchase.types';
+
+export { resolveInventoryStockAfterGapApproval };
 
 function parseQty(raw: unknown): number {
   const n = Number(raw);
@@ -29,7 +32,7 @@ function itemLineMatches(
 }
 
 function enrichNoteLine(note: ParsedStockCheckNoteLine): ParsedStockCheckNoteLine {
-  const systemQty = parseQty(note.systemQty);
+  const systemQty = parseQty(note.systemQtyAtRequest ?? note.systemQty);
   const physicalQty = parseQty(note.physicalQty);
   const consumptionQty = parseQty(note.consumptionQty);
   const gapQty =

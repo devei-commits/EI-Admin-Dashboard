@@ -19,12 +19,19 @@ import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../ut
 import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { getRmConditionalVisibility } from '../lib/rmConditionalFields';
-import { RmQualitySpecSection } from '../components/masters/RmQualitySpecSection';
+import { RmQualitySpecTable } from '../components/masters/RmQualitySpecTable';
 import {
-  flattenRmQualitySpecsForPayload,
-  groupVisibleRmQualitySpecFields,
-  hydrateRmQualitySpecs,
+  flattenRmQualitySpecRowsForPayload,
+  flattenRmQualitySubSpecRowsByPathForPayload,
+  getDefaultRmQualitySpecRows,
+  getDefaultRmQualitySubSpecRows,
+  hydrateRmQualitySpecRows,
+  hydrateRmQualitySubSpecRowsByPath,
+  resolveRmQualitySpecContext,
+  shouldShowRmQualitySpecTable,
+  shouldShowRmQualitySubSpecTable,
 } from '../lib/rmQualitySpecVisibility';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
@@ -98,32 +105,6 @@ const RM_PHYSICAL_FORM_LIQUID_OPTIONS = [
 ] as const;
 
 const RM_QUALITY_REQUIRED_FIELDS = ['coaRequired'] as const;
-
-type RmArNumberEntry = { id: string; number: string };
-
-function normalizeRmArNumbers(source: Record<string, unknown> | null | undefined): RmArNumberEntry[] {
-  if (!source || typeof source !== 'object') return [];
-  const raw = source.arNumbers;
-  if (Array.isArray(raw) && raw.length > 0) {
-    const out: RmArNumberEntry[] = [];
-    raw.forEach((item, idx) => {
-      if (typeof item === 'string') {
-        const n = item.trim();
-        if (n) out.push({ id: `ar-${idx}`, number: n });
-        return;
-      }
-      if (item && typeof item === 'object') {
-        const row = item as Record<string, unknown>;
-        const n = String(row.number ?? row.arNumber ?? '').trim();
-        if (n) out.push({ id: String(row.id ?? `ar-${idx}`), number: n });
-      }
-    });
-    if (out.length > 0) return out;
-  }
-  const legacy = String(source.arNumber ?? '').trim();
-  if (legacy) return [{ id: 'ar-legacy', number: legacy }];
-  return [];
-}
 
 const RM_SOURCING_CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'] as const;
 /** Business lifecycle on the RM master — not DB `lifecycle_status` (soft-delete archive). */
@@ -272,11 +253,11 @@ function createEmptyRmFormData() {
     msdsSdsNotesLink: '',
     storageCondition: '',
     dispensingDirection: '',
-    arNumbers: [] as RmArNumberEntry[],
     coaRequired: '' as '' | 'Yes' | 'No',
     acceptanceSpecMin: '',
     acceptanceSpecMax: '',
-    rmQualitySpecs: {} as Record<string, string>,
+    rmQualitySpecRows: [] as QualitySpecTableRow[],
+    rmQualitySubSpecRowsByPath: {} as Record<string, QualitySpecTableRow[]>,
     physicalFormSolid: '' as '' | (typeof RM_PHYSICAL_FORM_SOLID_OPTIONS)[number],
     physicalFormLiquid: '' as '' | (typeof RM_PHYSICAL_FORM_LIQUID_OPTIONS)[number],
     preferredVendor: '',
@@ -370,7 +351,6 @@ const RawMaterialRefactored: React.FC = () => {
  const [tempTest, setTempTest] = useState({ 
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
- const [tempArNumber, setTempArNumber] = useState('');
  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
  const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
  const [submitConfirming, setSubmitConfirming] = useState(false);
@@ -406,7 +386,6 @@ const RawMaterialRefactored: React.FC = () => {
   setTempVendorTiers(defaultTempVendorTiers(4));
   setTempDocument({ type: '', link: '', date: '' });
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
-  setTempArNumber('');
   setErrors({});
   setCurrentStage(0);
  }, []);
@@ -512,22 +491,85 @@ const RawMaterialRefactored: React.FC = () => {
   }),
   [formData.subCategory, formData.optionalRmSubCategory, formData.optionalRmSubSubCategory]
  );
- const rmQualitySpecGroups = useMemo(
-  () => groupVisibleRmQualitySpecFields(rmQualitySpecCtx),
+ const rmQualitySpecResolved = useMemo(
+  () => resolveRmQualitySpecContext(rmQualitySpecCtx),
   [rmQualitySpecCtx]
  );
- const handleRmQualitySpecChange = useCallback((fieldId: string, value: string) => {
+ const showRmQualitySpecTable = useMemo(
+  () => shouldShowRmQualitySpecTable(rmQualitySpecCtx),
+  [rmQualitySpecCtx]
+ );
+ const showRmQualitySubSpecTable = useMemo(
+  () => shouldShowRmQualitySubSpecTable(rmQualitySpecCtx),
+  [rmQualitySpecCtx]
+ );
+ const currentSubSpecRows = useMemo(() => {
+  const pathKey = rmQualitySpecResolved.subSpecPathKey;
+  if (!pathKey) return [];
+  return formData.rmQualitySubSpecRowsByPath[pathKey] ?? [];
+ }, [formData.rmQualitySubSpecRowsByPath, rmQualitySpecResolved.subSpecPathKey]);
+
+ const handleRmQualitySpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
   setFormData((prev) => ({
    ...prev,
-   rmQualitySpecs: { ...prev.rmQualitySpecs, [fieldId]: value },
+   rmQualitySpecRows: rows,
   }));
-  setErrors((prev) => {
-   if (!prev[fieldId]) return prev;
-   const next = { ...prev };
-   delete next[fieldId];
-   return next;
-  });
  }, []);
+
+ const handleRmQualitySubSpecRowsChange = useCallback(
+  (rows: QualitySpecTableRow[]) => {
+   const pathKey = rmQualitySpecResolved.subSpecPathKey;
+   if (!pathKey) return;
+   setFormData((prev) => ({
+    ...prev,
+    rmQualitySubSpecRowsByPath: {
+     ...prev.rmQualitySubSpecRowsByPath,
+     [pathKey]: rows,
+    },
+   }));
+  },
+  [rmQualitySpecResolved.subSpecPathKey]
+ );
+
+ useEffect(() => {
+  if (!showRmQualitySpecTable) return;
+  setFormData((prev) => {
+   if (prev.rmQualitySpecRows.length > 0) return prev;
+   return {
+    ...prev,
+    rmQualitySpecRows: getDefaultRmQualitySpecRows(rmQualitySpecCtx),
+   };
+  });
+ }, [
+  showRmQualitySpecTable,
+  rmQualitySpecCtx.subCategory,
+  rmQualitySpecCtx.optionalRmSubCategory,
+ ]);
+
+ useEffect(() => {
+  if (!showRmQualitySubSpecTable) return;
+  const pathKey = rmQualitySpecResolved.subSpecPathKey;
+  if (!pathKey) return;
+  setFormData((prev) => {
+   const existing = prev.rmQualitySubSpecRowsByPath[pathKey];
+   if (existing && existing.length > 0) return prev;
+   const defaults = getDefaultRmQualitySubSpecRows(rmQualitySpecCtx);
+   if (defaults.length === 0) return prev;
+   return {
+    ...prev,
+    rmQualitySubSpecRowsByPath: {
+     ...prev.rmQualitySubSpecRowsByPath,
+     [pathKey]: defaults,
+    },
+   };
+  });
+ }, [
+  showRmQualitySubSpecTable,
+  rmQualitySpecResolved.subSpecPathKey,
+  rmQualitySpecCtx.subCategory,
+  rmQualitySpecCtx.optionalRmSubCategory,
+  rmQualitySpecCtx.optionalRmSubSubCategory,
+ ]);
  const rmPhysicalFormSolidOptions = useMemo(() => {
   const base = RM_PHYSICAL_FORM_SOLID_OPTIONS.map((v) => ({ value: v, label: v }));
   const cur = String(formData.physicalFormSolid ?? '').trim();
@@ -872,39 +914,6 @@ const RawMaterialRefactored: React.FC = () => {
   }));
  };
 
- const handleAddArNumber = () => {
-  const number = tempArNumber.trim();
-  if (!number) {
-   setErrors((prev) => ({ ...prev, arNumbers: 'Step 5 — AR number is required' }));
-   addToast('error', 'Step 5 — Enter an AR number before adding');
-   return;
-  }
-  const duplicate = formData.arNumbers.some(
-    (entry) => entry.number.trim().toLowerCase() === number.toLowerCase()
-  );
-  if (duplicate) {
-   addToast('error', 'This AR number is already listed');
-   return;
-  }
-  setFormData((prev) => ({
-   ...prev,
-   arNumbers: [...prev.arNumbers, { id: Date.now().toString(), number }],
-  }));
-  setTempArNumber('');
-  setErrors((prev) => {
-   const next = { ...prev };
-   delete next.arNumbers;
-   return next;
-  });
- };
-
- const handleRemoveArNumber = (id: string) => {
-  setFormData((prev) => ({
-   ...prev,
-   arNumbers: prev.arNumbers.filter((entry) => entry.id !== id),
-  }));
- };
-
  const buildRmSavePayload = (): Record<string, unknown> | null => {
   if (!existingRmId) {
    if (!formData.subCategory?.trim()) {
@@ -980,18 +989,16 @@ const RawMaterialRefactored: React.FC = () => {
    return null;
   }
   const linkedProducts = parseRmLinkedProductsFromForm(formData);
-  const arNumbers = formData.arNumbers
-    .map((entry) => ({ ...entry, number: entry.number.trim() }))
-    .filter((entry) => entry.number.length > 0);
-  const flatQcSpecs = flattenRmQualitySpecsForPayload(formData.rmQualitySpecs ?? {});
+  const qcSpecRows = flattenRmQualitySpecRowsForPayload(formData.rmQualitySpecRows ?? []);
+  const qcSubSpecRowsByPath = flattenRmQualitySubSpecRowsByPathForPayload(
+   formData.rmQualitySubSpecRowsByPath ?? {}
+  );
   const payload: Record<string, unknown> = {
    ...(formData as Record<string, unknown>),
    rmCategory: formData.subCategory?.trim() || formData.rmCategory,
    category: formData.subCategory?.trim() || formData.rmCategory,
-   arNumbers,
-   arNumber: arNumbers[0]?.number ?? '',
-   rmQualitySpecs: flatQcSpecs,
-   ...flatQcSpecs,
+   rmQualitySpecRows: qcSpecRows,
+   rmQualitySubSpecRowsByPath: qcSubSpecRowsByPath,
    ...(linkedProducts.length > 0 ? { products: linkedProducts } : {}),
   };
   if (isNewRm) {
@@ -1006,14 +1013,16 @@ const RawMaterialRefactored: React.FC = () => {
   return payload;
  };
 
- const rmPreviewFormData = useMemo(() => {
-  const flatQc = flattenRmQualitySpecsForPayload(formData.rmQualitySpecs ?? {});
-  return { ...(formData as Record<string, unknown>), ...flatQc };
- }, [formData]);
+ const rmPreviewFormData = useMemo(
+  () => formData as Record<string, unknown>,
+  [formData]
+ );
  const rmPreviewSections = useMemo(
   () =>
    buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS, {
-    omitKeys: isNewRm ? ['rmSku', 'sku', 'rmQualitySpecs'] : ['rmQualitySpecs'],
+    omitKeys: isNewRm
+     ? ['rmSku', 'sku', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath']
+     : ['rmQualitySpecRows', 'rmQualitySubSpecRowsByPath'],
    }),
   [rmPreviewFormData, isNewRm]
  );
@@ -1781,65 +1790,6 @@ const RawMaterialRefactored: React.FC = () => {
       <div>
        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality</h3>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="sm:col-span-2 space-y-3">
-         <label htmlFor="tempArNumber" className="block text-sm font-medium text-gray-700">
-          AR Numbers
-         </label>
-         <div className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-[12rem]">
-           <input
-            id="tempArNumber"
-            type="text"
-            value={tempArNumber}
-            onChange={(e) => setTempArNumber(e.target.value)}
-            onKeyDown={(e) => {
-             if (e.key === 'Enter') {
-              e.preventDefault();
-              handleAddArNumber();
-             }
-            }}
-            placeholder="Analytical reference number"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-           />
-          </div>
-          <button
-           type="button"
-           onClick={handleAddArNumber}
-           className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
-          >
-           Add AR number
-          </button>
-         </div>
-         {errors.arNumbers ? (
-          <p className="text-xs text-red-600" role="alert">
-           {errors.arNumbers}
-          </p>
-         ) : null}
-         {formData.arNumbers.length > 0 ? (
-          <ul className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
-           {formData.arNumbers.map((entry, idx) => (
-            <li
-             key={entry.id}
-             className="flex items-center justify-between gap-3 px-3 py-2 bg-white text-sm"
-            >
-             <span className="font-medium text-gray-800">
-              <span className="text-gray-400 mr-2">{idx + 1}.</span>
-              {entry.number}
-             </span>
-             <button
-              type="button"
-              onClick={() => handleRemoveArNumber(entry.id)}
-              className="text-xs font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300 rounded px-2 py-1"
-             >
-              Remove
-             </button>
-            </li>
-           ))}
-          </ul>
-         ) : (
-          <p className="text-xs text-gray-400">No AR numbers added yet.</p>
-         )}
-        </div>
         <SelectField
          label="COA Required"
          id="coaRequired"
@@ -1864,14 +1814,15 @@ const RawMaterialRefactored: React.FC = () => {
         />
        </div>
       </div>
-      {rmConditionalVisibility.showQualityConditional ? (
-       <RmQualitySpecSection
-        groups={rmQualitySpecGroups}
-        categoryLabel={formData.optionalRmSubCategory}
-        subCategoryLabel={formData.optionalRmSubSubCategory}
-        specs={formData.rmQualitySpecs ?? {}}
-        errors={errors}
-        onChange={handleRmQualitySpecChange}
+      {showRmQualitySpecTable ? (
+       <RmQualitySpecTable
+        categoryLabel={rmQualitySpecResolved.categoryDisplayLabel}
+        commonRows={formData.rmQualitySpecRows ?? []}
+        onCommonChange={handleRmQualitySpecRowsChange}
+        showSubTable={showRmQualitySubSpecTable}
+        subCategoryLabel={rmQualitySpecResolved.functionalSub}
+        subRows={currentSubSpecRows}
+        onSubChange={handleRmQualitySubSpecRowsChange}
        />
       ) : null}
      </div>
@@ -2357,13 +2308,6 @@ const RawMaterialRefactored: React.FC = () => {
       (merged as { coaRequired: string }).coaRequired = '';
     }
 
-    const normalizedArNumbers = normalizeRmArNumbers(merged as Record<string, unknown>);
-    if (normalizedArNumbers.length > 0) {
-      merged.arNumbers = normalizedArNumbers;
-    } else {
-      merged.arNumbers = normalizeRmArNumbers(fdObj);
-    }
-
     const preservedProducts = parseRmLinkedProductsFromForm(merged);
     if (preservedProducts.length > 0) {
       merged.products = preservedProducts;
@@ -2417,7 +2361,10 @@ const RawMaterialRefactored: React.FC = () => {
          merged.seriesPrefix = RM_CATEGORIES[inferred]?.prefix ?? merged.seriesPrefix;
        }
      }
-     merged.rmQualitySpecs = hydrateRmQualitySpecs(merged as Record<string, unknown>);
+     merged.rmQualitySpecRows = hydrateRmQualitySpecRows(merged as Record<string, unknown>);
+     merged.rmQualitySubSpecRowsByPath = hydrateRmQualitySubSpecRowsByPath(
+      merged as Record<string, unknown>
+     );
      return merged;
    });
   }).catch(() => {

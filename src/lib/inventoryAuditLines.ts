@@ -81,7 +81,7 @@ function enrichNote(note: ParsedStockCheckNoteLine | null): {
       gapApprovedBy: '',
     };
   }
-  const systemQty = parseQty(note.systemQty);
+  const systemQty = parseQty(note.systemQtyAtRequest ?? note.systemQty);
   const physicalQty = parseQty(note.physicalQty);
   const consumptionQty = parseQty(note.consumptionQty ?? 0);
   const gapQty =

@@ -612,6 +612,53 @@ export interface UsageStatsRow {
   totalAllTime: number;
 }
 
+export interface ConsumptionBetweenParams {
+  itemType: 'RM' | 'PM' | 'PR';
+  rawMaterialId?: number;
+  packMaterialId?: number;
+  productId?: number;
+  from: string;
+  to: string;
+}
+
+/** Outbound consumption for an item between two calendar dates (inclusive). */
+export async function fetchConsumptionBetween(
+  params: ConsumptionBetweenParams
+): Promise<ServiceResult<{ consumption: number; from: string; to: string }>> {
+  try {
+    const qs = new URLSearchParams();
+    qs.set('item_type', params.itemType);
+    qs.set('from', params.from.slice(0, 10));
+    qs.set('to', params.to.slice(0, 10));
+    if (params.rawMaterialId != null && params.rawMaterialId > 0) {
+      qs.set('raw_material_id', String(params.rawMaterialId));
+    }
+    if (params.packMaterialId != null && params.packMaterialId > 0) {
+      qs.set('pack_material_id', String(params.packMaterialId));
+    }
+    if (params.productId != null && params.productId > 0) {
+      qs.set('product_id', String(params.productId));
+    }
+    const res = await api.get<{ consumption: number; from: string; to: string }>(
+      `/api/v1/warehouse-inventory/consumption-between?${qs.toString()}`
+    );
+    const data = res?.data ?? res;
+    const consumption = Number(data?.consumption);
+    return {
+      data: {
+        consumption: Number.isFinite(consumption) ? consumption : 0,
+        from: String(data?.from ?? params.from).slice(0, 10),
+        to: String(data?.to ?? params.to).slice(0, 10),
+      },
+      error: null,
+      success: true,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to fetch consumption';
+    return { data: { consumption: 0, from: params.from, to: params.to }, error: message, success: false };
+  }
+}
+
 /** Usage (consumption) stats: avg per day/week/month/quarter/year and all-time total. */
 export async function fetchUsageStats(): Promise<ServiceResult<{ rows: UsageStatsRow[] }>> {
   try {

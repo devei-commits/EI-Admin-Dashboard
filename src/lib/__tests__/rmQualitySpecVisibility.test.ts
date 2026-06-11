@@ -1,65 +1,205 @@
 import { describe, expect, it } from 'vitest';
 import {
-  getVisibleRmQualitySpecFields,
-  groupVisibleRmQualitySpecFields,
-  hydrateRmQualitySpecs,
-  validateRmQualitySpecs,
+  flattenRmQualitySpecRowsForPayload,
+  flattenRmQualitySubSpecRowsByPathForPayload,
+  getDefaultRmQualitySpecRows,
+  getDefaultRmQualitySubSpecRows,
+  hydrateRmQualitySpecRows,
+  hydrateRmQualitySubSpecRowsByPath,
+  shouldShowRmQualitySpecTable,
+  shouldShowRmQualitySubSpecTable,
+  validateRmQualitySpecRows,
 } from '../rmQualitySpecVisibility';
 
 describe('rmQualitySpecVisibility', () => {
-  it('shows surfactant common + anionic fields', () => {
-    const ctx = {
-      subCategory: 'Bulk raw materials',
-      optionalRmSubCategory: 'Surfactant',
-      optionalRmSubSubCategory: 'Anionic',
-    };
-    const visible = getVisibleRmQualitySpecFields(ctx);
-    expect(visible.some((f) => f.id === 'qcSurfCoaFromVendor')).toBe(true);
-    expect(visible.some((f) => f.id === 'qcSurfAnionic14Dioxane')).toBe(true);
-    expect(visible.some((f) => f.id === 'qcSurfNonionicHlbValue')).toBe(false);
+  const bulkCtx = {
+    subCategory: 'Bulk raw materials',
+    optionalRmSubCategory: 'Surfactant',
+    optionalRmSubSubCategory: 'Anionic',
+  };
 
-    const groups = groupVisibleRmQualitySpecFields(ctx);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.title).toBe('Common');
-    expect(groups[1]?.title).toBe('Anionic');
-  });
-
-  it('shows aqua/solvent and alcohol-specific fields', () => {
-    const ctx = {
-      subCategory: 'Bulk raw materials',
-      optionalRmSubCategory: 'Aqua / Solvent',
-      optionalRmSubSubCategory: 'Alcohol',
-    };
-    const visible = getVisibleRmQualitySpecFields(ctx);
-    expect(visible.some((f) => f.id === 'qcEndotoxinPharmaGrade')).toBe(true);
-    expect(visible.some((f) => f.id === 'qcDenaturantVerification')).toBe(true);
-    expect(visible.some((f) => f.id === 'qcAquaToc')).toBe(false);
-  });
-
-  it('does not require quality spec fields on save (optional after step 2)', () => {
-    const ctx = {
-      subCategory: 'Bulk raw materials',
-      optionalRmSubCategory: 'Active',
-      optionalRmSubSubCategory: 'UV Filter',
-    };
-    expect(validateRmQualitySpecs({}, ctx)).toEqual({});
-  });
-
-  it('hydrates legacy flat qc keys into rmQualitySpecs', () => {
-    const specs = hydrateRmQualitySpecs({
-      qcParticleSizeMineral: ' 50 nm ',
-      qcEndotoxinPharmaGrade: '0.25 EU/mg',
-    });
-    expect(specs.qcParticleSizeMineral).toBe('50 nm');
-    expect(specs.qcEndotoxinPharmaGrade).toBe('0.25 EU/mg');
-  });
-
-  it('returns no fields for non-bulk SKU series', () => {
-    const visible = getVisibleRmQualitySpecFields({
+  it('shows tabular quality specs for bulk functional categories', () => {
+    expect(shouldShowRmQualitySpecTable(bulkCtx)).toBe(true);
+    expect(shouldShowRmQualitySpecTable({
       subCategory: 'Fragrance',
       optionalRmSubCategory: 'Oil soluble',
+    })).toBe(false);
+  });
+
+  it('shows sub-category table when functional sub-category is set', () => {
+    expect(shouldShowRmQualitySubSpecTable(bulkCtx)).toBe(true);
+    expect(shouldShowRmQualitySubSpecTable({
+      subCategory: 'Bulk raw materials',
+      optionalRmSubCategory: 'Surfactant',
       optionalRmSubSubCategory: '',
+    })).toBe(false);
+  });
+
+  it('seeds skin-care style default common rows', () => {
+    const defaults = getDefaultRmQualitySpecRows(bulkCtx);
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(defaults.some((r) => r.parameter === 'Appearance')).toBe(true);
+    expect(defaults.some((r) => r.parameter === 'Bulk Yield')).toBe(true);
+  });
+
+  it('seeds anionic sub-category default rows', () => {
+    const defaults = getDefaultRmQualitySubSpecRows(bulkCtx);
+    expect(defaults.some((r) => r.parameter === 'Active Matter (sulfate %)')).toBe(true);
+    expect(defaults.some((r) => r.parameter === '1,4-Dioxane' && r.mandatory)).toBe(true);
+    expect(defaults.find((r) => r.parameter === 'Free Oil')?.acceptance).toBe('≤ 0.5%');
+  });
+
+  it('does not require quality spec rows on save', () => {
+    expect(validateRmQualitySpecRows([], bulkCtx)).toEqual({});
+  });
+
+  it('hydrates tabular common rows from form_data', () => {
+    const rows = hydrateRmQualitySpecRows({
+      rmQualitySpecRows: [
+        {
+          id: 'qs-1',
+          parameter: 'pH',
+          specLimit: 'Per Master',
+          method: 'pH meter',
+          mandatory: true,
+          tolerance: '±0.3',
+          frequency: 'Per batch',
+          sample: '100g',
+          acceptance: 'Within range',
+        },
+      ],
     });
-    expect(visible).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parameter).toBe('pH');
+    expect(rows[0]?.mandatory).toBe(true);
+  });
+
+  it('hydrates sub-category rows by path', () => {
+    const byPath = hydrateRmQualitySubSpecRowsByPath({
+      rmQualitySubSpecRowsByPath: {
+        'Surfactant::Anionic': [
+          {
+            id: 'sub-1',
+            parameter: 'Free Oil',
+            specLimit: '≤ 0.5%',
+            method: 'Solvent extraction',
+            mandatory: false,
+            tolerance: '≤ Spec',
+            frequency: 'Per lot',
+            sample: '5g',
+            acceptance: '≤ 0.5%',
+          },
+        ],
+      },
+    });
+    expect(byPath['Surfactant::Anionic']).toHaveLength(1);
+  });
+
+  it('migrates legacy flat rmQualitySpecs into common and sub-category rows', () => {
+    const common = hydrateRmQualitySpecRows({
+      qcSurfAppearance: 'Clear liquid',
+      qcSurfAnionicFreeOil: '≤ 0.3%',
+    });
+    const byPath = hydrateRmQualitySubSpecRowsByPath({
+      qcSurfAppearance: 'Clear liquid',
+      qcSurfAnionicFreeOil: '≤ 0.3%',
+    });
+    expect(common.some((r) => r.parameter === 'Appearance' && r.specLimit === 'Clear liquid')).toBe(true);
+    expect(
+      byPath['Surfactant::Anionic']?.some(
+        (r) => r.parameter === 'Free Oil' && r.specLimit === '≤ 0.3%'
+      )
+    ).toBe(true);
+  });
+
+  it('flattens rows and drops empty parameters', () => {
+    const out = flattenRmQualitySpecRowsForPayload([
+      {
+        id: 'a',
+        parameter: '  Odor ',
+        specLimit: 'Per Master',
+        method: '',
+        mandatory: false,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+      },
+      {
+        id: 'b',
+        parameter: '   ',
+        specLimit: 'x',
+        method: '',
+        mandatory: false,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.parameter).toBe('Odor');
+  });
+
+  it('hydrates multiple attachments per row', () => {
+    const rows = hydrateRmQualitySpecRows({
+      rmQualitySpecRows: [
+        {
+          id: 'qs-1',
+          parameter: 'pH',
+          specLimit: 'Per Master',
+          method: 'pH meter',
+          mandatory: false,
+          tolerance: '',
+          frequency: '',
+          sample: '',
+          acceptance: '',
+          attachments: [
+            { id: 'a1', type: 'file', name: 'coa.pdf', url: '' },
+            { id: 'a2', type: 'link', name: 'https://example.com/spec', url: 'https://example.com/spec' },
+          ],
+        },
+      ],
+    });
+    expect(rows[0]?.attachments).toHaveLength(2);
+  });
+
+  it('migrates legacy attachmentName and linkUrl into attachments array', () => {
+    const rows = hydrateRmQualitySpecRows({
+      rmQualitySpecRows: [
+        {
+          id: 'qs-1',
+          parameter: 'Color',
+          attachmentName: 'swatch.jpg',
+          linkUrl: 'https://example.com/swatch',
+        },
+      ],
+    });
+    expect(rows[0]?.attachments).toHaveLength(2);
+    expect(rows[0]?.attachments[0]?.type).toBe('file');
+    expect(rows[0]?.attachments[1]?.type).toBe('link');
+  });
+
+  it('flattens sub-category rows by path', () => {
+    const out = flattenRmQualitySubSpecRowsByPathForPayload({
+      'Surfactant::Anionic': [
+        {
+          id: 'a',
+          parameter: 'Free Oil',
+          specLimit: '≤ 0.5%',
+          method: '',
+          mandatory: false,
+          tolerance: '',
+          frequency: '',
+          sample: '',
+          acceptance: '',
+          attachments: [],
+        },
+      ],
+      'Surfactant::': [],
+    });
+    expect(Object.keys(out)).toEqual(['Surfactant::Anionic']);
   });
 });

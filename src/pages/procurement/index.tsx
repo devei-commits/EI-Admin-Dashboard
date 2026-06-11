@@ -15,10 +15,17 @@ import {
   bumpPurchaseOrderItemsQty,
   findDraftPurchaseOrderForRequest,
   mergeGapApprovalIntoStockCheckNotes,
+  resolveInventoryStockAfterGapApproval,
 } from '../../lib/inventoryAuditGapApproval';
 import { findStockCheckNoteForItem } from '../../lib/stockCheckNotes';
+import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
 import type { Order } from '../../types/salesPurchase.types';
-import { buildWeekVendorConsolidationLines } from '../../lib/weekVendorConsolidation';
+import {
+  buildWeekVendorConsolidationLines,
+  type WeekVendorItemBucket,
+} from '../../lib/weekVendorConsolidation';
+import { formatIsoWeekLabel } from '../../lib/isoWeek';
+import { buildProcurementRequestItemLines } from '../../lib/procurementRequestItemLines';
 import procurementData from '../../mocks/procurement-data.json';
 import {
   fetchProcurementRequests as fetchProcurementRequestsApi,
@@ -58,7 +65,7 @@ import {
   updateGRN,
   type GRNRecordFromApi,
 } from '../../services/grn.service';
-import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
+import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
 import {
   fetchPriceListPage,
   createItemList,
@@ -909,6 +916,8 @@ const Procurement: React.FC = () => {
   const [updateStockCheckRequest, setUpdateStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [stockCheckForm, setStockCheckForm] = useState<{ assignedTo: string; status: string; dueDate: string; notes: string }>({ assignedTo: '', status: '', dueDate: '', notes: '' });
   const [stockCheckSaving, setStockCheckSaving] = useState(false);
+  const [approvingGapLineKey, setApprovingGapLineKey] = useState<string | null>(null);
+  const [releasingWeekVendorBucketKey, setReleasingWeekVendorBucketKey] = useState<string | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [showRecordQuoteModal, setShowRecordQuoteModal] = useState(false);
   const [recordQuoteForm, setRecordQuoteForm] = useState<{
@@ -1804,6 +1813,34 @@ const Procurement: React.FC = () => {
         return false;
       }
 
+      const targetStock = resolveInventoryStockAfterGapApproval(existingNote);
+      const whRows = warehouseInventoryData?.rows ?? [];
+      const whRow =
+        whRows.find((r) => {
+          if (line.raw_material_id != null && Number(line.raw_material_id) > 0) {
+            return r.type === 'RM' && Number(r.sourceId) === Number(line.raw_material_id);
+          }
+          if (line.pack_material_id != null && Number(line.pack_material_id) > 0) {
+            return r.type === 'PM' && Number(r.sourceId) === Number(line.pack_material_id);
+          }
+          const code = line.itemCode.trim().toLowerCase();
+          return code && String(r.code ?? '').trim().toLowerCase() === code;
+        }) ?? null;
+      let inventoryUpdated = false;
+      if (targetStock != null && whRow?.warehouseInventoryId != null) {
+        const invRes = await updateWarehouseStock(whRow.warehouseInventoryId, { wh_stock: targetStock });
+        if (!invRes.success) {
+          addToast(
+            'warning',
+            typeof invRes.error === 'string'
+              ? invRes.error
+              : 'Request updated, but warehouse inventory could not be adjusted.'
+          );
+        } else {
+          inventoryUpdated = true;
+        }
+      }
+
       if (prUpd.data) {
         const updated = mapBackendPrToRequest(prUpd.data);
         setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
@@ -1833,7 +1870,9 @@ const Procurement: React.FC = () => {
 
       addToast(
         'success',
-        `Gap +${delta.toLocaleString('en-IN')} ${line.unit} approved${poUpdated ? ' — request and draft PO qty increased' : ' — request qty increased'}.`
+        `Gap +${delta.toLocaleString('en-IN')} ${line.unit} approved${
+          poUpdated ? ' — request and draft PO qty increased' : ' — request qty increased'
+        }${inventoryUpdated ? ' — warehouse stock set to physical count' : ''}.`
       );
       return true;
     },
@@ -1844,6 +1883,429 @@ const Procurement: React.FC = () => {
       purchaseOrdersRaw,
       queryClient,
       user?.name,
+      warehouseInventoryData?.rows,
+    ]
+  );
+
+  const handleReleaseWeekVendorConsolidated = useCallback(
+    async (bucket: WeekVendorItemBucket): Promise<void> => {
+      if (bucket.sourceLines.length === 0) {
+        addToast('warning', 'No source lines to release.');
+        return;
+      }
+
+      type SourceReleasePlan = {
+        line: (typeof bucket.sourceLines)[number];
+        request: ProcurementRequest;
+        openQty: number;
+        editRow: ReleaseLineEditRow;
+      };
+
+      const plans: SourceReleasePlan[] = [];
+      const reqType: RequestType = bucket.type === 'PM' ? 'PM' : 'RM';
+
+      for (const line of bucket.sourceLines) {
+        const req = requests.find((r) => r.id === line.requestId);
+        if (!req) {
+          addToast('error', `Request ${line.requestCode} not found.`);
+          return;
+        }
+        if (!isProcurementRequestPreDraftPipelineStatus(req.status)) {
+          addToast(
+            'warning',
+            `${line.requestCode} is not in New or Quoted status — cannot release to draft PO.`
+          );
+          return;
+        }
+        if (isStockCheckPendingForRequest(req)) {
+          addToast(
+            'warning',
+            `Stock check is pending on ${line.requestCode}. Release is locked until warehouse sends stock status.`
+          );
+          return;
+        }
+
+        const openQty = resolveOpenQtyForReleaseItem({
+          requestId: req.id,
+          reqType: req.type,
+          itemName: line.itemName,
+          itemCode: line.itemCode,
+          totalReqQty: line.reqQty,
+          raw_material_id: line.raw_material_id,
+          pack_material_id: line.pack_material_id,
+          itemType: reqType,
+        });
+
+        if (openQty <= 0) {
+          addToast(
+            'warning',
+            `No open quantity on ${line.requestCode} for ${line.itemName} (already on a draft PO).`
+          );
+          return;
+        }
+
+        const moqParsed = parseMoqInput(line.moq);
+        const moqNum =
+          typeof moqParsed === 'number' && !Number.isNaN(moqParsed)
+            ? moqParsed
+            : Number(line.moq) || 0;
+
+        plans.push({
+          line,
+          request: req,
+          openQty,
+          editRow: {
+            itemName: line.itemName,
+            itemCode: line.itemCode,
+            type: reqType,
+            originalQty: openQty,
+            qty: openQty,
+            unit:
+              reqType === 'PM'
+                ? normRmPrimaryUom(line.unit || 'PCS')
+                : resolveRmPrimaryUnit(
+                    line.raw_material_id != null ? Number(line.raw_material_id) : null,
+                    line.itemCode,
+                    line.unit
+                  ),
+            moq: moqNum,
+            unitPrice: 0,
+            leadDays: 0,
+            ...(line.raw_material_id != null ? { raw_material_id: line.raw_material_id } : {}),
+            ...(line.pack_material_id != null ? { pack_material_id: line.pack_material_id } : {}),
+          },
+        });
+      }
+
+      const consolidatedQty = plans.reduce((sum, p) => sum + p.openQty, 0);
+      if (consolidatedQty <= 0) {
+        addToast('warning', 'Consolidated release quantity must be greater than zero.');
+        return;
+      }
+
+      const itemSource = bucket.type === 'PM' ? itemsListPm : itemsListRm;
+      const matchedItemModal = itemSource.find((row) => {
+        const rmM = bucket.raw_material_id != null ? Number(bucket.raw_material_id) : NaN;
+        const pmM = bucket.pack_material_id != null ? Number(bucket.pack_material_id) : NaN;
+        const rowRmM = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+        const rowPmM = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+        if (Number.isFinite(rmM) && rmM > 0 && Number.isFinite(rowRmM) && rowRmM > 0) return rowRmM === rmM;
+        if (Number.isFinite(pmM) && pmM > 0 && Number.isFinite(rowPmM) && rowPmM > 0) return rowPmM === pmM;
+        const cM = String(bucket.itemCode ?? '').trim().toLowerCase();
+        const nM = String(bucket.itemName ?? '').trim().toLowerCase();
+        const rcM = String(row.code ?? '').trim().toLowerCase();
+        const rnM = String(row.name ?? '').trim().toLowerCase();
+        if (cM && rcM && cM === rcM) return true;
+        if (nM && rnM && (nM === rnM || nM.includes(rnM) || rnM.includes(nM))) return true;
+        return false;
+      });
+
+      let unitPrice = Number(bucket.plannedPrice) || 0;
+      let leadDays = 0;
+      const vendorKey = bucket.vendor.trim().toLowerCase();
+      const vendorRate = (matchedItemModal?.vendorRates ?? []).find(
+        (rate) => String(rate.vendor_name ?? '').trim().toLowerCase() === vendorKey
+      );
+      if (vendorRate) {
+        const tier =
+          (vendorRate.tiers ?? []).find((t) => {
+            const moqMin = Number(t.moq_min ?? 0) || 0;
+            return consolidatedQty >= moqMin;
+          }) ?? vendorRate.tiers?.[0];
+        if (tier && Number(tier.price_per_unit) > 0) {
+          unitPrice = Number(tier.price_per_unit);
+        }
+        leadDays = normalizeLeadTimeDays(vendorRate.lead_time_days) ?? leadDays;
+      }
+
+      for (const plan of plans) {
+        const relItem: ReleaseToPlannedItem = {
+          itemName: plan.line.itemName,
+          itemCode: plan.line.itemCode,
+          idx: 0,
+          qty: plan.openQty,
+          unit: plan.line.unit,
+          reqQty: plan.line.reqQty,
+          moq: plan.line.moq,
+          plannedPrice: plan.line.plannedPrice,
+          ...(plan.line.raw_material_id != null
+            ? { raw_material_id: plan.line.raw_material_id }
+            : {}),
+          ...(plan.line.pack_material_id != null
+            ? { pack_material_id: plan.line.pack_material_id }
+            : {}),
+        };
+        const reqQuotes = quotes.filter(
+          (q) =>
+            q.requestId === plan.request.id &&
+            String(q.vendor ?? '').trim().toLowerCase() === vendorKey &&
+            q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const quote =
+          reqQuotes.find((q) => q.status === 'Confirmed') ?? reqQuotes[0];
+        const quoteLine = quote?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        if (quoteLine && Number(quoteLine.pricePerUnit) > 0) {
+          unitPrice = quoteLine.pricePerUnit;
+        }
+        if (quote?.leadTimeDays) {
+          leadDays = Math.max(leadDays, Number(quote.leadTimeDays) || 0);
+        }
+      }
+
+      if (unitPrice <= 0) {
+        addToast(
+          'warning',
+          'Set unit price from Items List vendor rates or record a quotation before releasing consolidated PO.'
+        );
+        return;
+      }
+
+      const plansWithPrice = plans.map((p) => ({
+        ...p,
+        editRow: { ...p.editRow, unitPrice, leadDays },
+      }));
+
+      const requestIds = [...new Set(plansWithPrice.map((p) => p.request.id))];
+      const requestCodes = [...new Set(plansWithPrice.map((p) => p.line.requestCode))];
+      const primaryRequest = plansWithPrice[0]!.request;
+      const reference = requestCodes.join(' + ');
+      const weekLabel = bucket.hasWeek
+        ? formatIsoWeekLabel({ week: bucket.isoWeek, year: bucket.isoWeekYear })
+        : '';
+
+      const today = new Date();
+      const createdDateStr = today.toISOString().split('T')[0];
+      const expectedDelivery = new Date(today);
+      expectedDelivery.setDate(expectedDelivery.getDate() + Math.max(0, leadDays));
+      const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+
+      const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
+      const vendorName = bucket.vendor;
+      const matchedVendorForZoho = vendors.find(
+        (v) => (v.name || '').trim().toLowerCase() === vendorName.trim().toLowerCase()
+      );
+      const vendorMasterPaymentTerms = String(matchedVendorForZoho?.paymentTerms ?? '').trim();
+      const gstPercent = 18;
+      const subtotal = parseFloat((consolidatedQty * unitPrice).toFixed(2));
+      const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+      const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+
+      const draftLine: DraftPOLineItem = {
+        item: bucket.itemName,
+        itemCode:
+          bucket.itemCode ||
+          (bucket.type === 'PM' ? 'EI-PM-001' : 'EI-RM-001'),
+        type: reqType,
+        qty: String(consolidatedQty),
+        leadTimeDays: leadDays,
+        pricePerUnit: unitPrice,
+        gstPercent,
+        gstAmount,
+        lineTotal,
+        unit: bucket.unit,
+        ...(bucket.raw_material_id != null ? { raw_material_id: bucket.raw_material_id } : {}),
+        ...(bucket.pack_material_id != null ? { pack_material_id: bucket.pack_material_id } : {}),
+      };
+
+      setReleasingWeekVendorBucketKey(bucket.key);
+
+      const poPayload = {
+        orderId: newDpoId,
+        vendorName,
+        orderDate: createdDateStr,
+        expectedShipmentDate: expectedDeliveryStr,
+        reference,
+        paymentTerms: vendorMasterPaymentTerms || 'As per contract',
+        status: 'Draft',
+        formData: {
+          requestId: primaryRequest.id,
+          requestCode: reference,
+          consolidatedRequestIds: requestIds,
+          weekVendorConsolidationKey: bucket.key,
+          ...(weekLabel ? { consolidatedWeekLabel: weekLabel } : {}),
+          draftNotes: `Week+vendor consolidation (${requestCodes.join(', ')})`,
+          ...(matchedVendorForZoho && vendorName.trim()
+            ? {
+                vendorClientId: matchedVendorForZoho.id,
+                vendorEntityCode: matchedVendorForZoho.vendorCode,
+              }
+            : {}),
+        },
+        items: [
+          {
+            itemName: bucket.itemName,
+            itemCode: draftLine.itemCode,
+            quantity: String(consolidatedQty),
+            rate: String(unitPrice),
+            tax: String(gstPercent),
+            lead_time_days: leadDays,
+            ...(bucket.raw_material_id != null
+              ? { raw_material_id: Number(bucket.raw_material_id) }
+              : {}),
+            ...(bucket.pack_material_id != null
+              ? { pack_material_id: Number(bucket.pack_material_id) }
+              : {}),
+          },
+        ],
+      };
+
+      try {
+        const createResult = await createPurchaseOrder(poPayload);
+        if (!createResult.success || !createResult.data) {
+          addToast(
+            'error',
+            typeof createResult.error === 'string'
+              ? createResult.error
+              : (createResult.error as { message?: string })?.message ??
+                  'Failed to create consolidated purchase order'
+          );
+          return;
+        }
+
+        const backendId =
+          String(createResult.data.id ?? '').replace(/^PO-/, '') ||
+          String(createResult.data.id);
+
+        const byRequestId = new Map<string, typeof plansWithPrice>();
+        for (const plan of plansWithPrice) {
+          const arr = byRequestId.get(plan.request.id) ?? [];
+          arr.push(plan);
+          byRequestId.set(plan.request.id, arr);
+        }
+
+        const remainderCodes: string[] = [];
+
+        for (const [requestId, requestPlans] of byRequestId) {
+          const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === requestId) as
+            | {
+                items?: BackendPRItem[];
+                planningExtractedId?: number;
+                planningBatchId?: number | null;
+                priority?: string;
+                requiredByDate?: string | null;
+                notes?: string | null;
+                preferredVendor?: string | null;
+              }
+            | undefined;
+
+          const backendItemsForSplit = Array.isArray(prRow?.items) ? prRow!.items : [];
+          const lineEdits = requestPlans.map((p) => p.editRow);
+          const { releasedItems, remainingItems } = splitBackendPrItemsAfterPartialRelease(
+            backendItemsForSplit,
+            lineEdits,
+            lineEdits
+          );
+
+          const prUpd = await updateProcurementRequestApi(requestId, {
+            status: 'PO Draft',
+            items: releasedItems,
+          });
+          if (!prUpd.success) {
+            addToast(
+              'error',
+              typeof prUpd.error === 'string'
+                ? prUpd.error
+                : `Draft PO created but updating ${requestPlans[0]?.line.requestCode ?? 'request'} failed. Adjust manually.`
+            );
+            void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+            void invalidatePurchaseOrdersQueries();
+            return;
+          }
+
+          if (remainingItems.length > 0) {
+            if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+              addToast(
+                'warning',
+                `Cannot split remainder for ${requestPlans[0]?.line.requestCode ?? requestId}: missing planningExtractedId.`
+              );
+            } else {
+              const remainingRes = await createProcurementRequestApi({
+                planningExtractedId: prRow.planningExtractedId,
+                planningBatchId: prRow.planningBatchId ?? null,
+                priority: prRow.priority ?? 'Medium',
+                requiredByDate: prRow.requiredByDate ?? null,
+                notes: prRow.notes ?? null,
+                preferredVendor: prRow.preferredVendor ?? null,
+                items: remainingItems,
+              });
+              if (!remainingRes.success || !remainingRes.data) {
+                addToast(
+                  'error',
+                  typeof remainingRes.error === 'string'
+                    ? remainingRes.error
+                    : `Failed to create remainder PR for ${requestPlans[0]?.line.requestCode ?? requestId}.`
+                );
+              } else if (remainingRes.data.code) {
+                remainderCodes.push(remainingRes.data.code);
+              }
+            }
+          }
+        }
+
+        const newDraftPO: DraftPO = {
+          id: newDpoId,
+          dpoNumber: newDpoId,
+          requestId: primaryRequest.id,
+          requestCode: reference,
+          type: reqType,
+          vendor: vendorName,
+          vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+          status: 'Pending Approval',
+          createdDate: createdDateStr,
+          createdBy: 'Procurement — Admin',
+          paymentTerms: vendorMasterPaymentTerms || 'As per contract',
+          expectedDelivery: expectedDeliveryStr,
+          deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
+          vendorRating: 0,
+          alertMessage: `Consolidated draft PO (${consolidatedQty.toLocaleString('en-IN')} ${bucket.unit}) from ${requestCodes.join(', ')}${weekLabel ? ` · ${weekLabel}` : ''}.`,
+          alertType: 'success',
+          lineItems: [draftLine],
+          subtotal,
+          gstTotal: gstAmount,
+          grandTotal: lineTotal,
+          backendPoId: backendId,
+        };
+
+        setDraftPOs((prev) => [newDraftPO, ...prev]);
+
+        void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        void invalidatePurchaseOrdersQueries();
+
+        addToast(
+          'success',
+          `Draft PO ${newDpoId} created — ${consolidatedQty.toLocaleString('en-IN')} ${bucket.unit} from ${requestCodes.join(' + ')}${
+            remainderCodes.length > 0 ? `; remainders: ${remainderCodes.join(', ')}` : ''
+          }`
+        );
+
+        setTimeout(() => {
+          setMainTab('Procurement');
+          setSideSection('Draft POs');
+          const nextSearchParams = new URLSearchParams(searchParams);
+          nextSearchParams.set('tab', 'Procurement');
+          nextSearchParams.set('section', 'Draft POs');
+          setSearchParams(nextSearchParams, { replace: true });
+        }, 500);
+      } finally {
+        setReleasingWeekVendorBucketKey(null);
+      }
+    },
+    [
+      addToast,
+      backendPrArray,
+      draftPOs,
+      invalidatePurchaseOrdersQueries,
+      itemsListPm,
+      itemsListRm,
+      purchaseOrders,
+      queryClient,
+      quotes,
+      requests,
+      resolveOpenQtyForReleaseItem,
+      resolveRmPrimaryUnit,
+      searchParams,
+      setSearchParams,
+      vendors,
     ]
   );
 
@@ -5420,8 +5882,8 @@ const Procurement: React.FC = () => {
                           <h2 className="text-lg font-bold text-slate-900 mb-1">Procurement Requests</h2>
                           <p className="text-xs text-slate-500">
                             {requestTab === 'Week + Vendor'
-                              ? 'Consolidated view by vendor and ISO week (expected date)'
-                              : 'Manage and track all procurement requests'}
+                              ? 'Consolidated view by chosen vendor and ISO week (expected date)'
+                              : 'Item-by-item lines — vendor appears after preferred vendor is chosen'}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -5519,6 +5981,8 @@ const Procurement: React.FC = () => {
                             const req = requestsFromApi.find((r) => r.id === requestId);
                             if (req) setSelectedRequest(req);
                           }}
+                          onReleaseConsolidated={handleReleaseWeekVendorConsolidated}
+                          releasingBucketKey={releasingWeekVendorBucketKey}
                         />
                       ) : (() => {
                         const filteredRequests = procurementRequestsList.filter(req => {
@@ -5559,50 +6023,46 @@ const Procurement: React.FC = () => {
                           );
                         }
 
-                        const vendorGroupLabel = (req: ProcurementRequest) => {
-                          const pref = String(req.preferredVendor ?? '').trim();
-                          if (pref) return pref;
-                          const q = quotes.find((x) => x.requestId === req.id);
-                          const qv = String(q?.vendor ?? '').trim();
-                          return qv || 'Unassigned';
-                        };
+                        const itemLines = buildProcurementRequestItemLines(filteredRequests);
+                        const requestsById = new Map(filteredRequests.map((r) => [r.id, r]));
 
-                        const sortedRequests = [...filteredRequests].sort((a, b) => {
-                          const va = vendorGroupLabel(a).toLowerCase();
-                          const vb = vendorGroupLabel(b).toLowerCase();
-                          if (va !== vb) {
-                            if (va === 'unassigned') return 1;
-                            if (vb === 'unassigned') return -1;
-                            return va.localeCompare(vb);
-                          }
-                          return String(a.code ?? '').localeCompare(String(b.code ?? ''));
-                        });
+                        if (itemLines.length === 0) {
+                          return (
+                            <div className="text-center py-12">
+                              <p className="text-slate-500 text-sm">No request lines match the current filters.</p>
+                            </div>
+                          );
+                        }
 
-                        return sortedRequests.map((req, idx) => {
+                        return itemLines.map((line) => {
+                          const req = requestsById.get(line.requestId);
+                          if (!req) return null;
                           const today = new Date();
                           const daysLeft = computeRequestDaysUntilDue(req, today);
-                          const dueDateDisplay = formatDateWithIsoWeek(req.dueDate);
-                          const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
-                          const prefVendorDisplay =
-                            req.preferredVendor?.trim() ||
-                            firstQuoteForReq?.vendor?.trim() ||
-                            '—';
-                          const vendorGroup = prefVendorDisplay;
-                          const prevVendorGroup =
-                            idx > 0 ? vendorGroupLabel(sortedRequests[idx - 1]) : null;
-                          const showVendorHeader = idx === 0 || prevVendorGroup !== vendorGroup;
+                          const itemExpectedDisplay = formatDateWithIsoWeek(
+                            line.expectedDate || line.dueDate
+                          );
+                          const prefVendorDisplay = line.preferredVendor?.trim() || null;
+                          const lineType = line.type === 'PM' ? 'PM' : line.type === 'FG' ? 'FG' : 'RM';
+                          const unitLabel =
+                            line.unit ||
+                            (lineType === 'PM'
+                              ? 'PCS'
+                              : resolveRmPrimaryUnit(
+                                  line.raw_material_id != null ? Number(line.raw_material_id) : null,
+                                  line.itemCode,
+                                  ''
+                                ));
+                          const stockCheckGap = getStockCheckGapForItem(
+                            line.stockCheckStatus,
+                            line.stockCheckNotes,
+                            line.itemCode,
+                            line.itemName
+                          );
+                          const gapLineKey = line.lineKey;
 
                           return (
-                            <div key={`${vendorGroup}::${req.id}`} className="space-y-2">
-                              {showVendorHeader && (
-                                <div className="px-4 py-2.5 rounded-lg border border-indigo-200 bg-linear-to-r from-indigo-50 via-slate-50 to-indigo-50 flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-bold text-slate-900">{vendorGroup}</p>
-                                    <p className="text-[11px] text-slate-600">Vendor group</p>
-                                  </div>
-                                </div>
-                              )}
-                              <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                            <div key={line.lineKey} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                               {/* Card Header */}
                               <div className="px-5 py-3 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-slate-200 space-y-2">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -5610,9 +6070,9 @@ const Procurement: React.FC = () => {
                                     <span className="px-3 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
                                       {req.code}
                                     </span>
-                                    {req.batchId != null && req.batchId !== '' && (
+                                    {line.batchId != null && (
                                       <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200" title="Batch that raised this PR">
-                                        Batch #{req.batchId}
+                                        Batch #{line.batchId}
                                       </span>
                                     )}
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${req.type === 'RM'
@@ -5650,7 +6110,7 @@ const Procurement: React.FC = () => {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
-                                    <span>Expected {dueDateDisplay}</span>
+                                    <span>Expected {itemExpectedDisplay}</span>
                                     <span className={`font-bold ${daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
                                       }`}>
                                       {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`}
@@ -5682,116 +6142,144 @@ const Procurement: React.FC = () => {
                                 ) : null}
                               </div>
 
-                              {/* Card Body - Item Details Grid */}
+                              {/* Card Body - single item line */}
                               <div className="p-5">
-                                {req.items.map((item, itemIdx) => {
-                                  const detail = req.itemDetails?.[itemIdx];
-                                  const reqQtyNum = Number(detail?.reqQty ?? 0) || 0;
-                                  const lineType = detail?.type === 'PM' ? 'PM' : detail?.type === 'FG' ? 'FG' : 'RM';
-                                  const unitLabel =
-                                    detail?.unit ||
-                                    (lineType === 'PM'
-                                      ? 'PCS'
-                                      : resolveRmPrimaryUnit(
-                                          detail?.raw_material_id != null ? Number(detail.raw_material_id) : null,
-                                          detail?.itemCode,
-                                          ''
-                                        ));
-                                  const plannedPrice = Number(detail?.plannedPrice ?? 0) || 0;
-                                  const estValue = reqQtyNum * plannedPrice;
-                                  const leadRaw = detail?.leadTimeDays;
-                                  const leadDaysLabel =
-                                    typeof leadRaw === 'number' && Number.isFinite(leadRaw) ? `${leadRaw}d` : '—';
-                                  const itemExpectedDisplay = formatDateWithIsoWeek(
-                                    detail?.expectedDate || req.dueDate
-                                  );
-                                  return (
-                                    <div key={itemIdx} className="mb-4 last:mb-0">
-                                      <div className="flex items-start justify-between mb-3 gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                                            <span
-                                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                lineType === 'PM'
-                                                  ? 'bg-violet-100 text-violet-800 border border-violet-200'
-                                                  : lineType === 'FG'
-                                                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                                                    : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
-                                              }`}
-                                            >
-                                              {lineType}
-                                            </span>
-                                            <h4 className="font-bold text-slate-900 text-sm">{item}</h4>
-                                          </div>
-                                          <p className="text-xs text-slate-500 font-mono truncate">{detail?.itemCode || '—'}</p>
-                                        </div>
-                                      </div>
-
-                                      {/* Details Grid */}
-                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
-                                          <p className="font-semibold text-slate-900">{reqQtyNum.toLocaleString('en-IN')} {unitLabel}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                          <p className="font-semibold text-slate-900">
-                                            {detail?.moq
-                                              ? formatQtyWithPrimaryUnit(
-                                                  detail.moq,
-                                                  unitLabel,
-                                                  lineType
-                                                )
-                                              : '—'}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
-                                          <p className="font-semibold text-slate-900">{detail?.packSize || '—'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Planned ₹/unit</p>
-                                          <p className="font-semibold text-emerald-600">₹{plannedPrice.toLocaleString('en-IN')}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
-                                          <p className="font-semibold text-amber-600">₹{estValue.toLocaleString('en-IN')}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
-                                          <p className="font-semibold text-slate-900">{itemExpectedDisplay}</p>
-                                        </div>
-                                      </div>
-
-                                      {/* Additional Info Row */}
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3">
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Open PO</p>
-                                          <p className="font-semibold text-blue-600">{req.status === 'PO Released' ? '1' : '0'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">In-Transit</p>
-                                          <p className="font-semibold text-cyan-600">0</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                          <p className="font-semibold text-slate-900">{leadDaysLabel}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
-                                          <p className="font-semibold text-indigo-600 truncate" title={prefVendorDisplay}>
-                                            {prefVendorDisplay}
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      {/* Divider between items */}
-                                      {itemIdx < req.items.length - 1 && (
-                                        <div className="border-t border-slate-200 mt-4"></div>
-                                      )}
+                                <div className="flex items-start justify-between mb-3 gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                      <span
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                          lineType === 'PM'
+                                            ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                            : lineType === 'FG'
+                                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                              : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                        }`}
+                                      >
+                                        {lineType}
+                                      </span>
+                                      <h4 className="font-bold text-slate-900 text-sm">{line.itemName}</h4>
                                     </div>
-                                  );
-                                })}
+                                    <p className="text-xs text-slate-500 font-mono truncate">{line.itemCode || '—'}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.reqQty.toLocaleString('en-IN')} {unitLabel}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.moq
+                                        ? formatQtyWithPrimaryUnit(line.moq, unitLabel, lineType)
+                                        : '—'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
+                                    <p className="font-semibold text-slate-900">{line.packSize || '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Planned ₹/unit</p>
+                                    <p className="font-semibold text-emerald-600">
+                                      ₹{line.plannedPrice.toLocaleString('en-IN')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
+                                    <p className="font-semibold text-amber-600">
+                                      ₹{line.estValue.toLocaleString('en-IN')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
+                                    <p className="font-semibold text-slate-900">{itemExpectedDisplay}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3">
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Open PO</p>
+                                    <p className="font-semibold text-blue-600">{req.status === 'PO Released' ? '1' : '0'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">In-Transit</p>
+                                    <p className="font-semibold text-cyan-600">0</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.leadTimeDays != null && Number.isFinite(line.leadTimeDays)
+                                        ? `${line.leadTimeDays}d`
+                                        : '—'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
+                                    <p
+                                      className={`font-semibold truncate ${
+                                        prefVendorDisplay ? 'text-indigo-600' : 'text-slate-400 italic'
+                                      }`}
+                                      title={prefVendorDisplay ?? undefined}
+                                    >
+                                      {prefVendorDisplay ?? 'Not chosen — use Week + Vendor after assigning'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {stockCheckGap ? (
+                                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-xs text-amber-900">
+                                      <span className="font-semibold uppercase tracking-wide text-[10px] text-amber-800">
+                                        Stock check gap
+                                      </span>
+                                      <p className="mt-0.5 font-bold tabular-nums">
+                                        +{stockCheckGap.gapQty.toLocaleString('en-IN')} {unitLabel}
+                                        {stockCheckGap.consumptionQty != null ? (
+                                          <span className="font-normal text-amber-800 ml-2">
+                                            (consumption {stockCheckGap.consumptionQty.toLocaleString('en-IN')}{' '}
+                                            {unitLabel} since request)
+                                          </span>
+                                        ) : null}
+                                      </p>
+                                    </div>
+                                    {stockCheckGap.gapApproved ? (
+                                      <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        Gap approved
+                                      </span>
+                                    ) : stockCheckGap.canApprove ? (
+                                      <button
+                                        type="button"
+                                        disabled={approvingGapLineKey === gapLineKey}
+                                        onClick={async () => {
+                                          const auditLine = buildInventoryAuditLines([req]).find(
+                                            (l) =>
+                                              l.requestId === req.id &&
+                                              l.itemCode === line.itemCode &&
+                                              l.itemName === line.itemName
+                                          );
+                                          if (!auditLine) {
+                                            addToast('error', 'Could not resolve audit line for gap approval.');
+                                            return;
+                                          }
+                                          setApprovingGapLineKey(gapLineKey);
+                                          try {
+                                            await handleApproveInventoryAuditGap(auditLine);
+                                          } finally {
+                                            setApprovingGapLineKey(null);
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg border border-amber-400 bg-white text-amber-900 text-[11px] font-semibold hover:bg-amber-100 disabled:opacity-60"
+                                      >
+                                        {approvingGapLineKey === gapLineKey ? 'Approving…' : 'Approve gap'}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
 
                                 {/* Notes + planning context */}
                                 <div className="mt-4 space-y-2">
@@ -6143,7 +6631,6 @@ const Procurement: React.FC = () => {
                                     );
                                   })()}
                                 </div>
-                              </div>
                               </div>
                             </div>
                           );
@@ -8638,6 +9125,13 @@ const Procurement: React.FC = () => {
                           const row = raw.find((r) => lineMatches(r.itemName ?? r.name ?? ''));
                           return { vendor: po.vendorName ?? '', poNumber: po.poNumber ?? '', rate: row?.rate ?? row?.price ?? 0 };
                         });
+                        const modalStockCheckGap = getStockCheckGapForItem(
+                          req.stockCheckStatus,
+                          req.stockCheckNotes,
+                          item.itemCode,
+                          item.itemName
+                        );
+                        const modalGapLineKey = `${req.id}|${item.itemCode}|modal`;
                         return (
                           <div key={item.itemCode} className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
                             {/* Item Header */}
@@ -8691,7 +9185,58 @@ const Procurement: React.FC = () => {
                                     {formatDateWithIsoWeek(item.expectedDate || req.dueDate)}
                                   </p>
                                 </div>
+                                {modalStockCheckGap ? (
+                                  <div className="col-span-2">
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Stock check gap</p>
+                                    <p className="text-amber-700 font-bold tabular-nums">
+                                      +{modalStockCheckGap.gapQty.toLocaleString('en-IN')} {item.unit}
+                                    </p>
+                                  </div>
+                                ) : null}
                               </div>
+
+                              {modalStockCheckGap ? (
+                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs text-amber-900">
+                                    Warehouse reported a shortfall after stock check. Approve to add gap qty to this
+                                    request{modalStockCheckGap.consumptionQty != null
+                                      ? ` (consumption ${modalStockCheckGap.consumptionQty.toLocaleString('en-IN')} ${item.unit} in audit window)`
+                                      : ''}{' '}
+                                    and set inventory to the physical count.
+                                  </p>
+                                  {modalStockCheckGap.gapApproved ? (
+                                    <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      Gap approved
+                                    </span>
+                                  ) : modalStockCheckGap.canApprove ? (
+                                    <button
+                                      type="button"
+                                      disabled={approvingGapLineKey === modalGapLineKey}
+                                      onClick={async () => {
+                                        const auditLine = buildInventoryAuditLines([req]).find(
+                                          (l) =>
+                                            l.requestId === req.id &&
+                                            l.itemCode === item.itemCode &&
+                                            l.itemName === item.itemName
+                                        );
+                                        if (!auditLine) {
+                                          addToast('error', 'Could not resolve audit line for gap approval.');
+                                          return;
+                                        }
+                                        setApprovingGapLineKey(modalGapLineKey);
+                                        try {
+                                          await handleApproveInventoryAuditGap(auditLine);
+                                        } finally {
+                                          setApprovingGapLineKey(null);
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg border border-amber-400 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-60"
+                                    >
+                                      {approvingGapLineKey === modalGapLineKey ? 'Approving…' : 'Approve gap'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
 
                               {/* Vendor history for this RM */}
                               {(quoteHistory.length > 0 || poHistory.length > 0) && (

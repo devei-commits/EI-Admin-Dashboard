@@ -66,6 +66,11 @@ import {
   ItemsInvolvedReleaseBatchSplit,
   type ReleaseBatchSplitRow,
 } from '../components/planning/ItemsInvolvedReleaseBatchSplit';
+import { buildReleaseBatchSiblingItemRows } from '../lib/releaseBatchSiblingItems';
+import {
+  buildPlannedReleaseTargets,
+  datesMatchForProcurementMerge,
+} from '../lib/plannedReleaseTargets';
 import {
   formatPlanningProductFilterDisplay,
   mergeItemsInvolvedRows,
@@ -431,6 +436,19 @@ function buildPlannedGroupKey(vendorName: string, paymentTerms: string, leadTime
 function releaseExpectedDateFromLeadDays(leadDays: number): string {
   const days = Math.max(Number(leadDays) || 0, 14);
   return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+}
+
+function seedReleaseBatchExpectedDates(
+  rowKeys: string[],
+  leadDays: number,
+  prev: Record<string, string>
+): Record<string, string> {
+  const def = releaseExpectedDateFromLeadDays(leadDays);
+  const next = { ...prev };
+  for (const key of rowKeys) {
+    if (!String(next[key] ?? '').trim()) next[key] = def;
+  }
+  return next;
 }
 
 /** Match stored planned line to Items Involved row — avoid empty-string / missing-id false positives. */
@@ -860,6 +878,16 @@ type PlanningBatchSortColumn =
   | 'timeline'
   | 'relatedSo';
 
+/** After removing batch at `removedIndex`, shift sent_batch_indices down for later rows. */
+function remapSentBatchIndicesAfterRemove(sentIndices: number[], removedIndex: number): number[] {
+  return [...new Set(
+    sentIndices
+      .map(Number)
+      .filter((idx) => idx !== removedIndex)
+      .map((idx) => (idx > removedIndex ? idx - 1 : idx))
+  )].sort((a, b) => a - b);
+}
+
 function sortValueForPlanningBatchRow(row: PlanningBatchAllRow, col: PlanningBatchSortColumn): string | number {
   switch (col) {
     case 'batchProduct':
@@ -938,7 +966,7 @@ function mapItemsInvolvedApiRowsToDisplay(rows: ItemsInvolvedRow[]): ItemsInvolv
         : 100;
     const netDisplay = netNum >= 0 ? `+${fmtU(netNum)}` : `-${fmtU(Math.abs(netNum))}`;
     return {
-      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id}`,
+      id: `${row.type}-${row.raw_material_id ?? row.pack_material_id ?? row.code}`,
       name: row.name,
       code: row.code,
       category: row.type === 'PM' ? 'PM - Primary' : 'RM',
@@ -1555,14 +1583,16 @@ function ItemsReleasedSplitBadges({
   );
 }
 
-/** One row on /planning/batches: batch code is read-only; edit size (kg); click elsewhere opens detail. */
+/** One row on /planning/batches: Edit opens BOM editor; inline size (kg) when editable; row click opens detail. */
 function PlanningBatchTableRow({
   row,
   onOpenDetail,
+  onEditBatch,
   releaseSplit,
 }: {
   row: PlanningBatchAllRow;
   onOpenDetail: (row: PlanningBatchAllRow) => void;
+  onEditBatch: (row: PlanningBatchAllRow) => void;
   releaseSplit?: { rm: ItemsReleasedSplit; pm: ItemsReleasedSplit };
 }) {
   const { addToast } = useToast();
@@ -1574,8 +1604,14 @@ function PlanningBatchTableRow({
     setSizeKgStr(row.sizeKg != null ? String(row.sizeKg) : '');
   }, [row.id, row.batchCode, row.sizeKg]);
 
+  const batchEditable = row.editable !== false;
+
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!batchEditable) {
+      addToast('error', 'Batch is confirmed by Production and cannot be edited.');
+      return;
+    }
     const sizeNum = parseFloat(String(sizeKgStr).replace(/,/g, '').trim());
     if (!Number.isFinite(sizeNum) || sizeNum < 0) {
       addToast('error', 'Enter a valid size (kg)');
@@ -1587,8 +1623,9 @@ function PlanningBatchTableRow({
         sizeKg: sizeNum,
       });
       if (updated) {
-        addToast('success', 'Batch saved');
+        addToast('success', 'Batch size saved');
         await queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+        await queryClient.invalidateQueries({ queryKey: ['planning-batches', String(row.planningExtractedId)] });
       } else {
         addToast('error', 'Could not save batch');
       }
@@ -1615,16 +1652,42 @@ function PlanningBatchTableRow({
       <td className="px-4 py-3 text-sm">
         <div className="font-mono font-semibold text-gray-900">{row.batchCode?.trim() ? row.batchCode : '—'}</div>
         <div className="text-xs text-gray-500 mt-0.5">{row.productName ?? row.productCode ?? '—'}</div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenDetail(row);
-          }}
-          className="mt-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-800 underline"
-        >
-          View items ({totalBatchItems}) →
-        </button>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditBatch(row);
+            }}
+            title={
+              batchEditable
+                ? 'Edit BOM, size, units, and swap until Production confirms this batch'
+                : 'View only — Production has confirmed this batch'
+            }
+            className={`text-[11px] font-semibold underline ${
+              batchEditable
+                ? 'text-emerald-700 hover:text-emerald-800'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {batchEditable ? 'Edit batch' : 'View BOM'}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDetail(row);
+            }}
+            className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800 underline"
+          >
+            View items ({totalBatchItems}) →
+          </button>
+        </div>
+        {!batchEditable && row.productionBmrStatus ? (
+          <p className="text-[10px] text-rose-700 mt-1 font-medium">
+            Locked · Production {row.productionBmrStatus.replace(/_/g, ' ')}
+          </p>
+        ) : null}
         {releaseSplit ? (
           <ItemsReleasedSplitBadges split={releaseSplit} className="mt-1.5" />
         ) : null}
@@ -1651,14 +1714,15 @@ function PlanningBatchTableRow({
             step="0.01"
             value={sizeKgStr}
             onChange={(e) => setSizeKgStr(e.target.value)}
-            className="w-20 border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900"
+            disabled={!batchEditable}
+            className="w-20 border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
             aria-label="Size kg"
           />
           <span className="text-gray-500 font-medium">KG</span>
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !batchEditable}
             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             {saving ? '…' : 'Save'}
@@ -1672,6 +1736,7 @@ function PlanningBatchTableRow({
 /** Batches tab: list all planning batches. Row click → batch detail popup (items, stock, PR per shortfall). */
 function PlanningBatchesTab({
   onBatchClick,
+  onEditBatch,
   dateFilter,
   itemsInvolvedAll,
   procurementRequests,
@@ -1680,6 +1745,7 @@ function PlanningBatchesTab({
   packMaterialsList,
 }: {
   onBatchClick: (row: PlanningBatchAllRow) => void;
+  onEditBatch: (row: PlanningBatchAllRow) => void;
   dateFilter: { from: string; to: string };
   itemsInvolvedAll: ItemsInvolvedDisplayRow[];
   procurementRequests: ProcurementRequest[];
@@ -1687,6 +1753,8 @@ function PlanningBatchesTab({
   rawMaterialsList: RawMaterialRecord[];
   packMaterialsList: { id: string; code?: string; description?: string }[];
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
   const [sortColumn, setSortColumn] = useState<PlanningBatchSortColumn | null>('timeline');
@@ -1696,6 +1764,16 @@ function PlanningBatchesTab({
     queryFn: fetchAllBatches,
     enabled: true,
   });
+
+  const batchesSearchAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const st = (location.state ?? null) as { batchesSearch?: string } | null;
+    const q = String(st?.batchesSearch ?? '').trim();
+    if (!q || batchesSearchAppliedRef.current === q) return;
+    batchesSearchAppliedRef.current = q;
+    setSearchTerm(q);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   const toggleBatchSort = (column: PlanningBatchSortColumn) => {
     if (sortColumn === column) {
@@ -1793,7 +1871,9 @@ function PlanningBatchesTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Batches sent to production. Edit batch code and size (kg), then Save. Click a row (outside fields) to view items, stock, and raise PR for shortfalls.
+        Use <strong>Edit batch</strong> to change BOM, size, units, and swaps for any batch until Production confirms it
+        (sent to Production is fine — only Production confirmation locks edits). Quick-edit size (kg) inline when editable.
+        Click a row to view items, stock, and raise PR for shortfalls.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[240px] flex-1">
@@ -1868,6 +1948,7 @@ function PlanningBatchesTab({
                   key={`${row.planningExtractedId}-${row.id}`}
                   row={row}
                   onOpenDetail={onBatchClick}
+                  onEditBatch={onEditBatch}
                   releaseSplit={releaseSplitByBatchKey.get(`${row.planningExtractedId}-${row.id}`)}
                 />
               ))}
@@ -1968,8 +2049,6 @@ const Planning = () => {
     paymentTermsType: PaymentTermsStructuredType;
     advancePercent: string;
     leadTimeDays: number;
-    /** Required-by date sent to Procurement (`required_by_date` / Requests due date). */
-    expectedDate: string;
     /** Items List `payment_terms` JSON string when picked from a rate; cleared when user edits type/advance manually. */
     paymentTermsRaw: string | null;
   }>({
@@ -1981,12 +2060,13 @@ const Planning = () => {
     paymentTermsType: 'as_per_contract',
     advancePercent: '50',
     leadTimeDays: 0,
-    expectedDate: releaseExpectedDateFromLeadDays(0),
     paymentTermsRaw: null,
   });
   const [releaseToPlanningSaving, setReleaseToPlanningSaving] = useState(false);
   /** Per-batch release qty picks in Release to Planning modal (key: `${planningExtractedId}-${batchId}`). */
   const [releaseBatchPicks, setReleaseBatchPicks] = useState<Record<string, string>>({});
+  /** Per-batch required-by dates in Release to Planning modal (same keys as `releaseBatchPicks`). */
+  const [releaseBatchExpectedDates, setReleaseBatchExpectedDates] = useState<Record<string, string>>({});
   /** `release` = Add Planned Line / vendor release (updates Items Involved). `quotation` = Procurement quote ask only. */
   const [releaseModalIntent, setReleaseModalIntent] = useState<'release' | 'quotation'>('release');
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
@@ -2362,6 +2442,51 @@ const Planning = () => {
     planningBatches.length === 0 ||
     (selectedSOForBatch?.sentBatchIndices ?? []).some((x) => Number(x) === latestPlanningBatchIndex);
 
+  /** False once Production confirms the linked BMR (`bmr_status` past `draft`). */
+  const isSelectedBatchEditable = useMemo((): boolean => {
+    if (selectedBatchId == null) return true;
+    const fromList = (planningBatches as PlanningBatchRow[]).find(
+      (b) => Number(b.id) === Number(selectedBatchId)
+    );
+    if (fromList && typeof fromList.editable === 'boolean') return fromList.editable;
+    return true;
+  }, [selectedBatchId, planningBatches]);
+
+  const bomFieldsReadOnly = !isSelectedBatchEditable;
+
+  const getPlanningBatchEditableAtIndex = useCallback(
+    (batchIndex: number): boolean => {
+      const batchRow = (planningBatches as PlanningBatchRow[])[batchIndex];
+      if (batchRow && typeof batchRow.editable === 'boolean') return batchRow.editable;
+      return true;
+    },
+    [planningBatches]
+  );
+
+  /** Sent to planning/production but still editable until Production confirms the BMR. */
+  const isSentBatchIndexLocked = useCallback(
+    (batchIndex: number): boolean => {
+      const sent = selectedSOForBatch?.sentBatchIndices ?? [];
+      if (!sent.includes(batchIndex)) return false;
+      return !getPlanningBatchEditableAtIndex(batchIndex);
+    },
+    [selectedSOForBatch?.sentBatchIndices, getPlanningBatchEditableAtIndex]
+  );
+
+  const lastAppliedPreviewQtyRef = useRef<number | null>(null);
+  /** Keeps working batch when opening Plan Batches via Batches tab → Edit batch. */
+  const editBatchPreserveIdRef = useRef<number | null>(null);
+  const customBatchesRef = useRef(customBatches);
+  const batchPlanDirtyRef = useRef(false);
+  const persistBatchPlanRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistBatchPlanGenerationRef = useRef(0);
+  const schedulePersistBatchPlanRef = useRef<() => void>(() => {});
+  const previewInitializedForModalRef = useRef(false);
+
+  useEffect(() => {
+    customBatchesRef.current = customBatches;
+  }, [customBatches]);
+
   /** Selected batch detail — drives BOM (bomFormula/bomPackaging) for this batch */
   const { data: selectedBatchData } = useQuery({
     queryKey: ['planning-batch', planningIdForBatch, selectedBatchId],
@@ -2480,15 +2605,16 @@ const Planning = () => {
         setSelectedBatchId(Number(first.id));
       }
       // Content-equal guard: keep the same `customBatches` reference when sizes already match the backend.
-      // Without this, every `selectedBatchId` or `planningBatches` dep tick would create a new array ref and
-      // force downstream memos (pending / preview / gaps) to recompute, causing visible jitter in the modal.
-      const incoming = (planningBatches as PlanningBatchRow[]).map((b) => ({ sizeKg: Number(b.sizeKg ?? 500) }));
-      setCustomBatches((prev) => {
-        if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
-          return prev;
-        }
-        return incoming;
-      });
+      // Skip while the user has unsaved local edits — refetch must not wipe in-progress qty changes.
+      if (!batchPlanDirtyRef.current) {
+        const incoming = (planningBatches as PlanningBatchRow[]).map((b) => ({ sizeKg: Number(b.sizeKg ?? 500) }));
+        setCustomBatches((prev) => {
+          if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
+            return prev;
+          }
+          return incoming;
+        });
+      }
     }
   }, [
     planBatchesModalOpen,
@@ -2534,6 +2660,12 @@ const Planning = () => {
     }
     if (activeBatchTab !== 'batch-plan') return;
     if (!planningBatches || planningBatches.length === 0) return;
+    if (
+      editBatchPreserveIdRef.current != null &&
+      Number(editBatchPreserveIdRef.current) === Number(selectedBatchIdRef.current)
+    ) {
+      return;
+    }
     const sent = Array.isArray(selectedSOForBatch?.sentBatchIndices)
       ? (selectedSOForBatch!.sentBatchIndices as number[]).map(Number)
       : [];
@@ -2549,10 +2681,18 @@ const Planning = () => {
     const currentIdx = rows.findIndex((b) => Number(b.id) === Number(selectedBatchIdRef.current));
     const currentIsSent = currentIdx >= 0 && sent.includes(currentIdx);
     if (selectedBatchIdRef.current != null && !currentIsSent) return;
+    if (currentIdx >= 0 && currentIsSent && getPlanningBatchEditableAtIndex(currentIdx)) return;
     if (Number(target.id) !== Number(selectedBatchIdRef.current)) {
       setSelectedBatchId(Number(target.id));
     }
-  }, [planBatchesModalOpen, activeBatchTab, planningBatches, selectedSOForBatch?.id, selectedSOForBatch?.sentBatchIndices]);
+  }, [
+    planBatchesModalOpen,
+    activeBatchTab,
+    planningBatches,
+    selectedSOForBatch?.id,
+    selectedSOForBatch?.sentBatchIndices,
+    getPlanningBatchEditableAtIndex,
+  ]);
 
   // When selected batch data loads, sync BOM from that batch (batch-specific BOM)
   useEffect(() => {
@@ -2589,17 +2729,19 @@ const Planning = () => {
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
     if (sent.length === 0) return 0;
     return customBatches.reduce(
-      (sum, b, idx) => (sent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
+      (sum, b, idx) =>
+        sent.includes(idx) && isSentBatchIndexLocked(idx) ? sum + (Number(b.sizeKg) || 0) : sum,
       0
     );
     // Depend only on the sent-index array (primitive-identity stable when unchanged) and customBatches;
     // the whole `selectedSOForBatch` object is not needed and its identity churn was causing this memo
     // to recompute more often than necessary.
-  }, [customBatches, selectedSOForBatch?.sentBatchIndices]);
+  }, [customBatches, selectedSOForBatch?.sentBatchIndices, isSentBatchIndexLocked]);
 
-  // Sync preview qty to "remaining after sent batches" (falls back to order qty when nothing sent yet).
+  // Sync preview qty to "remaining after sent batches" — only before the Plan Batches modal opens.
+  // While editing in the modal, auto-sync would overwrite manual preview / unit inputs.
   useEffect(() => {
-    if (!selectedSOForBatch) return;
+    if (!selectedSOForBatch || planBatchesModalOpen) return;
     const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
     const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
@@ -2621,7 +2763,27 @@ const Planning = () => {
     selectedSOForBatch?.orderQty,
     selectedSOForBatch?.totalKg,
     sentKgForPlanBatches,
+    planBatchesModalOpen,
   ]);
+
+  // One-time preview seed when the Plan Batches modal opens (Edit batch may set this earlier).
+  useEffect(() => {
+    if (!planBatchesModalOpen || !selectedSOForBatch) {
+      if (!planBatchesModalOpen) previewInitializedForModalRef.current = false;
+      return;
+    }
+    if (previewInitializedForModalRef.current) return;
+    previewInitializedForModalRef.current = true;
+    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
+    if (orderQtyNum <= 0 || totalKgNum <= 0) return;
+    const kgPerUnit = totalKgNum / orderQtyNum;
+    if (remainingKg <= 1e-6) return;
+    const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : orderQtyNum;
+    setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+    lastAppliedPreviewQtyRef.current = null;
+  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg, sentKgForPlanBatches]);
 
   const kgPerUnitForPlanBatches = useMemo(() => {
     const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
@@ -2646,7 +2808,8 @@ const Planning = () => {
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
 
     const sentKg = customBatches.reduce(
-      (s, b, i) => (sent.includes(i) ? s + (Number(b.sizeKg) || 0) : s),
+      (s, b, i) =>
+        sent.includes(i) && isSentBatchIndexLocked(i) ? s + (Number(b.sizeKg) || 0) : s,
       0
     );
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
@@ -2676,11 +2839,11 @@ const Planning = () => {
     selectedSOForBatch?.sentBatchIndices,
     customBatches,
     feasibilityPreviewQty,
+    isSentBatchIndexLocked,
   ]);
 
   // When preview qty changes, reflect it once into the next active batch-units input in Batch Plan.
   // "Next active" = expanded batch if any; otherwise first unsent batch.
-  const lastAppliedPreviewQtyRef = useRef<number | null>(null);
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch) return;
     if (activeBatchTab !== 'batch-plan') return;
@@ -2692,20 +2855,22 @@ const Planning = () => {
       selectedBatchId != null && planningBatches.length > 0
         ? (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId))
         : -1;
-    // Target the selected batch only if it exists AND is unsent; otherwise the first unsent batch.
-    // CRITICAL: do NOT fall back to index 0 when there is no unsent batch. The old fallback wrote the
-    // preview qty into an already-SENT batch's sizeKg, which corrupted `sentKgForPlanBatches` and
-    // triggered a feedback loop with Effect A (preview ↔ sent-kg ping-pong = "Maximum update depth").
+    // Target the selected batch when unsent or still editable after send; otherwise first unsent batch.
+    // Locked sent batches are excluded so preview edits don't fight production-confirmed kg.
     let targetIdx = -1;
-    if (selIdx >= 0 && selIdx < customBatches.length && !sent.includes(selIdx)) {
+    const canSyncPreviewToIndex = (idx: number): boolean => {
+      if (idx < 0 || idx >= customBatches.length) return false;
+      if (!sent.includes(idx)) return true;
+      return getPlanningBatchEditableAtIndex(idx);
+    };
+    if (selIdx >= 0 && canSyncPreviewToIndex(selIdx)) {
       targetIdx = selIdx;
     } else {
       const firstUnsent = customBatches.findIndex((_, i) => !sent.includes(i));
       if (firstUnsent >= 0) targetIdx = firstUnsent;
     }
     if (targetIdx < 0 || targetIdx >= customBatches.length) return;
-    // Safety net — never overwrite a sent batch, even if the logic above missed a case.
-    if (sent.includes(targetIdx)) return;
+    if (!canSyncPreviewToIndex(targetIdx)) return;
 
     const nextUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
     if (lastAppliedPreviewQtyRef.current === nextUnits) return;
@@ -2722,6 +2887,10 @@ const Planning = () => {
         if (Math.abs(currentKg - newKg) < 1e-6) return prev;
         return prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: newKg } : b));
       });
+      if (getPlanningBatchEditableAtIndex(targetIdx)) {
+        batchPlanDirtyRef.current = true;
+        schedulePersistBatchPlanRef.current();
+      }
       setExpandedBatchIndex(targetIdx);
     } catch (e) {
       console.error('[Planning] preview qty → batch units sync failed', e);
@@ -2738,11 +2907,18 @@ const Planning = () => {
     planningBatches,
     kgPerUnitForPlanBatches,
     customBatches,
+    getPlanningBatchEditableAtIndex,
   ]);
 
   useEffect(() => {
     if (!planBatchesModalOpen) {
       lastAppliedPreviewQtyRef.current = null;
+      editBatchPreserveIdRef.current = null;
+      batchPlanDirtyRef.current = false;
+      if (persistBatchPlanRef.current) {
+        clearTimeout(persistBatchPlanRef.current);
+        persistBatchPlanRef.current = null;
+      }
     }
   }, [planBatchesModalOpen, selectedSOForBatch?.id]);
 
@@ -3243,6 +3419,127 @@ const Planning = () => {
     return Number(row?.sequence ?? selectedBatchPlanIndex + 1) || selectedBatchPlanIndex + 1;
   }, [planningBatches, selectedBatchPlanIndex]);
 
+  const schedulePersistBatchPlan = useCallback(() => {
+    if (!selectedSOForBatch) return;
+    batchPlanDirtyRef.current = true;
+    if (persistBatchPlanRef.current) {
+      clearTimeout(persistBatchPlanRef.current);
+    }
+    const generation = ++persistBatchPlanGenerationRef.current;
+    persistBatchPlanRef.current = setTimeout(() => {
+      void (async () => {
+        if (generation !== persistBatchPlanGenerationRef.current) return;
+        const batches = customBatchesRef.current;
+        try {
+          await updatePlanningExtracted(selectedSOForBatch.id, {
+            batchCount: batches.length,
+            customBatches: batches.length > 0 ? batches : undefined,
+          });
+          const saved = await createOrUpdatePlanningBatches(selectedSOForBatch.id, batches);
+          if (generation !== persistBatchPlanGenerationRef.current) return;
+          if (Array.isArray(saved) && saved.length > 0) {
+            queryClient.setQueryData(['planning-batches', selectedSOForBatch.id], saved);
+          }
+          queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+          queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+          queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+          if (generation === persistBatchPlanGenerationRef.current) {
+            batchPlanDirtyRef.current = false;
+          }
+        } catch (e) {
+          addToast('error', e instanceof Error ? e.message : 'Could not save batch plan');
+        }
+      })();
+    }, 500);
+  }, [selectedSOForBatch, queryClient, addToast]);
+
+  useEffect(() => {
+    schedulePersistBatchPlanRef.current = schedulePersistBatchPlan;
+  }, [schedulePersistBatchPlan]);
+
+  const updateBatchUnitsAtPlanIndex = useCallback(
+    (batchIndex: number, units: number) => {
+      if (!getPlanningBatchEditableAtIndex(batchIndex)) return;
+      const oq = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+      const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+      const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
+      if (kpu <= 0) return;
+      const sizeKg = Math.max(0, units) * kpu;
+      setCustomBatches((prev) => {
+        if (batchIndex < 0 || batchIndex >= prev.length) return prev;
+        return prev.map((b, i) => (i === batchIndex ? { ...b, sizeKg } : b));
+      });
+      schedulePersistBatchPlan();
+      if (batchIndex === selectedBatchPlanIndex) {
+        setFeasibilityPreviewQty(Math.max(0, Math.floor(units)));
+        lastAppliedPreviewQtyRef.current = null;
+      }
+    },
+    [
+      selectedSOForBatch?.orderQty,
+      selectedSOForBatch?.totalKg,
+      selectedBatchPlanIndex,
+      getPlanningBatchEditableAtIndex,
+      schedulePersistBatchPlan,
+    ]
+  );
+
+  const removeBatchAtPlanIndex = useCallback(
+    async (batchIndex: number) => {
+      if (!selectedSOForBatch) return;
+      if (!getPlanningBatchEditableAtIndex(batchIndex)) {
+        addToast('error', 'Batch is confirmed by Production and cannot be removed.');
+        return;
+      }
+      const newBatches = customBatchesRef.current.filter((_, i) => i !== batchIndex);
+      const newSent = remapSentBatchIndicesAfterRemove(
+        selectedSOForBatch.sentBatchIndices ?? [],
+        batchIndex
+      );
+      setCustomBatches(newBatches);
+      if (expandedBatchIndex === batchIndex) setExpandedBatchIndex(null);
+      else if (expandedBatchIndex !== null && expandedBatchIndex > batchIndex) {
+        setExpandedBatchIndex(expandedBatchIndex - 1);
+      }
+      batchPlanDirtyRef.current = true;
+      try {
+        await updatePlanningExtracted(selectedSOForBatch.id, {
+          batchCount: newBatches.length,
+          customBatches: newBatches.length > 0 ? newBatches : undefined,
+          sentBatchIndices: newSent,
+        });
+        const saved = await createOrUpdatePlanningBatches(selectedSOForBatch.id, newBatches);
+        setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: newSent } : prev));
+        if (Array.isArray(saved)) {
+          queryClient.setQueryData(['planning-batches', selectedSOForBatch.id], saved);
+          if (
+            selectedBatchId != null &&
+            !saved.some((b) => Number(b.id) === Number(selectedBatchId))
+          ) {
+            setSelectedBatchId(saved[0]?.id != null ? Number(saved[0].id) : null);
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+        queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+        queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+        batchPlanDirtyRef.current = false;
+        addToast('success', 'Batch removed');
+      } catch (e) {
+        addToast('error', e instanceof Error ? e.message : 'Could not remove batch');
+        queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+      }
+    },
+    [
+      selectedSOForBatch,
+      getPlanningBatchEditableAtIndex,
+      expandedBatchIndex,
+      selectedBatchId,
+      planningBatches,
+      queryClient,
+      addToast,
+    ]
+  );
+
   // Items Involved — from confirmed BOMs only (API); also used for tab stats
   const { data: itemsInvolvedRows = [], isLoading: itemsInvolvedLoading } = useQuery({
     queryKey: ['planning', 'items-involved'],
@@ -3576,7 +3873,7 @@ const Planning = () => {
   };
 
   const releaseBatchPickKey = (batch: PlanningBatchAllRow): string =>
-    `${batch.planningExtractedId}-${batch.id}`;
+    `${batch.planningExtractedId}-${batch.id ?? batch.sequence ?? batch.batchCode ?? 'batch'}`;
 
   /**
    * Split consolidated BOM requirement (items-involved totalRequired) across batches by
@@ -4005,6 +4302,51 @@ const Planning = () => {
     return slabs.sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.moq - b.moq || a.unitPrice - b.unitPrice);
   };
 
+  const buildReleaseBatchSiblingItemsMap = (item: ItemsInvolvedDisplayRow) => {
+    const batches = getReleaseSplitBatchesForItem(item);
+    const map: Record<string, ReturnType<typeof buildReleaseBatchSiblingItemRows>> = {};
+    for (const batch of batches) {
+      const key = releaseBatchPickKey(batch);
+      const peItems = itemsInvolvedRowsForPlanningExtracted(
+        itemsInvolvedAll,
+        Number(batch.planningExtractedId)
+      );
+      const materialLines = batchMaterialLineRefsFromRow(batch, rawMaterialsList, packMaterialsList);
+      map[key] = buildReleaseBatchSiblingItemRows({
+        batch,
+        materialLines,
+        peItems,
+        currentItemKey: item.id,
+        getReqThisBatch: (involved, b) => getItemRequiredInBatch(involved, b),
+        getPlannedQtyForBatch: (involved, b) =>
+          sumProcurementRequestQtyForItemByBatch(
+            involved,
+            Number(b.id),
+            procurementRequests,
+            rawMaterialsList
+          ),
+        getSublabel: (involved, line) => {
+          const rm =
+            line.type === 'RM'
+              ? findRmMasterRecord(line.raw_material_id, line.code, rawMaterialsList)
+              : undefined;
+          const category =
+            line.type === 'RM'
+              ? rm?.category || rm?.rmType || involved.category
+              : involved.category;
+          const vendor = getQuotationSlabsForItem(involved)[0]?.vendorName;
+          return [category, vendor].filter((s) => String(s ?? '').trim()).join(' · ');
+        },
+        getLeadDays: (involved) => {
+          const lead = getQuotationSlabsForItem(involved)[0]?.leadTimeDays ?? 0;
+          return lead > 0 ? lead : null;
+        },
+        procurementRequests,
+      });
+    }
+    return map;
+  };
+
   const openReleaseToPlanningModal = (
     item: ItemsInvolvedDisplayRow,
     opts?: { preferSurplusQty?: number; intent?: 'release' | 'quotation' },
@@ -4062,7 +4404,16 @@ const Planning = () => {
     }
     const parsedTerms = parsePaymentTermsString(first?.paymentTerms ?? 'As per contract');
     const isQuotationOpen = opts?.intent === 'quotation';
+    const openBatchRows = buildReleaseBatchSplitRows(item);
+    const openLeadDays = first?.leadTimeDays ?? 0;
     setReleaseBatchPicks({});
+    setReleaseBatchExpectedDates(
+      seedReleaseBatchExpectedDates(
+        openBatchRows.map((r) => r.key),
+        openLeadDays,
+        {}
+      )
+    );
     setReleaseToPlanningItem(item);
     setReleaseToPlanningForm({
       vendorId: isQuotationOpen ? null : (first?.vendorId ?? null),
@@ -4076,7 +4427,6 @@ const Planning = () => {
         (paymentTermsTypeRequiresAdvancePercent(parsedTerms.type) ? 50 : 0)
       ),
       leadTimeDays: first?.leadTimeDays ?? 0,
-      expectedDate: releaseExpectedDateFromLeadDays(first?.leadTimeDays ?? 0),
       paymentTermsRaw: first ? String(first.paymentTerms ?? '').trim() || null : null,
     });
   };
@@ -4086,34 +4436,6 @@ const Planning = () => {
       markMatchingFulfilledAsksSeen(planningQuotationAsks, item, prev)
     );
     openReleaseToPlanningModal(item, { intent: 'quotation' });
-  };
-
-  /** Build PR release lines — allows qty above BOM gap for vendor MOQ / intentional over-order. */
-  const buildPlannedReleaseTargets = (
-    formQty: number,
-    batchPicks: Record<string, string>,
-    slabMoq: number
-  ): { qty: number; planningBatchId: number | null }[] => {
-    const batchPickEntries = parseReleaseBatchPickEntries(batchPicks);
-    if (batchPickEntries.length === 0) {
-      return formQty > 0 ? [{ qty: formQty, planningBatchId: null }] : [];
-    }
-
-    const batchSum = batchPickEntries.reduce((s, e) => s + e.qty, 0);
-    const hasSubMoqBatch =
-      slabMoq > 0 && batchPickEntries.some((e) => e.qty > 0 && e.qty + 1e-4 < slabMoq);
-
-    // Per-batch PRs below vendor MOQ are invalid — consolidate when total order meets MOQ.
-    if (hasSubMoqBatch && formQty + 1e-4 >= slabMoq) {
-      return [{ qty: formQty, planningBatchId: null }];
-    }
-
-    // Main qty field intentionally exceeds batch split (e.g. order 2 kg when BOM split shows 0.2).
-    if (formQty > batchSum + 1e-4) {
-      return [{ qty: formQty, planningBatchId: null }];
-    }
-
-    return batchPickEntries.map((e) => ({ qty: e.qty, planningBatchId: e.batchId }));
   };
 
   const addPlannedLine = async (): Promise<boolean> => {
@@ -4144,12 +4466,6 @@ const Planning = () => {
     );
     if (advErr) {
       addToast('warning', advErr);
-      return false;
-    }
-
-    const requiredByDate = String(releaseToPlanningForm.expectedDate || '').trim().slice(0, 10);
-    if (!requiredByDate) {
-      addToast('warning', 'Pick expected date for procurement.');
       return false;
     }
 
@@ -4206,13 +4522,32 @@ const Planning = () => {
       return false;
     }
 
-    const releaseTargets = buildPlannedReleaseTargets(qty, releaseBatchPicks, slabMoq);
+    const releaseTargets = buildPlannedReleaseTargets({
+      formQty: qty,
+      batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
+      batchExpectedDates: releaseBatchExpectedDates,
+      slabMoq,
+      leadTimeDays,
+      fallbackDateFromLead: releaseExpectedDateFromLeadDays,
+    });
     if (releaseTargets.length === 0) {
       addToast('warning', 'Enter a release quantity.');
       return false;
     }
 
-    const buildRequestItem = (releaseQty: number): ProcurementRequestItem => ({
+    const batchPickEntries = parseReleaseBatchPickEntries(releaseBatchPicks);
+    if (batchPickEntries.length > 0) {
+      const missingDate = batchPickEntries.find((e) => {
+        const d = String(releaseBatchExpectedDates[e.key] ?? '').trim().slice(0, 10);
+        return !d;
+      });
+      if (missingDate) {
+        addToast('warning', 'Set expected date for each batch line with release qty.');
+        return false;
+      }
+    }
+
+    const buildRequestItem = (releaseQty: number, requiredByDate: string): ProcurementRequestItem => ({
       type: planningRow.itemType,
       code: planningRow.code || planningRow.name,
       name: planningRow.name,
@@ -4231,7 +4566,12 @@ const Planning = () => {
     });
 
     for (const target of releaseTargets) {
-      const newRequestItem = buildRequestItem(target.qty);
+      const requiredByDate = target.expectedDate;
+      if (!requiredByDate) {
+        addToast('warning', 'Set expected date for each batch line with release qty.');
+        return false;
+      }
+      const newRequestItem = buildRequestItem(target.qty, requiredByDate);
       const reqRes = await fetchProcurementRequests(peId);
       if (!reqRes.success || !reqRes.data) {
         addToast('error', typeof reqRes.error === 'string' ? reqRes.error : 'Failed to load procurement requests');
@@ -4242,9 +4582,11 @@ const Planning = () => {
       const existing = reqRes.data.find((r) => {
         const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
         const prBatchId = r.planningBatchId ?? null;
+        const prDue = String(r.requiredByDate ?? '').trim().slice(0, 10);
         return (
           sameVendor &&
           prBatchId === wantBatchId &&
+          datesMatchForProcurementMerge(prDue, requiredByDate) &&
           isProcurementRequestMergeable(r, purchaseOrders)
         );
       });
@@ -4259,20 +4601,25 @@ const Planning = () => {
         let merged: ProcurementRequestItem[];
         if (idx >= 0) {
           const old = existingItems[idx];
-          const qOld = Number(old.quantity_requested ?? 0) || 0;
-          const qNew = qOld + target.qty;
-          merged = [...existingItems];
-          merged[idx] = {
-            ...old,
-            required: (Number(old.required ?? 0) || 0) + target.qty,
-            shortage: (Number(old.shortage ?? 0) || 0) + target.qty,
-            quantity_requested: qNew,
-            line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
-            planned_unit_price: unitPrice,
-            required_by_date: requiredByDate,
-            lead_time_days: leadTimeDays > 0 ? leadTimeDays : old.lead_time_days,
-            moq_min: slabMoq > 0 ? slabMoq : old.moq_min,
-          };
+          const oldDue = String(old.required_by_date ?? existing.requiredByDate ?? '').trim().slice(0, 10);
+          if (oldDue && !datesMatchForProcurementMerge(oldDue, requiredByDate)) {
+            merged = [...existingItems, newRequestItem];
+          } else {
+            const qOld = Number(old.quantity_requested ?? 0) || 0;
+            const qNew = qOld + target.qty;
+            merged = [...existingItems];
+            merged[idx] = {
+              ...old,
+              required: (Number(old.required ?? 0) || 0) + target.qty,
+              shortage: (Number(old.shortage ?? 0) || 0) + target.qty,
+              quantity_requested: qNew,
+              line_notes: `Planned rate ₹${unitPrice.toFixed(2)} | Terms: ${paymentTerms} | Lead: ${leadTimeDays}d`,
+              planned_unit_price: unitPrice,
+              required_by_date: requiredByDate,
+              lead_time_days: leadTimeDays > 0 ? leadTimeDays : old.lead_time_days,
+              moq_min: slabMoq > 0 ? slabMoq : old.moq_min,
+            };
+          }
         } else {
           merged = [...existingItems, newRequestItem];
         }
@@ -4315,6 +4662,7 @@ const Planning = () => {
     setReleaseToPlanningItem(null);
     setReleaseModalIntent('release');
     setReleaseBatchPicks({});
+    setReleaseBatchExpectedDates({});
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
     return true;
   };
@@ -4385,6 +4733,7 @@ const Planning = () => {
     setReleaseToPlanningItem(null);
     setReleaseModalIntent('release');
     setReleaseBatchPicks({});
+    setReleaseBatchExpectedDates({});
     addToast(
       'success',
       'Quotation ask sent to Procurement → Quotations (quantity only). After Procurement records vendor and rates on Items List, use Release to Planning → Add Planned Line.'
@@ -4554,6 +4903,26 @@ const Planning = () => {
     setCustomBatches([]);
     setExpandedBatchIndex(null);
     setPlanBatchesModalOpen(true);
+  };
+
+  const handleEditBatchFromTab = (row: PlanningBatchAllRow) => {
+    const order = pisRows.find((o) => String(o.id) === String(row.planningExtractedId));
+    if (!order) {
+      addToast('error', 'Planning record not found. Refresh and try again.');
+      return;
+    }
+    editBatchPreserveIdRef.current = row.id;
+    setSelectedBatchId(row.id);
+    handlePlanBatches(order);
+    const oq = parseInt(order.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const tk = parseFloat(order.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
+    previewInitializedForModalRef.current = true;
+    if (kpu > 0 && row.sizeKg != null) {
+      const units = Math.max(0, Math.round(Number(row.sizeKg) / kpu));
+      setFeasibilityPreviewQty(units);
+      lastAppliedPreviewQtyRef.current = null;
+    }
   };
 
   const handleRaisePR = (order: SalesOrder, pmOnly: boolean = false) => {
@@ -4846,6 +5215,10 @@ const Planning = () => {
 
   const handleSaveBatchPlan = async () => {
     if (!selectedSOForBatch) return;
+    if (!isSelectedBatchEditable) {
+      addToast('error', 'This batch is confirmed by Production and cannot be edited.');
+      return;
+    }
     try {
       await updatePlanningExtracted(selectedSOForBatch.id, {
         batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
@@ -4870,6 +5243,10 @@ const Planning = () => {
 
   const handleConfirmBOM = async () => {
     if (!selectedSOForBatch) return;
+    if (!isSelectedBatchEditable) {
+      addToast('error', 'This batch is confirmed by Production and cannot be edited.');
+      return;
+    }
     if (!canConfirmBomPerBatch) {
       addToast('error', 'Add at least one raw material or packaging line to the BOM before confirming.');
       return;
@@ -4937,13 +5314,25 @@ const Planning = () => {
 
     try {
       if (selectedBatchId != null) {
-        const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, { rmLines, pmLines });
+        const sizeKg =
+          selectedBatchPlanIndex >= 0 && customBatches[selectedBatchPlanIndex]
+            ? Number(customBatches[selectedBatchPlanIndex].sizeKg)
+            : undefined;
+        const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, {
+          rmLines,
+          pmLines,
+          ...(sizeKg != null && Number.isFinite(sizeKg) ? { sizeKg } : {}),
+        });
         if (!saved) {
           addToast('error', 'Failed to save BOM for this batch');
           return;
         }
+        if (customBatches.length > 0) {
+          await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
+        }
         queryClient.invalidateQueries({ queryKey: ['planning-batch', selectedSOForBatch.id, selectedBatchId] });
         queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+        queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
       } else {
         const saved = await putBomOverride(selectedSOForBatch.id, { rmLines, pmLines });
         if (!saved) {
@@ -5066,19 +5455,33 @@ const Planning = () => {
       throw new Error(`B-${String(batchIndex + 1).padStart(2, '0')} is already sent to Production.`);
     }
 
+    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
+    const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    const batchesForSend =
+      kgPerUnit > 0
+        ? customBatches.map((b, i) =>
+            i === batchIndex ? { ...b, sizeKg: previewUnits * kgPerUnit } : b
+          )
+        : customBatches;
+    if (batchesForSend !== customBatches) {
+      setCustomBatches(batchesForSend);
+    }
+
     const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
     await updatePlanningExtracted(selectedSOForBatch.id, {
-      batchCount: customBatches.length || parseInt(numBatches, 10) || 0,
-      batchSizeKg: customBatches.length > 0 ? customBatches[0].sizeKg : (parseFloat(batchSizeKg) || 500),
+      batchCount: batchesForSend.length || parseInt(numBatches, 10) || 0,
+      batchSizeKg: batchesForSend.length > 0 ? batchesForSend[0].sizeKg : (parseFloat(batchSizeKg) || 500),
       plannedStartDate: plannedStartDate || undefined,
       productionLine: productionLine || undefined,
       bomStatus: 'Production Released',
-      customBatches: customBatches.length > 0 ? customBatches : undefined,
+      customBatches: batchesForSend.length > 0 ? batchesForSend : undefined,
       sentBatchIndices: mergedSent,
     });
 
-    if (customBatches.length > 0) {
-      await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
+    if (batchesForSend.length > 0) {
+      await createOrUpdatePlanningBatches(selectedSOForBatch.id, batchesForSend);
     }
 
     await syncBatchesFromPlanning().catch(() => { /* non-fatal — Production page also syncs on load */ });
@@ -5091,15 +5494,12 @@ const Planning = () => {
 
     setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
     const batchLabel = `B-${String(batchIndex + 1).padStart(2, '0')}`;
-    const nextBatchIndex = customBatches.findIndex((_, idx) => !mergedSent.includes(idx));
-    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
-    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-    const sentKg = customBatches.reduce(
+    const nextBatchIndex = batchesForSend.findIndex((_, idx) => !mergedSent.includes(idx));
+    const sentKg = batchesForSend.reduce(
       (sum, b, idx) => (mergedSent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
       0
     );
     const remainingKg = Math.max(0, orderTotalKg - sentKg);
-    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
     const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : 0;
     return { batchLabel, nextBatchIndex, remainingUnits };
   };
@@ -5266,7 +5666,7 @@ const Planning = () => {
   }, [bomFormula, bomPackaging, rawMaterialsList, resolveBomLineSgForSave]);
 
   const handleSaveBomSg = async () => {
-    if (!selectedSOForBatch || !canSendToProduction) return;
+    if (!selectedSOForBatch || !canSendToProduction || !isSelectedBatchEditable) return;
     const bomSgValue = Number(bomLevelSG);
     const allLinesHaveSg = bomFormula.every((item) => {
       const sg = Number(item.specificGravity);
@@ -5289,17 +5689,29 @@ const Planning = () => {
     setBomSgSaving(true);
     try {
       if (selectedBatchId != null) {
-        const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, { rmLines, pmLines });
+        const sizeKg =
+          selectedBatchPlanIndex >= 0 && customBatches[selectedBatchPlanIndex]
+            ? Number(customBatches[selectedBatchPlanIndex].sizeKg)
+            : undefined;
+        const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, {
+          rmLines,
+          pmLines,
+          ...(sizeKg != null && Number.isFinite(sizeKg) ? { sizeKg } : {}),
+        });
         if (!saved) {
-          addToast('error', 'Failed to save SG for this batch');
+          addToast('error', 'Failed to save BOM for this batch');
           return;
+        }
+        if (customBatches.length > 0) {
+          await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
         }
         queryClient.invalidateQueries({ queryKey: ['planning-batch', selectedSOForBatch.id, selectedBatchId] });
         queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+        queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
       } else {
         const saved = await putBomOverride(selectedSOForBatch.id, { rmLines, pmLines });
         if (!saved) {
-          addToast('error', 'Failed to save SG for this order');
+          addToast('error', 'Failed to save BOM for this order');
           return;
         }
         queryClient.invalidateQueries({ queryKey: ['planning-bom-override', selectedSOForBatch.id] });
@@ -5316,7 +5728,7 @@ const Planning = () => {
       queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
       setSelectedSOForBatch((prev) => (prev ? { ...prev, bomSpecificGravity: blendSg } : prev));
       setBomLevelSG(String(blendSg));
-      addToast('success', 'Specific gravity saved.');
+      addToast('success', 'BOM and batch units saved.');
     } catch (error) {
       addToast('error', error instanceof Error ? error.message : 'Failed to save specific gravity');
     } finally {
@@ -6457,9 +6869,9 @@ const Planning = () => {
                                 {cs.badge}
                               </span>
                               <div className="flex flex-wrap gap-0.5 mt-1.5">
-                                {cs.steps.map((s) => (
+                                {cs.steps.map((s, stepIdx) => (
                                   <span
-                                    key={s.label}
+                                    key={`${item.id}-pipeline-${stepIdx}-${s.label}`}
                                     className={`px-1 py-0.5 rounded text-[9px] font-medium border ${
                                       s.active
                                         ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
@@ -6594,6 +7006,7 @@ const Planning = () => {
         {activeMainTab === 'batches' && (
           <PlanningBatchesTab
             onBatchClick={setBatchForDetailModal}
+            onEditBatch={handleEditBatchFromTab}
             dateFilter={dateFilter}
             itemsInvolvedAll={itemsInvolvedAll}
             procurementRequests={procurementRequests}
@@ -6654,6 +7067,28 @@ const Planning = () => {
                   </table>
                 )}
               </div>
+              <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-gray-600">
+                  Edit batch size, BOM, and send to Production from the Batches tab.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstRow = rows[0];
+                    const searchHint =
+                      String(firstRow?.soNumber ?? '').trim() ||
+                      String(firstRow?.batchCode ?? '').trim() ||
+                      String(usedInModalItem.code ?? '').trim();
+                    setUsedInModalItem(null);
+                    navigate('/planning/batches', {
+                      state: searchHint ? { batchesSearch: searchHint } : undefined,
+                    });
+                  }}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                >
+                  Open Batches tab →
+                </button>
+              </div>
             </div>
           </div>
         );
@@ -6706,6 +7141,9 @@ const Planning = () => {
         const selectedVendorPartyId = vendorNameKey
           ? vendorClientsList.find((v) => (v.name || '').trim().toLowerCase() === vendorNameKey)?.id ?? ''
           : '';
+        const releaseBatchRows = buildReleaseBatchSplitRows(item);
+        const releaseBatchSiblingItemsByKey = buildReleaseBatchSiblingItemsMap(item);
+        const releaseBatchRowKeys = releaseBatchRows.map((r) => r.key);
         const applyReleaseVendorInput = (name: string) => {
           const trimmed = name.trim();
           if (!trimmed) {
@@ -6727,9 +7165,11 @@ const Planning = () => {
                 (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
               ),
               leadTimeDays: slabMatch.leadTimeDays,
-              expectedDate: releaseExpectedDateFromLeadDays(slabMatch.leadTimeDays),
               paymentTermsRaw: String(slabMatch.paymentTerms || '').trim() || null,
             }));
+            setReleaseBatchExpectedDates((prev) =>
+              seedReleaseBatchExpectedDates(releaseBatchRowKeys, slabMatch.leadTimeDays, prev)
+            );
             return;
           }
           const masterMatch = vendorClientsList.find(
@@ -6739,6 +7179,7 @@ const Planning = () => {
             const masterTerms = parsePaymentTermsString(masterMatch.paymentTerms || '');
             const masterLead = parseInt(String(masterMatch.leadTime || ''), 10);
             const masterId = parseInt(String(masterMatch.id), 10);
+            const nextLead = Number.isFinite(masterLead) ? masterLead : releaseToPlanningForm.leadTimeDays;
             setReleaseToPlanningForm((f) => ({
               ...f,
               vendorName: trimmed,
@@ -6748,13 +7189,15 @@ const Planning = () => {
                 masterTerms.advancePercent ||
                 (paymentTermsTypeRequiresAdvancePercent(masterTerms.type) ? 50 : 0)
               ),
-              leadTimeDays: Number.isFinite(masterLead) ? masterLead : f.leadTimeDays,
-              expectedDate: Number.isFinite(masterLead)
-                ? releaseExpectedDateFromLeadDays(masterLead)
-                : f.expectedDate,
+              leadTimeDays: nextLead,
               paymentTermsRaw: String(masterMatch.paymentTerms || '').trim() || null,
               ...(isQuotationOnlyModal ? { unitPrice: '' } : {}),
             }));
+            if (Number.isFinite(masterLead)) {
+              setReleaseBatchExpectedDates((prev) =>
+                seedReleaseBatchExpectedDates(releaseBatchRowKeys, masterLead, prev)
+              );
+            }
             return;
           }
           setReleaseToPlanningForm((f) => ({
@@ -6769,8 +7212,8 @@ const Planning = () => {
           setReleaseToPlanningItem(null);
           setReleaseModalIntent('release');
           setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
         };
-        const releaseBatchRows = buildReleaseBatchSplitRows(item);
         const releaseRmMaster =
           item.itemType === 'RM'
             ? findRmMasterRecord(item.raw_material_id, item.code, rawMaterialsList)
@@ -6785,6 +7228,12 @@ const Planning = () => {
             ? formatItemsInvolvedQty(n, 'RM', releaseRmMaster?.uom ?? item.unit)
             : formatItemsInvolvedQty(n, item.itemType, item.unit);
         const handleReleaseBatchPickChange = (key: string, value: string) => {
+          const qty = parseFloat(String(value ?? '').replace(/,/g, ''));
+          if (Number.isFinite(qty) && qty > 0) {
+            setReleaseBatchExpectedDates((prev) =>
+              seedReleaseBatchExpectedDates([key], releaseToPlanningForm.leadTimeDays, prev)
+            );
+          }
           setReleaseBatchPicks((prev) => {
             const next = { ...prev, [key]: value };
             setReleaseToPlanningForm((f) => ({
@@ -6794,12 +7243,22 @@ const Planning = () => {
             return next;
           });
         };
+        const handleReleaseBatchExpectedDateChange = (key: string, value: string) => {
+          setReleaseBatchExpectedDates((prev) => ({ ...prev, [key]: value }));
+        };
         const fillAllReleaseBatchRequired = () => {
           const next: Record<string, string> = {};
+          const keysToSeed: string[] = [];
           for (const row of releaseBatchRows) {
-            if (row.requiredPick > 0) next[row.key] = String(row.requiredPick);
+            if (row.requiredPick > 0) {
+              next[row.key] = String(row.requiredPick);
+              keysToSeed.push(row.key);
+            }
           }
           setReleaseBatchPicks(next);
+          setReleaseBatchExpectedDates((prev) =>
+            seedReleaseBatchExpectedDates(keysToSeed, releaseToPlanningForm.leadTimeDays, prev)
+          );
           setReleaseToPlanningForm((f) => ({
             ...f,
             qty: releaseBatchPicksToFormQtyStr(item, next),
@@ -6807,10 +7266,14 @@ const Planning = () => {
         };
         const clearReleaseBatchPicks = () => {
           setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
         };
         const applyVendorSlabPick = (s: (typeof slabs)[number]) => {
           const p = parsePaymentTermsString(s.paymentTerms || '');
           setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates((prev) =>
+            seedReleaseBatchExpectedDates(releaseBatchRowKeys, s.leadTimeDays, prev)
+          );
           setReleaseToPlanningForm((f) => {
             const currentQty = Number(f.qty) || 0;
             const bumpedQty = s.moq > 0 ? Math.max(currentQty, s.moq) : currentQty;
@@ -6833,7 +7296,6 @@ const Planning = () => {
                 (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
               ),
               leadTimeDays: s.leadTimeDays,
-              expectedDate: releaseExpectedDateFromLeadDays(s.leadTimeDays),
               paymentTermsRaw: String(s.paymentTerms || '').trim() || null,
             };
           });
@@ -6841,6 +7303,7 @@ const Planning = () => {
         const fillReleaseQtyToMoq = () => {
           if (!(slabMoqModal > 0)) return;
           setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
           setReleaseToPlanningForm((f) => ({
             ...f,
             qty: formatReleasePickQty(slabMoqModal),
@@ -6848,6 +7311,7 @@ const Planning = () => {
         };
         const handleReleaseFormQtyChange = (value: string) => {
           setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
           setReleaseToPlanningForm((f) => ({ ...f, qty: value }));
         };
 
@@ -6895,15 +7359,18 @@ const Planning = () => {
                 <ItemsInvolvedReleaseBatchSplit
                   rows={releaseBatchRows}
                   picks={releaseBatchPicks}
+                  expectedDates={releaseBatchExpectedDates}
                   pickUnitLabel={releasePickUnitLabel}
                   requiredUnitLabel={releaseRequiredUnitLabel}
                   moqMin={slabMoqModal > 0 ? slabMoqModal : undefined}
                   formatRequired={(kg) => qtyFmt(kg)}
                   formatPick={formatReleasePickQty}
                   onPickChange={handleReleaseBatchPickChange}
+                  onExpectedDateChange={handleReleaseBatchExpectedDateChange}
                   onFillAllRequired={fillAllReleaseBatchRequired}
                   onFillMoq={slabMoqModal > 0 ? fillReleaseQtyToMoq : undefined}
                   onClearPicks={clearReleaseBatchPicks}
+                  siblingItemsByBatchKey={releaseBatchSiblingItemsByKey}
                 />
                 <div className={`grid grid-cols-1 gap-4 xl:gap-5 ${isQuotationOnlyModal ? 'max-w-xl mx-auto' : 'xl:grid-cols-2'}`}>
                   {!isQuotationOnlyModal && (
@@ -7282,28 +7749,8 @@ const Planning = () => {
                       <div>
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
                         <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlanningForm.leadTimeDays} days</div>
-                      </div>
-                      <div className="min-w-0 sm:col-span-2">
-                        <label
-                          htmlFor="release-expected-date"
-                          className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1"
-                        >
-                          Expected date
-                        </label>
-                        <input
-                          id="release-expected-date"
-                          type="date"
-                          value={releaseToPlanningForm.expectedDate}
-                          onChange={(e) =>
-                            setReleaseToPlanningForm((f) => ({
-                              ...f,
-                              expectedDate: e.target.value,
-                            }))
-                          }
-                          className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
-                        />
                         <p className="text-[10px] text-slate-500 mt-1 leading-snug">
-                          Shown in Procurement → Requests as required-by date for the team.
+                          Expected date is set per batch line above (or defaults from lead time when no batch split).
                         </p>
                       </div>
                     </div>
@@ -7404,9 +7851,11 @@ const Planning = () => {
                                       (paymentTermsTypeRequiresAdvancePercent(p.type) ? 50 : 0)
                                     ),
                                     leadTimeDays: r.leadTimeDays,
-                                    expectedDate: releaseExpectedDateFromLeadDays(r.leadTimeDays),
                                     paymentTermsRaw: String(r.paymentTerms || '').trim() || null,
                                   }));
+                                  setReleaseBatchExpectedDates((prev) =>
+                                    seedReleaseBatchExpectedDates(releaseBatchRowKeys, r.leadTimeDays, prev)
+                                  );
                                 }}
                                 className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
                               >
@@ -8056,6 +8505,25 @@ const Planning = () => {
                 </button>
               </div>
 
+              {!isSelectedBatchEditable ? (
+                <div
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+                  role="status"
+                >
+                  This batch is <strong>confirmed by Production</strong> and is view-only. Quantities are fixed once
+                  manufacturing starts.
+                </div>
+              ) : selectedBatchPlanIndex >= 0 &&
+                (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex) ? (
+                <div
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                  role="status"
+                >
+                  This batch is <strong>sent to Production</strong> but still editable here until Production confirms
+                  the BMR. Use BOM Editor, Batch Plan, or Swap — changes save automatically for size/qty.
+                </div>
+              ) : null}
+
               {/* Working batch — single context for BOM Editor, Batch Plan, and Swap / Add */}
               <div className="flex items-center gap-2 flex-wrap py-3 -mx-6 px-6 border-b border-gray-100 bg-gray-50/50">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Working batch</span>
@@ -8063,6 +8531,7 @@ const Planning = () => {
                   <select
                     value={selectedBatchId != null ? String(selectedBatchId) : ''}
                     onChange={(e) => {
+                      editBatchPreserveIdRef.current = null;
                       const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
                       setSelectedBatchId(Number.isNaN(v) ? null : v);
                     }}
@@ -8221,11 +8690,12 @@ const Planning = () => {
                           type="number"
                           min={1}
                           value={feasibilityPreviewQty || ''}
+                          disabled={!isSelectedBatchEditable}
                           onChange={(e) => {
                             const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
                             setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
                           }}
-                          className="w-24 border border-gray-300 bg-white text-gray-900 px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          className="w-24 border border-gray-300 bg-white text-gray-900 px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
                         />
                         <span className="text-[11px] font-semibold text-gray-500">units</span>
                       </div>
@@ -8408,17 +8878,6 @@ const Planning = () => {
                         addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
                       }
                     };
-                    const removeBatch = (idx: number) => {
-                      setCustomBatches(customBatches.filter((_, i) => i !== idx));
-                      if (expandedBatchIndex === idx) setExpandedBatchIndex(null);
-                      else if (expandedBatchIndex !== null && expandedBatchIndex > idx) setExpandedBatchIndex(expandedBatchIndex - 1);
-                    };
-                    /** Update batch units locally; over-production / buffer batches may exceed SO qty. */
-                    const updateBatchUnits = (idx: number, units: number) => {
-                      const sizeKg = units * kgPerUnit;
-                      setCustomBatches(customBatches.map((b, i) => (i === idx ? { ...b, sizeKg } : b)));
-                    };
-
                     /** Per-batch requirements in BATCH BREAKDOWN: use that batch row's own BOM copy. */
                     const getBatchRmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
                       const rmLines = Array.isArray(batchRow?.rmLines) ? batchRow.rmLines : [];
@@ -8540,20 +8999,23 @@ const Planning = () => {
                               const isExpanded = expandedBatchIndex === originalIndex;
                               const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                               const isSent = sentBatchIndices.includes(originalIndex);
+                              const isLockedSent = isSent && isSentBatchIndexLocked(originalIndex);
                               const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
                               const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
                               const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
                               return (
-                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
                                   <div className="flex items-center gap-3 p-4">
                                     {isSent && (
-                                      <span className="shrink-0 text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">Sent</span>
+                                      <span className={`shrink-0 text-xs font-semibold px-2 py-1 rounded ${isLockedSent ? 'text-gray-500 bg-gray-200' : 'text-amber-800 bg-amber-100'}`}>
+                                        {isLockedSent ? 'Sent' : 'Sent · editable'}
+                                      </span>
                                     )}
                                     <div
                                       className="flex-1 flex items-center gap-4 cursor-pointer"
                                       onClick={() => setExpandedBatchIndex(isExpanded ? null : originalIndex)}
                                     >
-                                      <span className={`text-sm font-bold px-3 py-1 rounded-md ${isSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
+                                      <span className={`text-sm font-bold px-3 py-1 rounded-md ${isLockedSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
                                         B-{String(sequence).padStart(2, '0')}
                                       </span>
                                       {row?.batchCode && (
@@ -8571,23 +9033,23 @@ const Planning = () => {
                                         value={kgPerUnit > 0 ? Math.round(batch.sizeKg / kgPerUnit) : batch.sizeKg}
                                         onChange={(e) => {
                                           const units = parseFloat(e.target.value) || 0;
-                                          updateBatchUnits(originalIndex, units);
+                                          updateBatchUnitsAtPlanIndex(originalIndex, units);
                                         }}
-                                        disabled={isSent}
+                                        disabled={!getPlanningBatchEditableAtIndex(originalIndex)}
                                         className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
                                         min={0}
 
                                       />
                                       <span className="text-xs font-semibold text-gray-600">units</span>
-                                      {!isSent && (
+                                      {getPlanningBatchEditableAtIndex(originalIndex) ? (
                                         <button
                                           type="button"
-                                          onClick={() => removeBatch(originalIndex)}
+                                          onClick={() => void removeBatchAtPlanIndex(originalIndex)}
                                           className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
                                         >
                                           <X size={14} />
                                         </button>
-                                      )}
+                                      ) : null}
                                     </div>
                                   </div>
 
@@ -8689,7 +9151,7 @@ const Planning = () => {
                                 const seq = Number(row.sequence) || displayIdx + 1;
                                 const sent = selectedSOForBatch?.sentBatchIndices ?? [];
                                 const isSent = sent.includes(originalIndex);
-                                const sk = Number(row.sizeKg) || 0;
+                                const sk = Number(customBatches[originalIndex]?.sizeKg ?? row.sizeKg) || 0;
                                 const u =
                                   kgPerUnitForPlanBatches > 0 ? sk / kgPerUnitForPlanBatches : sk;
                                 return (
@@ -8792,7 +9254,9 @@ const Planning = () => {
                             value={bomLevelSG}
                             onChange={(e) => setBomLevelSG(e.target.value)}
                             placeholder="1.00"
-                            className="no-number-spinner w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            readOnly={bomFieldsReadOnly}
+                            disabled={bomFieldsReadOnly}
+                            className="no-number-spinner w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
                             title="Default specific gravity for new RM lines (vs water)"
                           />
                           <span className="text-xs text-gray-500">vs water</span>
@@ -8839,8 +9303,10 @@ const Planning = () => {
                                 }
                                 onChange={(e) => updateBomLineSg(idx, e.target.value)}
                                 placeholder="1"
+                                readOnly={bomFieldsReadOnly}
+                                disabled={bomFieldsReadOnly}
                                 title="Specific gravity vs water (for L volume)"
-                                className="no-number-spinner w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="no-number-spinner w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
                               />
                             </div>
                             <input
@@ -8848,12 +9314,12 @@ const Planning = () => {
                               value={item.percentage}
                               onChange={(e) => { const updated = [...bomFormula]; updated[idx] = { ...item, percentage: parseFloat(e.target.value) }; setBomFormula(updated); }}
                               step="0.1"
-                              readOnly={canSendToProduction}
-                              disabled={canSendToProduction}
-                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                              readOnly={bomFieldsReadOnly}
+                              disabled={bomFieldsReadOnly}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
                             />
                             <span className="text-sm font-semibold text-gray-600">%</span>
-                            {!canSendToProduction && (
+                            {!bomFieldsReadOnly && (
                               <button onClick={() => setBomFormula(bomFormula.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
                             )}
                           </div>
@@ -8861,7 +9327,7 @@ const Planning = () => {
                         );
                       })}
                     </div>
-                    {!canSendToProduction && (
+                    {!bomFieldsReadOnly && (
                       <button className="mt-4 text-sm font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
                         <span>↔</span>Swap RM in Swap panel
                       </button>
@@ -8884,12 +9350,12 @@ const Planning = () => {
                               value={item.value}
                               onChange={(e) => { const updated = [...bomPackaging]; updated[idx] = { ...item, value: parseFloat(e.target.value) }; setBomPackaging(updated); }}
                               step="0.1"
-                              readOnly={canSendToProduction}
-                              disabled={canSendToProduction}
-                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${canSendToProduction ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                              readOnly={bomFieldsReadOnly}
+                              disabled={bomFieldsReadOnly}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
                             />
                             <span className="text-sm font-semibold text-gray-600">Qty/unit</span>
-                            {!canSendToProduction && (
+                            {!bomFieldsReadOnly && (
                               <button onClick={() => setBomPackaging(bomPackaging.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
                             )}
                           </div>
@@ -8898,7 +9364,11 @@ const Planning = () => {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-200">
-                    {!canSendToProduction ? (
+                    {bomFieldsReadOnly ? (
+                      <span className="px-4 py-2 rounded-lg text-sm font-semibold text-rose-900 bg-rose-50 border border-rose-200">
+                        Locked by Production — view only
+                      </span>
+                    ) : !canSendToProduction ? (
                       (() => {
                         const allLinesSgOk = bomFormula.every((item) => {
                           const sg = Number(item.specificGravity);
@@ -8935,7 +9405,7 @@ const Planning = () => {
                           disabled={bomSgSaving}
                           className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {bomSgSaving ? 'Saving SG…' : 'Save SG'}
+                          {bomSgSaving ? 'Saving…' : 'Save BOM'}
                         </button>
                       </div>
                     )}
@@ -9008,7 +9478,9 @@ const Planning = () => {
                                   step="0.01"
                                   value={item.specificGravity ?? 1}
                                   onChange={(e) => updateBomLineSg(idx, e.target.value)}
-                                  className="no-number-spinner w-24 min-w-[6rem] px-2 py-1.5 text-sm border border-gray-300 rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                  readOnly={bomFieldsReadOnly}
+                                  disabled={bomFieldsReadOnly}
+                                  className={`no-number-spinner w-24 min-w-[6rem] px-2 py-1.5 text-sm border rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
                                   title="Specific gravity vs water"
                                 />
                               </div>
@@ -9020,7 +9492,9 @@ const Planning = () => {
                                   step="any"
                                   value={item.percentage ?? 0}
                                   onChange={(e) => updateSwapLinePct(idx, e.target.value)}
-                                  className="w-[72px] px-2 py-1.5 text-sm border border-gray-300 rounded-md text-right focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                  readOnly={bomFieldsReadOnly}
+                                  disabled={bomFieldsReadOnly}
+                                  className={`w-[72px] px-2 py-1.5 text-sm border rounded-md text-right focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
                                 />
                               </div>
                               <div className="text-xs text-gray-600 shrink-0 min-w-[100px]">
@@ -9029,6 +9503,7 @@ const Planning = () => {
                               </div>
                               <button
                                 type="button"
+                                disabled={bomFieldsReadOnly}
                                 onClick={() => {
                                   if (swapSourceIndex === idx) {
                                     setSwapSourceIndex(null);
@@ -9037,7 +9512,7 @@ const Planning = () => {
                                     updateSwapLinePct(idx, String(item.percentage ?? 0));
                                   }
                                 }}
-                                className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shrink-0 ${isActive ? 'bg-purple-600 text-white hover:bg-purple-700' : 'text-purple-700 bg-purple-100 hover:bg-purple-200'}`}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${isActive ? 'bg-purple-600 text-white hover:bg-purple-700' : 'text-purple-700 bg-purple-100 hover:bg-purple-200'}`}
                               >
                                 {isActive ? 'Selected' : 'Swap'}
                               </button>
@@ -9060,6 +9535,7 @@ const Planning = () => {
                             type="text"
                             placeholder="Search by RM name, INCI, or SKU code…"
                             value={swapRmSearch}
+                            disabled={bomFieldsReadOnly}
                             onChange={(e) => {
                               const v = e.target.value;
                               setSwapRmSearch(v);
@@ -9068,7 +9544,7 @@ const Planning = () => {
                             onFocus={() => {
                               if (swapRmSearch.trim().length >= 2) setSwapRmSuggestionsOpen(true);
                             }}
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
                             autoComplete="off"
                           />
                           {swapRmSuggestionsOpen && (swapRmSearchLoading || swapRmSearch.trim().length >= 2) && (
@@ -9173,8 +9649,8 @@ const Planning = () => {
                           Item group alternatives
                         </p>
                       )}
-                      {swapCategories.map((category) => (
-                        <div key={`${category.code || category.name}`}>
+                      {swapCategories.map((category, catIdx) => (
+                        <div key={`swap-cat-${catIdx}-${category.code || category.name || 'group'}`}>
                           <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
                             {category.name}
                             {category.code ? (

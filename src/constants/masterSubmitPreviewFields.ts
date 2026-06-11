@@ -1,6 +1,5 @@
 import { fieldDefs, type MasterPreviewSectionDef } from '../utils/masterSubmitPreview';
 import { PM_QUALITY_SPEC_FIELD_IDS, PM_QUALITY_SPEC_FIELD_LABELS } from './pmQualitySpecFields';
-import { RM_QUALITY_SPEC_FIELD_IDS, RM_QUALITY_SPEC_FIELD_LABELS } from './rmQualitySpecFields';
 
 export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
@@ -117,13 +116,19 @@ export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
     title: 'Quality Specifications',
     fields: fieldDefs(
-      ['arNumbers', 'coaRequired', 'acceptanceSpecMin', 'acceptanceSpecMax', ...RM_QUALITY_SPEC_FIELD_IDS],
+      [
+        'coaRequired',
+        'acceptanceSpecMin',
+        'acceptanceSpecMax',
+        'rmQualitySpecRows',
+        'rmQualitySubSpecRowsByPath',
+      ],
       {
-        arNumbers: 'AR Numbers',
         coaRequired: 'COA Required',
         acceptanceSpecMin: 'Acceptance Spec (MIN)',
         acceptanceSpecMax: 'Acceptance Spec (MAX)',
-        ...RM_QUALITY_SPEC_FIELD_LABELS,
+        rmQualitySpecRows: 'Common quality specs (tabular)',
+        rmQualitySubSpecRowsByPath: 'Sub-category quality specs (tabular)',
       }
     ),
   },

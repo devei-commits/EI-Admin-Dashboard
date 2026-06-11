@@ -4,17 +4,36 @@ import {
   normalizeRmSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
+import { cloneRmQualitySpecTableDefaults } from '../constants/rmQualitySpecTableDefaults';
+import {
+  cloneRmQualitySubSpecTableDefaults,
+  hasRmQualitySubSpecDefaults,
+  rmQualitySubSpecPathKey,
+} from '../constants/rmQualitySubSpecTableDefaults';
 import {
   RM_QUALITY_SPEC_FIELD_DEFS,
+  RM_QUALITY_SPEC_FIELD_LABELS,
   RM_QUALITY_SPEC_LEGACY_FLAT_IDS,
-  type RmBulkFunctionalCategory,
-  type RmQualitySpecFieldDef,
 } from '../constants/rmQualitySpecFields';
+import {
+  createEmptyQualitySpecRow,
+  createQualitySpecAttachment,
+  type QualitySpecAttachment,
+  type QualitySpecTableRow,
+} from '../types/qualitySpecTable';
 
 export type RmQualitySpecContext = {
   subCategory: string;
   optionalRmSubCategory: string;
   optionalRmSubSubCategory?: string;
+};
+
+export type RmQualitySpecResolvedContext = {
+  isBulkFunctional: boolean;
+  functionalCategory: string;
+  functionalSub: string;
+  categoryDisplayLabel: string;
+  subSpecPathKey: string;
 };
 
 function normSub(raw: string): string {
@@ -24,86 +43,189 @@ function normSub(raw: string): string {
     .replace(/\s+/g, ' ');
 }
 
-export type RmQualitySpecResolvedContext = {
-  isBulkFunctional: boolean;
-  functionalCategory: RmBulkFunctionalCategory | '';
-  functionalSub: string;
-  functionalSubNorm: string;
-};
-
 export function resolveRmQualitySpecContext(ctx: RmQualitySpecContext): RmQualitySpecResolvedContext {
   const cat = normalizeRmSubCategoryForSelect(ctx.subCategory);
   const isBulk = cat === 'Bulk raw materials';
   const functionalCategory =
-    (normalizeRmDetailSubCategoryKey(ctx.optionalRmSubCategory) ||
-      normalizeRmDetailSubCategoryForSelect(ctx.subCategory, ctx.optionalRmSubCategory) ||
-      String(ctx.optionalRmSubCategory ?? '').trim()) as RmBulkFunctionalCategory | '';
+    normalizeRmDetailSubCategoryKey(ctx.optionalRmSubCategory) ||
+    normalizeRmDetailSubCategoryForSelect(ctx.subCategory, ctx.optionalRmSubCategory) ||
+    String(ctx.optionalRmSubCategory ?? '').trim();
   const functionalSub =
     normalizeRmSubSubCategoryForSelect(ctx.optionalRmSubCategory, ctx.optionalRmSubSubCategory) ||
     String(ctx.optionalRmSubSubCategory ?? '').trim();
+
+  const categoryDisplayLabel = functionalCategory || 'Skin Care';
 
   return {
     isBulkFunctional: isBulk && Boolean(functionalCategory),
     functionalCategory,
     functionalSub,
-    functionalSubNorm: normSub(functionalSub),
+    categoryDisplayLabel,
+    subSpecPathKey:
+      functionalCategory && functionalSub
+        ? rmQualitySubSpecPathKey(functionalCategory, functionalSub)
+        : '',
   };
 }
 
-function fieldMatchesSub(def: RmQualitySpecFieldDef, functionalSubNorm: string): boolean {
-  if (!def.subCategory) return true;
-  return normSub(def.subCategory) === functionalSubNorm;
+/** Show tabular quality specs when bulk RM functional category is set. */
+export function shouldShowRmQualitySpecTable(ctx: RmQualitySpecContext): boolean {
+  return resolveRmQualitySpecContext(ctx).isBulkFunctional;
 }
 
-export function getVisibleRmQualitySpecFields(ctx: RmQualitySpecContext): RmQualitySpecFieldDef[] {
+/** Show sub-category table when bulk functional sub-category is set. */
+export function shouldShowRmQualitySubSpecTable(ctx: RmQualitySpecContext): boolean {
   const resolved = resolveRmQualitySpecContext(ctx);
-  if (!resolved.isBulkFunctional || !resolved.functionalCategory) return [];
-
-  return RM_QUALITY_SPEC_FIELD_DEFS.filter(
-    (def) =>
-      def.category === resolved.functionalCategory &&
-      fieldMatchesSub(def, resolved.functionalSubNorm)
-  );
+  return resolved.isBulkFunctional && Boolean(resolved.functionalSub);
 }
 
+/** @deprecated Use shouldShowRmQualitySpecTable — kept for conditional-field tests. */
 export function hasRmQualitySpecFields(ctx: RmQualitySpecContext): boolean {
-  return getVisibleRmQualitySpecFields(ctx).length > 0;
+  return shouldShowRmQualitySpecTable(ctx);
 }
 
-export type RmQualitySpecFieldGroup = {
-  title: string;
-  fields: RmQualitySpecFieldDef[];
-};
+export function getDefaultRmQualitySpecRows(_ctx: RmQualitySpecContext): QualitySpecTableRow[] {
+  return cloneRmQualitySpecTableDefaults();
+}
 
-export function groupVisibleRmQualitySpecFields(ctx: RmQualitySpecContext): RmQualitySpecFieldGroup[] {
-  const visible = getVisibleRmQualitySpecFields(ctx);
-  if (visible.length === 0) return [];
-
-  const common = visible.filter((f) => !f.subCategory);
-  const specific = visible.filter((f) => f.subCategory);
+export function getDefaultRmQualitySubSpecRows(ctx: RmQualitySpecContext): QualitySpecTableRow[] {
   const resolved = resolveRmQualitySpecContext(ctx);
-  const groups: RmQualitySpecFieldGroup[] = [];
-
-  if (common.length > 0) {
-    groups.push({ title: 'Common', fields: common });
-  }
-  if (specific.length > 0) {
-    const subLabel = resolved.functionalSub || 'Sub-category';
-    groups.push({ title: subLabel, fields: specific });
-  }
-  return groups;
+  if (!resolved.functionalCategory || !resolved.functionalSub) return [];
+  if (!hasRmQualitySubSpecDefaults(resolved.functionalCategory, resolved.functionalSub)) return [];
+  return cloneRmQualitySubSpecTableDefaults(resolved.functionalCategory, resolved.functionalSub);
 }
 
-/** Quality spec fields are optional on save (only steps 1–2 enforce required fields). */
-export function validateRmQualitySpecs(
-  _specs: Record<string, string>,
-  _ctx: RmQualitySpecContext
-): Record<string, string> {
-  return {};
+function parseQualitySpecAttachment(raw: unknown, idx: number): QualitySpecAttachment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const att = raw as Record<string, unknown>;
+  const typeRaw = String(att.type ?? '').toLowerCase();
+  const type: QualitySpecAttachment['type'] = typeRaw === 'link' ? 'link' : 'file';
+  const name = String(att.name ?? '').trim();
+  const url = String(att.url ?? att.link ?? '').trim();
+  if (!name && !url) return null;
+  return createQualitySpecAttachment({
+    id: String(att.id ?? `qsa-loaded-${idx}`),
+    type: url && !name ? 'link' : type,
+    name: name || url,
+    url,
+  });
 }
 
-/** Merge legacy flat qc* keys and rmQualitySpecs object from saved form_data. */
-export function hydrateRmQualitySpecs(source: Record<string, unknown>): Record<string, string> {
+function parseQualitySpecAttachments(raw: unknown, row: Record<string, unknown>): QualitySpecAttachment[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item, idx) => parseQualitySpecAttachment(item, idx))
+      .filter((att): att is QualitySpecAttachment => att !== null);
+  }
+
+  const legacy: QualitySpecAttachment[] = [];
+  const fileName = String(row.attachmentName ?? row.attachment_name ?? '').trim();
+  const linkUrl = String(row.linkUrl ?? row.link_url ?? '').trim();
+  if (fileName) {
+    legacy.push(createQualitySpecAttachment({ type: 'file', name: fileName, url: '' }));
+  }
+  if (linkUrl) {
+    legacy.push(createQualitySpecAttachment({ type: 'link', name: linkUrl, url: linkUrl }));
+  }
+  return legacy;
+}
+
+function parseQualitySpecRow(raw: unknown, idx: number): QualitySpecTableRow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const parameter = String(row.parameter ?? '').trim();
+  if (!parameter) return null;
+  const mandatoryRaw = row.mandatory;
+  const mandatory =
+    mandatoryRaw === true ||
+    mandatoryRaw === 'true' ||
+    mandatoryRaw === 'Yes' ||
+    mandatoryRaw === 'yes' ||
+    mandatoryRaw === 1;
+  return createEmptyQualitySpecRow({
+    id: String(row.id ?? `qs-loaded-${idx}`),
+    parameter,
+    specLimit: String(row.specLimit ?? row.spec_limit ?? '').trim(),
+    method: String(row.method ?? '').trim(),
+    mandatory,
+    tolerance: String(row.tolerance ?? '').trim(),
+    frequency: String(row.frequency ?? '').trim(),
+    sample: String(row.sample ?? '').trim(),
+    acceptance: String(row.acceptance ?? '').trim(),
+    attachments: parseQualitySpecAttachments(row.attachments, row),
+  });
+}
+
+function parseQualitySpecRows(raw: unknown): QualitySpecTableRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, idx) => parseQualitySpecRow(item, idx))
+    .filter((r): r is QualitySpecTableRow => r !== null);
+}
+
+/** Load common tabular rows from form_data; migrates legacy flat rmQualitySpecs when needed. */
+export function hydrateRmQualitySpecRows(source: Record<string, unknown>): QualitySpecTableRow[] {
+  const nested = source.rmQualitySpecRows;
+  if (Array.isArray(nested) && nested.length > 0) {
+    const rows = parseQualitySpecRows(nested);
+    if (rows.length > 0) return rows;
+  }
+
+  const { common } = splitLegacyRmQualitySpecs(source);
+  return common;
+}
+
+/** Load sub-category tabular rows keyed by `Category::SubCategory`. */
+export function hydrateRmQualitySubSpecRowsByPath(
+  source: Record<string, unknown>
+): Record<string, QualitySpecTableRow[]> {
+  const nested = source.rmQualitySubSpecRowsByPath;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const out: Record<string, QualitySpecTableRow[]> = {};
+    for (const [pathKey, rawRows] of Object.entries(nested as Record<string, unknown>)) {
+      const rows = parseQualitySpecRows(rawRows);
+      if (rows.length > 0) out[pathKey] = rows;
+    }
+    if (Object.keys(out).length > 0) return out;
+  }
+
+  const { byPath } = splitLegacyRmQualitySpecs(source);
+  return byPath;
+}
+
+function splitLegacyRmQualitySpecs(source: Record<string, unknown>): {
+  common: QualitySpecTableRow[];
+  byPath: Record<string, QualitySpecTableRow[]>;
+} {
+  const legacyFlat = hydrateLegacyRmQualitySpecs(source);
+  const common: QualitySpecTableRow[] = [];
+  const byPath: Record<string, QualitySpecTableRow[]> = {};
+
+  for (const [id, value] of Object.entries(legacyFlat)) {
+    const def = RM_QUALITY_SPEC_FIELD_DEFS.find((f) => f.id === id);
+    const label = def?.label ?? RM_QUALITY_SPEC_FIELD_LABELS[id] ?? id;
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) continue;
+
+    const row = createEmptyQualitySpecRow({
+      parameter: label,
+      specLimit: trimmed,
+      mandatory: def?.mandatory ?? false,
+    });
+
+    if (def?.subCategory && def.category) {
+      const pathKey = rmQualitySubSpecPathKey(def.category, def.subCategory);
+      if (!byPath[pathKey]) byPath[pathKey] = [];
+      byPath[pathKey].push(row);
+    } else {
+      common.push(row);
+    }
+  }
+
+  return { common, byPath };
+}
+
+function hydrateLegacyRmQualitySpecs(source: Record<string, unknown>): Record<string, string> {
   const specs: Record<string, string> = {};
   const nested = source.rmQualitySpecs;
   if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
@@ -112,10 +234,10 @@ export function hydrateRmQualitySpecs(source: Record<string, unknown>): Record<s
       if (trimmed) specs[key] = trimmed;
     }
   }
-  for (const id of RM_QUALITY_SPEC_FIELD_IDS_FROM_DEFS()) {
-    const top = source[id];
+  for (const def of RM_QUALITY_SPEC_FIELD_DEFS) {
+    const top = source[def.id];
     const trimmed = String(top ?? '').trim();
-    if (trimmed && !specs[id]) specs[id] = trimmed;
+    if (trimmed && !specs[def.id]) specs[def.id] = trimmed;
   }
   for (const legacyId of RM_QUALITY_SPEC_LEGACY_FLAT_IDS) {
     const top = source[legacyId];
@@ -125,11 +247,59 @@ export function hydrateRmQualitySpecs(source: Record<string, unknown>): Record<s
   return specs;
 }
 
-function RM_QUALITY_SPEC_FIELD_IDS_FROM_DEFS(): string[] {
-  return RM_QUALITY_SPEC_FIELD_DEFS.map((f) => f.id);
+function flattenQualitySpecAttachments(attachments: QualitySpecAttachment[]): QualitySpecAttachment[] {
+  return attachments
+    .map((att) => ({
+      ...att,
+      name: att.name.trim(),
+      url: att.url.trim(),
+    }))
+    .filter((att) => att.name.length > 0 || att.url.length > 0);
 }
 
-/** Flatten rmQualitySpecs into payload keys for persistence and preview. */
+export function flattenRmQualitySpecRowsForPayload(
+  rows: QualitySpecTableRow[]
+): QualitySpecTableRow[] {
+  return rows
+    .map((row) => ({
+      ...row,
+      parameter: row.parameter.trim(),
+      specLimit: row.specLimit.trim(),
+      method: row.method.trim(),
+      tolerance: row.tolerance.trim(),
+      frequency: row.frequency.trim(),
+      sample: row.sample.trim(),
+      acceptance: row.acceptance.trim(),
+      attachments: flattenQualitySpecAttachments(row.attachments ?? []),
+    }))
+    .filter((row) => row.parameter.length > 0);
+}
+
+export function flattenRmQualitySubSpecRowsByPathForPayload(
+  byPath: Record<string, QualitySpecTableRow[]>
+): Record<string, QualitySpecTableRow[]> {
+  const out: Record<string, QualitySpecTableRow[]> = {};
+  for (const [pathKey, rows] of Object.entries(byPath)) {
+    const flattened = flattenRmQualitySpecRowsForPayload(rows);
+    if (flattened.length > 0) out[pathKey] = flattened;
+  }
+  return out;
+}
+
+/** Quality spec rows are optional on save (only steps 1–2 enforce required fields). */
+export function validateRmQualitySpecRows(
+  _rows: QualitySpecTableRow[],
+  _ctx: RmQualitySpecContext
+): Record<string, string> {
+  return {};
+}
+
+/** @deprecated Legacy flat map — use hydrateRmQualitySpecRows. */
+export function hydrateRmQualitySpecs(source: Record<string, unknown>): Record<string, string> {
+  return hydrateLegacyRmQualitySpecs(source);
+}
+
+/** @deprecated Legacy flat map — use flattenRmQualitySpecRowsForPayload. */
 export function flattenRmQualitySpecsForPayload(
   specs: Record<string, string>
 ): Record<string, string> {
@@ -140,3 +310,5 @@ export function flattenRmQualitySpecsForPayload(
   }
   return out;
 }
+
+export { normSub };

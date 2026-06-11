@@ -5,10 +5,14 @@ export type ParsedStockCheckNoteLine = {
   itemName?: string;
   /** Warehouse system qty at audit time */
   systemQty?: number;
+  /** System qty frozen when stock check was first opened (request received day). */
+  systemQtyAtRequest?: number;
   physicalQty?: number;
   updatedStockQty?: number;
-  /** Consumption in audit window */
+  /** Consumption in audit window (request received → warehouse update day). */
   consumptionQty?: number;
+  consumptionFrom?: string;
+  consumptionTo?: string;
   /** system − physical − consumption (stored or recomputed) */
   gapQty?: number;
   zone?: string;

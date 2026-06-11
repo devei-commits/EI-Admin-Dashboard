@@ -152,6 +152,36 @@ function formatDocuments(docs: unknown): string {
     .join('\n');
 }
 
+function formatQualitySpecRowsByPath(byPath: unknown): string {
+  if (!byPath || typeof byPath !== 'object' || Array.isArray(byPath)) return '—';
+  const entries = Object.entries(byPath as Record<string, unknown>);
+  if (entries.length === 0) return '—';
+  return entries
+    .map(([pathKey, rows]) => {
+      const formatted = formatQualitySpecRows(rows);
+      if (formatted === '—') return `${pathKey}: —`;
+      return `${pathKey}:\n${formatted}`;
+    })
+    .join('\n\n');
+}
+
+function formatQualitySpecRows(rows: unknown): string {
+  if (!Array.isArray(rows) || rows.length === 0) return '—';
+  return rows
+    .map((item, i) => {
+      const row = item as Record<string, unknown>;
+      const parameter = String(row.parameter ?? '—');
+      const specLimit = String(row.specLimit ?? row.spec_limit ?? '').trim();
+      const method = String(row.method ?? '').trim();
+      const tolerance = String(row.tolerance ?? '').trim();
+      const attachments = Array.isArray(row.attachments) ? row.attachments.length : 0;
+      const parts = [specLimit, method, tolerance].filter(Boolean);
+      const attachPart = attachments > 0 ? ` · ${attachments} attachment(s)` : '';
+      return `${i + 1}. ${parameter}${parts.length ? ` — ${parts.join(' · ')}` : ''}${attachPart}`;
+    })
+    .join('\n');
+}
+
 function formatArNumbers(entries: unknown): string {
   if (!Array.isArray(entries) || entries.length === 0) return '—';
   return entries
@@ -171,6 +201,8 @@ export function formatMasterPreviewValue(value: unknown, key?: string): string {
   if (key === 'tests') return formatTestRows(value);
   if (key === 'documents') return formatDocuments(value);
   if (key === 'arNumbers') return formatArNumbers(value);
+  if (key === 'rmQualitySpecRows' || key === 'pmQualitySpecRows') return formatQualitySpecRows(value);
+  if (key === 'rmQualitySubSpecRowsByPath') return formatQualitySpecRowsByPath(value);
   if (key === 'formulaIngredients') return formatFormulaLines(value);
   if (key === 'skuBomLines') return formatSkuBomLines(value);
   if (key === 'packingComponents') return formatPackLines(value);
