@@ -18,21 +18,40 @@ describe('rmQualitySpecVisibility', () => {
     optionalRmSubSubCategory: 'Anionic',
   };
 
-  it('shows tabular quality specs for bulk functional categories', () => {
+  it('shows category quality specs for any classified RM path', () => {
     expect(shouldShowRmQualitySpecTable(bulkCtx)).toBe(true);
     expect(shouldShowRmQualitySpecTable({
       subCategory: 'Fragrance',
       optionalRmSubCategory: 'Oil soluble',
-    })).toBe(false);
+    })).toBe(true);
+    expect(shouldShowRmQualitySpecTable({
+      subCategory: 'Fragrance',
+      optionalRmSubCategory: '',
+    })).toBe(true);
   });
 
-  it('shows sub-category table when functional sub-category is set', () => {
+  it('shows sub-category table when functional sub-category is set (defaults optional)', () => {
     expect(shouldShowRmQualitySubSpecTable(bulkCtx)).toBe(true);
+    expect(shouldShowRmQualitySubSpecTable({
+      subCategory: 'Bulk raw materials',
+      optionalRmSubCategory: 'Surfactant',
+      optionalRmSubSubCategory: 'Cationic',
+    })).toBe(true);
     expect(shouldShowRmQualitySubSpecTable({
       subCategory: 'Bulk raw materials',
       optionalRmSubCategory: 'Surfactant',
       optionalRmSubSubCategory: '',
     })).toBe(false);
+  });
+
+  it('only auto-seeds bulk common defaults', () => {
+    expect(getDefaultRmQualitySpecRows(bulkCtx).length).toBeGreaterThan(0);
+    expect(
+      getDefaultRmQualitySpecRows({
+        subCategory: 'Fragrance',
+        optionalRmSubCategory: 'Oil soluble',
+      })
+    ).toEqual([]);
   });
 
   it('seeds skin-care style default common rows', () => {

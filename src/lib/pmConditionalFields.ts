@@ -36,7 +36,10 @@ function pmItemType(ctx: PmCategoryContext): string {
 function pmSubIs(ctx: PmCategoryContext, ...labels: string[]): boolean {
   const item = pmItemType(ctx);
   if (!item) return false;
-  return labels.some((l) => normSub(l) === item);
+  return labels.some((l) => {
+    const canonical = normalizePmFunctionalSubCategoryKey(l) || l.trim();
+    return normSub(canonical) === item;
+  });
 }
 
 function pmCatIs(ctx: PmCategoryContext, ...cats: PmSkuCategoryOption[]): boolean {

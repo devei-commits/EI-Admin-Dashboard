@@ -45,12 +45,19 @@ import {
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 import { getPmConditionalVisibility } from '../lib/pmConditionalFields';
-import { PmQualitySpecSection } from '../components/masters/PmQualitySpecSection';
+import { PmQualitySpecTable } from '../components/masters/PmQualitySpecTable';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
-  flattenPmQualitySpecsForPayload,
-  groupVisiblePmQualitySpecFields,
-  hasPmQualitySpecFields,
-  hydratePmQualitySpecs,
+  canEditPmQualityCategorySpecs,
+  flattenPmQualitySpecRowsForPayload,
+  flattenPmQualitySubSpecRowsByPathForPayload,
+  getDefaultPmQualitySpecRows,
+  getDefaultPmQualitySubSpecRows,
+  hydratePmQualitySpecRows,
+  hydratePmQualitySubSpecRowsByPath,
+  resolvePmQualitySpecContext,
+  shouldShowPmQualitySpecTable,
+  shouldShowPmQualitySubSpecTable,
 } from '../lib/pmQualitySpecVisibility';
 import PmConditionalFieldBlocks from '../components/packaging/PmConditionalFieldBlocks';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
@@ -118,8 +125,6 @@ const PM_APPLICATION_METHOD_OPTIONS = ['Manual', 'Automatic', 'Both'] as const;
 const PM_PRODUCT_ENVIRONMENT_OPTIONS = ['Oil', 'Water', 'Chemical', 'Mixed', 'Dry'] as const;
 
 const PM_COA_REQUIRED_OPTIONS = ['Yes', 'No'] as const;
-
-const PM_DROP_LEAK_TEST_OPTIONS = ['Pass', 'Fail', 'NA'] as const;
 
 const PM_LISTED_IN_CATALOGUE_OPTIONS = ['Yes', 'No', 'Internal Only'] as const;
 
@@ -303,18 +308,10 @@ function createEmptyPackagingFormData() {
     terDrop: '',
     terStack: '',
     terNotes: '',
-    qaArNumber: '',
     qaQcTestPlanRef: '',
     qaCoaRequired: '' as '' | 'Yes' | 'No',
-    qaDimensionalChecks: '',
-    qaFunctionalChecks: '',
-    qaPrintDecorationChecks: '',
-    qaDropLeakTest: '',
-    qaCoaDocumentRef: '',
-    qaInspectionReportRef: '',
-    qaSpecFile: '',
-    qaSampleImageMock: '',
-    pmQualitySpecs: {} as Record<string, string>,
+    pmQualitySpecRows: [] as QualitySpecTableRow[],
+    pmQualitySubSpecRowsByPath: {} as Record<string, QualitySpecTableRow[]>,
     apprPack: false,
     apprRd: false,
     apprFin: false,
@@ -476,26 +473,93 @@ const PackagingRefactored: React.FC = () => {
       formData.optionalPmSubSubCategory,
     ]
   );
-  const pmQualitySpecGroups = useMemo(
-    () => groupVisiblePmQualitySpecFields(pmQualitySpecCtx),
+  const pmQualitySpecResolved = useMemo(
+    () => resolvePmQualitySpecContext(pmQualitySpecCtx),
     [pmQualitySpecCtx]
   );
-  const showPmQualitySpecSection = useMemo(
-    () => hasPmQualitySpecFields(pmQualitySpecCtx),
+  const showPmQualitySpecTable = useMemo(
+    () => shouldShowPmQualitySpecTable(pmQualitySpecCtx),
     [pmQualitySpecCtx]
   );
-  const handlePmQualitySpecChange = useCallback((fieldId: string, value: string) => {
+  const showPmQualitySubSpecTable = useMemo(
+    () => shouldShowPmQualitySubSpecTable(pmQualitySpecCtx),
+    [pmQualitySpecCtx]
+  );
+  const canEditPmQualityCategory = useMemo(
+    () => canEditPmQualityCategorySpecs(pmQualitySpecCtx),
+    [pmQualitySpecCtx]
+  );
+  const currentPmSubSpecRows = useMemo(() => {
+    const pathKey = pmQualitySpecResolved.subSpecPathKey;
+    if (!pathKey) return [];
+    return formData.pmQualitySubSpecRowsByPath[pathKey] ?? [];
+  }, [formData.pmQualitySubSpecRowsByPath, pmQualitySpecResolved.subSpecPathKey]);
+
+  const handlePmQualitySpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
     setFormData((prev) => ({
       ...prev,
-      pmQualitySpecs: { ...prev.pmQualitySpecs, [fieldId]: value },
+      pmQualitySpecRows: rows,
     }));
-    setErrors((prev) => {
-      if (!prev[fieldId]) return prev;
-      const next = { ...prev };
-      delete next[fieldId];
-      return next;
-    });
   }, []);
+
+  const handlePmQualitySubSpecRowsChange = useCallback(
+    (rows: QualitySpecTableRow[]) => {
+      const pathKey = pmQualitySpecResolved.subSpecPathKey;
+      if (!pathKey) return;
+      setFormData((prev) => ({
+        ...prev,
+        pmQualitySubSpecRowsByPath: {
+          ...prev.pmQualitySubSpecRowsByPath,
+          [pathKey]: rows,
+        },
+      }));
+    },
+    [pmQualitySpecResolved.subSpecPathKey]
+  );
+
+  useEffect(() => {
+    if (!pmQualitySpecResolved.functionalCategory) return;
+    setFormData((prev) => {
+      if (prev.pmQualitySpecRows.length > 0) return prev;
+      const defaults = getDefaultPmQualitySpecRows(pmQualitySpecCtx);
+      if (defaults.length === 0) return prev;
+      return {
+        ...prev,
+        pmQualitySpecRows: defaults,
+      };
+    });
+  }, [
+    pmQualitySpecResolved.functionalCategory,
+    pmQualitySpecCtx.optionalPmSubCategory,
+    pmQualitySpecCtx.pmSkuCategory,
+    pmQualitySpecCtx.subCategory,
+  ]);
+
+  useEffect(() => {
+    if (!showPmQualitySubSpecTable) return;
+    const pathKey = pmQualitySpecResolved.subSpecPathKey;
+    if (!pathKey) return;
+    setFormData((prev) => {
+      const existing = prev.pmQualitySubSpecRowsByPath[pathKey];
+      if (existing && existing.length > 0) return prev;
+      const defaults = getDefaultPmQualitySubSpecRows(pmQualitySpecCtx);
+      if (defaults.length === 0) return prev;
+      return {
+        ...prev,
+        pmQualitySubSpecRowsByPath: {
+          ...prev.pmQualitySubSpecRowsByPath,
+          [pathKey]: defaults,
+        },
+      };
+    });
+  }, [
+    showPmQualitySubSpecTable,
+    pmQualitySpecResolved.subSpecPathKey,
+    pmQualitySpecCtx.optionalPmSubCategory,
+    pmQualitySpecCtx.optionalPmSubSubCategory,
+    pmQualitySpecCtx.pmSkuCategory,
+    pmQualitySpecCtx.subCategory,
+  ]);
 
   const pmSubSubCategoryOptions = useMemo(() => {
     const base = pmSubSubCategoryOptionsForDetailSubCategory(
@@ -864,10 +928,7 @@ const PackagingRefactored: React.FC = () => {
     return created;
   };
 
-  const handlePmFileNameCapture = (
-    fieldId: 'qaSpecFile' | 'qaSampleImageMock' | 'catCataloguePhoto',
-    file: File | null
-  ): void => {
+  const handlePmFileNameCapture = (fieldId: 'catCataloguePhoto', file: File | null): void => {
     setFormData((prev) => ({ ...prev, [fieldId]: file?.name ?? '' }));
   };
 
@@ -914,7 +975,10 @@ const PackagingRefactored: React.FC = () => {
         ? { products: formData.products }
         : {}),
       form_data: (() => {
-        const flatQc = flattenPmQualitySpecsForPayload(formData.pmQualitySpecs ?? {});
+        const qcSpecRows = flattenPmQualitySpecRowsForPayload(formData.pmQualitySpecRows ?? []);
+        const qcSubSpecRowsByPath = flattenPmQualitySubSpecRowsByPathForPayload(
+          formData.pmQualitySubSpecRowsByPath ?? {}
+        );
         const {
           pmCategory: _pmCat,
           excelCategory: _excelCat,
@@ -928,8 +992,8 @@ const PackagingRefactored: React.FC = () => {
         } = formData as Record<string, unknown>;
         return {
           ...formRest,
-          pmQualitySpecs: flatQc,
-          ...flatQc,
+          pmQualitySpecRows: qcSpecRows,
+          pmQualitySubSpecRowsByPath: qcSubSpecRowsByPath,
           ...(codeTrim ? { itemCode: codeTrim } : {}),
           ...(skuCat
             ? {
@@ -944,14 +1008,16 @@ const PackagingRefactored: React.FC = () => {
     };
   };
 
-  const pmPreviewFormData = useMemo(() => {
-    const flatQc = flattenPmQualitySpecsForPayload(formData.pmQualitySpecs ?? {});
-    return { ...(formData as Record<string, unknown>), ...flatQc };
-  }, [formData]);
+  const pmPreviewFormData = useMemo(
+    () => formData as Record<string, unknown>,
+    [formData]
+  );
   const pmPreviewSections = useMemo(
     () =>
       buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS, {
-        omitKeys: isNewPm ? ['itemCode', 'pkgSku', 'pmQualitySpecs'] : ['pmQualitySpecs'],
+        omitKeys: isNewPm
+          ? ['itemCode', 'pkgSku', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath']
+          : ['pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
       }),
     [pmPreviewFormData, isNewPm]
   );
@@ -1188,8 +1254,10 @@ const PackagingRefactored: React.FC = () => {
                 SKU series sets the code prefix: PPM <span className="font-mono">4XXXXX</span>, SPM Labels{' '}
                 <span className="font-mono">5LXXXXX</span>, Monocartons <span className="font-mono">5MXXXXX</span>, Other Secondary{' '}
                 <span className="font-mono">5OXXXXX</span>, TPM Tertiary <span className="font-mono">6TXXXXX</span>, Ancillary{' '}
-                <span className="font-mono">6AXXXX</span>. Then pick functional category (Primary Pack, Secondary Pack, …) and
-                sub-category (Bottle, Front Label, …). Conditional spec fields follow your selection.
+                <span className="font-mono">6AXXXX</span>. Pick category (
+                <strong>Closures &amp; Pumps</strong>, <strong>Secondary Pack</strong>, <strong>Primary Pack</strong>,{' '}
+                <strong>Tertiary Pack</strong>, <strong>Ancillary</strong>) and sub-category (Bottle, Front Label, …).
+                Quality specifications follow your category and sub-category — use Add when no template exists.
               </p>
             </div>
 
@@ -1967,14 +2035,6 @@ const PackagingRefactored: React.FC = () => {
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">References</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputField
-                  label="AR number"
-                  id="qaArNumber"
-                  value={formData.qaArNumber}
-                  onChange={handleInputChange}
-                  placeholder="e.g. AR-2026-PM-0042"
-                  error={errors.qaArNumber}
-                />
-                <InputField
                   label="QC test plan reference"
                   id="qaQcTestPlanRef"
                   value={formData.qaQcTestPlanRef}
@@ -1993,95 +2053,39 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Checks</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Dimensional checks (tolerance)"
-                  id="qaDimensionalChecks"
-                  value={formData.qaDimensionalChecks}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Height ±0.5 mm, neck finish 24/410"
-                />
-                <InputField
-                  label="Functional checks (drop / leak / torque / dose)"
-                  id="qaFunctionalChecks"
-                  value={formData.qaFunctionalChecks}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Drop 1.2 m, torque 15–20 N·cm"
-                />
-                <InputField
-                  label="Print / decoration checks (ΔE / barcode)"
-                  id="qaPrintDecorationChecks"
-                  value={formData.qaPrintDecorationChecks}
-                  onChange={handleInputChange}
-                  placeholder="e.g. ΔE under 2, barcode grade A"
-                />
-                <SelectField
-                  label="Drop / leak test"
-                  id="qaDropLeakTest"
-                  value={formData.qaDropLeakTest}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_DROP_LEAK_TEST_OPTIONS,
-                    ...(formData.qaDropLeakTest &&
-                    !PM_DROP_LEAK_TEST_OPTIONS.some((o) => o === formData.qaDropLeakTest)
-                      ? [{ value: formData.qaDropLeakTest, label: `${formData.qaDropLeakTest} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select result…"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Documents</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="COA document reference"
-                  id="qaCoaDocumentRef"
-                  value={formData.qaCoaDocumentRef}
-                  onChange={handleInputChange}
-                  placeholder="Link or document ID"
-                />
-                <InputField
-                  label="Inspection report reference"
-                  id="qaInspectionReportRef"
-                  value={formData.qaInspectionReportRef}
-                  onChange={handleInputChange}
-                  placeholder="Link or report number"
-                />
-                <PmFileNameCaptureField
-                  label="Specification file"
-                  id="qaSpecFile"
-                  value={formData.qaSpecFile}
-                  accept=".pdf,.doc,.docx,.xlsx,.xlsm,image/*"
-                  onFileSelect={(file) => handlePmFileNameCapture('qaSpecFile', file)}
-                />
-                <PmFileNameCaptureField
-                  label="Sample image / 3D mock"
-                  id="qaSampleImageMock"
-                  value={formData.qaSampleImageMock}
-                  accept="image/*,.pdf,.glb,.gltf"
-                  onFileSelect={(file) => handlePmFileNameCapture('qaSampleImageMock', file)}
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                File fields store the selected file name in this draft; attach permanent links in the reference fields above when
-                documents are hosted elsewhere.
-              </p>
-            </div>
-
-            {showPmQualitySpecSection ? (
-              <PmQualitySpecSection
-                groups={pmQualitySpecGroups}
-                categoryLabel={formData.optionalPmSubCategory}
-                subCategoryLabel={formData.optionalPmSubSubCategory}
-                specs={formData.pmQualitySpecs ?? {}}
-                errors={errors}
-                onChange={handlePmQualitySpecChange}
+            {showPmQualitySpecTable ? (
+              <PmQualitySpecTable
+                categoryLabel={
+                  pmQualitySpecResolved.categoryDisplayLabel ||
+                  (formData.optionalPmSubCategory ? String(formData.optionalPmSubCategory) : '—')
+                }
+                commonRows={formData.pmQualitySpecRows ?? []}
+                onCommonChange={handlePmQualitySpecRowsChange}
+                categoryTableEnabled={canEditPmQualityCategory}
+                categoryDisabledHint={
+                  canEditPmQualityCategory
+                    ? undefined
+                    : 'Select PM category in Primary info to add common specs.'
+                }
+                showSubTable
+                subCategoryLabel={pmQualitySpecResolved.functionalSub || '—'}
+                subRows={currentPmSubSpecRows}
+                onSubChange={handlePmQualitySubSpecRowsChange}
+                subTableEnabled={showPmQualitySubSpecTable}
+                subTableDisabledHint={
+                  showPmQualitySubSpecTable
+                    ? undefined
+                    : 'Select PM sub-category in Primary info to add sub-category specs.'
+                }
               />
-            ) : null}
+            ) : (
+              <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
+                Complete <strong>Primary info</strong> and pick a category (
+                <strong>Closures &amp; Pumps</strong>, <strong>Secondary Pack</strong>, <strong>Primary Pack</strong>,{' '}
+                <strong>Tertiary Pack</strong>, or <strong>Ancillary</strong>) to add common and sub-category quality
+                specifications.
+              </p>
+            )}
           </div>
         );
 
@@ -2438,7 +2442,10 @@ const PackagingRefactored: React.FC = () => {
         applyPmRegulatoryLegacyFields(merged as Record<string, unknown>);
         applyPmLifecycleLegacyFields(merged as Record<string, unknown>);
         applyPmConditionalLegacyFields(merged as Record<string, unknown>);
-        merged.pmQualitySpecs = hydratePmQualitySpecs(merged as Record<string, unknown>);
+        merged.pmQualitySpecRows = hydratePmQualitySpecRows(merged as Record<string, unknown>);
+        merged.pmQualitySubSpecRowsByPath = hydratePmQualitySubSpecRowsByPath(
+          merged as Record<string, unknown>
+        );
         return merged;
       });
 
@@ -2648,7 +2655,7 @@ const PackagingRefactored: React.FC = () => {
                     {[
                       { label: 'Variants', value: formData.variants.length },
                       { label: 'Vendors', value: formData.vendors.length },
-                      { label: 'AR #', value: formData.qaArNumber?.trim() || '—' },
+                      { label: 'QC Specs', value: formData.pmQualitySpecRows?.length ?? 0 },
                       { label: 'Last Saved', value: lastSaved },
                     ].map((stat) => (
                       <div key={stat.label}>

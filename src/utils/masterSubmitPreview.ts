@@ -202,7 +202,9 @@ export function formatMasterPreviewValue(value: unknown, key?: string): string {
   if (key === 'documents') return formatDocuments(value);
   if (key === 'arNumbers') return formatArNumbers(value);
   if (key === 'rmQualitySpecRows' || key === 'pmQualitySpecRows') return formatQualitySpecRows(value);
-  if (key === 'rmQualitySubSpecRowsByPath') return formatQualitySpecRowsByPath(value);
+  if (key === 'rmQualitySubSpecRowsByPath' || key === 'pmQualitySubSpecRowsByPath') {
+    return formatQualitySpecRowsByPath(value);
+  }
   if (key === 'formulaIngredients') return formatFormulaLines(value);
   if (key === 'skuBomLines') return formatSkuBomLines(value);
   if (key === 'packingComponents') return formatPackLines(value);

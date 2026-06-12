@@ -48,7 +48,7 @@ export const PM_QUALITY_SPEC_FIELD_DEFS: readonly PmQualitySpecFieldDef[] = [
     { id: 'qcPmPriLeakTestGeneral', label: 'Leak Test (general)', mandatory: false, inputType: 'text' },
     { id: 'qcPmPriClosureIntegrity', label: 'Closure Integrity', mandatory: false, inputType: 'text' },
   ]),
-  ...sub('Primary Pack', 'Bottle', [
+  ...sub('Primary Pack', 'Bottle (PET/HDPE)', [
     { id: 'qcPmPriBottleHeight', label: 'Height', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriBottleBodyDiameter', label: 'Body Diameter', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriBottleNeckFinish', label: 'Neck Finish', mandatory: true, inputType: 'text' },
@@ -60,7 +60,7 @@ export const PM_QUALITY_SPEC_FIELD_DEFS: readonly PmQualitySpecFieldDef[] = [
     { id: 'qcPmPriBottleTopLoadCompression', label: 'Top-load Compression', mandatory: false, inputType: 'text' },
     { id: 'qcPmPriBottleEscr', label: 'ESCR', mandatory: false, inputType: 'text' },
   ]),
-  ...sub('Primary Pack', 'Tube', [
+  ...sub('Primary Pack', 'Tube (Laminated)', [
     { id: 'qcPmPriTubeLayerStructure', label: 'Layer Structure', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriTubeOvality', label: 'Ovality', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriTubeCrimpStrength', label: 'Crimp Strength', mandatory: true, inputType: 'text' },
@@ -69,7 +69,7 @@ export const PM_QUALITY_SPEC_FIELD_DEFS: readonly PmQualitySpecFieldDef[] = [
     { id: 'qcPmPriTubeHeatSealStrength', label: 'Heat-Seal Strength', mandatory: false, inputType: 'text' },
     { id: 'qcPmPriTubeCapacity', label: 'Tube Capacity', mandatory: true, inputType: 'text' },
   ]),
-  ...sub('Primary Pack', 'Jar', [
+  ...sub('Primary Pack', 'Jar (PP/PET)', [
     { id: 'qcPmPriJarHeightDiameter', label: 'Height+Diameter', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriJarLidFit', label: 'Lid Fit', mandatory: true, inputType: 'text' },
     { id: 'qcPmPriJarLeakWaterImmersion', label: 'Leak (water immersion)', mandatory: true, inputType: 'text' },
@@ -104,13 +104,13 @@ export const PM_QUALITY_SPEC_FIELD_DEFS: readonly PmQualitySpecFieldDef[] = [
     { id: 'qcPmClsColorMatch', label: 'Color Match', mandatory: true, inputType: 'text' },
     { id: 'qcPmClsBottleTubeCompatibility', label: 'Compatibility with Bottle/Tube', mandatory: true, inputType: 'text' },
   ]),
-  ...sub('Closures & Pumps', 'Pump', [
+  ...sub('Closures & Pumps', 'Pump (Lotion/Foam)', [
     { id: 'qcPmClsPumpOutputVolumePerStroke', label: 'Output Volume per Stroke', mandatory: true, inputType: 'text' },
     { id: 'qcPmClsPumpPrimingStrokes', label: 'Priming Strokes', mandatory: true, inputType: 'text' },
     { id: 'qcPmClsPumpCycleLife', label: 'Cycle Life', mandatory: false, inputType: 'text' },
     { id: 'qcPmClsPumpCapClosureLock', label: 'Cap Closure Lock', mandatory: true, inputType: 'text' },
   ]),
-  ...sub('Closures & Pumps', 'Cap', [
+  ...sub('Closures & Pumps', 'Cap (Flip-top/Disc-top)', [
     { id: 'qcPmClsCapHingeLife', label: 'Hinge Life', mandatory: false, inputType: 'text' },
     { id: 'qcPmClsCapApplicationTorque', label: 'Application Torque', mandatory: true, inputType: 'text' },
     { id: 'qcPmClsCapRemovalTorque', label: 'Removal Torque', mandatory: false, inputType: 'text' },

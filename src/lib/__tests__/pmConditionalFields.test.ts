@@ -6,7 +6,7 @@ describe('getPmConditionalVisibility', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'Primary Pack',
-      optionalPmSubSubCategory: 'Bottle',
+      optionalPmSubSubCategory: 'Bottle (PET/HDPE)',
     });
     expect(v.primaryAssemblyCode).toBe(true);
     expect(v.technicalEmptyWeight).toBe(true);
@@ -17,7 +17,7 @@ describe('getPmConditionalVisibility', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'Primary Pack',
-      optionalPmSubSubCategory: 'Bottle',
+      optionalPmSubSubCategory: 'Bottle (PET/HDPE)',
     });
     expect(v.technicalNominalVolume).toBe(true);
     expect(v.technicalShoulderHeight).toBe(true);

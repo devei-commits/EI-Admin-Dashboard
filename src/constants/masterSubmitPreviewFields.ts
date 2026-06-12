@@ -1,5 +1,4 @@
 import { fieldDefs, type MasterPreviewSectionDef } from '../utils/masterSubmitPreview';
-import { PM_QUALITY_SPEC_FIELD_IDS, PM_QUALITY_SPEC_FIELD_LABELS } from './pmQualitySpecFields';
 
 export const RM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
@@ -404,33 +403,12 @@ export const PM_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   {
     title: 'QA Testing & Documents',
     fields: fieldDefs(
-      [
-        'qaArNumber',
-        'qaQcTestPlanRef',
-        'qaCoaRequired',
-        'qaDimensionalChecks',
-        'qaFunctionalChecks',
-        'qaPrintDecorationChecks',
-        'qaDropLeakTest',
-        'qaCoaDocumentRef',
-        'qaInspectionReportRef',
-        'qaSpecFile',
-        'qaSampleImageMock',
-        ...PM_QUALITY_SPEC_FIELD_IDS,
-      ],
+      ['qaQcTestPlanRef', 'qaCoaRequired', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
       {
-        qaArNumber: 'AR number',
         qaQcTestPlanRef: 'QC test plan reference',
         qaCoaRequired: 'COA required',
-        qaDimensionalChecks: 'Dimensional checks (tolerance)',
-        qaFunctionalChecks: 'Functional checks (drop / leak / torque / dose)',
-        qaPrintDecorationChecks: 'Print / decoration checks (ΔE / barcode)',
-        qaDropLeakTest: 'Drop / leak test',
-        qaCoaDocumentRef: 'COA document reference',
-        qaInspectionReportRef: 'Inspection report reference',
-        qaSpecFile: 'Specification file',
-        qaSampleImageMock: 'Sample image / 3D mock',
-        ...PM_QUALITY_SPEC_FIELD_LABELS,
+        pmQualitySpecRows: 'Common quality specs (tabular)',
+        pmQualitySubSpecRowsByPath: 'Sub-category quality specs (tabular)',
       }
     ),
   },
@@ -537,25 +515,25 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
   },
   {
     title: 'Specs & Regulatory',
-    fields: fieldDefs([
-      'phRange',
-      'viscosity',
-      'appearance',
-      'odour',
-      'fillWeightSpec',
-      'microbialLimits',
-      'sppRating',
-      'acceleratedStability',
-      'intermediateStability',
-      'longTermStability',
-      'phototability',
-      'freezeThawCycles',
-      'applicableRegulation',
-      'cosmosNaturalCertification',
-      'dermatologicallyTested',
-      'crueltyFreeVegan',
-      'approvedMarketingClaims',
-      'claimsSubstantiation',
-    ]),
+    fields: fieldDefs(
+      [
+        'prQualitySpecRowsBySection',
+        'prQualityBulkSubSpecRowsByPath',
+        'prQualityFinalSubSpecRowsByPath',
+        'prQualityDispatchSubSpecRowsByPath',
+        'applicableRegulation',
+        'cosmosNaturalCertification',
+        'dermatologicallyTested',
+        'crueltyFreeVegan',
+        'approvedMarketingClaims',
+        'claimsSubstantiation',
+      ],
+      {
+        prQualitySpecRowsBySection: 'Quality specifications (Bulk / Final / Dispatch tabular)',
+        prQualityBulkSubSpecRowsByPath: 'Bulk clearance sub-category specs (tabular)',
+        prQualityFinalSubSpecRowsByPath: 'Final clearance sub-category specs (tabular)',
+        prQualityDispatchSubSpecRowsByPath: 'Dispatch specs sub-category specs (tabular)',
+      }
+    ),
   },
 ];

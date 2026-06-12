@@ -68,15 +68,20 @@ export function resolveRmQualitySpecContext(ctx: RmQualitySpecContext): RmQualit
   };
 }
 
-/** Show tabular quality specs when bulk RM functional category is set. */
+/** Show category (common) quality-spec table on the Quality step for any classified RM. */
 export function shouldShowRmQualitySpecTable(ctx: RmQualitySpecContext): boolean {
-  return resolveRmQualitySpecContext(ctx).isBulkFunctional;
+  const resolved = resolveRmQualitySpecContext(ctx);
+  return Boolean(resolved.functionalCategory) || Boolean(String(ctx.subCategory ?? '').trim());
 }
 
-/** Show sub-category table when bulk functional sub-category is set. */
+/** Sub-category specs can be edited once functional sub-category is chosen (defaults optional). */
 export function shouldShowRmQualitySubSpecTable(ctx: RmQualitySpecContext): boolean {
-  const resolved = resolveRmQualitySpecContext(ctx);
-  return resolved.isBulkFunctional && Boolean(resolved.functionalSub);
+  return Boolean(resolveRmQualitySpecContext(ctx).functionalSub);
+}
+
+/** Category table is interactive when a functional category label is available. */
+export function canEditRmQualityCategorySpecs(ctx: RmQualitySpecContext): boolean {
+  return Boolean(resolveRmQualitySpecContext(ctx).functionalCategory);
 }
 
 /** @deprecated Use shouldShowRmQualitySpecTable — kept for conditional-field tests. */
@@ -84,7 +89,8 @@ export function hasRmQualitySpecFields(ctx: RmQualitySpecContext): boolean {
   return shouldShowRmQualitySpecTable(ctx);
 }
 
-export function getDefaultRmQualitySpecRows(_ctx: RmQualitySpecContext): QualitySpecTableRow[] {
+export function getDefaultRmQualitySpecRows(ctx: RmQualitySpecContext): QualitySpecTableRow[] {
+  if (!resolveRmQualitySpecContext(ctx).isBulkFunctional) return [];
   return cloneRmQualitySpecTableDefaults();
 }
 

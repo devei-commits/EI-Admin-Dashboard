@@ -28,6 +28,7 @@ import {
   hydrateRmQualitySpecRows,
   hydrateRmQualitySubSpecRowsByPath,
   resolveRmQualitySpecContext,
+  canEditRmQualityCategorySpecs,
   shouldShowRmQualitySpecTable,
   shouldShowRmQualitySubSpecTable,
 } from '../lib/rmQualitySpecVisibility';
@@ -503,6 +504,10 @@ const RawMaterialRefactored: React.FC = () => {
   () => shouldShowRmQualitySubSpecTable(rmQualitySpecCtx),
   [rmQualitySpecCtx]
  );
+ const canEditRmQualityCategory = useMemo(
+  () => canEditRmQualityCategorySpecs(rmQualitySpecCtx),
+  [rmQualitySpecCtx]
+ );
  const currentSubSpecRows = useMemo(() => {
   const pathKey = rmQualitySpecResolved.subSpecPathKey;
   if (!pathKey) return [];
@@ -532,16 +537,18 @@ const RawMaterialRefactored: React.FC = () => {
  );
 
  useEffect(() => {
-  if (!showRmQualitySpecTable) return;
+  if (!rmQualitySpecResolved.isBulkFunctional) return;
   setFormData((prev) => {
    if (prev.rmQualitySpecRows.length > 0) return prev;
+   const defaults = getDefaultRmQualitySpecRows(rmQualitySpecCtx);
+   if (defaults.length === 0) return prev;
    return {
     ...prev,
-    rmQualitySpecRows: getDefaultRmQualitySpecRows(rmQualitySpecCtx),
+    rmQualitySpecRows: defaults,
    };
   });
  }, [
-  showRmQualitySpecTable,
+  rmQualitySpecResolved.isBulkFunctional,
   rmQualitySpecCtx.subCategory,
   rmQualitySpecCtx.optionalRmSubCategory,
  ]);
@@ -1816,15 +1823,35 @@ const RawMaterialRefactored: React.FC = () => {
       </div>
       {showRmQualitySpecTable ? (
        <RmQualitySpecTable
-        categoryLabel={rmQualitySpecResolved.categoryDisplayLabel}
+        categoryLabel={
+         rmQualitySpecResolved.categoryDisplayLabel ||
+         (formData.subCategory ? String(formData.subCategory) : '—')
+        }
         commonRows={formData.rmQualitySpecRows ?? []}
         onCommonChange={handleRmQualitySpecRowsChange}
-        showSubTable={showRmQualitySubSpecTable}
-        subCategoryLabel={rmQualitySpecResolved.functionalSub}
+        categoryTableEnabled={canEditRmQualityCategory}
+        categoryDisabledHint={
+         canEditRmQualityCategory
+          ? undefined
+          : 'Select RM detail sub-category in Identification to add category specs.'
+        }
+        showSubTable
+        subCategoryLabel={rmQualitySpecResolved.functionalSub || '—'}
         subRows={currentSubSpecRows}
         onSubChange={handleRmQualitySubSpecRowsChange}
+        subTableEnabled={showRmQualitySubSpecTable}
+        subTableDisabledHint={
+         showRmQualitySubSpecTable
+          ? undefined
+          : 'Select RM sub-category in Identification to add sub-category specs.'
+        }
        />
-      ) : null}
+      ) : (
+       <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
+        Complete <strong>Identification</strong> (sub-category) first to add category and sub-category quality
+        specifications.
+       </p>
+      )}
      </div>
     );
 

@@ -2,14 +2,13 @@ import React from 'react';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
 import { QualitySpecTable } from './QualitySpecTable';
 
-type RmQualitySpecTableProps = {
+type PmQualitySpecTableProps = {
   categoryLabel: string;
   commonRows: QualitySpecTableRow[];
   onCommonChange: (rows: QualitySpecTableRow[]) => void;
   subCategoryLabel?: string;
   subRows?: QualitySpecTableRow[];
   onSubChange?: (rows: QualitySpecTableRow[]) => void;
-  /** Always show sub-category section; use `subTableEnabled` to gate editing. */
   showSubTable?: boolean;
   categoryTableEnabled?: boolean;
   categoryDisabledHint?: string;
@@ -17,7 +16,7 @@ type RmQualitySpecTableProps = {
   subTableDisabledHint?: string;
 };
 
-export function RmQualitySpecTable({
+export function PmQualitySpecTable({
   categoryLabel,
   commonRows,
   onCommonChange,
@@ -29,29 +28,33 @@ export function RmQualitySpecTable({
   categoryDisabledHint,
   subTableEnabled = true,
   subTableDisabledHint,
-}: RmQualitySpecTableProps): React.ReactElement {
+}: PmQualitySpecTableProps): React.ReactElement {
   return (
     <div className="space-y-1">
       <QualitySpecTable
-        title="Category specs (common)"
-        subtitle={categoryLabel || '—'}
-        addButtonLabel="+ Add Category Spec"
-        emptyMessage="No category specs yet. Use “Add Category Spec” to define parameters even when no template exists."
+        title="Common Specs"
+        subtitle={categoryLabel ? `${categoryLabel} — applies to all` : 'applies to all'}
+        addButtonLabel="+ Add Common Spec"
+        emptyMessage="No common specs yet. Use “Add Common Spec” to define parameters that apply to all sub-categories."
         rows={commonRows}
         onChange={onCommonChange}
-        idPrefix="qs-common"
+        idPrefix="pm-qs-common"
         enabled={categoryTableEnabled}
         disabledHint={categoryDisabledHint}
       />
       {showSubTable && onSubChange ? (
         <QualitySpecTable
-          title="Sub-category specs"
-          subtitle={subCategoryLabel || '—'}
-          addButtonLabel="+ Add Sub-category Spec"
-          emptyMessage="No sub-category specs yet. Use “Add Sub-category Spec” to add parameters for this sub-category path."
+          title="Sub-category Specs"
+          subtitle={
+            subCategoryLabel
+              ? `only for ${subCategoryLabel}`
+              : 'Select sub-category in Primary info'
+          }
+          addButtonLabel="+ Add Specific Spec"
+          emptyMessage="No sub-category specs yet. Use “Add Specific Spec” to add parameters for this sub-category path."
           rows={subRows}
           onChange={onSubChange}
-          idPrefix="qs-sub"
+          idPrefix="pm-qs-sub"
           enabled={subTableEnabled}
           disabledHint={subTableDisabledHint}
         />

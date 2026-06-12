@@ -121,6 +121,10 @@ export interface PRProductDetail extends PRProductListItem {
   odour?: string;
   fill_weight_spec?: string;
   stability_summary?: string;
+  pr_quality_spec_rows_by_section?: Record<string, unknown>;
+  pr_quality_bulk_sub_spec_rows_by_path?: Record<string, unknown>;
+  pr_quality_final_sub_spec_rows_by_path?: Record<string, unknown>;
+  pr_quality_dispatch_sub_spec_rows_by_path?: Record<string, unknown>;
   pr_sub_category?: string;
   pr_qc_group?: string;
   brand_client?: string;

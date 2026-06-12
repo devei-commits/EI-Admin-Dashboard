@@ -57,6 +57,25 @@ import {
   pmSubSubCategoryOptionsForDetailSubCategory,
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
+import { PrQualitySpecTable } from '../components/masters/PrQualitySpecTable';
+import type { PrQualitySpecSectionKey } from '../constants/prQualitySpecSections';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
+import {
+  flattenPrQualityBulkSubSpecRowsByPathForPayload,
+  flattenPrQualityDispatchSubSpecRowsByPathForPayload,
+  flattenPrQualityFinalSubSpecRowsByPathForPayload,
+  flattenPrQualitySpecRowsBySectionForPayload,
+  hydrateAndReconcilePrQualitySpecs,
+  hydratePrQualityBulkSubSpecRowsByPath,
+  hydratePrQualityDispatchSubSpecRowsByPath,
+  hydratePrQualityFinalSubSpecRowsByPath,
+  hydratePrQualitySpecRowsBySection,
+  resolvePrQualitySpecContext,
+  seedPrQualitySpecsIfEmpty,
+  shouldShowPrBulkSubSpecTable,
+  shouldShowPrDispatchSubSpecTable,
+  shouldShowPrFinalSubSpecTable,
+} from '../lib/prQualitySpecVisibility';
 
 /** Legacy alphanumeric PR codes only — used to infer composite when editing old rows. */
 const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
@@ -142,19 +161,11 @@ interface BOMFormState {
   }>;
 
   // Specs & Regulatory Tab
-  phRange: string;
-  viscosity: string;
   specificGravity: string;
-  appearance: string;
-  odour: string;
-  fillWeightSpec: string;
-  microbialLimits: string;
-  sppRating: string;
-  acceleratedStability: string;
-  intermediateStability: string;
-  longTermStability: string;
-  phototability: string;
-  freezeThawCycles: string;
+  prQualitySpecRowsBySection: Record<PrQualitySpecSectionKey, QualitySpecTableRow[]>;
+  prQualityBulkSubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+  prQualityFinalSubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+  prQualityDispatchSubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
   applicableRegulation: string;
   cosmosNaturalCertification: string;
   dermatologicallyTested: string;
@@ -188,19 +199,11 @@ function emptyBomForm(): BOMFormState {
     skuBomLimitUom: 'GM',
     packingComponents: [],
     processSteps: [],
-    phRange: '',
-    viscosity: '',
     specificGravity: '',
-    appearance: '',
-    odour: '',
-    fillWeightSpec: '',
-    microbialLimits: '',
-    sppRating: '',
-    acceleratedStability: '',
-    intermediateStability: '',
-    longTermStability: '',
-    phototability: '',
-    freezeThawCycles: '',
+    prQualitySpecRowsBySection: hydratePrQualitySpecRowsBySection({}),
+    prQualityBulkSubSpecRowsByPath: hydratePrQualityBulkSubSpecRowsByPath({}),
+    prQualityFinalSubSpecRowsByPath: hydratePrQualityFinalSubSpecRowsByPath({}),
+    prQualityDispatchSubSpecRowsByPath: hydratePrQualityDispatchSubSpecRowsByPath({}),
     applicableRegulation: '',
     cosmosNaturalCertification: '',
     dermatologicallyTested: '',
@@ -348,7 +351,18 @@ function mrpValidationMessage(mrp: string): string | null {
 }
 
 function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
-  const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
+  const prQualitySpecRowsBySection = flattenPrQualitySpecRowsBySectionForPayload(
+    fd.prQualitySpecRowsBySection ?? hydratePrQualitySpecRowsBySection({})
+  );
+  const prQualityBulkSubSpecRowsByPath = flattenPrQualityBulkSubSpecRowsByPathForPayload(
+    fd.prQualityBulkSubSpecRowsByPath ?? hydratePrQualityBulkSubSpecRowsByPath({})
+  );
+  const prQualityFinalSubSpecRowsByPath = flattenPrQualityFinalSubSpecRowsByPathForPayload(
+    fd.prQualityFinalSubSpecRowsByPath ?? hydratePrQualityFinalSubSpecRowsByPath({})
+  );
+  const prQualityDispatchSubSpecRowsByPath = flattenPrQualityDispatchSubSpecRowsByPathForPayload(
+    fd.prQualityDispatchSubSpecRowsByPath ?? hydratePrQualityDispatchSubSpecRowsByPath({})
+  );
   const internalCode = fd.skuCode.trim();
   return {
     product_name: fd.productName.trim(),
@@ -367,10 +381,10 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
     pack_configuration: fd.packConfiguration || null,
-    microbial_limits: fd.microbialLimits || null,
-    spf_pa_rating: fd.sppRating || null,
-    photostability: fd.phototability || null,
-    freeze_thaw_cycles: fd.freezeThawCycles || null,
+    pr_quality_spec_rows_by_section: prQualitySpecRowsBySection,
+    pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
+    pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
+    pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
     cosmos_natural_certification: fd.cosmosNaturalCertification || null,
     dermatologically_tested: fd.dermatologicallyTested || null,
     cruelty_free_vegan: fd.crueltyFreeVegan || null,
@@ -385,13 +399,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     }),
     pm_lines: bomFormToPmLines(fd),
     process_steps: bomFormToProcessSteps(fd),
-    ph_range: fd.phRange || null,
-    viscosity_range: fd.viscosity || null,
     specific_gravity: fd.specificGravity.trim() || null,
-    appearance: fd.appearance || null,
-    odour: fd.odour || null,
-    fill_weight_spec: fd.fillWeightSpec || null,
-    stability_summary: stabilityParts.length ? stabilityParts.join('; ') : fd.longTermStability || null,
     approved_claims: fd.approvedMarketingClaims || null,
     regulatory: fd.applicableRegulation || null,
     desc: fd.claimsSubstantiation || null,
@@ -399,7 +407,18 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
 }
 
 function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
-  const stabilityParts = [fd.acceleratedStability, fd.intermediateStability, fd.longTermStability].filter(Boolean);
+  const prQualitySpecRowsBySection = flattenPrQualitySpecRowsBySectionForPayload(
+    fd.prQualitySpecRowsBySection ?? hydratePrQualitySpecRowsBySection({})
+  );
+  const prQualityBulkSubSpecRowsByPath = flattenPrQualityBulkSubSpecRowsByPathForPayload(
+    fd.prQualityBulkSubSpecRowsByPath ?? hydratePrQualityBulkSubSpecRowsByPath({})
+  );
+  const prQualityFinalSubSpecRowsByPath = flattenPrQualityFinalSubSpecRowsByPathForPayload(
+    fd.prQualityFinalSubSpecRowsByPath ?? hydratePrQualityFinalSubSpecRowsByPath({})
+  );
+  const prQualityDispatchSubSpecRowsByPath = flattenPrQualityDispatchSubSpecRowsByPathForPayload(
+    fd.prQualityDispatchSubSpecRowsByPath ?? hydratePrQualityDispatchSubSpecRowsByPath({})
+  );
   const mrp = parseMrpNumber(fd.mrp);
   return {
     product_name: fd.productName.trim(),
@@ -417,20 +436,14 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
     applicable_regulation: fd.applicableRegulation || null,
     claims_substantiation: fd.claimsSubstantiation || null,
     pack_configuration: fd.packConfiguration || null,
-    microbial_limits: fd.microbialLimits || null,
-    spf_pa_rating: fd.sppRating || null,
-    photostability: fd.phototability || null,
-    freeze_thaw_cycles: fd.freezeThawCycles || null,
+    pr_quality_spec_rows_by_section: prQualitySpecRowsBySection,
+    pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
+    pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
+    pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
     cosmos_natural_certification: fd.cosmosNaturalCertification || null,
     dermatologically_tested: fd.dermatologicallyTested || null,
     cruelty_free_vegan: fd.crueltyFreeVegan || null,
     approved_claims: fd.approvedMarketingClaims || null,
-    ph_range: fd.phRange || null,
-    viscosity_range: fd.viscosity || null,
-    appearance: fd.appearance || null,
-    odour: fd.odour || null,
-    fill_weight_spec: fd.fillWeightSpec || null,
-    stability_summary: stabilityParts.length ? stabilityParts.join('; ') : fd.longTermStability || null,
     ...(mrp !== undefined ? { mrp_price: mrp } : {}),
     bom: {
       rm_lines: bomFormToRmLines(fd),
@@ -441,19 +454,17 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       }),
       pm_lines: bomFormToPmLines(fd),
       process_steps: bomFormToProcessSteps(fd),
-      ph_range: fd.phRange || null,
       specific_gravity: fd.specificGravity.trim() || null,
       pack_configuration: fd.packConfiguration || null,
       pr_sub_category: fd.prSubCategory || null,
       pr_qc_group: fd.prQcGroup || null,
-      microbial_limits: fd.microbialLimits || null,
-      spf_pa_rating: fd.sppRating || null,
-      photostability: fd.phototability || null,
-      freeze_thaw_cycles: fd.freezeThawCycles || null,
+      pr_quality_spec_rows_by_section: prQualitySpecRowsBySection,
+      pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
+      pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
+      pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
       cosmos_natural_certification: fd.cosmosNaturalCertification || null,
       dermatologically_tested: fd.dermatologicallyTested || null,
       cruelty_free_vegan: fd.crueltyFreeVegan || null,
-      stability_summary: fd.longTermStability || null,
       bom_composite_item: fd.bomCompositeItem === 'Yes',
     },
   };
@@ -627,13 +638,16 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     skuBomLimitUom: skuBomLimitUomStr,
     packingComponents,
     processSteps,
-    phRange: p.ph_range || '',
-    viscosity: p.viscosity_range || '',
     specificGravity: (p as unknown as { specific_gravity?: string | null }).specific_gravity || '',
-    microbialLimits: (p as unknown as { microbial_limits?: string | null }).microbial_limits || '',
-    sppRating: (p as unknown as { spf_pa_rating?: string | null }).spf_pa_rating || '',
-    phototability: (p as unknown as { photostability?: string | null }).photostability || '',
-    freezeThawCycles: (p as unknown as { freeze_thaw_cycles?: string | null }).freeze_thaw_cycles || '',
+    ...(() => {
+      const reconciled = hydrateAndReconcilePrQualitySpecs(p as unknown as Record<string, unknown>);
+      return {
+        prQualitySpecRowsBySection: reconciled.bySection,
+        prQualityBulkSubSpecRowsByPath: reconciled.bulkSubByPath,
+        prQualityFinalSubSpecRowsByPath: reconciled.finalSubByPath,
+        prQualityDispatchSubSpecRowsByPath: reconciled.dispatchSubByPath,
+      };
+    })(),
     packConfiguration: (p as unknown as { pack_configuration?: string | null }).pack_configuration || '',
     prSubCategory,
     applicableRegulation: (p as unknown as { applicable_regulation?: string | null }).applicable_regulation || '',
@@ -641,11 +655,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     cosmosNaturalCertification: (p as unknown as { cosmos_natural_certification?: string | null }).cosmos_natural_certification || '',
     dermatologicallyTested: (p as unknown as { dermatologically_tested?: string | null }).dermatologically_tested || '',
     crueltyFreeVegan: (p as unknown as { cruelty_free_vegan?: string | null }).cruelty_free_vegan || '',
-    appearance: p.appearance || '',
-    odour: p.odour || '',
-    fillWeightSpec: p.fill_weight_spec || '',
     approvedMarketingClaims: p.approved_claims || '',
-    longTermStability: p.stability_summary || '',
   };
 }
 
@@ -962,6 +972,137 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     });
     return () => { cancelled = true; };
   }, [productIdFromRoute]);
+
+  const prQualitySpecCtx = useMemo(
+    () => ({
+      category: formData.category,
+      prSubCategory: formData.prSubCategory,
+    }),
+    [formData.category, formData.prSubCategory]
+  );
+  const prQualitySpecResolved = useMemo(
+    () => resolvePrQualitySpecContext(prQualitySpecCtx),
+    [prQualitySpecCtx]
+  );
+  const showPrBulkSubSpecTable = useMemo(
+    () => shouldShowPrBulkSubSpecTable(prQualitySpecCtx),
+    [prQualitySpecCtx]
+  );
+  const showPrFinalSubSpecTable = useMemo(
+    () => shouldShowPrFinalSubSpecTable(prQualitySpecCtx),
+    [prQualitySpecCtx]
+  );
+  const showPrDispatchSubSpecTable = useMemo(
+    () => shouldShowPrDispatchSubSpecTable(prQualitySpecCtx),
+    [prQualitySpecCtx]
+  );
+  const currentPrBulkSubSpecRows = useMemo(() => {
+    const pathKey = prQualitySpecResolved.bulkSubSpecPathKey;
+    if (!pathKey) return [];
+    return formData.prQualityBulkSubSpecRowsByPath[pathKey] ?? [];
+  }, [formData.prQualityBulkSubSpecRowsByPath, prQualitySpecResolved.bulkSubSpecPathKey]);
+  const currentPrFinalSubSpecRows = useMemo(() => {
+    const pathKey = prQualitySpecResolved.bulkSubSpecPathKey;
+    if (!pathKey) return [];
+    return formData.prQualityFinalSubSpecRowsByPath[pathKey] ?? [];
+  }, [formData.prQualityFinalSubSpecRowsByPath, prQualitySpecResolved.bulkSubSpecPathKey]);
+  const currentPrDispatchSubSpecRows = useMemo(() => {
+    const pathKey = prQualitySpecResolved.bulkSubSpecPathKey;
+    if (!pathKey) return [];
+    return formData.prQualityDispatchSubSpecRowsByPath[pathKey] ?? [];
+  }, [formData.prQualityDispatchSubSpecRowsByPath, prQualitySpecResolved.bulkSubSpecPathKey]);
+
+  const handlePrQualitySpecSectionChange = useCallback(
+    (section: PrQualitySpecSectionKey, rows: QualitySpecTableRow[]) => {
+      setFormData((prev) => ({
+        ...prev,
+        prQualitySpecRowsBySection: {
+          ...prev.prQualitySpecRowsBySection,
+          [section]: rows,
+        },
+      }));
+    },
+    []
+  );
+
+  const handlePrBulkSubSpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
+    setFormData((prev) => {
+      const pathKey = resolvePrQualitySpecContext({
+        category: prev.category,
+        prSubCategory: prev.prSubCategory,
+      }).bulkSubSpecPathKey;
+      if (!pathKey) return prev;
+      return {
+        ...prev,
+        prQualityBulkSubSpecRowsByPath: {
+          ...prev.prQualityBulkSubSpecRowsByPath,
+          [pathKey]: rows,
+        },
+      };
+    });
+  }, []);
+
+  const handlePrFinalSubSpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
+    setFormData((prev) => {
+      const pathKey = resolvePrQualitySpecContext({
+        category: prev.category,
+        prSubCategory: prev.prSubCategory,
+      }).bulkSubSpecPathKey;
+      if (!pathKey) return prev;
+      return {
+        ...prev,
+        prQualityFinalSubSpecRowsByPath: {
+          ...prev.prQualityFinalSubSpecRowsByPath,
+          [pathKey]: rows,
+        },
+      };
+    });
+  }, []);
+
+  const handlePrDispatchSubSpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
+    setFormData((prev) => {
+      const pathKey = resolvePrQualitySpecContext({
+        category: prev.category,
+        prSubCategory: prev.prSubCategory,
+      }).bulkSubSpecPathKey;
+      if (!pathKey) return prev;
+      return {
+        ...prev,
+        prQualityDispatchSubSpecRowsByPath: {
+          ...prev.prQualityDispatchSubSpecRowsByPath,
+          [pathKey]: rows,
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (currentStage !== 5) return;
+    setFormData((prev) => {
+      const seeded = seedPrQualitySpecsIfEmpty(
+        { category: prev.category, prSubCategory: prev.prSubCategory },
+        prev.prQualitySpecRowsBySection,
+        prev.prQualityBulkSubSpecRowsByPath,
+        prev.prQualityFinalSubSpecRowsByPath,
+        prev.prQualityDispatchSubSpecRowsByPath
+      );
+      if (
+        seeded.bySection === prev.prQualitySpecRowsBySection &&
+        seeded.bulkSubByPath === prev.prQualityBulkSubSpecRowsByPath &&
+        seeded.finalSubByPath === prev.prQualityFinalSubSpecRowsByPath &&
+        seeded.dispatchSubByPath === prev.prQualityDispatchSubSpecRowsByPath
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        prQualitySpecRowsBySection: seeded.bySection,
+        prQualityBulkSubSpecRowsByPath: seeded.bulkSubByPath,
+        prQualityFinalSubSpecRowsByPath: seeded.finalSubByPath,
+        prQualityDispatchSubSpecRowsByPath: seeded.dispatchSubByPath,
+      };
+    });
+  }, [currentStage, formData.category, formData.prSubCategory]);
 
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
@@ -2917,42 +3058,41 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   <p className="text-xs text-slate-500 mt-1">Read-only — returned after a successful save.</p>
                 </div>
               </div>
-              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
-                <label className="block text-sm font-semibold text-blue-700 mb-3">FINISHED PRODUCT SPECIFICATIONS</label>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">pH Range</label>
-                      <input type="text" placeholder="e.g. 6.0-7.0" value={formData.phRange} onChange={(e) => handleInputChange('phRange', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Viscosity</label>
-                      <input type="text" placeholder="e.g. 15,000-25,000" value={formData.viscosity} onChange={(e) => handleInputChange('viscosity', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Appearance</label>
-                      <input type="text" placeholder="e.g. White smooth lotion" value={formData.appearance} onChange={(e) => handleInputChange('appearance', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
-                <label className="block text-sm font-semibold text-blue-700 mb-3">STABILITY PROTOCOL</label>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Accelerated Stability</label>
-                    <input type="text" placeholder="e.g. 6M completed PASS" value={formData.acceleratedStability} onChange={(e) => handleInputChange('acceleratedStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Intermediate Stability</label>
-                    <input type="text" placeholder="e.g. 12M ongoing" value={formData.intermediateStability} onChange={(e) => handleInputChange('intermediateStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Long-term Stability</label>
-                    <input type="text" placeholder="e.g. 24M ongoing" value={formData.longTermStability} onChange={(e) => handleInputChange('longTermStability', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                  </div>
-                </div>
+              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white min-w-0">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality specifications</h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Choose Bulk Clearance, Final Clearance, or Dispatch Specs above the table — use Add when no template exists for that section.
+                </p>
+                <PrQualitySpecTable
+                  categoryLabel={prQualitySpecResolved.categoryDisplayLabel}
+                  subCategoryLabel={prQualitySpecResolved.subCategory || '—'}
+                  rowsBySection={formData.prQualitySpecRowsBySection}
+                  bulkSubRows={currentPrBulkSubSpecRows}
+                  finalSubRows={currentPrFinalSubSpecRows}
+                  dispatchSubRows={currentPrDispatchSubSpecRows}
+                  onSectionChange={handlePrQualitySpecSectionChange}
+                  onBulkSubChange={handlePrBulkSubSpecRowsChange}
+                  onFinalSubChange={handlePrFinalSubSpecRowsChange}
+                  onDispatchSubChange={handlePrDispatchSubSpecRowsChange}
+                  showBulkSubTable={showPrBulkSubSpecTable}
+                  showFinalSubTable={showPrFinalSubSpecTable}
+                  showDispatchSubTable={showPrDispatchSubSpecTable}
+                  bulkSubDisabledHint={
+                    showPrBulkSubSpecTable
+                      ? undefined
+                      : 'Select PR category and sub-category in Primary info to add bulk sub-category specs.'
+                  }
+                  finalSubDisabledHint={
+                    showPrFinalSubSpecTable
+                      ? undefined
+                      : 'Select PR category and sub-category in Primary info to add final sub-category specs.'
+                  }
+                  dispatchSubDisabledHint={
+                    showPrDispatchSubSpecTable
+                      ? undefined
+                      : 'Select PR category and sub-category in Primary info to add dispatch sub-category specs.'
+                  }
+                />
               </div>
 
               <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">

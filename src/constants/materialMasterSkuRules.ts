@@ -74,15 +74,83 @@ export const PM_SKU_CATEGORY_SELECT_OPTIONS = [
 ] as const;
 
 /**
+ * All PM functional categories (master form + quality specifications).
+ * Stored in `optionalPmSubCategory`; sub-types in `optionalPmSubSubCategory`.
+ */
+export const PM_FUNCTIONAL_CATEGORY_OPTIONS = [
+  'Closures & Pumps',
+  'Secondary Pack',
+  'Primary Pack',
+  'Tertiary Pack',
+  'Ancillary',
+] as const;
+
+export type PmFunctionalCategoryOption = (typeof PM_FUNCTIONAL_CATEGORY_OPTIONS)[number];
+
+/** Sub-categories under Closures & Pumps (stored in `optionalPmSubSubCategory`). */
+export const PM_CLOSURES_SUB_CATEGORY_OPTIONS = [
+  'Pump (Lotion/Foam)',
+  'Cap (Flip-top/Disc-top)',
+  'Sprayer',
+  'Dropper Cap',
+  'Inner Plug',
+] as const;
+
+export type PmClosuresSubCategoryOption = (typeof PM_CLOSURES_SUB_CATEGORY_OPTIONS)[number];
+
+/** Sub-categories under Primary Pack (stored in `optionalPmSubSubCategory`). */
+export const PM_PRIMARY_PACK_SUB_CATEGORY_OPTIONS = [
+  'Bottle (PET/HDPE)',
+  'Tube (Laminated)',
+  'Jar (PP/PET)',
+  'Sachet',
+  'Dropper',
+  'Spray (Mist)',
+] as const;
+
+export type PmPrimaryPackSubCategoryOption = (typeof PM_PRIMARY_PACK_SUB_CATEGORY_OPTIONS)[number];
+
+/** Sub-categories under Secondary Pack (stored in `optionalPmSubSubCategory`). */
+export const PM_SECONDARY_PACK_SUB_CATEGORY_OPTIONS = [
+  'Monocarton',
+  'Front Label',
+  'Back Label',
+  'Tamper Sticker',
+  'Leaflet',
+] as const;
+
+export type PmSecondaryPackSubCategoryOption = (typeof PM_SECONDARY_PACK_SUB_CATEGORY_OPTIONS)[number];
+
+/** Sub-categories under Tertiary Pack (stored in `optionalPmSubSubCategory`). */
+export const PM_TERTIARY_PACK_SUB_CATEGORY_OPTIONS = [
+  'Master Carton',
+  'Pallet Material',
+  'Stretch Film',
+  'Strapping',
+] as const;
+
+export type PmTertiaryPackSubCategoryOption = (typeof PM_TERTIARY_PACK_SUB_CATEGORY_OPTIONS)[number];
+
+/** Sub-categories under Ancillary (stored in `optionalPmSubSubCategory`). */
+export const PM_ANCILLARY_SUB_CATEGORY_OPTIONS = [
+  'Spatula',
+  'Brush',
+  'Sponge',
+  'QR Card / Insert',
+] as const;
+
+export type PmAncillarySubCategoryOption = (typeof PM_ANCILLARY_SUB_CATEGORY_OPTIONS)[number];
+
+/**
  * PM functional taxonomy (master form: category → sub-category).
  * Stored in `optionalPmSubCategory` / `optionalPmSubSubCategory`.
  */
 export const PM_FUNCTIONAL_SUB_CATEGORIES: Record<string, readonly string[]> = {
-  'Primary Pack': ['Bottle', 'Tube', 'Jar', 'Sachet', 'Dropper', 'Spray (Mist)'],
-  'Closures & Pumps': ['Pump', 'Cap', 'Sprayer', 'Dropper Cap', 'Inner Plug'],
-  'Secondary Pack': ['Monocarton', 'Front Label', 'Back Label', 'Tamper Sticker', 'Leaflet'],
-  'Tertiary Pack': ['Master Carton', 'Pallet Material', 'Stretch Film', 'Strapping'],
-  Ancillary: ['Spatula', 'Brush', 'Sponge', 'QR Card / Insert'],
+  'Primary Pack': [...PM_PRIMARY_PACK_SUB_CATEGORY_OPTIONS],
+  'Closures & Pumps': [...PM_CLOSURES_SUB_CATEGORY_OPTIONS],
+  'Secondary Pack': [...PM_SECONDARY_PACK_SUB_CATEGORY_OPTIONS],
+  'Tertiary Pack': [...PM_TERTIARY_PACK_SUB_CATEGORY_OPTIONS],
+  Ancillary: [...PM_ANCILLARY_SUB_CATEGORY_OPTIONS],
 };
 
 /** Functional categories shown per PM SKU series. */
@@ -459,7 +527,14 @@ export function pmDetailSubCategoryOptionsForSkuCategory(
 ): { value: string; label: string }[] {
   const canon = normalizePmSkuCategoryForSelect(parent);
   if (!canon) return [];
-  return (PM_DETAIL_SUB_CATEGORIES[canon] ?? []).map((label) => ({ value: label, label }));
+  return PM_FUNCTIONAL_CATEGORY_OPTIONS.map((label) => ({ value: label, label }));
+}
+
+/** Typical functional categories per SKU series (hint only — all five are selectable). */
+export function pmRecommendedFunctionalCategoriesForSku(parent: string): readonly string[] {
+  const canon = normalizePmSkuCategoryForSelect(parent);
+  if (!canon) return [];
+  return PM_DETAIL_SUB_CATEGORIES[canon] ?? [];
 }
 
 const PM_FUNCTIONAL_CATEGORY_ALIASES: Record<string, string> = {
@@ -501,13 +576,17 @@ const PM_FUNCTIONAL_CATEGORY_ALIASES: Record<string, string> = {
 export function normalizePmDetailSubCategoryForSelect(parent: string, raw: string): string {
   const detail = String(raw || '').trim();
   if (!detail) return '';
+  const keyFromTaxonomy = normalizePmDetailSubCategoryKey(detail);
+  if (keyFromTaxonomy) return keyFromTaxonomy;
   const canon = normalizePmSkuCategoryForSelect(parent);
   const options = PM_DETAIL_SUB_CATEGORIES[canon] ?? [];
   const lower = detail.toLowerCase();
   const exact = options.find((o) => o.toLowerCase() === lower);
   if (exact) return exact;
   const mapped = PM_FUNCTIONAL_CATEGORY_ALIASES[lower];
-  if (mapped && options.includes(mapped)) return mapped;
+  if (mapped && PM_FUNCTIONAL_CATEGORY_OPTIONS.includes(mapped as PmFunctionalCategoryOption)) {
+    return mapped;
+  }
   return '';
 }
 
@@ -516,6 +595,9 @@ export function normalizePmDetailSubCategoryKey(raw: string): string {
   const detail = String(raw || '').trim();
   if (!detail) return '';
   const lower = detail.toLowerCase();
+  for (const cat of PM_FUNCTIONAL_CATEGORY_OPTIONS) {
+    if (cat.toLowerCase() === lower) return cat;
+  }
   for (const list of Object.values(PM_DETAIL_SUB_CATEGORIES)) {
     const exact = list.find((o) => o.toLowerCase() === lower);
     if (exact) return exact;
@@ -523,7 +605,11 @@ export function normalizePmDetailSubCategoryKey(raw: string): string {
   for (const key of Object.keys(PM_FUNCTIONAL_SUB_CATEGORIES)) {
     if (key.toLowerCase() === lower) return key;
   }
-  return PM_FUNCTIONAL_CATEGORY_ALIASES[lower] ?? '';
+  const mapped = PM_FUNCTIONAL_CATEGORY_ALIASES[lower];
+  if (mapped && PM_FUNCTIONAL_CATEGORY_OPTIONS.includes(mapped as PmFunctionalCategoryOption)) {
+    return mapped;
+  }
+  return '';
 }
 
 export function pmDetailSubCategoryHasSubSubCategory(detailSub: string): boolean {
@@ -568,12 +654,18 @@ export function normalizePmFunctionalSubCategoryKey(raw: string): string {
 }
 
 const PM_FUNCTIONAL_SUB_CATEGORY_ALIASES: Record<string, string> = {
-  bottle: 'Bottle',
-  bottles: 'Bottle',
-  tube: 'Tube',
-  tubes: 'Tube',
-  jar: 'Jar',
-  jars: 'Jar',
+  bottle: 'Bottle (PET/HDPE)',
+  bottles: 'Bottle (PET/HDPE)',
+  'bottle (pet/hdpe)': 'Bottle (PET/HDPE)',
+  'pet bottle': 'Bottle (PET/HDPE)',
+  'hdpe bottle': 'Bottle (PET/HDPE)',
+  tube: 'Tube (Laminated)',
+  tubes: 'Tube (Laminated)',
+  'tube (laminated)': 'Tube (Laminated)',
+  'laminated tube': 'Tube (Laminated)',
+  jar: 'Jar (PP/PET)',
+  jars: 'Jar (PP/PET)',
+  'jar (pp/pet)': 'Jar (PP/PET)',
   sachet: 'Sachet',
   sachets: 'Sachet',
   dropper: 'Dropper',
@@ -581,12 +673,20 @@ const PM_FUNCTIONAL_SUB_CATEGORY_ALIASES: Record<string, string> = {
   'spray (mist)': 'Spray (Mist)',
   'mist spray': 'Spray (Mist)',
   spray: 'Spray (Mist)',
-  pump: 'Pump',
-  pumps: 'Pump',
-  cap: 'Cap',
-  caps: 'Cap',
-  lid: 'Cap',
-  lids: 'Cap',
+  pump: 'Pump (Lotion/Foam)',
+  pumps: 'Pump (Lotion/Foam)',
+  'pump (lotion/foam)': 'Pump (Lotion/Foam)',
+  'lotion pump': 'Pump (Lotion/Foam)',
+  'foam pump': 'Pump (Lotion/Foam)',
+  cap: 'Cap (Flip-top/Disc-top)',
+  caps: 'Cap (Flip-top/Disc-top)',
+  lid: 'Cap (Flip-top/Disc-top)',
+  lids: 'Cap (Flip-top/Disc-top)',
+  'cap (flip-top/disc-top)': 'Cap (Flip-top/Disc-top)',
+  'flip-top': 'Cap (Flip-top/Disc-top)',
+  'flip top': 'Cap (Flip-top/Disc-top)',
+  'disc-top': 'Cap (Flip-top/Disc-top)',
+  'disc top': 'Cap (Flip-top/Disc-top)',
   sprayer: 'Sprayer',
   sprayers: 'Sprayer',
   'dropper cap': 'Dropper Cap',

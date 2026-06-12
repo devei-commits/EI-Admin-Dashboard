@@ -10,10 +10,13 @@ export type QualitySpecTableProps = {
   rows: QualitySpecTableRow[];
   onChange: (rows: QualitySpecTableRow[]) => void;
   idPrefix?: string;
+  /** When false, inputs and add are disabled (section still visible). */
+  enabled?: boolean;
+  disabledHint?: string;
 };
 
 const inputCls =
-  'w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white';
+  'w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white disabled:bg-gray-100 disabled:text-gray-500';
 
 export function QualitySpecTable({
   title,
@@ -23,16 +26,21 @@ export function QualitySpecTable({
   rows,
   onChange,
   idPrefix = 'qs',
+  enabled = true,
+  disabledHint,
 }: QualitySpecTableProps): React.ReactElement {
   const updateRow = (id: string, patch: Partial<QualitySpecTableRow>): void => {
+    if (!enabled) return;
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
   const removeRow = (id: string): void => {
+    if (!enabled) return;
     onChange(rows.filter((row) => row.id !== id));
   };
 
   const addRow = (): void => {
+    if (!enabled) return;
     onChange([...rows, createEmptyQualitySpecRow({ id: `${idPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` })]);
   };
 
@@ -46,11 +54,17 @@ export function QualitySpecTable({
         <button
           type="button"
           onClick={addRow}
-          className="shrink-0 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          disabled={!enabled}
+          className="shrink-0 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {addButtonLabel}
         </button>
       </div>
+      {!enabled && disabledHint ? (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          {disabledHint}
+        </p>
+      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="min-w-[960px] w-full text-xs">
@@ -70,8 +84,17 @@ export function QualitySpecTable({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
-                  {emptyMessage}
+                <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
+                  <p className="mb-3">{emptyMessage}</p>
+                  {enabled ? (
+                    <button
+                      type="button"
+                      onClick={addRow}
+                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                    >
+                      {addButtonLabel}
+                    </button>
+                  ) : null}
                 </td>
               </tr>
             ) : (
@@ -88,6 +111,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { parameter: e.target.value })}
                       className={inputCls}
                       placeholder="Parameter"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -101,6 +125,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { specLimit: e.target.value })}
                       className={inputCls}
                       placeholder="Spec / limit"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -114,6 +139,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { method: e.target.value })}
                       className={inputCls}
                       placeholder="Method"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2 text-center">
@@ -125,7 +151,8 @@ export function QualitySpecTable({
                       type="checkbox"
                       checked={row.mandatory}
                       onChange={(e) => updateRow(row.id, { mandatory: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-400"
+                      className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-400 disabled:opacity-50"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -139,6 +166,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { tolerance: e.target.value })}
                       className={inputCls}
                       placeholder="Tolerance"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -152,6 +180,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { frequency: e.target.value })}
                       className={inputCls}
                       placeholder="Frequency"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -165,6 +194,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { sample: e.target.value })}
                       className={inputCls}
                       placeholder="Sample"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -178,6 +208,7 @@ export function QualitySpecTable({
                       onChange={(e) => updateRow(row.id, { acceptance: e.target.value })}
                       className={inputCls}
                       placeholder="Acceptance"
+                      disabled={!enabled}
                     />
                   </td>
                   <td className="px-2 py-2">
