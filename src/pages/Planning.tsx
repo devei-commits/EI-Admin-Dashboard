@@ -36,7 +36,7 @@ import {
   type ProcurementRequest,
 } from '../services/procurement.service';
 import {
-  isProcurementRequestMergeable,
+  findVendorWeekMergeTarget,
   procurementItemMergeKey,
 } from '../lib/procurementRequestMerge';
 import {
@@ -4579,16 +4579,10 @@ const Planning = () => {
       }
 
       const wantBatchId = target.planningBatchId;
-      const existing = reqRes.data.find((r) => {
-        const sameVendor = String(r.preferredVendor ?? '').trim().toLowerCase() === vendorName.toLowerCase();
-        const prBatchId = r.planningBatchId ?? null;
-        const prDue = String(r.requiredByDate ?? '').trim().slice(0, 10);
-        return (
-          sameVendor &&
-          prBatchId === wantBatchId &&
-          datesMatchForProcurementMerge(prDue, requiredByDate) &&
-          isProcurementRequestMergeable(r, purchaseOrders)
-        );
+      const existing = findVendorWeekMergeTarget(reqRes.data, {
+        vendorName,
+        requiredByDate,
+        purchaseOrders,
       });
 
       const batchNote =
@@ -4641,12 +4635,12 @@ const Planning = () => {
           requiredByDate,
           notes: `Planned group: ${groupKey}${batchNote}`,
           items: [newRequestItem],
+          preferredVendor: vendorName,
         });
         if (!createRes.success || !createRes.data) {
           addToast('error', typeof createRes.error === 'string' ? createRes.error : 'Failed to create procurement request');
           return false;
         }
-        await updateProcurementRequest(createRes.data.id, { preferredVendor: vendorName });
       }
     }
 

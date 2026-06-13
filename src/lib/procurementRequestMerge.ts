@@ -4,9 +4,22 @@ import type {
 } from '../services/procurement.service';
 import type { Order } from '../types/salesPurchase.types';
 import type { RequestStatus } from '../types/procurement.types';
+import { datesMatchForProcurementMerge } from './plannedReleaseTargets';
 
 /** Statuses where Planning vendor consolidation may merge into an existing PR. */
 export const PROCUREMENT_PRE_DRAFT_STATUSES: readonly RequestStatus[] = ['New', 'Quoted'] as const;
+
+/** Backend PR status before draft PO — API returns `Pending`, UI maps to `New`. */
+const BACKEND_PRE_DRAFT_STATUSES = ['Pending', 'pending'] as const;
+
+/** Normalize API/UI status for merge eligibility. */
+export function normalizeMergeableRequestStatus(status: string | null | undefined): RequestStatus | string {
+  const s = String(status ?? '').trim();
+  if (BACKEND_PRE_DRAFT_STATUSES.includes(s as (typeof BACKEND_PRE_DRAFT_STATUSES)[number])) {
+    return 'New';
+  }
+  return s;
+}
 
 const NON_MERGEABLE_STATUSES: readonly RequestStatus[] = [
   'PO Released',
@@ -43,7 +56,7 @@ export function isProcurementRequestMergeable(
   pr: Pick<ProcurementRequest, 'id' | 'status'>,
   purchaseOrders: Order[]
 ): boolean {
-  const status = String(pr.status ?? '').trim() as RequestStatus;
+  const status = normalizeMergeableRequestStatus(pr.status) as RequestStatus;
 
   if (NON_MERGEABLE_STATUSES.includes(status)) {
     return false;
@@ -60,8 +73,42 @@ export function isProcurementRequestMergeable(
   return false;
 }
 
-export function isProcurementRequestPreDraftPipelineStatus(status: RequestStatus): boolean {
-  return PROCUREMENT_PRE_DRAFT_STATUSES.includes(status);
+export function isProcurementRequestPreDraftPipelineStatus(status: RequestStatus | string): boolean {
+  const normalized = normalizeMergeableRequestStatus(status) as RequestStatus;
+  return PROCUREMENT_PRE_DRAFT_STATUSES.includes(normalized);
+}
+
+/**
+ * Find an open PR to append another Planning release line (same vendor + ISO week).
+ * Scoped to requests for one planning_extracted_id; prefers PRs with more lines already.
+ */
+export function findVendorWeekMergeTarget(
+  requests: ProcurementRequest[],
+  opts: {
+    vendorName: string;
+    requiredByDate: string;
+    purchaseOrders: Order[];
+  }
+): ProcurementRequest | undefined {
+  const vendorKey = String(opts.vendorName ?? '').trim().toLowerCase();
+  if (!vendorKey) return undefined;
+
+  const candidates = requests.filter((r) => {
+    const rv = String(r.preferredVendor ?? '').trim().toLowerCase();
+    if (!rv || rv !== vendorKey) return false;
+    const prDue = String(r.requiredByDate ?? '').trim().slice(0, 10);
+    if (!datesMatchForProcurementMerge(prDue, opts.requiredByDate)) return false;
+    return isProcurementRequestMergeable(r, opts.purchaseOrders);
+  });
+
+  if (candidates.length === 0) return undefined;
+
+  return [...candidates].sort((a, b) => {
+    const aLines = Array.isArray(a.items) ? a.items.length : 0;
+    const bLines = Array.isArray(b.items) ? b.items.length : 0;
+    if (bLines !== aLines) return bLines - aLines;
+    return String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''));
+  })[0];
 }
 
 /** Stable key for merging procurement lines (Planning consolidation + draft PO delete revert). */

@@ -8,6 +8,7 @@ import { useGlobalState } from '../../context/GlobalStateContext';
 import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
 import IssuedPOsView from '../../components/procurement/IssuedPOsView';
 import { WeekVendorConsolidationView } from '../../components/procurement/WeekVendorConsolidationView';
+import { ProcurementRequestPrGroupCard } from '../../components/procurement/ProcurementRequestPrGroupCard';
 import { InventoryAuditView } from '../../components/procurement/InventoryAuditView';
 import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inventoryAuditLines';
 import {
@@ -412,6 +413,7 @@ const SIDE_SECTIONS: SideSection[] = [
 ];
 
 type RequestListTab = 'All' | 'Active' | RequestStatus | 'Week + Vendor';
+type RequestListViewMode = 'item' | 'pr';
 
 const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
@@ -887,6 +889,8 @@ const Procurement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
   /** Requests tab: All = no filter; Active = New + Quoted only (excludes PO Draft+ once moved to Draft POs) */
   const [requestTab, setRequestTab] = useState<RequestListTab>('New');
+  /** Requests list: one card per item line vs one card per PR (multi-line → one PO). */
+  const [requestListView, setRequestListView] = useState<RequestListViewMode>('pr');
   const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
   const [draftPOSearch, setDraftPOSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -3689,22 +3693,48 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const receiveIssuedPOGRN = async (record: any) => {
+  const receiveIssuedPOGRN = async (
+    record: {
+      poNumber?: string;
+      vendor?: string;
+      requestCode?: string;
+      lineItems?: Array<Record<string, unknown>>;
+      request?: { id?: string; type?: RequestType };
+      backendPoId?: string;
+    },
+    scope?: { lineIndex?: number; allLines?: boolean },
+  ) => {
     const requestId = record?.request?.id as string | undefined;
     const requestCode = record?.requestCode as string | undefined;
     const poNo = String(record?.poNumber ?? '').trim();
+    const allLineItems = Array.isArray(record.lineItems) ? record.lineItems : [];
+    const scopedLineIndex =
+      scope?.lineIndex != null && Number.isFinite(scope.lineIndex) ? scope.lineIndex : null;
+    const lineEntries =
+      scopedLineIndex != null
+        ? allLineItems[scopedLineIndex]
+          ? [{ line: allLineItems[scopedLineIndex], idx: scopedLineIndex }]
+          : []
+        : allLineItems.map((line, idx) => ({ line, idx }));
 
     if (!poNo) {
       addToast('error', 'PO not found. Cannot mark delivered.');
       return;
     }
 
-    if (receiveGrnLockRef.current[poNo]) {
-      addToast('info', 'GRN creation already in progress for this PO.');
+    if (scopedLineIndex != null && lineEntries.length === 0) {
+      addToast('error', 'Line item not found on this PO.');
       return;
     }
 
-    receiveGrnLockRef.current[poNo] = true;
+    const lockKey = scopedLineIndex != null ? `${poNo}::L${scopedLineIndex}` : poNo;
+
+    if (receiveGrnLockRef.current[lockKey]) {
+      addToast('info', scopedLineIndex != null ? 'GRN creation already in progress for this item.' : 'GRN creation already in progress for this PO.');
+      return;
+    }
+
+    receiveGrnLockRef.current[lockKey] = true;
     try {
       const splitLegacyMultiLineGrnsForPo = async (backendPoId: string) => {
         const existingGrns = await fetchGRNList();
@@ -3788,7 +3818,7 @@ const Procurement: React.FC = () => {
 
         let grnCreated = false;
         try {
-          const normalizedLines = record.lineItems.map((line: any, idx: number) => {
+          const normalizedLines = lineEntries.map(({ line, idx }) => {
             // Pass the draft line's FK into the matcher so PR lookup is FK-first (matchBackend
             // falls back to name/code only when no FK is set). Without this, mixed-type POs
             // routed every PM line through the same name-only path and any subtle mismatch
@@ -3828,7 +3858,7 @@ const Procurement: React.FC = () => {
               item: String(line.item ?? prItem?.name ?? ''),
               itemCode: resolveItemCodeFromSources(
                 [line.itemCode, prItem?.code, line.item, prItem?.name],
-                (line?.type ?? record.request.type) as RequestType,
+                (line?.type ?? record.request?.type ?? 'RM') as RequestType,
                 idx
               ),
               poQty: Number(line.qty) || 0,
@@ -3853,6 +3883,7 @@ const Procurement: React.FC = () => {
           );
           for (let idx = 0; idx < normalizedLines.length; idx += 1) {
             const line = normalizedLines[idx];
+            const sourceLine = lineEntries[idx]?.line;
             const lineKey = String(line.itemCode || '').trim().toUpperCase();
             if (lineKey && existingLineKeys.has(lineKey)) continue;
             await createGRN({
@@ -3860,7 +3891,7 @@ const Procurement: React.FC = () => {
               purchase_order_id: parseInt(backendPoId, 10),
               poNo: record.poNumber,
               vendor: record.vendor,
-              type: record.request.type as 'RM' | 'PM',
+              type: (sourceLine?.type ?? record.request?.type ?? 'RM') as 'RM' | 'PM',
               items: 1,
               poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
               status: 'Under GRN',
@@ -3894,8 +3925,12 @@ const Procurement: React.FC = () => {
         addToast(
           'success',
           grnCreated
-            ? `${requestCode ?? record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
-            : `${requestCode ?? record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+            ? scopedLineIndex != null
+              ? `${lineEntries[0]?.line?.item ?? 'Item'} on ${requestCode ?? record.poNumber} marked at WH — GRN created.`
+              : `${requestCode ?? record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+            : scopedLineIndex != null
+              ? `${lineEntries[0]?.line?.item ?? 'Item'} already has a GRN on this PO.`
+              : `${requestCode ?? record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
         );
         return;
       }
@@ -3940,7 +3975,7 @@ const Procurement: React.FC = () => {
       let unlinkedGrnCreated = false;
       try {
         const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
-        const normalizedLines = record.lineItems.map((line: any, idx: number) => {
+        const normalizedLines = lineEntries.map(({ line, idx }) => {
           const raw = rawItemsForGrn[idx] ?? {};
           // Prefer the explicit FK from the draft line; fall back to the matching PO raw item
           // only when the draft didn't carry one. Mutually exclude RM/PM so a PM line cannot
@@ -3992,6 +4027,7 @@ const Procurement: React.FC = () => {
         );
         for (let idx = 0; idx < normalizedLines.length; idx += 1) {
           const line = normalizedLines[idx];
+          const sourceLine = lineEntries[idx]?.line;
           const lineKey = String(line.itemCode || '').trim().toUpperCase();
           if (lineKey && existingLineKeys.has(lineKey)) continue;
           await createGRN({
@@ -3999,7 +4035,7 @@ const Procurement: React.FC = () => {
             purchase_order_id: parseInt(backendPoId, 10),
             poNo: record.poNumber,
             vendor: record.vendor,
-            type: (record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
+            type: (sourceLine?.type ?? record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
             items: 1,
             poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
             status: 'Under GRN',
@@ -4023,11 +4059,15 @@ const Procurement: React.FC = () => {
       addToast(
         'success',
         unlinkedGrnCreated
-          ? `${record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
-          : `${record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+          ? scopedLineIndex != null
+            ? `${lineEntries[0]?.line?.item ?? 'Item'} on ${record.poNumber} marked at WH — GRN created.`
+            : `${record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+          : scopedLineIndex != null
+            ? `${lineEntries[0]?.line?.item ?? 'Item'} already has a GRN on this PO.`
+            : `${record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
       );
     } finally {
-      delete receiveGrnLockRef.current[poNo];
+      delete receiveGrnLockRef.current[lockKey];
     }
   };
 
@@ -5226,6 +5266,234 @@ const Procurement: React.FC = () => {
     setShowRecordQuoteModal(true);
   };
 
+  const openReleaseToDraftPoForRequest = useCallback(
+    (req: ProcurementRequest) => {
+      if (isStockCheckPendingForRequest(req)) {
+        addToast('warning', 'Stock check is pending. Wait for warehouse response before release actions.');
+        return;
+      }
+      if (req.itemDetails && req.itemDetails.length > 0) {
+        const item = req.itemDetails[0];
+        const relItem: ReleaseToPlannedItem = {
+          itemName: item.itemName,
+          itemCode: item.itemCode,
+          idx: 0,
+          qty: item.reqQty,
+          unit: item.unit,
+          plannedPrice: item.plannedPrice,
+          moq: item.moq,
+          reqQty: item.reqQty,
+          raw_material_id: item.raw_material_id,
+          pack_material_id: item.pack_material_id,
+          itemType: item.type === 'PM' ? 'PM' : 'RM',
+        };
+        setReleaseToPlannedTarget({ request: req, item: relItem });
+        const reqType0: RequestType =
+          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
+        const itemSource0 = reqType0 === 'PM' ? itemsListPm : itemsListRm;
+        const matchedItem0 = itemSource0.find((row) => {
+          const rm0 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
+          const pm0 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
+          const rowRm0 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+          const rowPm0 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+          if (Number.isFinite(rm0) && rm0 > 0 && Number.isFinite(rowRm0) && rowRm0 > 0) return rowRm0 === rm0;
+          if (Number.isFinite(pm0) && pm0 > 0 && Number.isFinite(rowPm0) && rowPm0 > 0) return rowPm0 === pm0;
+          const c0 = String(relItem.itemCode ?? '').trim().toLowerCase();
+          const n0 = String(relItem.itemName ?? '').trim().toLowerCase();
+          const rc0 = String(row.code ?? '').trim().toLowerCase();
+          const rn0 = String(row.name ?? '').trim().toLowerCase();
+          if (c0 && rc0 && c0 === rc0) return true;
+          if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
+          return false;
+        });
+        const itemsListSlab0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
+          (rate.tiers ?? []).map((tier) => ({
+            vendor: String(rate.vendor_name ?? '').trim(),
+            moq: Number(tier.moq_min ?? 0) || 0,
+            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
+            leadDays: Number(rate.lead_time_days ?? 0) || 0,
+            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
+          }))
+        ).find((s) => s.vendor);
+        const reqQuotesForItem = quotes.filter(
+          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const first = reqQuotesForItem[0];
+        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
+        setReleaseToPlannedForm({
+          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          moqDisplay: item.moq
+            ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)`
+            : '',
+          qty: String(item.reqQty ?? 0),
+          unitPrice: String(itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
+          paymentTermsType: pt0.type,
+          advancePercent: String(
+            pt0.advancePercent || (paymentTermsTypeRequiresAdvancePercent(pt0.type) ? 50 : 0)
+          ),
+          leadTimeDays: itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? item.leadTimeDays ?? 0,
+        });
+        setReleaseToPlannedNotes('');
+        setReleaseToPlannedLineEdits(
+          (req.itemDetails ?? []).map((d) => {
+            const totalReqQty = Number(d.reqQty ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: d.itemName ?? '',
+              itemCode: d.itemCode,
+              totalReqQty,
+              raw_material_id: d.raw_material_id,
+              pack_material_id: d.pack_material_id,
+              itemType: d.type === 'PM' ? 'PM' : 'RM',
+            });
+            return {
+              itemName: d.itemName ?? '',
+              itemCode: d.itemCode ?? '',
+              type: d.type === 'PM' ? 'PM' : 'RM',
+              originalQty: oq,
+              qty: oq,
+              unit:
+                d.type === 'PM'
+                  ? String(d.unit ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                      String(d.itemCode ?? ''),
+                      String(d.unit ?? '')
+                    ),
+              moq: Number(d.moq ?? 0) || 0,
+              unitPrice: Number(d.plannedPrice ?? 0) || 0,
+              leadDays: Number(d.leadTimeDays ?? 0) || 0,
+              ...(d.raw_material_id != null ? { raw_material_id: Number(d.raw_material_id) } : {}),
+              ...(d.pack_material_id != null ? { pack_material_id: Number(d.pack_material_id) } : {}),
+            };
+          })
+        );
+      } else if (req.items && req.items.length > 0) {
+        const itemName = req.items[0];
+        const qty = req.quantities?.[0] ?? 0;
+        const price = req.plannedPrices?.[0] ?? 0;
+        const spec = req.specifications?.[0];
+        const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
+          | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
+          | undefined;
+        const line0 = prRow?.items?.[0];
+        const line0Type: 'RM' | 'PM' = line0?.type === 'PM' ? 'PM' : 'RM';
+        const unit =
+          line0Type === 'PM'
+            ? String(req.units?.[0] ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                String(line0?.code ?? itemName ?? ''),
+                String(req.units?.[0] ?? '')
+              );
+        const relItem: ReleaseToPlannedItem = {
+          itemName,
+          itemCode: line0?.code,
+          idx: 0,
+          qty,
+          unit,
+          spec,
+          plannedPrice: price,
+          raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+          pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+          itemType: line0Type,
+        };
+        setReleaseToPlannedTarget({ request: req, item: relItem });
+        const reqType1: RequestType =
+          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
+        const itemSource1 = reqType1 === 'PM' ? itemsListPm : itemsListRm;
+        const matchedItem1 = itemSource1.find((row) => {
+          const rm1 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
+          const pm1 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
+          const rowRm1 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+          const rowPm1 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+          if (Number.isFinite(rm1) && rm1 > 0 && Number.isFinite(rowRm1) && rowRm1 > 0) return rowRm1 === rm1;
+          if (Number.isFinite(pm1) && pm1 > 0 && Number.isFinite(rowPm1) && rowPm1 > 0) return rowPm1 === pm1;
+          const c1 = String(relItem.itemCode ?? '').trim().toLowerCase();
+          const n1 = String(relItem.itemName ?? '').trim().toLowerCase();
+          const rc1 = String(row.code ?? '').trim().toLowerCase();
+          const rn1 = String(row.name ?? '').trim().toLowerCase();
+          if (c1 && rc1 && c1 === rc1) return true;
+          if (n1 && rn1 && (n1 === rn1 || n1.includes(rn1) || rn1.includes(n1))) return true;
+          return false;
+        });
+        const itemsListSlab1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
+          (rate.tiers ?? []).map((tier) => ({
+            vendor: String(rate.vendor_name ?? '').trim(),
+            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
+            leadDays: Number(rate.lead_time_days ?? 0) || 0,
+            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
+          }))
+        ).find((s) => s.vendor);
+        const reqQuotesForItem = quotes.filter(
+          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const first = reqQuotesForItem[0];
+        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        const pt1 = parsePaymentTermsString(itemsListSlab1?.terms ?? first?.terms ?? 'As per contract');
+        setReleaseToPlannedForm({
+          vendor: itemsListSlab1?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          moqDisplay: '',
+          qty: String(qty ?? 0),
+          unitPrice: String(itemsListSlab1?.unitPrice ?? firstLine?.pricePerUnit ?? price ?? 0),
+          paymentTermsType: pt1.type,
+          advancePercent: String(
+            pt1.advancePercent || (paymentTermsTypeRequiresAdvancePercent(pt1.type) ? 50 : 0)
+          ),
+          leadTimeDays: itemsListSlab1?.leadDays ?? first?.leadTimeDays ?? 0,
+        });
+        setReleaseToPlannedNotes('');
+        setReleaseToPlannedLineEdits(
+          (req.items ?? []).map((nm, i) => {
+            const totalReqQty = Number((req.quantities ?? [])[i] ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: String(nm ?? ''),
+              itemCode: String(line0?.code ?? ''),
+              totalReqQty,
+              raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+              pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+              itemType: relItem.itemType,
+            });
+            return {
+              itemName: String(nm ?? ''),
+              itemCode: String(line0?.code ?? ''),
+              type: relItem.itemType === 'PM' ? 'PM' : 'RM',
+              originalQty: oq,
+              qty: oq,
+              unit:
+                relItem.itemType === 'PM'
+                  ? String((req.units ?? [])[i] ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                      String(line0?.code ?? nm ?? ''),
+                      String((req.units ?? [])[i] ?? '')
+                    ),
+              moq: 0,
+              unitPrice: Number((req.plannedPrices ?? [])[i] ?? 0) || 0,
+              leadDays: 0,
+              ...(line0?.raw_material_id != null ? { raw_material_id: Number(line0.raw_material_id) } : {}),
+              ...(line0?.pack_material_id != null ? { pack_material_id: Number(line0.pack_material_id) } : {}),
+            };
+          })
+        );
+      } else {
+        addToast('warning', 'No items on this request.');
+      }
+    },
+    [
+      addToast,
+      backendPrArray,
+      itemsListPm,
+      itemsListRm,
+      quotes,
+      resolveOpenQtyForReleaseItem,
+    ]
+  );
+
   const deleteQuote = async (quoteId: string) => {
     const raw = String(quoteId ?? '').trim();
     if (raw.startsWith('IL-')) {
@@ -5876,14 +6144,16 @@ const Procurement: React.FC = () => {
 
                   {/* Header with Tabs and Actions */}
                   <div className="bg-white rounded-xl border border-blue-200 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-200">
+                    <div className="px-5 py-4 border-b border-slate-200 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900 mb-1">Procurement Requests</h2>
                           <p className="text-xs text-slate-500">
                             {requestTab === 'Week + Vendor'
                               ? 'Consolidated view by chosen vendor and ISO week (expected date)'
-                              : 'Item-by-item lines — vendor appears after preferred vendor is chosen'}
+                              : requestListView === 'pr'
+                                ? 'One card per PR — all lines release to a single draft PO'
+                                : 'One card per item line — same PR may appear multiple times'}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -5909,6 +6179,39 @@ const Procurement: React.FC = () => {
                           />
                         </div>
                       </div>
+
+                      {requestTab !== 'Week + Vendor' ? (
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                            List view
+                          </span>
+                          <div
+                            className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5"
+                            role="group"
+                            aria-label="Procurement request list view"
+                          >
+                            {(
+                              [
+                                { id: 'pr' as const, label: 'PR / PO wise' },
+                                { id: 'item' as const, label: 'Item wise' },
+                              ] as const
+                            ).map((mode) => (
+                              <button
+                                key={mode.id}
+                                type="button"
+                                onClick={() => setRequestListView(mode.id)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                  requestListView === mode.id
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-white'
+                                }`}
+                              >
+                                {mode.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* Tabs */}
@@ -6025,6 +6328,12 @@ const Procurement: React.FC = () => {
 
                         const itemLines = buildProcurementRequestItemLines(filteredRequests);
                         const requestsById = new Map(filteredRequests.map((r) => [r.id, r]));
+                        const linesByRequestId = new Map<string, typeof itemLines>();
+                        for (const line of itemLines) {
+                          const bucket = linesByRequestId.get(line.requestId) ?? [];
+                          bucket.push(line);
+                          linesByRequestId.set(line.requestId, bucket);
+                        }
 
                         if (itemLines.length === 0) {
                           return (
@@ -6032,6 +6341,104 @@ const Procurement: React.FC = () => {
                               <p className="text-slate-500 text-sm">No request lines match the current filters.</p>
                             </div>
                           );
+                        }
+
+                        if (requestListView === 'pr') {
+                          return filteredRequests.map((req) => {
+                            const reqLines = linesByRequestId.get(req.id) ?? [];
+                            if (reqLines.length === 0) return null;
+                            const today = new Date();
+                            const daysLeft = computeRequestDaysUntilDue(req, today);
+                            const expectedDisplay = formatDateWithIsoWeek(req.dueDate);
+                            const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
+                            return (
+                              <ProcurementRequestPrGroupCard
+                                key={req.id}
+                                request={req}
+                                lines={reqLines}
+                                daysLeft={daysLeft}
+                                expectedDisplay={expectedDisplay}
+                                statusBadgeClass={statusBg[req.status] ?? 'bg-slate-100 text-slate-600'}
+                                priorityBadgeClass={priorityClass[req.priority]}
+                                linkedDraft={linkedDraft}
+                                isPlanningQuotation={isPlanningQuotationRequest(req)}
+                                stockCheckPending={isStockCheckPendingForRequest(req)}
+                                onView={() => setSelectedRequest(req)}
+                                onAddQuotation={
+                                  isPlanningQuotationRequest(req)
+                                    ? () => openRecordQuoteFromRequest(req)
+                                    : undefined
+                                }
+                                onStockCheck={async () => {
+                                  if (isStockCheckOneTimeCompleted(req)) {
+                                    addToast(
+                                      'warning',
+                                      'Stock check already completed successfully with warehouse qty data. New stock check cannot be raised again for this request.'
+                                    );
+                                    openStockCheckModal(req);
+                                    return;
+                                  }
+                                  const alreadyRequested = Boolean(String(req.stockCheckStatus ?? '').trim());
+                                  if (!alreadyRequested) {
+                                    const res = await updateProcurementRequestApi(req.id, {
+                                      stockCheckAssignedTo: req.stockCheckAssignedTo || 'Warehouse Team',
+                                      stockCheckStatus: 'Pending',
+                                      stockCheckNotes:
+                                        req.stockCheckNotes && String(req.stockCheckNotes).trim()
+                                          ? req.stockCheckNotes
+                                          : JSON.stringify({
+                                              version: 1,
+                                              requestedAt: new Date().toISOString(),
+                                              requestedBy: req.requestedBy ?? 'Procurement Team',
+                                            }),
+                                    });
+                                    if (!res.success) {
+                                      addToast(
+                                        'error',
+                                        typeof res.error === 'string'
+                                          ? res.error
+                                          : (res.error as { message?: string } | null)?.message ??
+                                              'Failed to send stock check request'
+                                      );
+                                      return;
+                                    }
+                                    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                                    addToast('success', 'Stock check request sent to Warehouse.');
+                                  }
+                                  openStockCheckModal(req);
+                                }}
+                                onPriority={() => {
+                                  updateRequestPriority(
+                                    req.id,
+                                    req.priority === 'High' ? 'Medium' : req.priority === 'Medium' ? 'Low' : 'High'
+                                  );
+                                }}
+                                onReleaseToDraftPo={() => openReleaseToDraftPoForRequest(req)}
+                                onViewQuotes={() => setSelectedRequest(req)}
+                                onReleasePo={
+                                  req.status === 'PO Draft'
+                                    ? () => {
+                                        if (isStockCheckPendingForRequest(req)) {
+                                          addToast(
+                                            'warning',
+                                            'Stock check is pending. PO release is locked until warehouse completes it.'
+                                          );
+                                          return;
+                                        }
+                                        if (linkedDraft?.backendPoId) {
+                                          openReleasePOModal(linkedDraft.id);
+                                        } else {
+                                          addToast(
+                                            'warning',
+                                            'Create a Draft PO from the PR (select a recorded quotation), then release from Draft POs.'
+                                          );
+                                        }
+                                      }
+                                    : undefined
+                                }
+                              />
+                            );
+                          });
                         }
 
                         return itemLines.map((line) => {
@@ -6084,7 +6491,7 @@ const Procurement: React.FC = () => {
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${priorityClass[req.priority]}`}>
                                       {req.priority}
                                     </span>
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusClass[req.status]}`}>
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusBg[req.status] ?? 'bg-slate-100 text-slate-600'}`}>
                                       {req.status}
                                     </span>
                                     {isPlanningQuotationRequest(req) && (
@@ -6383,220 +6790,7 @@ const Procurement: React.FC = () => {
                                     Priority
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      if (isStockCheckPendingForRequest(req)) {
-                                        addToast('warning', 'Stock check is pending. Wait for warehouse response before release actions.');
-                                        return;
-                                      }
-                                      if (req.itemDetails && req.itemDetails.length > 0) {
-                                        const item = req.itemDetails[0];
-                                        const relItem: ReleaseToPlannedItem = {
-                                          itemName: item.itemName,
-                                          itemCode: item.itemCode,
-                                          idx: 0,
-                                          qty: item.reqQty,
-                                          unit: item.unit,
-                                          plannedPrice: item.plannedPrice,
-                                          moq: item.moq,
-                                          reqQty: item.reqQty,
-                                          raw_material_id: item.raw_material_id,
-                                          pack_material_id: item.pack_material_id,
-                                          itemType: item.type === 'PM' ? 'PM' : 'RM',
-                                        };
-                                        setReleaseToPlannedTarget({ request: req, item: relItem });
-                                        const reqType0: RequestType =
-                                          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
-                                        const itemSource0 = reqType0 === 'PM' ? itemsListPm : itemsListRm;
-                                        const matchedItem0 = itemSource0.find((row) => {
-                                          const rm0 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
-                                          const pm0 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
-                                          const rowRm0 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
-                                          const rowPm0 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
-                                          if (Number.isFinite(rm0) && rm0 > 0 && Number.isFinite(rowRm0) && rowRm0 > 0) return rowRm0 === rm0;
-                                          if (Number.isFinite(pm0) && pm0 > 0 && Number.isFinite(rowPm0) && rowPm0 > 0) return rowPm0 === pm0;
-                                          const c0 = String(relItem.itemCode ?? '').trim().toLowerCase();
-                                          const n0 = String(relItem.itemName ?? '').trim().toLowerCase();
-                                          const rc0 = String(row.code ?? '').trim().toLowerCase();
-                                          const rn0 = String(row.name ?? '').trim().toLowerCase();
-                                          if (c0 && rc0 && c0 === rc0) return true;
-                                          if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
-                                          return false;
-                                        });
-                                        const itemsListSlab0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
-                                          (rate.tiers ?? []).map((tier) => ({
-                                            vendor: String(rate.vendor_name ?? '').trim(),
-                                            moq: Number(tier.moq_min ?? 0) || 0,
-                                            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
-                                            leadDays: Number(rate.lead_time_days ?? 0) || 0,
-                                            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
-                                          }))
-                                        ).find((s) => s.vendor);
-                                        const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
-                                        );
-                                        const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
-                                        const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
-                                        setReleaseToPlannedForm({
-                                          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
-                                          moqDisplay: item.moq ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)` : '',
-                                          qty: String(item.reqQty ?? 0),
-                                          unitPrice: String(itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
-                                          paymentTermsType: pt0.type,
-                                          advancePercent: String(
-                                            pt0.advancePercent ||
-                                            (paymentTermsTypeRequiresAdvancePercent(pt0.type) ? 50 : 0)
-                                          ),
-                                          leadTimeDays: itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? item.leadTimeDays ?? 0,
-                                        });
-                                        setReleaseToPlannedNotes('');
-                                        setReleaseToPlannedLineEdits(
-                                          (req.itemDetails ?? []).map((d) => {
-                                            const totalReqQty = Number(d.reqQty ?? 0) || 0;
-                                            const oq = resolveOpenQtyForReleaseItem({
-                                              requestId: req.id,
-                                              reqType: req.type,
-                                              itemName: d.itemName ?? '',
-                                              itemCode: d.itemCode,
-                                              totalReqQty,
-                                              raw_material_id: d.raw_material_id,
-                                              pack_material_id: d.pack_material_id,
-                                              itemType: d.type === 'PM' ? 'PM' : 'RM',
-                                            });
-                                            return {
-                                              itemName: d.itemName ?? '',
-                                              itemCode: d.itemCode ?? '',
-                                              type: d.type === 'PM' ? 'PM' : 'RM',
-                                              originalQty: oq,
-                                              qty: oq,
-                                              unit:
-                                                d.type === 'PM'
-                                                  ? String(d.unit ?? 'PCS')
-                                                  : resolveRmPrimaryUnit(
-                                                      d.raw_material_id != null ? Number(d.raw_material_id) : null,
-                                                      String(d.itemCode ?? ''),
-                                                      String(d.unit ?? '')
-                                                    ),
-                                              moq: Number(d.moq ?? 0) || 0,
-                                              unitPrice: Number(d.plannedPrice ?? 0) || 0,
-                                              leadDays: Number(d.leadTimeDays ?? 0) || 0,
-                                              ...(d.raw_material_id != null ? { raw_material_id: Number(d.raw_material_id) } : {}),
-                                              ...(d.pack_material_id != null ? { pack_material_id: Number(d.pack_material_id) } : {}),
-                                            };
-                                          })
-                                        );
-                                      } else if (req.items && req.items.length > 0) {
-                                        const itemName = req.items[0];
-                                        const qty = req.quantities?.[0] ?? 0;
-                                        const price = req.plannedPrices?.[0] ?? 0;
-                                        const spec = req.specifications?.[0];
-                                        const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
-                                          | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
-                                          | undefined;
-                                        const line0 = prRow?.items?.[0];
-                                        const line0Type: 'RM' | 'PM' = line0?.type === 'PM' ? 'PM' : 'RM';
-                                        const unit = line0Type === 'PM'
-                                          ? String(req.units?.[0] ?? 'PCS')
-                                          : resolveRmPrimaryUnit(
-                                              line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
-                                              String(line0?.code ?? itemName ?? ''),
-                                              String(req.units?.[0] ?? '')
-                                            );
-                                        const relItem: ReleaseToPlannedItem = {
-                                          itemName,
-                                          itemCode: line0?.code,
-                                          idx: 0,
-                                          qty,
-                                          unit,
-                                          spec,
-                                          plannedPrice: price,
-                                          raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
-                                          pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
-                                          itemType: line0Type,
-                                        };
-                                        setReleaseToPlannedTarget({ request: req, item: relItem });
-                                        const reqType1: RequestType =
-                                          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
-                                        const itemSource1 = reqType1 === 'PM' ? itemsListPm : itemsListRm;
-                                        const matchedItem1 = itemSource1.find((row) => {
-                                          const rm1 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
-                                          const pm1 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
-                                          const rowRm1 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
-                                          const rowPm1 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
-                                          if (Number.isFinite(rm1) && rm1 > 0 && Number.isFinite(rowRm1) && rowRm1 > 0) return rowRm1 === rm1;
-                                          if (Number.isFinite(pm1) && pm1 > 0 && Number.isFinite(rowPm1) && rowPm1 > 0) return rowPm1 === pm1;
-                                          const c1 = String(relItem.itemCode ?? '').trim().toLowerCase();
-                                          const n1 = String(relItem.itemName ?? '').trim().toLowerCase();
-                                          const rc1 = String(row.code ?? '').trim().toLowerCase();
-                                          const rn1 = String(row.name ?? '').trim().toLowerCase();
-                                          if (c1 && rc1 && c1 === rc1) return true;
-                                          if (n1 && rn1 && (n1 === rn1 || n1.includes(rn1) || rn1.includes(n1))) return true;
-                                          return false;
-                                        });
-                                        const itemsListSlab1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
-                                          (rate.tiers ?? []).map((tier) => ({
-                                            vendor: String(rate.vendor_name ?? '').trim(),
-                                            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
-                                            leadDays: Number(rate.lead_time_days ?? 0) || 0,
-                                            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
-                                          }))
-                                        ).find((s) => s.vendor);
-                                        const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
-                                        );
-                                        const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
-                                        const pt1 = parsePaymentTermsString(itemsListSlab1?.terms ?? first?.terms ?? 'As per contract');
-                                        setReleaseToPlannedForm({
-                                          vendor: itemsListSlab1?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
-                                          moqDisplay: '',
-                                          qty: String(qty ?? 0),
-                                          unitPrice: String(itemsListSlab1?.unitPrice ?? firstLine?.pricePerUnit ?? price ?? 0),
-                                          paymentTermsType: pt1.type,
-                                          advancePercent: String(
-                                            pt1.advancePercent ||
-                                            (paymentTermsTypeRequiresAdvancePercent(pt1.type) ? 50 : 0)
-                                          ),
-                                          leadTimeDays: itemsListSlab1?.leadDays ?? first?.leadTimeDays ?? 0,
-                                        });
-                                        setReleaseToPlannedNotes('');
-                                        setReleaseToPlannedLineEdits((req.items ?? []).map((nm, i) => {
-                                          const totalReqQty = Number((req.quantities ?? [])[i] ?? 0) || 0;
-                                          const oq = resolveOpenQtyForReleaseItem({
-                                            requestId: req.id,
-                                            reqType: req.type,
-                                            itemName: String(nm ?? ''),
-                                            itemCode: String(line0?.code ?? ''),
-                                            totalReqQty,
-                                            raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
-                                            pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
-                                            itemType: relItem.itemType,
-                                          });
-                                          return {
-                                            itemName: String(nm ?? ''),
-                                            itemCode: String(line0?.code ?? ''),
-                                            type: relItem.itemType === 'PM' ? 'PM' : 'RM',
-                                            originalQty: oq,
-                                            qty: oq,
-                                            unit:
-                                              relItem.itemType === 'PM'
-                                                ? String((req.units ?? [])[i] ?? 'PCS')
-                                                : resolveRmPrimaryUnit(
-                                                    line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
-                                                    String(line0?.code ?? nm ?? ''),
-                                                    String((req.units ?? [])[i] ?? '')
-                                                  ),
-                                            moq: 0,
-                                            unitPrice: Number((req.plannedPrices ?? [])[i] ?? 0) || 0,
-                                            leadDays: 0,
-                                            ...(line0?.raw_material_id != null ? { raw_material_id: Number(line0.raw_material_id) } : {}),
-                                            ...(line0?.pack_material_id != null ? { pack_material_id: Number(line0.pack_material_id) } : {}),
-                                          };
-                                        }));
-                                      } else {
-                                        addToast('warning', 'No items on this request.');
-                                      }
-                                    }}
+                                    onClick={() => openReleaseToDraftPoForRequest(req)}
                                     className="px-3 py-1.5 rounded-lg border border-amber-400 text-amber-800 text-xs font-semibold hover:bg-amber-50 transition-all"
                                   >
                                     Release to Draft PO
@@ -7581,6 +7775,7 @@ const Procurement: React.FC = () => {
                 <IssuedPOsView
                   kpis={issuedPoOverviewKpis}
                   records={filteredIssuedPORecords}
+                  grnList={grnListFromApi ?? []}
                   categoryFilter={categoryFilter}
                   onCategoryFilterChange={setCategoryFilter}
                   issuedVendorFilter={issuedVendorFilter}
