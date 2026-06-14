@@ -219,7 +219,7 @@ export interface OpenSoHeadersExcelImportResponse {
   }>;
 }
 
-/** Import sales order headers from workbook sheet "Open SO Headers". */
+/** Import sales orders from workbook sheet "Sales Order" (Zoho export) or legacy "Open SO Headers" + "Open SO Lines". */
 export async function importOpenSoHeadersExcel(
   file: File,
   options?: { details?: boolean },
@@ -267,7 +267,7 @@ export interface PrRowsExcelImportResponse {
   }>;
 }
 
-/** Import PO workbook (PR rows + Quotation rows + Raw PO Detail sheets). */
+/** Import PO workbook from "PurchaseOrder" sheet (Zoho export) or legacy PR rows sheets. */
 export async function importPrRowsExcel(
   file: File,
   options?: { details?: boolean },

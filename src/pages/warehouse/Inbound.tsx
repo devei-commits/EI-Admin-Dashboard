@@ -2,7 +2,13 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
-import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { GrnQcInspectionPanel } from '../../components/warehouse/GrnQcInspectionPanel';
+import {
+  deriveGrnQcStatusFromSpecs,
+  grnQcCompletionBlockers,
+  type GrnQcSpecsStored,
+} from '../../lib/grnQcSpecs';
 import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
 import {
   fetchFacilityAreas,
@@ -14,8 +20,6 @@ import {
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
 type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending';
-
-const QC_STATUS_OPTIONS: Array<Extract<QCStatus, 'Passed' | 'Rejected'>> = ['Passed', 'Rejected'];
 
 /** Map legacy API qc_status to QCStatus */
 function normalizeQcStatus(s: string | undefined): QCStatus {
@@ -48,16 +52,28 @@ function parseItemCodeFromGeneratedLabels(labels: GeneratedLabel[] | null | unde
   }
 }
 
+const GRN_QTY_EPSILON = 0.0001;
+
+function parseGrnQty(raw: string | number | null | undefined): number {
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function grnQtysEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) <= GRN_QTY_EPSILON;
+}
+
 function validateUnitsPerBoxList(
   rcvdQty: number,
   unitsList: number[]
 ): { ok: true } | { ok: false; message: string } {
   const total = unitsList.reduce((s, n) => s + (Number(n) || 0), 0);
-  const remaining = Math.trunc(rcvdQty) - Math.trunc(total);
-  if (remaining !== 0) {
+  const remaining = rcvdQty - total;
+  if (!grnQtysEqual(remaining, 0)) {
+    const remainingRounded = Math.round(remaining * 1000) / 1000;
     return {
       ok: false,
-      message: `Sum of Units/box must equal received quantity. Remaining: ${remaining > 0 ? remaining : 0}, over by: ${remaining < 0 ? -remaining : 0}.`,
+      message: `Sum of Units/box must equal received quantity. Remaining: ${remainingRounded > 0 ? remainingRounded : 0}, over by: ${remainingRounded < 0 ? -remainingRounded : 0}.`,
     };
   }
   return { ok: true };
@@ -93,6 +109,7 @@ interface GRNRecord {
   assignedTo: string;
   qcStatus: QCStatus;
   qcBy: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: GRNStatus;
   invoiceNo?: string;
   invoiceAmount?: number;
@@ -292,13 +309,22 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [qcBy, setQcBy] = useState(grn.qcBy || '');
   const [qcByInput, setQcByInput] = useState(grn.qcBy || '');
   const [showQcByDropdown, setShowQcByDropdown] = useState(false);
+  const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(grn.qcSpecs ?? null);
+  const [qcSpecsLoading, setQcSpecsLoading] = useState(false);
+  const [qcSpecsError, setQcSpecsError] = useState<string | null>(null);
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
   const parsedNoOfBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-  const parsedUnitsPerBoxList = unitsPerBoxListStr.map((v) => Math.max(0, parseInt(v, 10) || 0));
+  const parsedUnitsPerBoxList = unitsPerBoxListStr.map((v) => Math.max(0, parseGrnQty(v)));
   const totalUnitsAllocated = parsedUnitsPerBoxList.reduce((s, n) => s + n, 0);
-  const remainingUnitsForSelectedLine = selectedLineItem ? Math.max(0, selectedLineItem.rcvdQty - totalUnitsAllocated) : 0;
-  const overAllocatedUnits = selectedLineItem ? Math.max(0, totalUnitsAllocated - selectedLineItem.rcvdQty) : 0;
+  const remainingUnitsForSelectedLine = selectedLineItem
+    ? Math.max(0, Math.round((selectedLineItem.rcvdQty - totalUnitsAllocated) * 1000) / 1000)
+    : 0;
+  const overAllocatedUnits = selectedLineItem
+    ? Math.max(0, Math.round((totalUnitsAllocated - selectedLineItem.rcvdQty) * 1000) / 1000)
+    : 0;
+  const unitsFullyAllocated =
+    selectedLineItem != null && grnQtysEqual(totalUnitsAllocated, selectedLineItem.rcvdQty);
 
   /** Show primary Generate when there are no labels yet. */
   const needsGenerateForSelection = Boolean(!labels || labels.length === 0);
@@ -387,10 +413,36 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   }, [grn.id, grn.generatedLabels, editedLineItems, selectedLineItemId]);
 
   useEffect(() => {
-    setQcStatus(normalizeQcStatus(grn.qcStatus));
     setQcBy(grn.qcBy || '');
     setQcByInput(grn.qcBy || '');
-  }, [grn.id, grn.qcStatus, grn.qcBy]);
+  }, [grn.id, grn.qcBy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQcSpecsLoading(true);
+    setQcSpecsError(null);
+    void fetchGRNQcReference(grn.id)
+      .then((res) => {
+        if (cancelled) return;
+        setQcSpecs(res.qcSpecs);
+        setQcStatus(normalizeQcStatus(res.derivedQcStatus || grn.qcStatus));
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setQcSpecsError(e instanceof Error ? e.message : 'Could not load QC specs');
+      })
+      .finally(() => {
+        if (!cancelled) setQcSpecsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [grn.id]);
+
+  useEffect(() => {
+    if (!qcSpecs) return;
+    setQcStatus(normalizeQcStatus(deriveGrnQcStatusFromSpecs(qcSpecs)));
+  }, [qcSpecs]);
 
   useEffect(() => {
     if (facilityAreasLoading) return;
@@ -456,7 +508,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         const next = {
           ...item,
           [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']:
-            field === 'rcvdQty' ? Math.trunc(Number(value)) || 0 : value,
+            field === 'rcvdQty' ? parseGrnQty(value) : value,
         };
         if (field === 'rcvdQty') {
           const rcvdQty = next.rcvdQty;
@@ -502,7 +554,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
-        qcStatus: qcStatus as string,
+        qcSpecs: qcSpecs ?? undefined,
         qcBy: qcBy || undefined,
         ...payload,
       });
@@ -518,6 +570,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         assignedTo: res.assignedTo,
         qcStatus: normalizeQcStatus(res.qcStatus),
         qcBy: res.qcBy || '',
+        qcSpecs: res.qcSpecs ?? qcSpecs,
         status: res.status as GRNStatus,
         lineItems: res.lineItems,
         workflowSteps: (res.workflowSteps || []) as WorkflowStep[],
@@ -586,7 +639,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       return;
     }
     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-    const boxUnitsList = Array.from({ length: numBoxes }, (_, i) => Math.max(0, parseInt(unitsPerBoxListStr[i] || '0', 10) || 0));
+    const boxUnitsList = Array.from({ length: numBoxes }, (_, i) => Math.max(0, parseGrnQty(unitsPerBoxListStr[i] || '0')));
     if (targetLineItem != null) {
       const pack = validateUnitsPerBoxList(
         targetLineItem.rcvdQty,
@@ -669,8 +722,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     }
   };
 
+  const qcTestBlockers = grnQcCompletionBlockers(qcSpecs);
   const completionBlockers: string[] = [];
-  if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
+  if (qcStatus !== 'Passed') {
+    if (qcTestBlockers.length > 0) completionBlockers.push(...qcTestBlockers);
+    else completionBlockers.push('QC status must be Passed (complete all master quality tests).');
+  }
   if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
   if (!allLineItemsLabeled) {
@@ -937,27 +994,38 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             </span>
           </div>
 
-          {/* QC section: status + QC by (for label generation) */}
+          {/* QC section: master specs + QC by */}
           <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-700">QC status &amp; QC by</h3>
-            <p className="text-xs text-slate-600">Labels (QR) can only be generated after QC is Passed. Select QC status and the user who performed QC.</p>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <h3 className="text-sm font-semibold text-slate-700">QC inspection &amp; QC by</h3>
+            <p className="text-xs text-slate-600">
+              Tests are loaded from the RM/PM master <strong>Quality Specifications</strong>. Rows marked <strong>Mand</strong> in the master must be tested (result + Pass). Optional tests may be left pending. Labels (QR) require all mandatory tests to pass.
+            </p>
+            <GrnQcInspectionPanel
+              qcSpecs={qcSpecs}
+              loading={qcSpecsLoading}
+              error={qcSpecsError}
+              disabled={saving}
+              onChange={setQcSpecs}
+            />
+            <div className="flex flex-col sm:flex-row gap-4 pt-2 border-t border-slate-200">
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  QC status <span className="text-red-500">*</span>
+                  Overall QC status
                 </label>
-                <select
-                  value={qcStatus}
-                  onChange={(e) => setQcStatus(e.target.value as QCStatus)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                <div
+                  className={`w-full px-4 py-3 border rounded-lg text-sm font-semibold ${
+                    qcStatus === 'Passed'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : qcStatus === 'Rejected'
+                        ? 'bg-rose-50 border-rose-300 text-rose-800'
+                        : 'bg-slate-50 border-slate-300 text-slate-700'
+                  }`}
                 >
-                  {qcStatus !== 'Passed' && qcStatus !== 'Rejected' && (
-                    <option value={qcStatus} disabled>{qcStatus}</option>
-                  )}
-                  {QC_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                  {qcStatus}
+                  <span className="block text-[10px] font-normal text-slate-500 mt-1">
+                    Derived from master quality tests (not manually set).
+                  </span>
+                </div>
               </div>
               <div className="flex-1 relative">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
@@ -1140,7 +1208,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             <p className="text-xs text-slate-600">One QR per box for this GRN. Set <strong>No of boxes</strong>, then enter <strong>Units/box</strong> for each box. The total must match received quantity. <strong>Generate Labels</strong> saves first, then creates QR codes.</p>
             {qcStatus !== 'Passed' && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                <strong>QC must be Passed</strong> before generating labels. Set QC status to &quot;Passed&quot;, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
+                <strong>QC must be Passed</strong> before generating labels. Complete all master quality tests, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
               </div>
             )}
 
@@ -1176,7 +1244,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   <p className={`text-xs mt-2 ${overAllocatedUnits > 0 ? 'text-red-600' : remainingUnitsForSelectedLine > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     Received: <strong>{selectedLineItem.rcvdQty}</strong> units · Assigned in boxes: <strong>{totalUnitsAllocated}</strong> · Remaining: <strong>{remainingUnitsForSelectedLine}</strong>
                     {overAllocatedUnits > 0 ? ` · Over by ${overAllocatedUnits}` : ''}
-                    {overAllocatedUnits === 0 && remainingUnitsForSelectedLine > 0 ? ' · Warning: fill remaining units before generating labels.' : ''}
+                    {overAllocatedUnits === 0 && !unitsFullyAllocated ? ' · Warning: fill remaining units before generating labels.' : ''}
                   </p>
                 )}
               </div>
@@ -1568,6 +1636,7 @@ function mapApiToGRNRecord(r: {
   assignedTo: string;
   qcStatus: string;
   qcBy?: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: string;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
@@ -1596,6 +1665,7 @@ function mapApiToGRNRecord(r: {
     assignedTo: r.assignedTo,
     qcStatus: normalizeQcStatus(r.qcStatus),
     qcBy: r.qcBy ?? '',
+    qcSpecs: r.qcSpecs ?? null,
     status: r.status as GRNStatus,
     lineItems: r.lineItems,
     workflowSteps: r.workflowSteps,

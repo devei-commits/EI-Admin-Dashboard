@@ -66,10 +66,14 @@ import {
   ItemsInvolvedReleaseBatchSplit,
   type ReleaseBatchSplitRow,
 } from '../components/planning/ItemsInvolvedReleaseBatchSplit';
+import { ItemsInvolvedReleaseWeekSummary } from '../components/planning/ItemsInvolvedReleaseWeekSummary';
 import { buildReleaseBatchSiblingItemRows } from '../lib/releaseBatchSiblingItems';
 import {
   buildPlannedReleaseTargets,
+  buildReleaseTargetsForSubmit,
   datesMatchForProcurementMerge,
+  mergeWeekQtyOverrides,
+  summarizePlannedReleaseTargetsByWeek,
 } from '../lib/plannedReleaseTargets';
 import {
   formatPlanningProductFilterDisplay,
@@ -2067,6 +2071,8 @@ const Planning = () => {
   const [releaseBatchPicks, setReleaseBatchPicks] = useState<Record<string, string>>({});
   /** Per-batch required-by dates in Release to Planning modal (same keys as `releaseBatchPicks`). */
   const [releaseBatchExpectedDates, setReleaseBatchExpectedDates] = useState<Record<string, string>>({});
+  /** User-edited qty per ISO week in Release to Planning week summary (overrides batch pick rollup). */
+  const [releaseWeekQtyOverrides, setReleaseWeekQtyOverrides] = useState<Record<string, string>>({});
   /** `release` = Add Planned Line / vendor release (updates Items Involved). `quotation` = Procurement quote ask only. */
   const [releaseModalIntent, setReleaseModalIntent] = useState<'release' | 'quotation'>('release');
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
@@ -4414,6 +4420,7 @@ const Planning = () => {
         {}
       )
     );
+    setReleaseWeekQtyOverrides({});
     setReleaseToPlanningItem(item);
     setReleaseToPlanningForm({
       vendorId: isQuotationOpen ? null : (first?.vendorId ?? null),
@@ -4522,14 +4529,17 @@ const Planning = () => {
       return false;
     }
 
-    const releaseTargets = buildPlannedReleaseTargets({
-      formQty: qty,
-      batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
-      batchExpectedDates: releaseBatchExpectedDates,
-      slabMoq,
-      leadTimeDays,
-      fallbackDateFromLead: releaseExpectedDateFromLeadDays,
-    });
+    const releaseTargets = buildReleaseTargetsForSubmit(
+      buildPlannedReleaseTargets({
+        formQty: qty,
+        batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
+        batchExpectedDates: releaseBatchExpectedDates,
+        slabMoq,
+        leadTimeDays,
+        fallbackDateFromLead: releaseExpectedDateFromLeadDays,
+      }),
+      releaseWeekQtyOverrides
+    );
     if (releaseTargets.length === 0) {
       addToast('warning', 'Enter a release quantity.');
       return false;
@@ -4657,6 +4667,7 @@ const Planning = () => {
     setReleaseModalIntent('release');
     setReleaseBatchPicks({});
     setReleaseBatchExpectedDates({});
+    setReleaseWeekQtyOverrides({});
     addToast('success', 'Added to Procurement → Requests (vendor consolidated).');
     return true;
   };
@@ -4728,6 +4739,7 @@ const Planning = () => {
     setReleaseModalIntent('release');
     setReleaseBatchPicks({});
     setReleaseBatchExpectedDates({});
+    setReleaseWeekQtyOverrides({});
     addToast(
       'success',
       'Quotation ask sent to Procurement → Quotations (quantity only). After Procurement records vendor and rates on Items List, use Release to Planning → Add Planned Line.'
@@ -7207,6 +7219,7 @@ const Planning = () => {
           setReleaseModalIntent('release');
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates({});
+          setReleaseWeekQtyOverrides({});
         };
         const releaseRmMaster =
           item.itemType === 'RM'
@@ -7221,7 +7234,45 @@ const Planning = () => {
           item.itemType === 'RM'
             ? formatItemsInvolvedQty(n, 'RM', releaseRmMaster?.uom ?? item.unit)
             : formatItemsInvolvedQty(n, item.itemType, item.unit);
+        const releasePreviewTargets = buildPlannedReleaseTargets({
+          formQty: formQtyModal,
+          batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
+          batchExpectedDates: releaseBatchExpectedDates,
+          slabMoq: slabMoqModal,
+          leadTimeDays: releaseToPlanningForm.leadTimeDays,
+          fallbackDateFromLead: releaseExpectedDateFromLeadDays,
+        });
+        const releaseWeekSummary = summarizePlannedReleaseTargetsByWeek(releasePreviewTargets);
+        const displayWeekRows = mergeWeekQtyOverrides(releaseWeekSummary, releaseWeekQtyOverrides);
+        const releasePreviewTotalQty = displayWeekRows.reduce((sum, row) => sum + row.qty, 0);
+        const releasePreviewRequestCount = displayWeekRows.filter((row) => row.qty > 0).length;
+        const hasWeekQtyOverrides = releaseWeekSummary.some((row) => {
+          const raw = releaseWeekQtyOverrides[row.weekKey];
+          if (raw === undefined || String(raw).trim() === '') return false;
+          const parsed = parseFloat(String(raw).replace(/,/g, ''));
+          return Number.isFinite(parsed) && Math.abs(parsed - row.qty) > 1e-6;
+        });
+        const releaseWeekQtyInputStep = item.itemType === 'RM' ? 0.01 : 1;
+        const handleWeekQtyOverrideChange = (weekKey: string, value: string) => {
+          const nextOverrides = { ...releaseWeekQtyOverrides, [weekKey]: value };
+          setReleaseWeekQtyOverrides(nextOverrides);
+          const merged = mergeWeekQtyOverrides(releaseWeekSummary, nextOverrides);
+          const total = merged.reduce((sum, row) => sum + row.qty, 0);
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            qty: total > 0 ? formatReleasePickQty(total) : '',
+          }));
+        };
+        const resetReleaseWeekQtyOverrides = () => {
+          setReleaseWeekQtyOverrides({});
+          const total = releaseWeekSummary.reduce((sum, row) => sum + row.qty, 0);
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            qty: total > 0 ? formatReleasePickQty(total) : f.qty,
+          }));
+        };
         const handleReleaseBatchPickChange = (key: string, value: string) => {
+          setReleaseWeekQtyOverrides({});
           const qty = parseFloat(String(value ?? '').replace(/,/g, ''));
           if (Number.isFinite(qty) && qty > 0) {
             setReleaseBatchExpectedDates((prev) =>
@@ -7241,6 +7292,7 @@ const Planning = () => {
           setReleaseBatchExpectedDates((prev) => ({ ...prev, [key]: value }));
         };
         const fillAllReleaseBatchRequired = () => {
+          setReleaseWeekQtyOverrides({});
           const next: Record<string, string> = {};
           const keysToSeed: string[] = [];
           for (const row of releaseBatchRows) {
@@ -7261,9 +7313,11 @@ const Planning = () => {
         const clearReleaseBatchPicks = () => {
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates({});
+          setReleaseWeekQtyOverrides({});
         };
         const applyVendorSlabPick = (s: (typeof slabs)[number]) => {
           const p = parsePaymentTermsString(s.paymentTerms || '');
+          setReleaseWeekQtyOverrides({});
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates((prev) =>
             seedReleaseBatchExpectedDates(releaseBatchRowKeys, s.leadTimeDays, prev)
@@ -7296,6 +7350,7 @@ const Planning = () => {
         };
         const fillReleaseQtyToMoq = () => {
           if (!(slabMoqModal > 0)) return;
+          setReleaseWeekQtyOverrides({});
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates({});
           setReleaseToPlanningForm((f) => ({
@@ -7304,6 +7359,7 @@ const Planning = () => {
           }));
         };
         const handleReleaseFormQtyChange = (value: string) => {
+          setReleaseWeekQtyOverrides({});
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates({});
           setReleaseToPlanningForm((f) => ({ ...f, qty: value }));
@@ -7366,6 +7422,20 @@ const Planning = () => {
                   onClearPicks={clearReleaseBatchPicks}
                   siblingItemsByBatchKey={releaseBatchSiblingItemsByKey}
                 />
+                {!isQuotationOnlyModal ? (
+                  <ItemsInvolvedReleaseWeekSummary
+                    rows={displayWeekRows}
+                    totalQty={releasePreviewTotalQty}
+                    requestCount={releasePreviewRequestCount}
+                    pickUnitLabel={releasePickUnitLabel}
+                    formatPickQty={formatReleasePickQty}
+                    weekQtyOverrides={releaseWeekQtyOverrides}
+                    onWeekQtyChange={handleWeekQtyOverrideChange}
+                    onResetOverrides={resetReleaseWeekQtyOverrides}
+                    hasOverrides={hasWeekQtyOverrides}
+                    qtyInputStep={releaseWeekQtyInputStep}
+                  />
+                ) : null}
                 <div className={`grid grid-cols-1 gap-4 xl:gap-5 ${isQuotationOnlyModal ? 'max-w-xl mx-auto' : 'xl:grid-cols-2'}`}>
                   {!isQuotationOnlyModal && (
                   <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0">
@@ -7598,6 +7668,23 @@ const Planning = () => {
                     ) : (
                       <>
                         <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
+                        {displayWeekRows.length > 0 ? (
+                          <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/40 px-3 py-2 sm:hidden">
+                            <p className="text-[10px] font-bold text-indigo-900 uppercase tracking-wide mb-1">
+                              Releasing this week
+                            </p>
+                            <ul className="space-y-1 text-xs text-slate-800">
+                              {displayWeekRows.map((row) => (
+                                <li key={row.weekKey} className="flex justify-between gap-2">
+                                  <span className="font-medium">{row.weekLabel}</span>
+                                  <span className="font-bold text-indigo-950 whitespace-nowrap">
+                                    {formatReleasePickQty(row.qty)} {releasePickUnitLabel}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                         <div
                           className={`mb-3 rounded-lg border px-3 py-2.5 ${
                             canAddPlannedLineRelease

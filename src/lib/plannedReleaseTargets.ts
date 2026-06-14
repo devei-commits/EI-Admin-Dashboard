@@ -1,4 +1,4 @@
-import { isoWeekFromDateString } from './isoWeek';
+import { formatIsoWeekLabel, isoWeekFromDateString } from './isoWeek';
 
 export type PlannedReleaseTarget = {
   qty: number;
@@ -119,4 +119,105 @@ export function buildPlannedReleaseTargets(opts: {
     planningBatchId: entry.batchId,
     expectedDate: resolveExpectedDate(entry.key),
   }));
+}
+
+export type PlannedReleaseWeekSummary = {
+  weekKey: string;
+  weekLabel: string;
+  expectedDate: string;
+  qty: number;
+  /** Number of procurement requests (targets) scheduled for this ISO week. */
+  requestCount: number;
+};
+
+/** Roll up release targets by ISO week for UI preview (qty + earliest required-by in week). */
+export function summarizePlannedReleaseTargetsByWeek(
+  targets: PlannedReleaseTarget[]
+): PlannedReleaseWeekSummary[] {
+  const byWeek = new Map<
+    string,
+    { qty: number; expectedDate: string; requestCount: number; weekLabel: string }
+  >();
+
+  for (const target of targets) {
+    if (!(target.qty > 0)) continue;
+    const expectedDate = String(target.expectedDate ?? '').trim().slice(0, 10);
+    if (!expectedDate) continue;
+    const weekKey = isoWeekKeyFromDate(expectedDate) ?? `date:${expectedDate}`;
+    const weekLabel = formatIsoWeekLabel(isoWeekFromDateString(expectedDate));
+    const bucket = byWeek.get(weekKey);
+    if (!bucket) {
+      byWeek.set(weekKey, {
+        qty: target.qty,
+        expectedDate,
+        requestCount: 1,
+        weekLabel,
+      });
+      continue;
+    }
+    bucket.qty += target.qty;
+    bucket.requestCount += 1;
+    if (expectedDate < bucket.expectedDate) {
+      bucket.expectedDate = expectedDate;
+    }
+  }
+
+  return Array.from(byWeek.entries())
+    .map(([weekKey, bucket]) => ({
+      weekKey,
+      weekLabel: bucket.weekLabel,
+      expectedDate: bucket.expectedDate,
+      qty: bucket.qty,
+      requestCount: bucket.requestCount,
+    }))
+    .sort((a, b) => a.expectedDate.localeCompare(b.expectedDate));
+}
+
+function parseWeekQtyOverride(raw: string | undefined): number | null {
+  if (raw === undefined) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  const parsed = parseFloat(trimmed.replace(/,/g, ''));
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+/** Apply user-edited qty per ISO week (empty override keeps computed qty). */
+export function mergeWeekQtyOverrides(
+  rows: PlannedReleaseWeekSummary[],
+  overrides: Record<string, string>
+): PlannedReleaseWeekSummary[] {
+  return rows.map((row) => {
+    const parsed = parseWeekQtyOverride(overrides[row.weekKey]);
+    if (parsed == null) return row;
+    return { ...row, qty: parsed };
+  });
+}
+
+/** Convert week summary rows to procurement release targets (one PR per week row). */
+export function weekSummaryToReleaseTargets(rows: PlannedReleaseWeekSummary[]): PlannedReleaseTarget[] {
+  return rows
+    .filter((row) => row.qty > 0)
+    .map((row) => ({
+      qty: row.qty,
+      planningBatchId: null,
+      expectedDate: row.expectedDate,
+    }));
+}
+
+/**
+ * Final targets for Add Planned Line — week panel is source of truth when rows exist.
+ * User-edited week qty overrides batch pick rollup.
+ */
+export function buildReleaseTargetsForSubmit(
+  baseTargets: PlannedReleaseTarget[],
+  weekQtyOverrides: Record<string, string>
+): PlannedReleaseTarget[] {
+  const weekRows = mergeWeekQtyOverrides(
+    summarizePlannedReleaseTargetsByWeek(baseTargets),
+    weekQtyOverrides
+  );
+  const fromWeeks = weekSummaryToReleaseTargets(weekRows);
+  if (fromWeeks.length > 0) return fromWeeks;
+  return baseTargets.filter((target) => target.qty > 0);
 }

@@ -3,6 +3,7 @@
  */
 
 import { api } from '../lib/apiClient';
+import type { GrnQcSpecsStored } from '../lib/grnQcSpecs';
 
 export interface GRNRecordFromApi {
   id: string;
@@ -17,6 +18,7 @@ export interface GRNRecordFromApi {
   assignedTo: string;
   qcStatus: string;
   qcBy: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: string;
   lineItems?: Array<{
     id: string;
@@ -128,6 +130,16 @@ export async function fetchGRNById(id: string): Promise<GRNRecordFromApi | null>
   }
 }
 
+export interface GrnQcReferenceResponse {
+  qcSpecs: GrnQcSpecsStored;
+  derivedQcStatus: string;
+}
+
+/** Master quality specs merged with saved GRN QC results. */
+export async function fetchGRNQcReference(id: string): Promise<GrnQcReferenceResponse> {
+  return api.get<GrnQcReferenceResponse>(`/api/v1/grn/${id}/qc-reference`);
+}
+
 export interface CreateGRNPayload {
   grnNo: string;
   poNo?: string;
@@ -158,6 +170,7 @@ export interface UpdateGRNPayload {
   receivedDate?: string | null;
   qcStatus?: string;
   qcBy?: string | null;
+  qcSpecs?: GrnQcSpecsStored | null;
   status?: string;
   lineItems?: GRNRecordFromApi['lineItems'];
   workflowSteps?: string[];
