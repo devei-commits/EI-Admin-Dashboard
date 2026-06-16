@@ -103,7 +103,77 @@ interface VendorCommercialEditorProps {
   onAddTempTierRow: () => void;
   onAddVendor: () => void;
   onRemoveVendor: (index: number) => void;
+  onVendorsChange: (vendors: RmCommercialVendor[] | PmCommercialVendor[]) => void;
   errors?: Record<string, string>;
+}
+
+function getVendorTiers(
+  v: RmCommercialVendor | PmCommercialVendor,
+  variant: 'rm' | 'pm'
+): VendorTierDraft[] {
+  const tiers = v.tiers && v.tiers.length > 0 ? v.tiers : [];
+  if (tiers.length > 0) {
+    return tiers.map((t) => ({
+      moq: String(t.moq ?? ''),
+      price: String(t.price ?? ''),
+      validTill: String(t.validTill ?? ''),
+      note: String(t.note ?? ''),
+    }));
+  }
+  const moq = String(v.moq ?? '');
+  const price =
+    variant === 'rm'
+      ? String((v as RmCommercialVendor).unitPrice ?? '')
+      : String((v as PmCommercialVendor).price ?? (v as PmCommercialVendor).unitPrice ?? '');
+  const validTill =
+    variant === 'rm'
+      ? String((v as RmCommercialVendor).priceValidTill ?? '')
+      : String((v as PmCommercialVendor).validTill ?? '');
+  if (moq.trim() || price.trim()) {
+    return [{ moq, price, validTill, note: '' }];
+  }
+  return [];
+}
+
+function syncVendorFallbackFromTiers(
+  v: RmCommercialVendor | PmCommercialVendor,
+  tiers: VendorTierDraft[],
+  variant: 'rm' | 'pm'
+): RmCommercialVendor | PmCommercialVendor {
+  const first = tiers.find((t) => String(t.moq).trim() && String(t.price).trim()) ?? tiers[0];
+  if (!first) return v;
+  const moq = Number(first.moq) || 0;
+  const price = Number(first.price) || 0;
+  if (variant === 'rm') {
+    return {
+      ...(v as RmCommercialVendor),
+      moq,
+      unitPrice: price,
+      priceValidTill: first.validTill,
+      tiers,
+    };
+  }
+  return {
+    ...(v as PmCommercialVendor),
+    moq,
+    price,
+    validTill: first.validTill,
+    tiers,
+  };
+}
+
+function patchVendorTiers(
+  vendors: RmCommercialVendor[] | PmCommercialVendor[],
+  vendorIdx: number,
+  variant: 'rm' | 'pm',
+  updater: (tiers: VendorTierDraft[]) => VendorTierDraft[]
+): RmCommercialVendor[] | PmCommercialVendor[] {
+  const next = [...vendors];
+  const current = next[vendorIdx];
+  if (!current) return vendors;
+  const tiers = updater(getVendorTiers(current, variant));
+  next[vendorIdx] = syncVendorFallbackFromTiers(current, tiers, variant);
+  return next;
 }
 
 const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
@@ -117,6 +187,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
   onAddTempTierRow,
   onAddVendor,
   onRemoveVendor,
+  onVendorsChange,
   errors = {},
 }) => {
   const priceKey = variant === 'rm' ? 'unitPrice' : 'price';
@@ -127,15 +198,6 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
     const row = findVendorClientByName(vendorClientList, tempFields.name || '');
     return row?.id ?? '';
   }, [vendorClientList, tempFields.name]);
-
-  const addedVendorIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const v of vendors) {
-      const row = findVendorClientByName(vendorClientList, v.name);
-      if (row?.id) ids.add(row.id);
-    }
-    return ids;
-  }, [vendors, vendorClientList]);
 
   /** Pull location, lead time, MOQ, and staged payment terms from vendor master (full row when possible). */
   const hydrateFromVendorMaster = (name: string) => {
@@ -188,7 +250,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
     <div className="border border-gray-300 rounded-lg p-4 mb-4 space-y-4">
       <h3 className="font-semibold text-gray-800">Vendor Manager</h3>
       <p className="text-xs text-gray-500">
-        Search and pick a vendor from suggestions to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; if you only fill MOQ + unit price below, a single tier is created from those values. Vendor pricing is synced to Items List when you submit this master.
+        Search and pick a vendor from suggestions to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; the same vendor can be added again with different pricing. Edit tiers on added vendors below before saving. Vendor pricing is synced to Items List when you submit this master.
       </p>
 
       <div className="bg-gray-50 p-4 rounded-lg space-y-4">
@@ -199,7 +261,6 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               parties={vendorClientList}
               selectedId={selectedVendorId}
               placeholder="Search vendor by name, code, city…"
-              disabledIds={addedVendorIds}
               onSelect={(party) => {
                 const name = party?.name?.trim() ?? '';
                 onTempFieldChange('name', name);
@@ -456,17 +517,10 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
       {vendors.length > 0 ? (
         <div className="space-y-4">
           <h4 className="text-sm font-semibold text-gray-700">Added vendors &amp; tiers</h4>
+          <p className="text-xs text-gray-500">Edit MOQ, price, valid till, or notes on any tier row. Use + Add tier to add another price break for that vendor.</p>
           {vendors.map((v, vIdx) => {
-            const tiers = v.tiers && v.tiers.length > 0 ? v.tiers : [];
-            const fallbackMoq = String(v.moq ?? '');
-            const fallbackPrice =
-              variant === 'rm' ? String((v as RmCommercialVendor).unitPrice ?? '') : String((v as PmCommercialVendor).price ?? '');
-            const displayTiers =
-              tiers.length > 0
-                ? tiers
-                : fallbackMoq || fallbackPrice
-                  ? [{ moq: fallbackMoq, price: fallbackPrice, validTill: '', note: '' }]
-                  : [];
+            const displayTiers = getVendorTiers(v, variant);
+            const editableTiers = displayTiers.length > 0 ? displayTiers : [EMPTY_TIER()];
             return (
               <div key={v.id ?? `vendor-${vIdx}`} className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
@@ -480,22 +534,118 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     Remove
                   </button>
                 </div>
+                <div className="flex items-center justify-between border-b border-gray-100 bg-white px-3 py-2">
+                  <span className="text-[10px] font-bold uppercase text-gray-500">Price tiers</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onVendorsChange(
+                        patchVendorTiers(vendors, vIdx, variant, (tiers) => [...tiers, EMPTY_TIER()])
+                      )
+                    }
+                    className="text-xs font-semibold text-teal-700 hover:underline"
+                  >
+                    + Add tier
+                  </button>
+                </div>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-white">
-                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">MOQ</th>
+                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">{uomHint}</th>
                       <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price</th>
                       <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid till</th>
                       <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
+                      <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase w-16"> </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {displayTiers.map((t, ti) => (
+                    {editableTiers.map((t, ti) => (
                       <tr key={ti} className="border-b border-gray-50">
-                        <td className="py-1.5 px-2 font-mono text-xs">{t.moq || '—'}</td>
-                        <td className="py-1.5 px-2 font-mono text-xs font-semibold text-amber-700">{t.price || '—'}</td>
-                        <td className="py-1.5 px-2 text-xs">{t.validTill || '—'}</td>
-                        <td className="py-1.5 px-2 text-[11px] text-gray-500">{t.note || ''}</td>
+                        <td className="p-1">
+                          <input
+                            type="number"
+                            min={0}
+                            value={t.moq}
+                            onChange={(e) =>
+                              onVendorsChange(
+                                patchVendorTiers(vendors, vIdx, variant, (tiers) =>
+                                  tiers.map((row, idx) =>
+                                    idx === ti ? { ...row, moq: e.target.value } : row
+                                  )
+                                )
+                              )
+                            }
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
+                            placeholder="MOQ"
+                          />
+                        </td>
+                        <td className="p-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={t.price}
+                            onChange={(e) =>
+                              onVendorsChange(
+                                patchVendorTiers(vendors, vIdx, variant, (tiers) =>
+                                  tiers.map((row, idx) =>
+                                    idx === ti ? { ...row, price: e.target.value } : row
+                                  )
+                                )
+                              )
+                            }
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
+                            placeholder="Price"
+                          />
+                        </td>
+                        <td className="p-1">
+                          <input
+                            type="date"
+                            value={t.validTill}
+                            onChange={(e) =>
+                              onVendorsChange(
+                                patchVendorTiers(vendors, vIdx, variant, (tiers) =>
+                                  tiers.map((row, idx) =>
+                                    idx === ti ? { ...row, validTill: e.target.value } : row
+                                  )
+                                )
+                              )
+                            }
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                          />
+                        </td>
+                        <td className="p-1">
+                          <input
+                            type="text"
+                            value={t.note}
+                            onChange={(e) =>
+                              onVendorsChange(
+                                patchVendorTiers(vendors, vIdx, variant, (tiers) =>
+                                  tiers.map((row, idx) =>
+                                    idx === ti ? { ...row, note: e.target.value } : row
+                                  )
+                                )
+                              )
+                            }
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                            placeholder="Note"
+                          />
+                        </td>
+                        <td className="p-1 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onVendorsChange(
+                                patchVendorTiers(vendors, vIdx, variant, (tiers) =>
+                                  tiers.length <= 1 ? tiers : tiers.filter((_, idx) => idx !== ti)
+                                )
+                              )
+                            }
+                            disabled={editableTiers.length <= 1}
+                            className="text-[10px] font-semibold text-red-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                          >
+                            Remove
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

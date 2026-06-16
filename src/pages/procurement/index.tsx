@@ -8,7 +8,6 @@ import { useGlobalState } from '../../context/GlobalStateContext';
 import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
 import IssuedPOsView from '../../components/procurement/IssuedPOsView';
 import { WeekVendorConsolidationView } from '../../components/procurement/WeekVendorConsolidationView';
-import { ProcurementRequestPrGroupCard } from '../../components/procurement/ProcurementRequestPrGroupCard';
 import { InventoryAuditView } from '../../components/procurement/InventoryAuditView';
 import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inventoryAuditLines';
 import {
@@ -6326,6 +6325,25 @@ const Procurement: React.FC = () => {
                           );
                         }
 
+                        const requestRowsForTable = filteredRequests.map((req) => {
+                          const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
+                          return {
+                            request: req,
+                            date: req.createdDate || req.dueDate || '',
+                            location: req.planningCustomerName || req.source || '—',
+                            purchaseOrderNo: linkedDraft?.dpoNumber || '—',
+                            referenceNo: req.code,
+                            vendorName: req.preferredVendor || linkedDraft?.vendor || '—',
+                            status: req.status,
+                            amount:
+                              (req.itemDetails ?? []).reduce(
+                                (sum, d) => sum + Number(d.estValue ?? 0),
+                                0
+                              ) || 0,
+                            deliveryDate: req.dueDate || linkedDraft?.expectedDelivery || '—',
+                          };
+                        });
+
                         const itemLines = buildProcurementRequestItemLines(filteredRequests);
                         const requestsById = new Map(filteredRequests.map((r) => [r.id, r]));
                         const linesByRequestId = new Map<string, typeof itemLines>();
@@ -6344,101 +6362,59 @@ const Procurement: React.FC = () => {
                         }
 
                         if (requestListView === 'pr') {
-                          return filteredRequests.map((req) => {
-                            const reqLines = linesByRequestId.get(req.id) ?? [];
-                            if (reqLines.length === 0) return null;
-                            const today = new Date();
-                            const daysLeft = computeRequestDaysUntilDue(req, today);
-                            const expectedDisplay = formatDateWithIsoWeek(req.dueDate);
-                            const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
-                            return (
-                              <ProcurementRequestPrGroupCard
-                                key={req.id}
-                                request={req}
-                                lines={reqLines}
-                                daysLeft={daysLeft}
-                                expectedDisplay={expectedDisplay}
-                                statusBadgeClass={statusBg[req.status] ?? 'bg-slate-100 text-slate-600'}
-                                priorityBadgeClass={priorityClass[req.priority]}
-                                linkedDraft={linkedDraft}
-                                isPlanningQuotation={isPlanningQuotationRequest(req)}
-                                stockCheckPending={isStockCheckPendingForRequest(req)}
-                                onView={() => setSelectedRequest(req)}
-                                onAddQuotation={
-                                  isPlanningQuotationRequest(req)
-                                    ? () => openRecordQuoteFromRequest(req)
-                                    : undefined
-                                }
-                                onStockCheck={async () => {
-                                  if (isStockCheckOneTimeCompleted(req)) {
-                                    addToast(
-                                      'warning',
-                                      'Stock check already completed successfully with warehouse qty data. New stock check cannot be raised again for this request.'
-                                    );
-                                    openStockCheckModal(req);
-                                    return;
-                                  }
-                                  const alreadyRequested = Boolean(String(req.stockCheckStatus ?? '').trim());
-                                  if (!alreadyRequested) {
-                                    const res = await updateProcurementRequestApi(req.id, {
-                                      stockCheckAssignedTo: req.stockCheckAssignedTo || 'Warehouse Team',
-                                      stockCheckStatus: 'Pending',
-                                      stockCheckNotes:
-                                        req.stockCheckNotes && String(req.stockCheckNotes).trim()
-                                          ? req.stockCheckNotes
-                                          : JSON.stringify({
-                                              version: 1,
-                                              requestedAt: new Date().toISOString(),
-                                              requestedBy: req.requestedBy ?? 'Procurement Team',
-                                            }),
-                                    });
-                                    if (!res.success) {
-                                      addToast(
-                                        'error',
-                                        typeof res.error === 'string'
-                                          ? res.error
-                                          : (res.error as { message?: string } | null)?.message ??
-                                              'Failed to send stock check request'
-                                      );
-                                      return;
-                                    }
-                                    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
-                                    addToast('success', 'Stock check request sent to Warehouse.');
-                                  }
-                                  openStockCheckModal(req);
-                                }}
-                                onPriority={() => {
-                                  updateRequestPriority(
-                                    req.id,
-                                    req.priority === 'High' ? 'Medium' : req.priority === 'Medium' ? 'Low' : 'High'
-                                  );
-                                }}
-                                onReleaseToDraftPo={() => openReleaseToDraftPoForRequest(req)}
-                                onViewQuotes={() => setSelectedRequest(req)}
-                                onReleasePo={
-                                  req.status === 'PO Draft'
-                                    ? () => {
-                                        if (isStockCheckPendingForRequest(req)) {
-                                          addToast(
-                                            'warning',
-                                            'Stock check is pending. PO release is locked until warehouse completes it.'
-                                          );
-                                          return;
-                                        }
-                                        if (linkedDraft?.backendPoId) {
-                                          openReleasePOModal(linkedDraft.id);
-                                        } else {
-                                          addToast(
-                                            'warning',
-                                            'Create a Draft PO from the PR (select a recorded quotation), then release from Draft POs.'
-                                          );
-                                        }
-                                      }
-                                    : undefined
-                                }
-                              />
-                            );
-                          });
+                          return (
+                            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200 bg-slate-50">
+                                      <th className="px-3 py-2">Date</th>
+                                      <th className="px-3 py-2">Vendor Name</th>
+                                      <th className="px-3 py-2">Purchase Order#</th>
+                                      <th className="px-3 py-2">Reference#</th>
+                                      <th className="px-3 py-2">Vendor Name</th>
+                                      <th className="px-3 py-2">Status</th>
+                                      <th className="px-3 py-2 text-right">Amount</th>
+                                      <th className="px-3 py-2">Delivery Date</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {requestRowsForTable.map((row) => (
+                                      <tr
+                                        key={row.request.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setSelectedRequest(row.request)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            setSelectedRequest(row.request);
+                                          }
+                                        }}
+                                        className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
+                                      >
+                                        <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.date || '—'}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700">{row.location}</td>
+                                        <td className="px-3 py-2 text-xs font-mono text-slate-700">{row.purchaseOrderNo}</td>
+                                        <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{row.referenceNo}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700">{row.vendorName}</td>
+                                        <td className="px-3 py-2 text-xs">
+                                          <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBg[row.status] ?? 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                            {row.status}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{row.amount.toLocaleString('en-IN')}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.deliveryDate || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100 bg-slate-50">
+                                Click any row to open full request details.
+                              </p>
+                            </div>
+                          );
                         }
 
                         return itemLines.map((line) => {
@@ -6749,10 +6725,22 @@ const Procurement: React.FC = () => {
                                         openStockCheckModal(req);
                                         return;
                                       }
-                                      const alreadyRequested = Boolean(String(req.stockCheckStatus ?? '').trim());
-                                      if (!alreadyRequested) {
+                                      const currentStockStatus = String(req.stockCheckStatus ?? '').trim().toLowerCase();
+                                      const isPendingStockCheckRequest =
+                                        currentStockStatus === 'pending' ||
+                                        currentStockStatus === 'requested' ||
+                                        currentStockStatus === 'in progress';
+                                      if (isPendingStockCheckRequest) {
+                                        addToast(
+                                          'warning',
+                                          'Stock check request is already pending for this request. Complete the current check before raising a new one.',
+                                        );
+                                        openStockCheckModal(req);
+                                        return;
+                                      }
+                                      {
                                         const res = await updateProcurementRequestApi(req.id, {
-                                          stockCheckAssignedTo: req.stockCheckAssignedTo || 'Warehouse Team',
+                                          stockCheckAssignedTo: req.stockCheckAssignedTo || null,
                                           stockCheckStatus: 'Pending',
                                           stockCheckNotes:
                                             req.stockCheckNotes && String(req.stockCheckNotes).trim()
@@ -7469,7 +7457,66 @@ const Procurement: React.FC = () => {
                             : 'No draft POs match the current filters.'}
                       </div>
                     ) : (
-                      filteredDraftPOs.map((dpo) => (
+                      <>
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200 bg-slate-50">
+                                  <th className="px-3 py-2">Date</th>
+                                  <th className="px-3 py-2">Vendor Name</th>
+                                  <th className="px-3 py-2">Purchase Order#</th>
+                                  <th className="px-3 py-2">Reference#</th>
+                                  <th className="px-3 py-2">Vendor Name</th>
+                                  <th className="px-3 py-2">Status</th>
+                                  <th className="px-3 py-2 text-right">Amount</th>
+                                  <th className="px-3 py-2">Delivery Date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredDraftPOs.map((dpo) => {
+                                  const linkedReq = procurementRequestsList.find((r) => r.id === dpo.requestId);
+                                  return (
+                                    <tr
+                                      key={`draft-row-${dpo.id}`}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => setSelectedDraftPO(dpo)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                          event.preventDefault();
+                                          setSelectedDraftPO(dpo);
+                                        }
+                                      }}
+                                      className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
+                                    >
+                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.createdDate || '—'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700">{linkedReq?.planningCustomerName || linkedReq?.source || dpo.deliveryAddress || '—'}</td>
+                                      <td className="px-3 py-2 text-xs font-mono text-slate-700">{dpo.dpoNumber}</td>
+                                      <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{dpo.requestCode || '—'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700">{dpo.vendor}</td>
+                                      <td className="px-3 py-2 text-xs">
+                                        <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                          dpo.status === 'Approved'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                        }`}>
+                                          {dpo.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{dpo.grandTotal.toLocaleString('en-IN')}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.expectedDelivery || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100 bg-slate-50">
+                            Click any row to open full draft PO details.
+                          </p>
+                        </div>
+                        {filteredDraftPOs.map((dpo) => (
                         <article key={dpo.backendPoId != null ? `po-${dpo.backendPoId}` : `dpo-${dpo.id}`} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           {/* Header */}
                           <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
@@ -7604,7 +7651,8 @@ const Procurement: React.FC = () => {
                             )}
                           </div>
                         </article>
-                      ))
+                      ))}
+                      </>
                     )}
                   </div>
                 </>
@@ -9773,6 +9821,35 @@ const Procurement: React.FC = () => {
                 </button>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openStockCheckModal(req)}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                  >
+                    Stock Check
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateRequestPriority(
+                        req.id,
+                        req.priority === 'High' ? 'Medium' : req.priority === 'Medium' ? 'Low' : 'High'
+                      );
+                    }}
+                    className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
+                  >
+                    Priority
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openReleaseToDraftPoForRequest(req)}
+                    className="px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition"
+                  >
+                    Release to Draft PO
+                  </button>
+
                   {reqQuotes.length > 0 && selectedQuoteIdInPrView && (
                     <button
                       onClick={async () => {
@@ -9802,7 +9879,7 @@ const Procurement: React.FC = () => {
                       }}
                       className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
                     >
-                      Create Draft PO
+                      Create Draft PO (Quick)
                     </button>
                   )}
 

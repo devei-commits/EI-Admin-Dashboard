@@ -213,12 +213,17 @@ function errorMessageFromApiCatch(e: unknown, fallback: string): string {
 
 export async function createOrUpdatePlanningBatches(
   planningExtractedId: string,
-  batches: { sizeKg: number }[]
+  batches: { sizeKg: number }[],
+  options?: { updateOnlyBatchId?: number }
 ): Promise<PlanningBatchRow[]> {
   try {
-    const data = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, {
+    const body: { batches: { sizeKg: number }[]; updateOnlyBatchId?: number } = {
       batches: batches.map((b) => ({ sizeKg: b.sizeKg })),
-    });
+    };
+    if (options?.updateOnlyBatchId != null) {
+      body.updateOnlyBatchId = options.updateOnlyBatchId;
+    }
+    const data = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, body);
     return Array.isArray(data) ? data : [];
   } catch (e: unknown) {
     throw new Error(errorMessageFromApiCatch(e, 'Failed to save batches'));

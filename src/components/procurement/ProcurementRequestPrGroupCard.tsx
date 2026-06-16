@@ -55,6 +55,7 @@ export function ProcurementRequestPrGroupCard({
 }: ProcurementRequestPrGroupCardProps): React.ReactElement {
   const totalEst = lines.reduce((sum, l) => sum + (Number(l.estValue) || 0), 0);
   const vendor = String(request.preferredVendor ?? '').trim();
+  const stockCheckLabel = String(request.stockCheckStatus ?? '').trim() || (stockCheckPending ? 'Pending' : '');
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
@@ -90,6 +91,19 @@ export function ProcurementRequestPrGroupCard({
             <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusBadgeClass}`}>
               {request.status}
             </span>
+            {stockCheckLabel ? (
+              <span
+                className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
+                  stockCheckPending
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : stockCheckLabel.toLowerCase() === 'completed'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-sky-50 text-sky-700 border-sky-200'
+                }`}
+              >
+                Stock Check: {stockCheckLabel}
+              </span>
+            ) : null}
             {linkedDraft ? (
               <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-orange-50 text-orange-800 border border-orange-200">
                 Draft {linkedDraft.dpoNumber ?? linkedDraft.id}

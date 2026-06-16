@@ -6,6 +6,7 @@ import {
   createItemList,
   createItemListRate,
   createItemListTier,
+  fetchItemListRates,
   fetchPriceListPage,
 } from '../services/itemsList.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
@@ -86,6 +87,14 @@ export async function syncMasterVendorsToPriceList(opts: {
     }
   }
 
+  const rateIdByVendorId = new Map<number, number>();
+  const ratesRes = await fetchItemListRates(String(itemsListId));
+  if (ratesRes.success && ratesRes.data) {
+    for (const row of ratesRes.data) {
+      if (row.vendor_id != null) rateIdByVendorId.set(Number(row.vendor_id), row.id);
+    }
+  }
+
   for (const v of vendors) {
     const vn = v.name.trim();
     const vc =
@@ -119,27 +128,45 @@ export async function syncMasterVendorsToPriceList(opts: {
       post_shipment_pct: post,
       credit_days: v.creditDays ? Math.max(0, parseInt(String(v.creditDays), 10) || 0) : 0,
     });
-    const rateRes = await createItemListRate(String(itemsListId), {
-      vendor_id: vendorId,
-      currency: v.currency || 'INR',
-      payment_terms,
-      lead_time_days: v.leadTime != null && Number.isFinite(Number(v.leadTime)) ? Number(v.leadTime) : null,
-    });
-    if (!rateRes.success || !rateRes.data) {
-      const msg = rateRes.error?.message ?? 'create rate failed';
-      if (msg.toLowerCase().includes('already exists')) {
-        skipped.push(`${v.name}: rate already exists in Items List (edit or remove there first)`);
+
+    let rateId = rateIdByVendorId.get(vendorId);
+    if (!rateId) {
+      const rateRes = await createItemListRate(String(itemsListId), {
+        vendor_id: vendorId,
+        currency: v.currency || 'INR',
+        payment_terms,
+        lead_time_days: v.leadTime != null && Number.isFinite(Number(v.leadTime)) ? Number(v.leadTime) : null,
+      });
+      if (!rateRes.success || !rateRes.data) {
+        const msg = rateRes.error?.message ?? 'create rate failed';
+        if (msg.toLowerCase().includes('already exists')) {
+          const refreshRates = await fetchItemListRates(String(itemsListId));
+          const existing = refreshRates.success
+            ? refreshRates.data?.find((row) => Number(row.vendor_id) === vendorId)
+            : undefined;
+          if (existing?.id) {
+            rateId = existing.id;
+            rateIdByVendorId.set(vendorId, rateId);
+          } else {
+            skipped.push(`${v.name}: rate already exists in Items List but could not be loaded`);
+            continue;
+          }
+        } else {
+          errors.push(`${v.name}: ${msg}`);
+          continue;
+        }
       } else {
-        errors.push(`${v.name}: ${msg}`);
+        rateId = rateRes.data.id;
+        rateIdByVendorId.set(vendorId, rateId);
       }
-      continue;
     }
-    const rateId = rateRes.data.id;
+
+    let tiersAdded = 0;
     for (const t of tierRows) {
       const moqMin = parseInt(String(t.moq), 10) || 1;
       const price = parseFloat(String(t.price));
       if (Number.isNaN(price)) continue;
-      const tierRes = await createItemListTier(String(itemsListId!), rateId, {
+      const tierRes = await createItemListTier(String(itemsListId), rateId, {
         moq_min: moqMin,
         price_per_unit: price,
         valid_till: t.validTill?.trim() || null,
@@ -147,9 +174,11 @@ export async function syncMasterVendorsToPriceList(opts: {
       });
       if (!tierRes.success) {
         errors.push(`${v.name} tier MOQ ${moqMin}: ${tierRes.error?.message ?? 'tier failed'}`);
+      } else {
+        tiersAdded += 1;
       }
     }
-    created += 1;
+    if (tiersAdded > 0) created += 1;
   }
 
   return { created, skipped, errors };

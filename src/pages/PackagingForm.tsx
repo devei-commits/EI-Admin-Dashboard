@@ -18,7 +18,6 @@ import VendorCommercialEditor, {
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
-import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import {
   buildMasterStatBuckets,
@@ -46,6 +45,8 @@ import {
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 import { getPmConditionalVisibility } from '../lib/pmConditionalFields';
 import { PmQualitySpecTable } from '../components/masters/PmQualitySpecTable';
+import { MasterLinkedPrProductsPanel } from '../components/masters/MasterLinkedPrProductsPanel';
+import { parseMasterLinkedProductCodes } from '../lib/masterLinkedPrProducts';
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
   canEditPmQualityCategorySpecs,
@@ -895,6 +896,9 @@ const PackagingRefactored: React.FC = () => {
     setTempVendorTiers(defaultTempVendorTiers(4));
   };
   const handleRemoveVendor = (idx: number) => setFormData((prev) => ({ ...prev, vendors: prev.vendors.filter((_, i) => i !== idx) }));
+  const handleVendorsChange = (vendors: PmCommercialVendor[]) => {
+    setFormData((prev) => ({ ...prev, vendors }));
+  };
 
   const handlePmVendorTempFieldChange = (field: string, value: string) => {
     setTempVendor((prev) => ({ ...prev, [field]: value }));
@@ -1020,6 +1024,14 @@ const PackagingRefactored: React.FC = () => {
           : ['pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
       }),
     [pmPreviewFormData, isNewPm]
+  );
+  const pmLinkedProductCodes = useMemo(
+    () =>
+      parseMasterLinkedProductCodes({
+        products: formData.products,
+        associateItems: formData.pkgAssociateItems,
+      }),
+    [formData.products, formData.pkgAssociateItems]
   );
 
   const validatePmForSubmit = (): CreatePackMaterialPayload | null => {
@@ -1447,13 +1459,23 @@ const PackagingRefactored: React.FC = () => {
                 />
               </div>
               <div className="mt-3">
-                <TextareaField
-                  label="Associate Items"
-                  id="pkgAssociateItems"
-                  value={formData.pkgAssociateItems}
-                  onChange={handleInputChange}
-                  placeholder="Link related BOM / RM / packaging codes if any"
-                />
+                {pmLinkedProductCodes.length > 0 ? (
+                  <>
+                    <p className="mb-1 text-sm font-medium text-gray-700">Associate Items</p>
+                    <p className="mb-2 text-xs text-gray-500">
+                      Products linked via BOM. Open a PR master to view or edit the finished product.
+                    </p>
+                    <MasterLinkedPrProductsPanel codes={pmLinkedProductCodes} accent="violet" />
+                  </>
+                ) : (
+                  <TextareaField
+                    label="Associate Items"
+                    id="pkgAssociateItems"
+                    value={formData.pkgAssociateItems}
+                    onChange={handleInputChange}
+                    placeholder="Link related BOM / RM / packaging codes if any"
+                  />
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-2">Zoho Item ID is read-only — returned by the API after a successful save.</p>
             </div>
@@ -1993,6 +2015,7 @@ const PackagingRefactored: React.FC = () => {
               onAddTempTierRow={handleAddTempVendorTierRow}
               onAddVendor={handleAddVendor}
               onRemoveVendor={handleRemoveVendor}
+              onVendorsChange={handleVendorsChange}
               errors={errors}
             />
           </div>
@@ -2767,20 +2790,6 @@ const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
   { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' },
 ];
 
-function normalizeSkuKey(s: string): string {
-  return String(s ?? '').trim().toLowerCase();
-}
-
-function buildPrProductLookup(products: PRProductListItem[]): Map<string, PRProductListItem> {
-  const m = new Map<string, PRProductListItem>();
-  for (const p of products) {
-    const code = normalizeSkuKey(p.product_code ?? '');
-    const zoho = normalizeSkuKey(p.zoho_sku_code ?? '');
-    if (code) m.set(code, p);
-    if (zoho && zoho !== code) m.set(zoho, p);
-  }
-  return m;
-}
 
 function getCategoryStyle(category: string): { bg: string; text: string; border: string } {
   if (!category) return CATEGORY_STYLE_PALETTE[CATEGORY_STYLE_PALETTE.length - 1];
@@ -3087,28 +3096,6 @@ const BprDashboard: React.FC<{
   const itemRefFileInputRef = useRef<HTMLInputElement>(null);
   const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
   const [resetAllRunning, setResetAllRunning] = useState(false);
-
-  const { data: prProductsLookupResult, isFetching: prProductsLookupLoading } = useQuery({
-    queryKey: ['pr-products-lookup-for-pm-linked-skus'],
-    queryFn: () => fetchPRProducts(),
-    enabled: linkedSkusModalPm != null,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const prProductLookup = useMemo(() => {
-    const ok = prProductsLookupResult?.success === true;
-    const rows = ok ? prProductsLookupResult.data ?? [] : [];
-    return buildPrProductLookup(rows);
-  }, [prProductsLookupResult]);
-
-  const linkedSkuRows = useMemo(() => {
-    if (!linkedSkusModalPm) return [];
-    return linkedSkusModalPm.products.map((sku) => {
-      const key = normalizeSkuKey(sku);
-      const product = key ? prProductLookup.get(key) : undefined;
-      return { sku, product };
-    });
-  }, [linkedSkusModalPm, prProductLookup]);
 
   const onPickItemReferenceExcel = useCallback(() => {
     itemRefFileInputRef.current?.click();
@@ -3701,43 +3688,14 @@ const BprDashboard: React.FC<{
                     </button>
                   </div>
                   <div className="max-h-[min(60vh,28rem)] overflow-y-auto px-5 py-4">
-                    {prProductsLookupLoading && (
-                      <p className="mb-3 text-xs text-gray-500">Loading product master for names and details…</p>
-                    )}
-                    {prProductsLookupResult && prProductsLookupResult.success === false && (
-                      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        Could not load Products master. SKUs from this pack material are still listed below.
-                      </p>
-                    )}
                     <p className="mb-3 text-xs text-gray-500">
-                      When a linked code matches a product in the master list, the columns below are filled in from that product.
+                      When a linked code matches a product in the master list, use Open PR master to view or edit that product.
                     </p>
-                    <div className="overflow-x-auto rounded-lg border border-gray-200">
-                      <table className="w-full min-w-[420px] text-left text-xs">
-                        <thead className="sticky top-0 z-1 border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-                          <tr>
-                            <th className="px-3 py-2">#</th>
-                            <th className="px-3 py-2">Linked SKU / code</th>
-                            <th className="px-3 py-2">Product name</th>
-                            <th className="px-3 py-2">Category</th>
-                            <th className="px-3 py-2">Subcategory</th>
-                            <th className="px-3 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 text-gray-800">
-                          {linkedSkuRows.map(({ sku, product }, i) => (
-                            <tr key={`${sku}-${i}`} className="bg-white hover:bg-violet-50/40">
-                              <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-                              <td className="px-3 py-2 font-mono font-semibold text-violet-800 break-all">{sku}</td>
-                              <td className="px-3 py-2 wrap-break-word">{product?.product_name ?? '—'}</td>
-                              <td className="px-3 py-2 text-gray-600">{product?.category ?? '—'}</td>
-                              <td className="px-3 py-2 text-gray-600 wrap-break-word">{product?.pr_sub_category?.trim() || '—'}</td>
-                              <td className="px-3 py-2 text-gray-600">{product?.status ?? '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <MasterLinkedPrProductsPanel
+                      codes={linkedSkusModalPm.products}
+                      accent="violet"
+                      variant="table"
+                    />
                   </div>
                   <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 text-right">
                     <button

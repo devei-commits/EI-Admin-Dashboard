@@ -13,8 +13,7 @@ import {
   fetchWarehouseInventory,
   type WarehouseInventoryRow,
 } from '../../services/warehouseInventory.service';
-
-type StockCheckOutcome = 'all_ok' | 'not_ok';
+import { fetchStaffUsers } from '../../services/user.service';
 
 type LineDraft = {
   key: string;
@@ -94,8 +93,7 @@ const StockCheckRequests: React.FC = () => {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingLines, setLoadingLines] = useState(false);
-  const [statusDraft, setStatusDraft] = useState<'Pending' | 'In Progress' | 'Completed'>('Pending');
-  const [outcomeDraft, setOutcomeDraft] = useState<StockCheckOutcome>('all_ok');
+  const [assignedToDraft, setAssignedToDraft] = useState('');
   const [lineDrafts, setLineDrafts] = useState<LineDraft[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -108,9 +106,38 @@ const StockCheckRequests: React.FC = () => {
     queryKey: ['warehouse-inventory', 'stock-check-requests'],
     queryFn: async () => fetchWarehouseInventory(),
   });
+  const { data: staffUsersRes } = useQuery({
+    queryKey: ['staff-users', 'stock-check-assignee'],
+    queryFn: async () => fetchStaffUsers(),
+  });
 
   const requests = procurementRes?.data ?? [];
   const inventoryRows = inventoryRes?.data?.rows ?? [];
+  const staffUsers = staffUsersRes?.data ?? [];
+  const assigneeSuggestions = useMemo(() => {
+    const set = new Set<string>();
+    for (const u of staffUsers) {
+      // Internal team only: ignore users linked to vendor/client profiles
+      // and any non-internal user types that may still leak from API.
+      if (u.vendor_client_id != null && Number(u.vendor_client_id) > 0) continue;
+      const vendorClientType = String(u.vendor_client_type ?? '').trim().toLowerCase();
+      if (vendorClientType === 'vendor' || vendorClientType === 'client') continue;
+      const userType = String(u.usertype ?? '').trim().toLowerCase();
+      if (
+        userType === 'vendor' ||
+        userType === 'client' ||
+        userType === 'customer' ||
+        userType === 'doctor' ||
+        userType === 'supplier' ||
+        userType === 'partner'
+      ) {
+        continue;
+      }
+      const name = String(u.display_name ?? '').trim();
+      if (name) set.add(name);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [staffUsers]);
 
   const requestsForWarehouse = useMemo(
     () =>
@@ -241,14 +268,7 @@ const StockCheckRequests: React.FC = () => {
       }
 
       setActiveRequestId(req.id);
-      setStatusDraft(
-        isCompletedStockCheck(req.stockCheckStatus)
-          ? 'Completed'
-          : isPendingStockCheck(req.stockCheckStatus)
-            ? 'Pending'
-            : 'In Progress',
-      );
-      setOutcomeDraft(notesParsed?.outcome === 'not_ok' ? 'not_ok' : 'all_ok');
+      setAssignedToDraft(String(req.stockCheckAssignedTo ?? '').trim());
       setLineDrafts(nextLines);
     } finally {
       setLoadingLines(false);
@@ -257,6 +277,7 @@ const StockCheckRequests: React.FC = () => {
 
   const activeRequest =
     activeRequestId != null ? requestsForWarehouse.find((r) => r.id === activeRequestId) ?? null : null;
+  const activeRequestReadOnly = isCompletedStockCheck(activeRequest?.stockCheckStatus);
 
   const refreshConsumptionForDrafts = async () => {
     if (!activeRequest || lineDrafts.length === 0) return;
@@ -274,6 +295,11 @@ const StockCheckRequests: React.FC = () => {
 
   const handleSave = async () => {
     if (!activeRequest) return;
+    const assignedTo = assignedToDraft.trim();
+    if (!assignedTo) {
+      setFormError('Assign a warehouse person before saving stock check.');
+      return;
+    }
     setSaving(true);
     setFormError(null);
     try {
@@ -290,7 +316,6 @@ const StockCheckRequests: React.FC = () => {
       const notesParsed = parseStockCheckNotes(activeRequest.stockCheckNotes);
       const notesPayload = {
         version: 1,
-        outcome: statusDraft === 'Completed' ? outcomeDraft : undefined,
         requestedAt: notesParsed?.requestedAt ?? activeRequest.createdAt ?? new Date().toISOString(),
         requestedBy: notesParsed?.requestedBy ?? activeRequest.requestedBy ?? 'Procurement Team',
         updatedAt: new Date().toISOString(),
@@ -320,8 +345,8 @@ const StockCheckRequests: React.FC = () => {
       };
 
       const upd = await updateProcurementRequest(activeRequest.id, {
-        stockCheckAssignedTo: activeRequest.stockCheckAssignedTo || 'Warehouse Team',
-        stockCheckStatus: statusDraft,
+        stockCheckAssignedTo: assignedTo || null,
+        stockCheckStatus: 'completed',
         stockCheckNotes: JSON.stringify(notesPayload),
       });
       if (!upd.success) {
@@ -331,6 +356,9 @@ const StockCheckRequests: React.FC = () => {
       setLineDrafts(linesWithConsumption);
 
       await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['procurement-requests', 'warehouse-stock-checks'],
+      });
       await queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
       await queryClient.invalidateQueries({ queryKey: ['warehouse-inventory', 'stock-check-requests'] });
     } catch (e) {
@@ -410,37 +438,41 @@ const StockCheckRequests: React.FC = () => {
                     <h2 className="text-lg font-semibold text-slate-900">{requestItemNames(activeRequest)}</h2>
                     <p className="text-xs text-slate-600 mt-1">
                       Req {activeRequest.id} · Requested by {activeRequest.requestedBy || 'Procurement'} · Assigned
-                      to {activeRequest.stockCheckAssignedTo || 'Warehouse'}
+                      to {assignedToDraft || '—'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <select
-                      value={statusDraft}
-                      onChange={(e) => setStatusDraft(e.target.value as 'Pending' | 'In Progress' | 'Completed')}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Completed">Completed</option>
-                    </select>
-                    <select
-                      value={outcomeDraft}
-                      onChange={(e) => setOutcomeDraft(e.target.value as StockCheckOutcome)}
-                      disabled={statusDraft !== 'Completed'}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white disabled:bg-slate-100"
-                    >
-                      <option value="all_ok">All OK</option>
-                      <option value="not_ok">Not OK (gap found)</option>
-                    </select>
+                    <input
+                      list="stock-check-assignee-suggestions"
+                      value={assignedToDraft}
+                      onChange={(e) => setAssignedToDraft(e.target.value)}
+                      disabled={activeRequestReadOnly}
+                      placeholder="Assign checker person"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white min-w-[180px] disabled:bg-slate-100 disabled:text-slate-500"
+                    />
+                    <datalist id="stock-check-assignee-suggestions">
+                      {assigneeSuggestions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                    <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                      Status auto: Completed
+                    </span>
                     <button
                       type="button"
                       onClick={() => void refreshConsumptionForDrafts()}
+                      disabled={activeRequestReadOnly}
                       className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       Refresh consumption
                     </button>
                   </div>
                 </div>
+                {activeRequestReadOnly ? (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+                    Stock check is completed. Request is now read-only.
+                  </p>
+                ) : null}
 
                 <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
                   {lineDrafts.map((line) => (
@@ -485,7 +517,8 @@ const StockCheckRequests: React.FC = () => {
                                 ),
                               )
                             }
-                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                            disabled={activeRequestReadOnly}
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs disabled:bg-slate-100 disabled:text-slate-500"
                           />
                         </label>
                         <label className="text-xs text-slate-600">
@@ -527,7 +560,8 @@ const StockCheckRequests: React.FC = () => {
                               prev.map((x) => (x.key === line.key ? { ...x, remarks: e.target.value } : x)),
                             )
                           }
-                          className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                          disabled={activeRequestReadOnly}
+                          className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs disabled:bg-slate-100 disabled:text-slate-500"
                           placeholder="Optional note"
                         />
                       </label>
@@ -541,7 +575,7 @@ const StockCheckRequests: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => void handleSave()}
-                    disabled={saving}
+                    disabled={saving || activeRequestReadOnly}
                     className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900 disabled:opacity-60"
                   >
                     {saving ? 'Saving...' : 'Save and Notify Procurement'}

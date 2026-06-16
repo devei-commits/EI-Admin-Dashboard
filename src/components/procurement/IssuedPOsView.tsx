@@ -116,6 +116,16 @@ type IssuedPoWarehouseScope = {
 };
 
 export type IssuedPoListViewMode = 'po' | 'item';
+type IssuedPoSortColumn =
+  | 'date'
+  | 'location'
+  | 'purchaseOrder'
+  | 'reference'
+  | 'vendorName'
+  | 'status'
+  | 'amount'
+  | 'deliveryDate';
+type IssuedPoSortDirection = 'asc' | 'desc';
 
 function lineGrnStatusLabel(status: IssuedPoLineGrnStatus): string {
   switch (status) {
@@ -391,10 +401,59 @@ export default function IssuedPOsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [listViewMode, setListViewMode] = useState<IssuedPoListViewMode>('po');
+  const [sortColumn, setSortColumn] = useState<IssuedPoSortColumn>('date');
+  const [sortDirection, setSortDirection] = useState<IssuedPoSortDirection>('desc');
+
+  const toggleSort = (column: IssuedPoSortColumn): void => {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection(column === 'amount' ? 'desc' : 'asc');
+  };
+
+  const sortIndicator = (column: IssuedPoSortColumn): string =>
+    sortColumn === column ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+
+  const sortedRecords = useMemo((): IssuedPOViewRecord[] => {
+    const rows = [...records];
+    rows.sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      const dateValue = (value: string | undefined): number => {
+        const d = parseLocalDate(value);
+        return d ? d.getTime() : 0;
+      };
+      switch (sortColumn) {
+        case 'date':
+          return (dateValue(a.createdDate) - dateValue(b.createdDate)) * dir;
+        case 'location': {
+          const aLocation = String(a.request.planningCustomerName ?? a.request.source ?? '').toLowerCase();
+          const bLocation = String(b.request.planningCustomerName ?? b.request.source ?? '').toLowerCase();
+          return aLocation.localeCompare(bLocation) * dir;
+        }
+        case 'purchaseOrder':
+          return a.poNumber.localeCompare(b.poNumber) * dir;
+        case 'reference':
+          return a.requestCode.localeCompare(b.requestCode) * dir;
+        case 'vendorName':
+          return String(a.vendor ?? '').localeCompare(String(b.vendor ?? '')) * dir;
+        case 'status':
+          return a.status.localeCompare(b.status) * dir;
+        case 'amount':
+          return ((a.grandTotal ?? 0) - (b.grandTotal ?? 0)) * dir;
+        case 'deliveryDate':
+          return (dateValue(a.etaDateDisplay) - dateValue(b.etaDateDisplay)) * dir;
+        default:
+          return 0;
+      }
+    });
+    return rows;
+  }, [records, sortColumn, sortDirection]);
 
   const itemRows = useMemo((): IssuedPOItemRow[] => {
     const rows: IssuedPOItemRow[] = [];
-    for (const record of records) {
+    for (const record of sortedRecords) {
       const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
       const lines =
         record.lineItems.length > 0
@@ -422,12 +481,12 @@ export default function IssuedPOsView({
       });
     }
     return rows;
-  }, [records]);
+  }, [sortedRecords]);
 
   const lineCount = itemRows.length;
 
   const poRows = useMemo((): IssuedPOPoRow[] => {
-    return records.map((record) => {
+    return sortedRecords.map((record) => {
       const vendorName = String(record.vendor ?? 'Unassigned Vendor').trim() || 'Unassigned Vendor';
       const lineCount = record.lineItems.length > 0 ? record.lineItems.length : 1;
       return {
@@ -437,7 +496,7 @@ export default function IssuedPOsView({
         lineCount,
       };
     });
-  }, [records]);
+  }, [sortedRecords]);
 
   const groupedByVendor = useMemo(() => {
     const map = new Map<string, IssuedPOItemRow[]>();
@@ -446,9 +505,7 @@ export default function IssuedPOsView({
       list.push(row);
       map.set(row.vendorName, list);
     }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([vendorName, rows]) => {
+    return Array.from(map.entries()).map(([vendorName, rows]) => {
         const poKeys = new Set(rows.map((r) => `${r.record.backendPoId ?? ''}|${r.record.poNumber}`));
         return {
           vendorName,
@@ -467,9 +524,7 @@ export default function IssuedPOsView({
       list.push(row);
       map.set(row.vendorName, list);
     }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([vendorName, rows]) => ({
+    return Array.from(map.entries()).map(([vendorName, rows]) => ({
         vendorName,
         rows,
         poCount: rows.length,
@@ -731,19 +786,50 @@ export default function IssuedPOsView({
             <table className="w-full text-sm border-collapse">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">PO / Request</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('date')} className="hover:text-gray-900">
+                      Date{sortIndicator('date')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('location')} className="hover:text-gray-900">
+                      Location{sortIndicator('location')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('purchaseOrder')} className="hover:text-gray-900">
+                      Purchase Order#{sortIndicator('purchaseOrder')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('reference')} className="hover:text-gray-900">
+                      Reference#{sortIndicator('reference')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('vendorName')} className="hover:text-gray-900">
+                      Vendor Name{sortIndicator('vendorName')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('status')} className="hover:text-gray-900">
+                      Status{sortIndicator('status')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('amount')} className="hover:text-gray-900">
+                      Amount{sortIndicator('amount')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <button type="button" onClick={() => toggleSort('deliveryDate')} className="hover:text-gray-900">
+                      Delivery Date{sortIndicator('deliveryDate')}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">
                     {listViewMode === 'po' ? 'All items on PO (consolidated)' : 'Item (line)'}
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Qty</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    Pipeline
-                    <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">
-                      PO lifecycle stage
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">ETA</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Value</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Pipeline</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Tracking</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
                 </tr>
@@ -753,7 +839,7 @@ export default function IssuedPOsView({
                   ? pagedVendorGroups.flatMap((vendorGroup) => {
                       const headerRow = (
                         <tr key={`vendor-${vendorGroup.vendorName}`} className="bg-blue-50/60">
-                          <td colSpan={8} className="px-4 py-2.5">
+                          <td colSpan={12} className="px-4 py-2.5">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="text-sm font-semibold text-blue-900">{vendorGroup.vendorName}</div>
                               <div className="text-xs text-blue-800">
@@ -788,27 +874,26 @@ export default function IssuedPOsView({
 
                         return (
                           <tr key={rowKey} className="hover:bg-gray-50/80">
+                            <td className="px-4 py-3 align-top text-[11px] whitespace-nowrap">{record.createdDate || '—'}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.request.planningCustomerName || record.request.source || '—'}</td>
+                            <td className="px-4 py-3 align-top font-mono text-[12px] text-gray-900 font-semibold">{record.poNumber}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.requestCode}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.vendor || '—'}</td>
                             <td className="px-4 py-3 align-top">
-                              <div className="font-mono text-[12px] text-gray-900 font-semibold">{record.poNumber}</div>
-                              <div className="text-[10px] text-gray-500 mt-0.5">{record.requestCode}</div>
-                              <span
-                                className={`inline-flex mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${typeBadgeClass(record.request.type)}`}
-                              >
-                                {record.request.type}
+                              <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBadgeClass(record.status)}`}>
+                                {record.status}
                               </span>
-                              <div className="text-[10px] text-gray-400 mt-1">
-                                {poRow.lineCount} item{poRow.lineCount !== 1 ? 's' : ''} on this PO
-                              </div>
                             </td>
+                            <td className="px-4 py-3 text-right align-top font-semibold text-amber-700 whitespace-nowrap">
+                              ₹{(record.grandTotal || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.etaDateDisplay ?? '—'}</td>
                             <td className="px-4 py-3 align-top min-w-[220px]">
                               <PoConsolidatedItemsList record={record} grnList={grnList} />
                               <div className="text-[10px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
                                 WH progress: {whProgress.completeCount}/{whProgress.totalLines} complete ·{' '}
                                 {whProgress.underGrnCount} under GRN · {whProgress.pendingCount} pending
                               </div>
-                            </td>
-                            <td className="px-4 py-3 text-right align-top font-mono text-[12px] text-gray-900 whitespace-nowrap">
-                              {poRow.lineCount} line{poRow.lineCount !== 1 ? 's' : ''}
                             </td>
                             <td className="px-4 py-3 align-top min-w-[140px]">
                               <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-sky-50 text-sky-800 border-sky-200">
@@ -817,24 +902,6 @@ export default function IssuedPOsView({
                               <div className="mt-1.5">
                                 <ItemTimelineMini completedIdx={completedIdx} />
                               </div>
-                            </td>
-                            <td className="px-4 py-3 align-top">
-                              <div
-                                className={`text-[12px] font-medium ${
-                                  record.etaDays < 0 ? 'text-rose-600' : 'text-gray-800'
-                                }`}
-                              >
-                                {record.etaDays >= 0 ? `${record.etaDays}d` : 'Overdue'}
-                              </div>
-                              <div className="text-[10px] text-gray-500">{record.etaDateDisplay ?? '—'}</div>
-                              <span
-                                className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBadgeClass(record.status)}`}
-                              >
-                                {record.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right align-top font-semibold text-amber-700 whitespace-nowrap">
-                              ₹{(record.grandTotal || 0).toLocaleString('en-IN')}
                             </td>
                             <td className="px-4 py-3 align-top text-[11px] text-gray-700 min-w-[150px]">
                               <div className="text-gray-500">LR / ref</div>
@@ -883,7 +950,7 @@ export default function IssuedPOsView({
                   : pagedVendorGroups.flatMap((vendorGroup) => {
                       const headerRow = (
                         <tr key={`vendor-${vendorGroup.vendorName}`} className="bg-blue-50/60">
-                          <td colSpan={8} className="px-4 py-2.5">
+                          <td colSpan={12} className="px-4 py-2.5">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="text-sm font-semibold text-blue-900">{vendorGroup.vendorName}</div>
                               <div className="text-xs text-blue-800">
@@ -933,7 +1000,7 @@ export default function IssuedPOsView({
                         if (isFirstLineOfPo) {
                           rows.push(
                             <tr key={`po-group-${poKey}`} className="bg-slate-50/90 border-t border-slate-200">
-                              <td colSpan={8} className="px-4 py-2">
+                              <td colSpan={12} className="px-4 py-2">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-mono text-xs font-bold text-slate-800">{record.poNumber}</span>
@@ -954,16 +1021,20 @@ export default function IssuedPOsView({
 
                         rows.push(
                           <tr key={rowKey} className="hover:bg-gray-50/80">
+                            <td className="px-4 py-3 align-top text-[11px] whitespace-nowrap">{record.createdDate || '—'}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.request.planningCustomerName || record.request.source || '—'}</td>
+                            <td className="px-4 py-3 align-top font-mono text-[12px] text-gray-900 font-semibold">{record.poNumber}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.requestCode}</td>
+                            <td className="px-4 py-3 align-top text-[11px]">{record.vendor || '—'}</td>
                             <td className="px-4 py-3 align-top">
-                              <div className="font-mono text-[12px] text-gray-900 font-semibold">{record.poNumber}</div>
-                              <div className="text-[10px] text-gray-500 mt-0.5">{record.requestCode}</div>
-                              <span
-                                className={`inline-flex mt-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${typeBadgeClass(lineType)}`}
-                              >
-                                {lineType}
+                              <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBadgeClass(record.status)}`}>
+                                {record.status}
                               </span>
-                              <div className="text-[10px] text-gray-400 mt-1">Line {lineIndex + 1}</div>
                             </td>
+                            <td className="px-4 py-3 text-right align-top font-semibold text-amber-700 whitespace-nowrap">
+                              ₹{(line.lineTotal || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="px-4 py-3 align-top text-[11px]">{lineEta.etaDateDisplay}</td>
                             <td className="px-4 py-3 align-top min-w-[180px]">
                               <div className="font-semibold text-gray-900 text-[13px]">{line.item}</div>
                               <div className="text-[10px] text-gray-500 font-mono">{line.itemCode}</div>
@@ -976,9 +1047,6 @@ export default function IssuedPOsView({
                                 {lineGrnStatusLabel(lineWhStatus)}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right align-top font-mono text-[12px] text-gray-900 whitespace-nowrap">
-                              {line.qty ?? '—'}
-                            </td>
                             <td className="px-4 py-3 align-top min-w-[140px]">
                               <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-sky-50 text-sky-800 border-sky-200">
                                 {stageLabel}
@@ -989,27 +1057,6 @@ export default function IssuedPOsView({
                               <div className="text-[10px] text-gray-500 mt-1">
                                 {stageLabel} · step {completedIdx + 1}/{TIMELINE_STAGE_LABELS.length}
                               </div>
-                            </td>
-                            <td className="px-4 py-3 align-top">
-                              <div
-                                className={`text-[12px] font-medium ${
-                                  lineEta.etaDays < 0 ? 'text-rose-600' : 'text-gray-800'
-                                }`}
-                              >
-                                {lineEta.etaDays >= 0 ? `${lineEta.etaDays}d` : 'Overdue'}
-                              </div>
-                              <div className="text-[10px] text-gray-500">{lineEta.etaDateDisplay}</div>
-                              {line.leadTimeDays != null && Number.isFinite(line.leadTimeDays) ? (
-                                <div className="text-[10px] text-gray-400 mt-0.5">Lead {line.leadTimeDays}d</div>
-                              ) : null}
-                              <span
-                                className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBadgeClass(record.status)}`}
-                              >
-                                {record.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right align-top font-semibold text-amber-700 whitespace-nowrap">
-                              ₹{(line.lineTotal || 0).toLocaleString('en-IN')}
                             </td>
                             <td className="px-4 py-3 align-top text-[11px] text-gray-700 min-w-[150px]">
                               <div className="text-gray-500">LR / ref</div>
