@@ -1020,6 +1020,8 @@ const Procurement: React.FC = () => {
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
   const [deletingDraftPoId, setDeletingDraftPoId] = useState<string | null>(null);
   const [draftPoDeleteConfirmTarget, setDraftPoDeleteConfirmTarget] = useState<DraftPO | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [requestDeleteConfirmTarget, setRequestDeleteConfirmTarget] = useState<ProcurementRequest | null>(null);
   const [releaseMethod, setReleaseMethod] = useState<'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email'>('Email + Portal');
   const [releaseNotes, setReleaseNotes] = useState('');
   const [releasePaymentTransactionNo, setReleasePaymentTransactionNo] = useState('');
@@ -4388,6 +4390,95 @@ const Procurement: React.FC = () => {
     void deleteDraftPO(draft);
   };
 
+  const openDeleteRequestConfirm = (req: ProcurementRequest): void => {
+    if (requestStatusShowsIssuedPOs(req.status)) {
+      addToast('warning', 'Released or completed requests cannot be deleted.');
+      return;
+    }
+    const hasReleasedPo = purchaseOrders.some((po) => {
+      const linkedRequestId = (po.formData as { requestId?: string } | undefined)?.requestId;
+      return linkedRequestId === req.id && isIssuedLikePoStatus(po.status);
+    });
+    if (hasReleasedPo) {
+      addToast('warning', 'This request has a released purchase order and cannot be deleted.');
+      return;
+    }
+    setRequestDeleteConfirmTarget(req);
+  };
+
+  const confirmDeleteRequest = (): void => {
+    const req = requestDeleteConfirmTarget;
+    if (!req) return;
+    void deleteProcurementRequestFlow(req);
+  };
+
+  const deleteProcurementRequestFlow = async (req: ProcurementRequest): Promise<void> => {
+    if (requestStatusShowsIssuedPOs(req.status)) {
+      addToast('warning', 'Released or completed requests cannot be deleted.');
+      return;
+    }
+
+    setDeletingRequestId(req.id);
+    try {
+      const linkedDrafts = draftPOs.filter((d) => d.requestId === req.id);
+      for (const draft of linkedDrafts) {
+        const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+        if (!backendPoId || !/^\d+$/.test(backendPoId)) continue;
+        const serverPo = purchaseOrders.find(
+          (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId,
+        );
+        if (serverPo && isIssuedLikePoStatus(serverPo.status)) {
+          addToast('warning', 'This request has a released purchase order and cannot be deleted.');
+          return;
+        }
+        const delPo = await deletePurchaseOrder(backendPoId);
+        if (!delPo.success) {
+          addToast(
+            'error',
+            typeof delPo.error === 'string' ? delPo.error : 'Failed to delete linked draft PO',
+          );
+          return;
+        }
+      }
+
+      const del = await deleteProcurementRequestApi(req.id);
+      if (!del.success) {
+        addToast(
+          'error',
+          typeof del.error === 'string' ? del.error : 'Failed to delete procurement request',
+        );
+        return;
+      }
+
+      updateProcurementState((current) => ({
+        ...current,
+        requests: current.requests.filter((r) => r.id !== req.id),
+        draftPOs: current.draftPOs.filter((d) => d.requestId !== req.id),
+      }));
+
+      if (selectedRequest?.id === req.id) setSelectedRequest(null);
+      if (editRequestTarget?.id === req.id) setEditRequestTarget(null);
+      if (releaseToPlannedTarget?.request.id === req.id) setReleaseToPlannedTarget(null);
+
+      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      void invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+      addToast(
+        'success',
+        linkedDrafts.length > 0
+          ? `Request ${req.code} and linked draft PO(s) deleted. Quantities return to Planning.`
+          : `Request ${req.code} deleted.`,
+      );
+      setRequestDeleteConfirmTarget(null);
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
   const deleteDraftPO = async (draft: DraftPO): Promise<void> => {
     const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
     if (!backendPoId || !/^\d+$/.test(backendPoId)) {
@@ -6330,7 +6421,6 @@ const Procurement: React.FC = () => {
                           return {
                             request: req,
                             date: req.createdDate || req.dueDate || '',
-                            location: req.planningCustomerName || req.source || '—',
                             purchaseOrderNo: linkedDraft?.dpoNumber || '—',
                             referenceNo: req.code,
                             vendorName: req.preferredVendor || linkedDraft?.vendor || '—',
@@ -6372,10 +6462,10 @@ const Procurement: React.FC = () => {
                                       <th className="px-3 py-2">Vendor Name</th>
                                       <th className="px-3 py-2">Purchase Order#</th>
                                       <th className="px-3 py-2">Reference#</th>
-                                      <th className="px-3 py-2">Vendor Name</th>
                                       <th className="px-3 py-2">Status</th>
                                       <th className="px-3 py-2 text-right">Amount</th>
                                       <th className="px-3 py-2">Delivery Date</th>
+                                      <th className="px-3 py-2 text-right">Actions</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -6394,10 +6484,9 @@ const Procurement: React.FC = () => {
                                         className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
                                       >
                                         <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.date || '—'}</td>
-                                        <td className="px-3 py-2 text-xs text-slate-700">{row.location}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700">{row.vendorName}</td>
                                         <td className="px-3 py-2 text-xs font-mono text-slate-700">{row.purchaseOrderNo}</td>
                                         <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{row.referenceNo}</td>
-                                        <td className="px-3 py-2 text-xs text-slate-700">{row.vendorName}</td>
                                         <td className="px-3 py-2 text-xs">
                                           <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBg[row.status] ?? 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                             {row.status}
@@ -6405,6 +6494,29 @@ const Procurement: React.FC = () => {
                                         </td>
                                         <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{row.amount.toLocaleString('en-IN')}</td>
                                         <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.deliveryDate || '—'}</td>
+                                        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setEditRequestTarget(row.request);
+                                            }}
+                                            className="px-2 py-1 rounded border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50"
+                                          >
+                                            Edit
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={deletingRequestId === row.request.id}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              openDeleteRequestConfirm(row.request);
+                                            }}
+                                            className="ml-1 px-2 py-1 rounded border border-red-300 text-red-700 font-semibold hover:bg-red-50 disabled:opacity-50"
+                                          >
+                                            {deletingRequestId === row.request.id ? 'Deleting…' : 'Delete'}
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -9810,17 +9922,28 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex items-center justify-between gap-3">
-                <button
-                  onClick={() => {
-                    setEditRequestTarget(req);
-                  }}
-                  className="px-4 py-2 rounded-lg border border-blue-300 text-slate-700 text-sm font-semibold hover:bg-blue-50 transition"
-                >
-                  Edit Request
-                </button>
-
+              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditRequestTarget(req);
+                    }}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingRequestId === req.id}
+                    onClick={() => openDeleteRequestConfirm(req)}
+                    className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                  >
+                    {deletingRequestId === req.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => openStockCheckModal(req)}
@@ -12362,6 +12485,30 @@ const Procurement: React.FC = () => {
         cancelText="Cancel"
         variant="danger"
         isLoading={deletingDraftPoId === draftPoDeleteConfirmTarget?.id}
+      />
+      <ConfirmDialog
+        isOpen={requestDeleteConfirmTarget !== null}
+        onClose={() => {
+          if (deletingRequestId) return;
+          setRequestDeleteConfirmTarget(null);
+        }}
+        onConfirm={confirmDeleteRequest}
+        title="Delete procurement request?"
+        message={
+          requestDeleteConfirmTarget ? (
+            <>
+              Delete request{' '}
+              <span className="font-semibold">{requestDeleteConfirmTarget.code}</span>? Linked draft
+              PO(s) will also be removed. Quantities return to Planning.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deletingRequestId === requestDeleteConfirmTarget?.id}
       />
     </div>
   );
