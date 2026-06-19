@@ -21,7 +21,8 @@ export interface PackMaterialFromApi {
   products: string[];
   /** Primary info for Zoho sync (TODO: implement Zoho integration) */
   zoho_id?: string | null;
-  sku?: string | null;
+  /** Zoho-mirrored SKU code (RM/PM/PR all share this column name as of May 2026). */
+  zoho_sku_code?: string | null;
   hsn_code?: string | null;
   unit?: string | null;
   tax_pref?: string | null;
@@ -49,7 +50,7 @@ export interface PackMaterialRecord {
   printStatus: string;
   products: string[];
   zohoId: string | null;
-  sku: string | null;
+  zohoSkuCode: string | null;
   hsnCode: string | null;
   unit: string | null;
   taxPref: string | null;
@@ -82,7 +83,7 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     printStatus: row.print_status ?? '',
     products: Array.isArray(row.products) ? row.products : [],
     zohoId: row.zoho_id ?? null,
-    sku: row.sku ?? null,
+    zohoSkuCode: row.zoho_sku_code ?? null,
     hsnCode: row.hsn_code ?? null,
     unit: row.unit ?? null,
     taxPref: row.tax_pref ?? null,
@@ -134,10 +135,10 @@ export async function fetchPackMaterialsPage(opts: {
  * Get next code for a series prefix (e.g. EI-PM-PRI -> EI-PM-PRI-00001).
  * Backend counts existing codes with that prefix and returns next.
  */
-export async function fetchNextPackMaterialCode(prefix: string): Promise<string> {
-  const p = encodeURIComponent(prefix.trim());
-  const res = await api.get<{ nextCode: string }>(`/api/v1/pack-materials/next-code?prefix=${p}`);
-  return res?.nextCode ?? `${prefix}-00001`;
+/** Next PM code: numeric only (e.g. 00001), global sequence for pack_materials.code. */
+export async function fetchNextPackMaterialCode(): Promise<string> {
+  const res = await api.get<{ nextCode: string }>('/api/v1/pack-materials/next-code');
+  return res?.nextCode ?? '00001';
 }
 
 /** Payload for creating a pack material (camelCase; backend accepts snake_case too). */
@@ -165,6 +166,10 @@ export interface CreatePackMaterialPayload {
   /** Primary info for Zoho sync (TODO: implement Zoho integration) */
   zohoId?: string | null;
   zoho_id?: string | null;
+  /** Zoho-mirrored SKU code (snake_case for API; camelCase variant `zohoSkuCode` also accepted). */
+  zoho_sku_code?: string | null;
+  zohoSkuCode?: string | null;
+  /** @deprecated kept for backward-compat — backend now stores zoho_sku_code. */
   sku?: string | null;
   hsnCode?: string | null;
   hsn_code?: string | null;
@@ -181,6 +186,30 @@ export interface CreatePackMaterialPayload {
   pkgAssociateItems?: string | null;
   pkg_associate_items?: string | null;
   form_data?: Record<string, unknown> | null;
+  /** When completing a draft created via syncPmZoho */
+  pack_material_id?: number | string | null;
+  draft_pack_material_id?: number | string | null;
+}
+
+export interface PmZohoSyncResponse {
+  pack_material_id: number;
+  zoho_id: string | null;
+  zoho_sync:
+    | { synced: true }
+    | { synced: false; skipped?: boolean; resolvedWithoutZoho?: boolean; reason?: string; error?: string };
+}
+
+/** Draft PM + Zoho item (wizard before full submit). POST /api/v1/pack-materials/zoho-sync */
+export async function syncPmZoho(
+  payload: CreatePackMaterialPayload | Record<string, unknown>
+): Promise<{ data: PmZohoSyncResponse | null; error: string | null; success: boolean }> {
+  try {
+    const data = await api.post<PmZohoSyncResponse>('/api/v1/pack-materials/zoho-sync', payload);
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Zoho sync failed';
+    return { data: null, error: message, success: false };
+  }
 }
 
 /**
@@ -229,6 +258,26 @@ export async function deletePackMaterial(id: string): Promise<void> {
   }
 }
 
+/** Delete every pack material and scrub dependent DB rows (destructive). Requires typed confirmation on the server. */
+export async function resetAllPackMaterialsMaster(): Promise<{ deletedPackMaterials: number }> {
+  try {
+    const res = await api.post<{ ok?: boolean; deletedPackMaterials?: number; message?: string }>(
+      '/api/v1/pack-materials/reset-all',
+      { confirm: 'RESET_ALL_PACK_MATERIALS' }
+    );
+    return { deletedPackMaterials: res?.deletedPackMaterials ?? 0 };
+  } catch (e) {
+    const body = (e as Error & { body?: unknown }).body;
+    const msg =
+      body && typeof body === 'object' && 'error' in body && typeof (body as { error?: string }).error === 'string'
+        ? String((body as { error: string }).error)
+        : e instanceof Error
+          ? e.message
+          : 'Failed to reset pack materials';
+    throw new Error(msg);
+  }
+}
+
 /** Reserved stock response: actual (SIH), reserved (for SO/batches), available = actual - reserved. */
 export interface ReservedStockResponse {
   actual: number;
@@ -242,4 +291,68 @@ export interface ReservedStockResponse {
  */
 export async function fetchReservedStock(id: string): Promise<ReservedStockResponse> {
   return api.get<ReservedStockResponse>(`/api/v1/pack-materials/${id}/reserved-stock`);
+}
+
+/** Chunked upsert from workbook sheet "Item Reference" (SKU / name / type). POST /api/v1/pack-materials/item-reference-bulk-chunk */
+export interface ItemReferenceBulkChunkRow {
+  excel_row: number;
+  line_type: 'Packaging' | 'Raw Material';
+  zoho_sku_code: string;
+  description: string;
+  /** Multi-worksheet PM template (tabs: Primary Packaging, Labels, …). */
+  import_profile?: 'pm_multi_sheet';
+  sheet_name?: string;
+  category?: string;
+  sub_category?: string;
+  uom?: string;
+  hsn_code?: string;
+  gst_pct?: string | number;
+  purchase_rate_inr?: string | number;
+}
+
+export interface ItemReferenceBulkChunkResponse {
+  chunk_index: number;
+  chunk_total: number;
+  percent_complete: number;
+  summary: {
+    packaging_created: number;
+    packaging_updated: number;
+    raw_material_created: number;
+    raw_material_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postItemReferenceBulkChunk(payload: {
+  rows: ItemReferenceBulkChunkRow[];
+  chunk_index: number;
+  chunk_total: number;
+  details?: boolean;
+}): Promise<ItemReferenceBulkChunkResponse> {
+  return api.post<ItemReferenceBulkChunkResponse>('/api/v1/pack-materials/item-reference-bulk-chunk', payload);
+}
+
+/** Server parses workbook with exceljs; multipart field must be `file`. */
+export interface PmMasterExcelImportResponse {
+  ok: boolean;
+  format?: string;
+  raw_material_rows_skipped?: number;
+  rows_total?: number;
+  chunk_size?: number;
+  chunks_processed?: number;
+  summary: {
+    packaging_created: number;
+    packaging_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: unknown[];
+}
+
+export async function postPackMaterialsMasterExcel(file: File): Promise<PmMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<PmMasterExcelImportResponse>('/api/v1/pack-materials/import-excel', fd);
 }

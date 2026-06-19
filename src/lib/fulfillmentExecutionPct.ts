@@ -54,20 +54,75 @@ function resolvePlanningBatchRow(
   return undefined;
 }
 
+function normalizeProdStatus(status: string | null | undefined): string {
+  return (status ?? '').trim().toLowerCase();
+}
+
+/** Draft / missing production status — BMR-BPR numbers may exist but no real work yet. */
+function isProductionPlaceholderOnly(split: BatchSplit): boolean {
+  const bmr = normalizeProdStatus(split.bmrStatus);
+  const bpr = normalizeProdStatus(split.bprStatus);
+  if (!bmr && !bpr) return true;
+  const notStarted = new Set(['', 'draft']);
+  return notStarted.has(bmr) && notStarted.has(bpr);
+}
+
+function hasProcurementStarted(
+  planning: ExecPlanningItem | null | undefined,
+  batchRow: ExecPlanningBatchRow | undefined
+): boolean {
+  if (batchRow) {
+    if (batchRow.sent) return true;
+    const rmNeed = Math.max(0, Number(batchRow.rmNeededTotalKg) || 0);
+    const pmNeed = Math.max(0, Number(batchRow.pmNeededTotalUnits) || 0);
+    const rmRem = Math.max(0, Number(batchRow.rmRemainingTotalKg) || 0);
+    const pmRem = Math.max(0, Number(batchRow.pmRemainingTotalUnits) || 0);
+    if (rmNeed > 0 && rmRem < rmNeed) return true;
+    if (pmNeed > 0 && pmRem < pmNeed) return true;
+    return false;
+  }
+  if (!planning) return false;
+  if ((planning.sentCount ?? 0) > 0) return true;
+  if ((planning.rmStartedCount ?? 0) > 0) return true;
+  if ((planning.pmStartedCount ?? 0) > 0) return true;
+  return false;
+}
+
+/** True when a split is still a placeholder — no production / fulfillment work yet. */
+function isBatchSplitNotStarted(
+  split: BatchSplit,
+  planning: ExecPlanningItem | null | undefined,
+  batchRow: ExecPlanningBatchRow | undefined
+): boolean {
+  const st = (split.ffStatus ?? 'fg_pending') as FFStatus;
+  if (st !== 'fg_pending') return false;
+  if (batchRow?.sent) return false;
+  if (planning && (planning.sentCount ?? 0) > 0) return false;
+
+  const fgQty = Math.max(0, Number(split.fgQty) || 0);
+  const pickedQty = Math.max(0, Number(split.pickedQty) || 0);
+  if (fgQty > 0 || pickedQty > 0) return false;
+  if (!isProductionPlaceholderOnly(split)) return false;
+  if (hasProcurementStarted(planning, batchRow)) return false;
+
+  return true;
+}
+
 function planBatchProgress01(
   planning: ExecPlanningItem | null | undefined,
   batchRow: ExecPlanningBatchRow | undefined,
   split: BatchSplit
 ): number {
-  if (batchRow) return batchRow.sent ? 1 : 0.2;
+  if (batchRow) return batchRow.sent ? 1 : 0;
   if (planning && planning.totalBatches > 0) {
     return clamp01(planning.sentCount / planning.totalBatches);
   }
+  if (isProductionPlaceholderOnly(split)) return 0;
   const hasBmr = Boolean(split.bmrNo?.trim());
   const hasBpr = Boolean(split.bprNo?.trim());
   if (hasBmr && hasBpr) return 0.75;
   if (hasBmr || hasBpr) return 0.4;
-  return 0.1;
+  return 0;
 }
 
 function procurementProgress01(
@@ -106,15 +161,55 @@ function procurementProgress01(
   }
 
   if (st === 'wip' || st === 'bulk_qc') return 0.5;
+  if (isProductionPlaceholderOnly(split)) return 0;
   if (split.bmrNo?.trim()) return 0.25;
-  return 0.1;
+  return 0;
+}
+
+const BPR_PRODUCTION_PROGRESS: Record<string, number> = {
+  fg_ready: 1,
+  qc_failed: 1,
+  pack_qc: 0.92,
+  packaging: 0.88,
+  fill_qc: 0.82,
+  filling: 0.75,
+  pm_dispensing: 0.68,
+  pm_connected: 0.62,
+  scheduled: 0.58,
+  pm_reserved: 0.55,
+};
+
+const BMR_PRODUCTION_PROGRESS: Record<string, number> = {
+  cleared: 0.5,
+  bulk_qc: 0.45,
+  in_production: 0.4,
+  dispensing: 0.35,
+  rm_connected: 0.28,
+  scheduled: 0.25,
+  rm_reserved: 0.22,
+  batch_confirmed: 0.15,
+};
+
+function productionProgressFromBatchStatuses(split: BatchSplit | undefined): number | null {
+  if (!split) return null;
+  const bpr = normalizeProdStatus(split.bprStatus);
+  const bmr = normalizeProdStatus(split.bmrStatus);
+  const bprScore = bpr ? BPR_PRODUCTION_PROGRESS[bpr] : undefined;
+  const bmrScore = bmr ? BMR_PRODUCTION_PROGRESS[bmr] : undefined;
+  if (bprScore != null || bmrScore != null) {
+    return Math.max(bprScore ?? 0, bmrScore ?? 0);
+  }
+  return null;
 }
 
 /** 0–1 within the production slice (before picking). */
-export function productionSliceProgress01(st: FFStatus): number {
+export function productionSliceProgress01(st: FFStatus, split?: BatchSplit): number {
+  const fromBatch = productionProgressFromBatchStatuses(split);
+  if (fromBatch != null) return fromBatch;
+
   switch (st) {
     case 'fg_pending':
-      return 0.12;
+      return 0;
     case 'wip':
       return 0.38;
     case 'bulk_qc':
@@ -142,13 +237,16 @@ export function computeBatchSplitExecutionFraction(
   planning: ExecPlanningItem | null | undefined
 ): number {
   const st = (split.ffStatus ?? 'fg_pending') as FFStatus;
-  const w = FULFILLMENT_EXEC_PHASE_WEIGHTS;
   const batchRow = resolvePlanningBatchRow(planning, splitIndex, splitCount);
+
+  if (isBatchSplitNotStarted(split, planning, batchRow)) return 0;
+
+  const w = FULFILLMENT_EXEC_PHASE_WEIGHTS;
 
   const terminal = st === 'delivered' || st === 'closed';
   const pPlan = terminal ? 1 : planBatchProgress01(planning, batchRow, split);
   const pProc = terminal ? 1 : procurementProgress01(planning, batchRow, split, st);
-  const pProd = productionSliceProgress01(st);
+  const pProd = productionSliceProgress01(st, split);
 
   let score = w.planBatch * pPlan + w.procurement * pProc + w.production * pProd;
 

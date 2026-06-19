@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
+import { parseMoqInput } from '../utils/moqQuantity';
 import {
   fetchPriceListPage,
+  fetchPriceListPagePaginated,
+  fetchPriceListPageStats,
   createItemList,
   createItemListRate,
   createItemListTier,
@@ -10,15 +14,19 @@ import {
   deleteItemListRate,
   updateItemListTier,
   deleteItemListTier,
+  importVendorPricingExcel,
+  importMasterCategoriesExcel,
   type PriceListItemPage,
   type ItemListTierRow,
 } from '../services/itemsList.service';
-import { fetchVendorClients } from '../services/vendorClient.service';
-import { fetchPRProducts, type PRProductListItem } from '../services/productsMaster.service';
+import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
+import { Pagination } from '../components/ui/Pagination';
+import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
   formatStagedPaymentTermsSummary,
   parseStagedPaymentTerms,
+  resolveStagedPaymentTermsFromVendorRecord,
   serializeStagedPaymentTerms,
   validateStagedPercents,
 } from '../lib/stagedPaymentTerms';
@@ -30,6 +38,8 @@ interface PriceTierRow {
   validTill: string;
   note: string;
 }
+
+const PAGE_SIZE = 25;
 
 const EMPTY_TIERS: PriceTierRow[] = [
   { id: '1', moq: '', price: '', validTill: '', note: '' },
@@ -46,7 +56,8 @@ const ItemsList: React.FC = () => {
 
   const [tierTarget, setTierTarget] = useState<PriceListItemPage | null>(null);
   const [resolvedItemsListId, setResolvedItemsListId] = useState<string | null>(null);
-  const [selectedVendor, setSelectedVendor] = useState<VendorClientRecord | null>(null);
+  /** Vendor (RM/PM) or client (PR) master row from vendor_clients */
+  const [selectedParty, setSelectedParty] = useState<VendorClientRecord | null>(null);
   const [currency, setCurrency] = useState('INR');
   const [priceTiers, setPriceTiers] = useState<PriceTierRow[]>(EMPTY_TIERS);
   const [submittingTiers, setSubmittingTiers] = useState(false);
@@ -54,12 +65,20 @@ const ItemsList: React.FC = () => {
   const [addPriceListCombinedItems, setAddPriceListCombinedItems] = useState<PriceListItemPage[]>([]);
   const [loadingCombined, setLoadingCombined] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState('');
+  const [listSearchQuery, setListSearchQuery] = useState('');
+  const [listSearchDebounced, setListSearchDebounced] = useState('');
+  const [listPage, setListPage] = useState(1);
   const [vendorFilterId, setVendorFilterId] = useState<string>('');
+  const [clientFilterId, setClientFilterId] = useState<string>('');
   const [advancePctStr, setAdvancePctStr] = useState('');
   const [preShipmentPctStr, setPreShipmentPctStr] = useState('');
   const [postShipmentPctStr, setPostShipmentPctStr] = useState('');
   const [creditDaysStr, setCreditDaysStr] = useState('');
   const [leadTimeDays, setLeadTimeDays] = useState<string>('');
+  const [importingVendorExcel, setImportingVendorExcel] = useState(false);
+  const [importingCategoriesExcel, setImportingCategoriesExcel] = useState(false);
+  const vendorPricingFileRef = useRef<HTMLInputElement>(null);
+  const masterCategoriesFileRef = useRef<HTMLInputElement>(null);
 
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
@@ -80,27 +99,63 @@ const ItemsList: React.FC = () => {
   const [editTierNote, setEditTierNote] = useState('');
   const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
-  const itemsPageQuery = useQuery({
-    queryKey: ['items-list-pageitems', activeTab],
-    enabled: activeTab === 'rm' || activeTab === 'pm',
-    queryFn: async (): Promise<PriceListItemPage[]> => {
-      const res = await fetchPriceListPage(activeTab.toUpperCase() as 'RM' | 'PM');
-      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load items list');
+  const activeListType: 'RM' | 'PM' | 'PR' =
+    activeTab === 'rm' ? 'RM' : activeTab === 'pm' ? 'PM' : 'PR';
+
+  const partyFilterId =
+    activeTab === 'pr'
+      ? clientFilterId
+        ? parseInt(clientFilterId, 10)
+        : undefined
+      : vendorFilterId
+        ? parseInt(vendorFilterId, 10)
+        : undefined;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setListSearchDebounced(listSearchQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [listSearchQuery]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [activeTab, listSearchDebounced, vendorFilterId, clientFilterId]);
+
+  const pageQuery = useQuery({
+    queryKey: ['items-list-page', activeListType, listPage, listSearchDebounced, partyFilterId ?? ''],
+    queryFn: async () => {
+      const res = await fetchPriceListPagePaginated(activeListType, {
+        limit: PAGE_SIZE,
+        offset: (listPage - 1) * PAGE_SIZE,
+        search: listSearchDebounced.trim() || undefined,
+        partyId:
+          partyFilterId != null && !Number.isNaN(partyFilterId) ? partyFilterId : undefined,
+      });
+      if (!res.success || !res.data) {
+        throw new Error(
+          typeof res.error === 'object' && res.error && 'message' in res.error
+            ? String((res.error as { message?: string }).message)
+            : 'Failed to load items list'
+        );
+      }
       return res.data;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
   });
 
-  const prProductsQuery = useQuery({
-    queryKey: ['items-list-pr-products'],
-    enabled: activeTab === 'pr',
-    queryFn: async (): Promise<PRProductListItem[]> => {
-      const res = await fetchPRProducts();
-      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load PR products');
+  const statsQuery = useQuery({
+    queryKey: ['items-list-page-stats'],
+    queryFn: async () => {
+      const res = await fetchPriceListPageStats();
+      if (!res.success || !res.data) throw new Error('Failed to load stats');
       return res.data;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
+
+  const filteredPageItems: PriceListItemPage[] = pageQuery.data?.rows ?? [];
+  const totalListItems = pageQuery.data?.total ?? 0;
+  const totalListPages = Math.max(1, Math.ceil(totalListItems / PAGE_SIZE));
 
   const vendorsQuery = useQuery({
     queryKey: ['items-list-vendors', 'vendor'],
@@ -112,35 +167,28 @@ const ItemsList: React.FC = () => {
     staleTime: 2 * 60 * 1000,
   });
 
-  const pageItems: PriceListItemPage[] =
-    activeTab === 'rm' || activeTab === 'pm' ? (itemsPageQuery.data ?? []) : [];
-  const products: PRProductListItem[] = activeTab === 'pr' ? (prProductsQuery.data ?? []) : [];
+  const clientsQuery = useQuery({
+    queryKey: ['items-list-vendors', 'client'],
+    queryFn: async (): Promise<VendorClientRecord[]> => {
+      const res = await fetchVendorClients('client');
+      if (!res.success || !res.data) throw new Error(res.error?.message ?? 'Failed to load clients');
+      return res.data as VendorClientRecord[];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
   const vendors: VendorClientRecord[] = vendorsQuery.data ?? [];
-  const loading = vendorsQuery.isLoading || (activeTab === 'pr' ? prProductsQuery.isLoading : itemsPageQuery.isLoading);
+  const clients: VendorClientRecord[] = clientsQuery.data ?? [];
+  const loading =
+    vendorsQuery.isLoading || clientsQuery.isLoading || pageQuery.isLoading;
 
-  const filteredPageItems = useMemo(() => {
-    if (activeTab !== 'rm' && activeTab !== 'pm') return pageItems;
-    if (!vendorFilterId) return pageItems;
-    const vid = vendorFilterId;
-    return pageItems.filter((item) =>
-      item.vendorRates?.some((r) => String(r.vendor_id) === vid)
-    );
-  }, [activeTab, pageItems, vendorFilterId]);
-
-  const stats = useMemo(() => {
-    const withTiers = pageItems.filter((i) => i.vendorRates && i.vendorRates.length > 0).length;
-    const totalRates = pageItems.reduce((s, i) => s + (i.vendorRates?.length ?? 0), 0);
-    const totalTiers = pageItems.reduce(
-      (s, i) => s + (i.vendorRates?.reduce((ss, v) => ss + (v.tiers?.length ?? 0), 0) ?? 0),
-      0
-    );
-    return {
-      rmWithTiers: pageItems.filter((i) => i.type === 'RM' && (i.vendorRates?.length ?? 0) > 0).length,
-      pmWithTiers: pageItems.filter((i) => i.type === 'PM' && (i.vendorRates?.length ?? 0) > 0).length,
-      totalVendorRates: totalRates,
-      totalTiers,
-    };
-  }, [pageItems]);
+  const stats = statsQuery.data ?? {
+    rmWithTiers: 0,
+    pmWithTiers: 0,
+    prWithTiers: 0,
+    totalRateRows: 0,
+    totalTiers: 0,
+  };
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
 
@@ -159,27 +207,28 @@ const ItemsList: React.FC = () => {
     }
     let cancelled = false;
     setLoadingCombined(true);
+    const q = itemSearchQuery.trim();
     Promise.all([
-      fetchPriceListPage('RM'),
-      fetchPriceListPage('PM'),
-      fetchPriceListPage('PR'),
+      fetchPriceListPagePaginated('RM', { limit: 80, offset: 0, search: q || undefined }),
+      fetchPriceListPagePaginated('PM', { limit: 80, offset: 0, search: q || undefined }),
+      fetchPriceListPagePaginated('PR', { limit: 80, offset: 0, search: q || undefined }),
     ]).then(([rRes, pRes, prRes]) => {
       if (cancelled) return;
-      const rm = rRes.success && rRes.data ? rRes.data : [];
-      const pm = pRes.success && pRes.data ? pRes.data : [];
-      const pr = prRes.success && prRes.data ? prRes.data : [];
+      const rm = rRes.success && rRes.data ? rRes.data.rows : [];
+      const pm = pRes.success && pRes.data ? pRes.data.rows : [];
+      const pr = prRes.success && prRes.data ? prRes.data.rows : [];
       setAddPriceListCombinedItems([...rm, ...pm, ...pr]);
       setLoadingCombined(false);
     }).catch(() => {
       if (!cancelled) setLoadingCombined(false);
     });
     return () => { cancelled = true; };
-  }, [showAddTierModal, addPriceListMode, tierTarget]);
+  }, [showAddTierModal, addPriceListMode, tierTarget, itemSearchQuery]);
 
   const openAddTier = (item: PriceListItemPage) => {
     setTierTarget(item);
     setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
-    setSelectedVendor(null);
+    setSelectedParty(null);
     setCurrency('INR');
     setAdvancePctStr('');
     setPreShipmentPctStr('');
@@ -195,7 +244,7 @@ const ItemsList: React.FC = () => {
   const openAddPriceList = () => {
     setTierTarget(null);
     setResolvedItemsListId(null);
-    setSelectedVendor(null);
+    setSelectedParty(null);
     setCurrency('INR');
     setAdvancePctStr('');
     setPreShipmentPctStr('');
@@ -224,8 +273,8 @@ const ItemsList: React.FC = () => {
   }, [addPriceListMode, addPriceListCombinedItems, itemSearchQuery]);
 
   const handleSaveTiers = async () => {
-    if (!tierTarget || !selectedVendor) {
-      addToast('error', 'Select a vendor');
+    if (!tierTarget || !selectedParty) {
+      addToast('error', tierTarget?.type === 'PR' ? 'Select a client' : 'Select a vendor');
       return;
     }
     const valid = priceTiers.filter((t) => t.moq && t.price);
@@ -245,6 +294,21 @@ const ItemsList: React.FC = () => {
     try {
       let itemsListId = resolvedItemsListId;
       if (!itemsListId) {
+        if (tierTarget.type === 'RM' && tierTarget.raw_material_id == null) {
+          addToast('error', 'Missing raw material id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
+        if (tierTarget.type === 'PM' && tierTarget.pack_material_id == null) {
+          addToast('error', 'Missing packaging material id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
+        if (tierTarget.type === 'PR' && tierTarget.product_id == null) {
+          addToast('error', 'Missing product id for this row. Refresh the page and try again.');
+          setSubmittingTiers(false);
+          return;
+        }
         const payload =
           tierTarget.type === 'RM'
             ? { type: 'RM' as const, raw_material_id: tierTarget.raw_material_id!, pack_material_id: null, product_id: null }
@@ -252,12 +316,33 @@ const ItemsList: React.FC = () => {
               ? { type: 'PM' as const, raw_material_id: null, pack_material_id: tierTarget.pack_material_id!, product_id: null }
               : { type: 'PR' as const, raw_material_id: null, pack_material_id: null, product_id: tierTarget.product_id! };
         const createRes = await createItemList(payload);
-        if (!createRes.success || !createRes.data) {
-          addToast('error', createRes.error?.message ?? 'Failed to add item to list');
-          setSubmittingTiers(false);
-          return;
+        if (createRes.success && createRes.data?.id) {
+          itemsListId = createRes.data.id;
+        } else {
+          const msg = String(createRes.error?.message ?? '');
+          const lowered = msg.toLowerCase();
+          const conflict =
+            lowered.includes('already') || lowered.includes('conflict') || lowered.includes('409');
+          if (conflict) {
+            const pageType =
+              tierTarget.type === 'RM' ? 'RM' : tierTarget.type === 'PM' ? 'PM' : 'PR';
+            const pageRes = await fetchPriceListPage(pageType);
+            if (pageRes.success && pageRes.data) {
+              const match =
+                tierTarget.type === 'RM'
+                  ? pageRes.data.find((p) => Number(p.raw_material_id) === Number(tierTarget.raw_material_id))
+                  : tierTarget.type === 'PM'
+                    ? pageRes.data.find((p) => Number(p.pack_material_id) === Number(tierTarget.pack_material_id))
+                    : pageRes.data.find((p) => Number(p.product_id) === Number(tierTarget.product_id));
+              if (match?.itemsListId != null) itemsListId = String(match.itemsListId);
+            }
+          }
+          if (!itemsListId) {
+            addToast('error', msg || 'Failed to add item to list');
+            setSubmittingTiers(false);
+            return;
+          }
         }
-        itemsListId = createRes.data.id;
       }
       const staged = serializeStagedPaymentTerms({
         advance_pct: adv,
@@ -266,20 +351,24 @@ const ItemsList: React.FC = () => {
         credit_days: creditDaysStr ? Math.max(0, parseInt(creditDaysStr, 10) || 0) : 0,
       });
       const rateRes = await createItemListRate(String(itemsListId), {
-        vendor_id: parseInt(selectedVendor.id, 10),
+        vendor_id: parseInt(selectedParty.id, 10),
         currency,
         payment_terms: staged,
         lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
       });
       if (!rateRes.success || !rateRes.data) {
-        addToast('error', rateRes.error?.message ?? 'Failed to create vendor rate');
+        addToast(
+          'error',
+          rateRes.error?.message ??
+            (tierTarget.type === 'PR' ? 'Failed to create client rate' : 'Failed to create vendor rate')
+        );
         setSubmittingTiers(false);
         return;
       }
       const rateId = rateRes.data.id;
       for (const t of valid) {
         await createItemListTier(String(itemsListId!), rateId, {
-          moq_min: parseInt(t.moq, 10) || 1,
+          moq_min: parseMoqInput(t.moq) ?? 1,
           price_per_unit: parseFloat(t.price),
           valid_till: t.validTill || null,
           note: t.note || null,
@@ -361,7 +450,7 @@ const ItemsList: React.FC = () => {
     });
     setSubmittingEditRate(false);
     if (res.success) {
-      addToast('success', 'Vendor rate updated');
+      addToast('success', editingRate.item.type === 'PR' ? 'Client rate updated' : 'Vendor rate updated');
       setEditingRate(null);
       refetchPage();
     } else {
@@ -371,12 +460,19 @@ const ItemsList: React.FC = () => {
 
   const handleDeleteRate = async () => {
     if (!editingRate || editingRate.item.itemsListId == null) return;
-    if (!window.confirm(`Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`)) return;
+    if (
+      !window.confirm(
+        editingRate.item.type === 'PR'
+          ? `Remove this client's rate and all its tiers for ${editingRate.item.name}?`
+          : `Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`
+      )
+    )
+      return;
     setSubmittingEditRate(true);
     const res = await deleteItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id);
     setSubmittingEditRate(false);
     if (res.success) {
-      addToast('success', 'Vendor rate removed');
+      addToast('success', editingRate.item.type === 'PR' ? 'Client rate removed' : 'Vendor rate removed');
       setEditingRate(null);
       refetchPage();
     } else {
@@ -386,9 +482,9 @@ const ItemsList: React.FC = () => {
 
   const handleUpdateTier = async () => {
     if (!editingTier || editingTier.item.itemsListId == null) return;
-    const moqMin = parseInt(editTierMoqMin, 10);
+    const moqMin = parseMoqInput(editTierMoqMin);
     const price = parseFloat(editTierPrice);
-    if (Number.isNaN(moqMin) || Number.isNaN(price)) {
+    if (moqMin == null || Number.isNaN(price)) {
       addToast('error', 'MOQ and price are required');
       return;
     }
@@ -399,7 +495,7 @@ const ItemsList: React.FC = () => {
       editingTier.tier.id,
       {
         moq_min: moqMin,
-        moq_max: editTierMoqMax ? parseInt(editTierMoqMax, 10) : null,
+        moq_max: editTierMoqMax.trim() ? parseMoqInput(editTierMoqMax) : null,
         price_per_unit: price,
         valid_till: editTierValidTill || null,
         note: editTierNote || null,
@@ -446,21 +542,171 @@ const ItemsList: React.FC = () => {
     }
   };
 
-  const vendorIdsUsed = useMemo(() => {
+  const partyIdsUsed = useMemo(() => {
     if (!tierTarget) return new Set<number>();
     return new Set(tierTarget.vendorRates?.map((r) => r.vendor_id) ?? []);
   }, [tierTarget]);
-  const availableVendors = useMemo(
-    () => vendors.filter((v) => !vendorIdsUsed.has(parseInt(v.id, 10))),
-    [vendors, vendorIdsUsed]
-  );
+  const availableParties = useMemo(() => {
+    const pool = tierTarget?.type === 'PR' ? clients : vendors;
+    return pool.filter((p) => !partyIdsUsed.has(parseInt(p.id, 10)));
+  }, [tierTarget?.type, clients, vendors, partyIdsUsed]);
+
+  const applySelectedParty = (v: VendorClientRecord | null) => {
+    setSelectedParty(v);
+    if (!v) {
+      setAdvancePctStr('');
+      setPreShipmentPctStr('');
+      setPostShipmentPctStr('');
+      setCreditDaysStr('');
+      setLeadTimeDays('');
+      return;
+    }
+    void (async () => {
+      try {
+        let paymentTerms = v.paymentTerms;
+        let data = v.data as Record<string, unknown> | undefined;
+        let lead = v.leadTime ?? '';
+        const fullRes = await fetchVendorClientById(v.id);
+        if (fullRes.success && fullRes.data) {
+          paymentTerms = fullRes.data.paymentTerms ?? paymentTerms;
+          data = (fullRes.data.data ?? data) as Record<string, unknown> | undefined;
+          lead = fullRes.data.leadTime ?? lead;
+        }
+        const staged = resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data);
+        setAdvancePctStr(String(staged.advance_pct));
+        setPreShipmentPctStr(String(staged.pre_shipment_pct));
+        setPostShipmentPctStr(String(staged.post_shipment_pct));
+        setCreditDaysStr(staged.credit_days ? String(staged.credit_days) : '');
+        setLeadTimeDays(lead ? String(lead) : '');
+      } catch {
+        addToast('error', 'Could not apply client payment terms. Try again or refresh.');
+      }
+    })();
+  };
+
+  const partyIdsUsedForTypeahead = useMemo(() => {
+    if (!tierTarget?.vendorRates?.length) return undefined;
+    return new Set(tierTarget.vendorRates.map((r) => String(r.vendor_id)));
+  }, [tierTarget?.vendorRates]);
+
+  const handleMasterCategoriesExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (
+      !window.confirm(
+        'Update RM/PM category and sub-category for all SKUs in this file? Existing masters are matched by SKU; vendor rates are not changed.'
+      )
+    ) {
+      return;
+    }
+    setImportingCategoriesExcel(true);
+    try {
+      const res = await importMasterCategoriesExcel(file, { details: true });
+      const s = res.summary;
+      if (!res.ok) {
+        addToast('error', res.error ?? 'Category import failed');
+        return;
+      }
+      addToast(
+        'success',
+        `Categories: ${s?.rm_updated ?? 0} RM, ${s?.pm_updated ?? 0} PM updated · ${s?.skipped ?? 0} skipped · ${s?.errors ?? 0} errors`
+      );
+      if ((s?.skipped ?? 0) > 0 && res.row_log?.length) {
+        const sample = res.row_log
+          .filter((r) => r.action === 'skipped' || r.action === 'error')
+          .slice(0, 3)
+          .map((r) => `${r.sheet ?? ''} row ${r.excel_row}: ${r.reason ?? r.action}`)
+          .join('; ');
+        if (sample) addToast('info', `Sample issues: ${sample}`);
+      }
+      void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+      void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Category import failed');
+    } finally {
+      setImportingCategoriesExcel(false);
+    }
+  };
+
+  const handleVendorPricingExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingVendorExcel(true);
+    try {
+      const res = await importVendorPricingExcel(file, { details: true });
+      const s = res.summary;
+      if (!res.ok) {
+        addToast('error', res.error ?? 'Import failed');
+        return;
+      }
+      addToast(
+        'success',
+        `Vendor pricing: ${s?.rates_synced ?? 0} synced, ${s?.skipped ?? 0} skipped, ${s?.errors ?? 0} errors`
+      );
+      if ((s?.skipped ?? 0) > 0 && res.row_log?.length) {
+        const sample = res.row_log
+          .filter((r) => r.action === 'skipped' || r.action === 'error')
+          .slice(0, 3)
+          .map((r) => `${r.sheet ?? ''} row ${r.excel_row}: ${r.reason ?? r.action}`)
+          .join('; ');
+        if (sample) addToast('info', `Sample issues: ${sample}`);
+      }
+      await refetchPage();
+      void queryClient.invalidateQueries({ queryKey: ['items-list'] });
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImportingVendorExcel(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f9fafb] font-['Plus_Jakarta_Sans',sans-serif]">
       <div className="px-6 md:px-10 py-8 max-w-6xl mx-auto space-y-6">
-        <div>
-          <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
-          <p className="text-sm text-gray-500">Vendor-wise MOQ-tiered pricing for raw materials and packaging materials.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
+            <p className="text-sm text-gray-500">
+              Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <input
+              ref={vendorPricingFileRef}
+              type="file"
+              accept=".xlsx,.xlsm"
+              className="hidden"
+              onChange={handleVendorPricingExcelChange}
+            />
+            <input
+              ref={masterCategoriesFileRef}
+              type="file"
+              accept=".xlsx,.xlsm"
+              className="hidden"
+              onChange={handleMasterCategoriesExcelChange}
+            />
+            <button
+              type="button"
+              disabled={importingCategoriesExcel || importingVendorExcel}
+              onClick={() => masterCategoriesFileRef.current?.click()}
+              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            >
+              {importingCategoriesExcel ? 'Updating…' : 'Update RM/PM categories (Excel)'}
+            </button>
+            <button
+              type="button"
+              disabled={importingVendorExcel || importingCategoriesExcel}
+              onClick={() => vendorPricingFileRef.current?.click()}
+              className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900 disabled:opacity-50"
+            >
+              {importingVendorExcel ? 'Importing…' : 'Import vendor pricing (Excel)'}
+            </button>
+            <p className="text-[11px] text-gray-400 max-w-sm text-right">
+              Same workbook for both. Category update uses SKU + Category / Sub-Category. Pricing import also needs Primary Vendor and Price/Unit.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -475,25 +721,29 @@ const ItemsList: React.FC = () => {
             <div className="text-[11px] text-gray-400 mt-1">Items with MOQ tiers</div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-amber-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">Vendor Rates</div>
-            <div className="text-2xl font-extrabold text-amber-600">{stats.totalVendorRates}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Vendor-item combos</div>
+            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">PR client price lists</div>
+            <div className="text-2xl font-extrabold text-amber-600">{stats.prWithTiers}</div>
+            <div className="text-[11px] text-gray-400 mt-1">Products with client tiers</div>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-blue-500">
             <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">MOQ Tiers</div>
             <div className="text-2xl font-extrabold text-blue-600">{stats.totalTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Total price breaks</div>
+            <div className="text-[11px] text-gray-400 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-bold text-gray-900">Price Lists — Vendor & MOQ-wise</span>
+            <span className="text-sm font-bold text-gray-900">Price Lists — Vendor / client & MOQ-wise</span>
             <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setListSearchQuery('');
+                    setListPage(1);
+                  }}
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                     activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
@@ -527,6 +777,27 @@ const ItemsList: React.FC = () => {
                 ) : null}
               </div>
             )}
+            {activeTab === 'pr' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="items-list-client-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+                  Filter by client
+                </label>
+                <VendorClientNameTypeahead
+                  inputId="items-list-client-filter"
+                  parties={clients}
+                  selectedId={clientFilterId}
+                  loading={clientsQuery.isLoading}
+                  placeholder="All clients — search by name, city…"
+                  onSelect={(c) => setClientFilterId(c?.id ?? '')}
+                  className="min-w-[220px]"
+                />
+                {clientFilterId ? (
+                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
+                    Only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
           <button
             onClick={openAddPriceList}
@@ -536,58 +807,64 @@ const ItemsList: React.FC = () => {
           </button>
         </div>
 
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="search"
+            value={listSearchQuery}
+            onChange={(e) => setListSearchQuery(e.target.value)}
+            placeholder={
+              activeTab === 'pr'
+                ? 'Search product code, name, or client…'
+                : 'Search item code, name, or vendor…'
+            }
+            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            aria-label="Search items list"
+          />
+          {listSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setListSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+              aria-label="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          ) : null}
+        </div>
+        {listSearchDebounced.trim() && !loading ? (
+          <p className="text-xs text-gray-500 -mt-4">
+            {totalListItems} {activeTab === 'pr' ? 'product' : 'item'}
+            {totalListItems !== 1 ? 's' : ''} match &quot;{listSearchDebounced.trim()}&quot;
+          </p>
+        ) : null}
+
         {loading ? (
           <div className="py-12 text-center text-gray-500">Loading…</div>
-        ) : activeTab === 'pr' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {products.map((p) => (
-              <div key={p.product_id} className="bg-white border border-amber-200 rounded-lg p-4">
-                <div className="text-sm font-bold text-gray-900 mb-3">{p.product_name}</div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="rounded-lg p-2.5 text-center bg-green-50 border border-green-200">
-                    <div className="text-[10px] text-gray-500 uppercase">Batch Size</div>
-                    <div className="text-sm font-extrabold text-teal-600">{p.batch_size_kg ?? '—'} KG</div>
-                  </div>
-                  <div className="rounded-lg p-2.5 text-center bg-amber-50 border border-amber-200">
-                    <div className="text-[10px] text-gray-500 uppercase">MRP</div>
-                    <div className="text-sm font-extrabold text-amber-600">₹{p.mrp_price ?? '—'}</div>
-                  </div>
-                </div>
-                <div className="border-t border-gray-100 pt-2.5 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Sale OH price</span>
-                    <span className="font-bold text-amber-600">—</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Fill Size</span>
-                    <span className="font-semibold">{p.fill_size ?? '—'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">License</span>
-                    <span className="font-mono text-[10.5px]">{p.product_code ?? '—'}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {products.length === 0 && <p className="text-gray-500 col-span-2">No products</p>}
-          </div>
         ) : (
           <div id="pl-list-body" className="space-y-2.5">
             {filteredPageItems.map((item) => {
               const hasTiers = item.vendorRates && item.vendorRates.length > 0;
               const isRm = item.type === 'RM';
+              const isPm = item.type === 'PM';
+              const isPr = item.type === 'PR';
+              const listOnlyLabel = isPr ? 'no client pricing tiers' : 'no vendor tiers';
               if (!hasTiers) {
                 return (
                   <div key={item.code} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                        <span
+                          className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                        >
+                          {item.code}
+                        </span>
                         <span className="text-sm font-bold text-gray-900">{item.name}</span>
                         <span className="font-mono text-xs font-bold text-amber-600">
                           {item.pricePerUnit < 1 ? formatPrice(item.pricePerUnit) : formatPrice(item.pricePerUnit)}
-                          {isRm ? '/KG' : '/pc'}
+                          {isRm ? '/KG' : isPm ? '/pc' : ' MRP'}
                         </span>
-                        <span className="text-[11px] text-gray-400">— List price only, no vendor tiers</span>
+                        <span className="text-[11px] text-gray-400">— List price only, {listOnlyLabel}</span>
                       </div>
                       <button
                         onClick={() => openAddTier(item)}
@@ -600,13 +877,34 @@ const ItemsList: React.FC = () => {
                 );
               }
               return (
-                <div key={item.code} className={`bg-white border rounded-lg overflow-hidden ${isRm ? 'border-teal-100' : 'border-violet-100'}`}>
-                  <div className={`px-4 py-3 border-b flex items-center justify-between ${isRm ? 'bg-green-50 border-green-200' : 'bg-violet-50 border-violet-200'}`}>
+                <div
+                  key={item.code}
+                  className={`bg-white border rounded-lg overflow-hidden ${
+                    isRm ? 'border-teal-100' : isPm ? 'border-violet-100' : 'border-amber-100'
+                  }`}
+                >
+                  <div
+                    className={`px-4 py-3 border-b flex items-center justify-between ${
+                      isRm
+                        ? 'bg-green-50 border-green-200'
+                        : isPm
+                          ? 'bg-violet-50 border-violet-200'
+                          : 'bg-amber-50 border-amber-200'
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
-                      <span className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>{item.code}</span>
+                      <span
+                        className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                      >
+                        {item.code}
+                      </span>
                       <span className="text-sm font-bold text-gray-900">{item.name}</span>
                       <span className="font-mono text-[11px] text-gray-400">
-                        {isRm ? `${item.uom ?? 'KG'} · GST ${item.gst ?? 0}%` : `${item.pack_type ?? ''} · ${item.level ?? ''}`}
+                        {isRm
+                          ? `${item.uom ?? 'KG'} · GST ${item.gst ?? 0}%`
+                          : isPm
+                            ? `${item.pack_type ?? ''} · ${item.level ?? ''}`
+                            : `${item.uom ?? 'UNIT'} · GST ${item.gst ?? 0}%`}
                       </span>
                     </div>
                     <button
@@ -616,84 +914,130 @@ const ItemsList: React.FC = () => {
                       + Tier
                     </button>
                   </div>
-                  {item.vendorRates?.map((rate) => (
-                    <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
-                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                        <div>
-                          <span className="text-xs font-bold text-blue-600">{rate.vendor_name ?? 'Vendor'}</span>
-                          {rate.vendor_code && <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>}
-                          {(rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms)) ? (
-                            <span className="text-[10.5px] text-gray-500 ml-1.5">· {formatStagedPaymentTermsSummary(rate.payment_terms)}</span>
-                          ) : null}
+                  {item.vendorRates?.map((rate) => {
+                    const isClientRate = rate.party_type === 'client';
+                    return (
+                      <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
+                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                          <div>
+                            <span className={`text-[10px] font-bold uppercase text-gray-400 mr-1.5`}>
+                              {isClientRate ? 'Client' : 'Vendor'}
+                            </span>
+                            <span className={`text-xs font-bold ${isClientRate ? 'text-amber-700' : 'text-blue-600'}`}>
+                              {rate.vendor_name ?? (isClientRate ? 'Client' : 'Vendor')}
+                            </span>
+                            {rate.vendor_code && (
+                              <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>
+                            )}
+                            {rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms) ? (
+                              <span className="text-[10.5px] text-gray-500 ml-1.5">
+                                · {formatStagedPaymentTermsSummary(rate.payment_terms)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-400">{rate.currency}</span>
+                            {item.itemsListId != null && (
+                              <button
+                                type="button"
+                                onClick={() => openEditRate(item, rate)}
+                                className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
+                              >
+                                Edit rate
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-400">{rate.currency}</span>
-                          {item.itemsListId != null && (
-                            <button
-                              type="button"
-                              onClick={() => openEditRate(item, rate)}
-                              className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
-                            >
-                              Edit rate
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <table className="w-full text-sm border-collapse mt-2">
-                        <thead>
-                          <tr className="border-b border-gray-100">
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">MOQ {isRm ? '(KG)' : '(pcs)'}</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price {isRm ? '/ KG' : '/ pc'}</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
-                            <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
-                            {item.itemsListId != null && <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rate.tiers?.map((t, ti) => (
-                            <tr key={t.id} className={`border-b border-gray-50 ${ti === 0 ? 'bg-green-50/50' : ''}`}>
-                              <td className="py-1.5 px-2">
-                                <span className={`font-mono text-xs font-bold ${isRm ? 'text-teal-600' : 'text-violet-600'}`}>
-                                  {t.moq_min === 1 && t.moq_max == null ? 'List price' : `${t.moq_min}+`}
-                                </span>
-                              </td>
-                              <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">{formatPrice(t.price_per_unit)}</td>
-                              <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
-                              <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                        <table className="w-full text-sm border-collapse mt-2">
+                          <thead>
+                            <tr className="border-b border-gray-100">
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                                MOQ {isRm ? '(KG)' : isPm ? '(pcs)' : '(units)'}
+                              </th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                                Price {isRm ? '/ KG' : isPm ? '/ pc' : '/ unit'}
+                              </th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
+                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
                               {item.itemsListId != null && (
-                                <td className="py-1.5 px-2 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditTier(item, rate.id, t)}
-                                    className="text-[10.5px] text-teal-600 hover:underline mr-2"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteTierFromRow(item, rate.id, t)}
-                                    className="text-[10.5px] text-red-600 hover:underline"
-                                  >
-                                    Delete
-                                  </button>
-                                </td>
+                                <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>
                               )}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
+                          </thead>
+                          <tbody>
+                            {rate.tiers?.map((t, ti) => (
+                              <tr
+                                key={t.id}
+                                className={`border-b border-gray-50 ${ti === 0 ? (isPr ? 'bg-amber-50/50' : 'bg-green-50/50') : ''}`}
+                              >
+                                <td className="py-1.5 px-2">
+                                  <span
+                                    className={`font-mono text-xs font-bold ${
+                                      isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'
+                                    }`}
+                                  >
+                                    {t.moq_min === 1 && t.moq_max == null ? 'List price' : `${t.moq_min}+`}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">
+                                  {formatPrice(t.price_per_unit)}
+                                </td>
+                                <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
+                                <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                                {item.itemsListId != null && (
+                                  <td className="py-1.5 px-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditTier(item, rate.id, t)}
+                                      className="text-[10.5px] text-teal-600 hover:underline mr-2"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteTierFromRow(item, rate.id, t)}
+                                      className="text-[10.5px] text-red-600 hover:underline"
+                                    >
+                                      Delete
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
             {filteredPageItems.length === 0 && (
               <p className="text-gray-500 py-8 text-center">
-                {pageItems.length === 0 ? 'No items' : 'No items with rates for the selected vendor.'}
+                {listSearchDebounced.trim()
+                  ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
+                  : activeTab === 'pr'
+                    ? clientFilterId
+                      ? 'No products with client pricing for the selected client.'
+                      : 'No products in catalogue.'
+                    : vendorFilterId
+                      ? 'No items with rates for the selected vendor.'
+                      : 'No items in this tab.'}
               </p>
             )}
           </div>
         )}
+
+        {!loading && totalListItems > 0 ? (
+          <Pagination
+            currentPage={listPage}
+            totalPages={totalListPages}
+            onPageChange={setListPage}
+            totalItems={totalListItems}
+            itemsPerPage={PAGE_SIZE}
+            variant="compact"
+          />
+        ) : null}
       </div>
 
       {showAddTierModal && (tierTarget || addPriceListMode) && (
@@ -771,24 +1115,46 @@ const ItemsList: React.FC = () => {
                 </div>
               )}
 
-              {/* Vendor & tier form — shown when item is selected */}
+              {/* Vendor or client & tier form — shown when item is selected */}
               {tierTarget && (<>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Vendor *</label>
-                  <select
-                    value={selectedVendor?.id ?? ''}
-                    onChange={(e) => setSelectedVendor(vendors.find((v) => v.id === e.target.value) ?? null)}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
-                  >
-                    <option value="">Select…</option>
-                    {availableVendors.map((v) => (
-                      <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
-                    ))}
-                  </select>
-                  {availableVendors.length === 0 && tierTarget.vendorRates?.length && (
-                    <p className="text-xs text-amber-600 mt-1">All vendors have rates for this item</p>
+                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                    {tierTarget.type === 'PR' ? 'Client *' : 'Vendor *'}
+                  </label>
+                  {tierTarget.type === 'PR' ? (
+                    <VendorClientNameTypeahead
+                      parties={clients}
+                      selectedId={selectedParty?.id ?? ''}
+                      loading={clientsQuery.isLoading}
+                      disabled={availableParties.length === 0 && !!tierTarget.vendorRates?.length}
+                      disabledIds={partyIdsUsedForTypeahead}
+                      placeholder="Search client by name, city…"
+                      onSelect={applySelectedParty}
+                    />
+                  ) : (
+                    <select
+                      value={selectedParty?.id ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const v = vendors.find((x) => x.id === id) ?? null;
+                        applySelectedParty(v);
+                      }}
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value="">Select…</option>
+                      {availableParties.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
+                      ))}
+                    </select>
                   )}
+                  {availableParties.length === 0 && tierTarget.vendorRates?.length ? (
+                    <p className="text-xs text-amber-600 mt-1">
+                      {tierTarget.type === 'PR'
+                        ? 'All clients already have pricing for this product'
+                        : 'All vendors have rates for this item'}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Currency</label>
@@ -834,7 +1200,9 @@ const ItemsList: React.FC = () => {
                     className="w-full max-w-xs px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
                     placeholder="0"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">Applies to this vendor rate (all tiers added below).</p>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Applies to this {tierTarget.type === 'PR' ? 'client' : 'vendor'} rate (all tiers added below).
+                  </p>
                 </div>
               </div>
               <div>
@@ -900,7 +1268,7 @@ const ItemsList: React.FC = () => {
               {tierTarget && (
                 <button
                   onClick={handleSaveTiers}
-                  disabled={submittingTiers || !selectedVendor}
+                  disabled={submittingTiers || !selectedParty}
                   className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
                 >
                   {submittingTiers ? 'Saving…' : 'Save Tiers'}
@@ -917,7 +1285,9 @@ const ItemsList: React.FC = () => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
             <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
               <span className="text-sm font-bold text-gray-900">
-                Edit rate — {editingRate.rate.vendor_name ?? 'Vendor'} · {editingRate.item.name}
+                Edit rate —{' '}
+                {editingRate.rate.party_type === 'client' ? 'Client' : 'Vendor'}:{' '}
+                {editingRate.rate.vendor_name ?? '—'} · {editingRate.item.name}
               </span>
               <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
             </div>

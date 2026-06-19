@@ -26,6 +26,16 @@ export interface PlanningExtractedPackagingMaterial {
   code?: string;
 }
 
+export interface PlanningSlaMeta {
+  elapsedHours: number;
+  label: string;
+  sub: string;
+  tone: 'green' | 'amber' | 'red';
+  startedAt?: string | null;
+  stoppedAt?: string | null;
+  timezone?: string;
+}
+
 export interface PlanningExtractedRow {
   id: string;
   soNumber: string;
@@ -53,8 +63,14 @@ export interface PlanningExtractedRow {
   sentBatchIndices?: number[];
   batchCount?: number | null;
   customBatches?: { sizeKg: number }[] | null;
+  /** Single BOM-level Specific Gravity chosen at first-batch confirmation (null until BOM is confirmed). */
+  bomSpecificGravity?: number | null;
+  /** Timestamp when the planner confirmed BOM + SG; null means BOM is not yet confirmed. */
+  bomConfirmedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /** Server-computed 48h SLA (Asia/Kolkata); prefer over client-side orderDate math. */
+  planningSla?: PlanningSlaMeta;
 }
 
 export async function fetchPlanningExtractedList(): Promise<PlanningExtractedRow[]> {
@@ -93,7 +109,9 @@ export interface UpdatePlanningExtractedPayload {
   batchSizeKg?: number;
   plannedStartDate?: string;
   productionLine?: string;
-  bomConfirmedAt?: string;
+  bomConfirmedAt?: string | null;
+  /** Single BOM-level Specific Gravity (fans out to rm_lines[].specific_gravity on the backend). */
+  bomSpecificGravity?: number | null;
   customBatches?: CustomBatch[];
   sentBatchIndices?: number[];
 }
@@ -104,6 +122,7 @@ export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
   plannedStartDate?: string | null;
   productionLine?: string | null;
   bomConfirmedAt?: string | null;
+  bomSpecificGravity?: number | null;
   customBatches?: CustomBatch[] | null;
 }
 
@@ -167,6 +186,10 @@ export interface PlanningBatchRow {
   sizeKg: number | null;
   rmLines: unknown[];
   pmLines: unknown[];
+  /** Linked production BMR status when batch was sent to Production. */
+  productionBmrStatus?: string | null;
+  /** False once Production confirms the batch (`bmr_status` past `draft`). */
+  editable?: boolean;
 }
 
 export async function fetchPlanningBatches(planningExtractedId: string): Promise<PlanningBatchRow[]> {
@@ -190,12 +213,17 @@ function errorMessageFromApiCatch(e: unknown, fallback: string): string {
 
 export async function createOrUpdatePlanningBatches(
   planningExtractedId: string,
-  batches: { sizeKg: number }[]
+  batches: { sizeKg: number }[],
+  options?: { updateOnlyBatchId?: number }
 ): Promise<PlanningBatchRow[]> {
   try {
-    const data = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, {
+    const body: { batches: { sizeKg: number }[]; updateOnlyBatchId?: number } = {
       batches: batches.map((b) => ({ sizeKg: b.sizeKg })),
-    });
+    };
+    if (options?.updateOnlyBatchId != null) {
+      body.updateOnlyBatchId = options.updateOnlyBatchId;
+    }
+    const data = await api.post<PlanningBatchRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/batches`, body);
     return Array.isArray(data) ? data : [];
   } catch (e: unknown) {
     throw new Error(errorMessageFromApiCatch(e, 'Failed to save batches'));
@@ -227,7 +255,7 @@ export async function addOneBatchFromMaster(planningExtractedId: string): Promis
 export async function updateBatch(
   planningExtractedId: string,
   batchId: number,
-  payload: { rmLines?: unknown[]; pmLines?: unknown[]; sizeKg?: number }
+  payload: { rmLines?: unknown[]; pmLines?: unknown[]; sizeKg?: number | null; batchCode?: string }
 ): Promise<PlanningBatchRow | null> {
   try {
     const res = await api.put<PlanningBatchRow>(
@@ -236,7 +264,9 @@ export async function updateBatch(
     );
     const data = res?.data ?? res;
     return data ?? null;
-  } catch {
+  } catch (e: unknown) {
+    const msg = errorMessageFromApiCatch(e, 'Could not save batch');
+    if (msg) throw new Error(msg);
     return null;
   }
 }
@@ -291,9 +321,12 @@ export interface ItemsInvolvedRow {
   category: string;
   usedInProducts: string[];
   planningExtractedIds: number[];
+  /** Full BOM demand (confirmed PIs) — compare to SIH / procurement. */
   totalRequired: number;
+  /** Gross minus qty already captured in **sent** planning_batches (draft next-batch rows excluded). */
+  unallocatedToBatches?: number;
   unit: string;
-  /** Number of production batches (released) that use this item — consolidated view */
+  /** Batches sent to production that use this item (draft planning_batches excluded). */
   batchCount?: number;
   sih: number;
   surplusShortage: number;
@@ -306,17 +339,34 @@ export interface ItemsInvolvedRow {
   expiryDate: string | null;
   /** From warehouse_inventory — same as Warehouse -> Inventory */
   reserved?: number;
-  /** Planned quantity captured from production (BMR/BPR-linked reserved_batch_items). */
+  /**
+   * Stage-flow planned balance: qty from Release to Planning not yet on any PO line.
+   * `totalReleased` is PR + Planning PE-* draft PO (not BOM confirm / planning_batches).
+   */
   plannedQty?: number;
+  /** Stage-flow PO balance: totalOnPO minus what has already shipped (in-transit) or been received. */
+  poQty?: number;
+  /** Stage-flow in-transit balance: shipped but not yet received via GRN Complete. */
+  inTransitQty?: number;
+  /** Stage-flow warehouse balance: stock_in_hand after GRN Complete receipts. */
+  whQty?: number;
+  /** Qty from Release to Planning (max PR vs Planning-linked draft PO) for this item + PIs. */
+  totalReleased?: number;
+  /** Qty allocated in planning_batches (BOM/batch plan) — separate from Release to Planning; for reference only. */
+  batchAllocatedQty?: number;
+  totalOnPO?: number;
+  totalReceived?: number;
+  /** Legacy field: warehouse_inventory.in_transit (KG-normalized). Kept for back-compat. */
   inTransit?: number;
   reorderPt?: number;
   avgMo?: number;
   status?: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
 }
 
-export async function fetchItemsInvolved(): Promise<ItemsInvolvedRow[]> {
+export async function fetchItemsInvolved(opts?: { includeZeroRequired?: boolean }): Promise<ItemsInvolvedRow[]> {
   try {
-    const res = await api.get<ItemsInvolvedRow[]>('/api/v1/planning-extracted/items-involved');
+    const includeZero = opts?.includeZeroRequired ? '?includeZeroRequired=1' : '';
+    const res = await api.get<ItemsInvolvedRow[]>(`/api/v1/planning-extracted/items-involved${includeZero}`);
     const data = res?.data ?? res;
     return Array.isArray(data) ? data : [];
   } catch {

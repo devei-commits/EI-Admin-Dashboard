@@ -66,10 +66,15 @@ export async function searchUsers(q: string): Promise<ServiceResult<UserSearchHi
 /**
  * Fetch staff users only (internal team with staff_profiles). Backend: GET /api/v1/users/getusers?staffOnly=true
  */
+const PORTAL_USERTYPES = new Set(['customer', 'doctor']);
+
 export async function fetchStaffUsers(): Promise<ServiceResult<StaffUserFromApi[]>> {
  try {
   const list = await api.get<StaffUserFromApi[]>('/api/v1/users/getusers?staffOnly=true');
-  return { data: list ?? [], error: null, success: true };
+  const rows = (list ?? []).filter(
+    (row) => !PORTAL_USERTYPES.has(String(row.usertype || '').trim().toLowerCase()),
+  );
+  return { data: rows, error: null, success: true };
  } catch (err) {
   return {
    data: null,

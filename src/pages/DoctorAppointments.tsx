@@ -1,75 +1,69 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import api from '../lib/apiClient';
 
 interface Appointment {
- id: number;
+ id: number | string;
  doctorName: string;
  mobileNo: string;
  clinicName: string;
  date: string;
- confirmationStatus: 'confirmed' | 'pending' | 'cancelled';
- status: 'active' | 'inactive' | 'completed';
+ confirmationStatus: string;
+ status: string;
  assignTo: string;
 }
 
 const DoctorAppointments = () => {
- // Sample data
- const [appointments] = useState<Appointment[]>([
-  {
-   id: 1,
-   doctorName: 'Dr. John Smith',
-   mobileNo: '9876543210',
-   clinicName: 'City Medical Center',
-   date: '2026-01-05',
-   confirmationStatus: 'confirmed',
-   status: 'active',
-   assignTo: 'Admin User'
-  },
-  {
-   id: 2,
-   doctorName: 'Dr. Sarah Johnson',
-   mobileNo: '8765432109',
-   clinicName: 'Health Plus Clinic',
-   date: '2026-01-06',
-   confirmationStatus: 'pending',
-   status: 'active',
-   assignTo: 'Manager A'
-  },
-  {
-   id: 3,
-   doctorName: 'Dr. Mike Brown',
-   mobileNo: '7654321098',
-   clinicName: 'Care First Hospital',
-   date: '2026-01-07',
-   confirmationStatus: 'confirmed',
-   status: 'completed',
-   assignTo: 'Coordinator B'
-  },
-  {
-   id: 4,
-   doctorName: 'Dr. Emily Davis',
-   mobileNo: '6543210987',
-   clinicName: 'Wellness Center',
-   date: '2026-01-08',
-   confirmationStatus: 'cancelled',
-   status: 'inactive',
-   assignTo: 'Admin User'
-  },
-  {
-   id: 5,
-   doctorName: 'Dr. Robert Wilson',
-   mobileNo: '5432109876',
-   clinicName: 'Metro Hospital',
-   date: '2026-01-09',
-   confirmationStatus: 'pending',
-   status: 'active',
-   assignTo: 'Manager C'
-  }
- ]);
+ const [appointments, setAppointments] = useState<Appointment[]>([]);
+ const [isLoading, setIsLoading] = useState(false);
+ const [loadError, setLoadError] = useState<string | null>(null);
 
  const [sortField, setSortField] = useState<keyof Appointment | null>(null);
  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
  const [currentPage, setCurrentPage] = useState(1);
  const recordsPerPage = 3;
+
+ useEffect(() => {
+  let cancelled = false;
+  const loadAppointments = async () => {
+   setIsLoading(true);
+   setLoadError(null);
+   try {
+    const response = await api.get<{ success?: boolean; data?: Array<Record<string, unknown>> }>('/api/v1/appointments');
+    if (cancelled) return;
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const mappedRows: Appointment[] = rows.map((row, index) => {
+     const rawDate = row.slot1_date || row.app_date1 || row.created_at || row.updated_at;
+     const parsedDate =
+      typeof rawDate === 'string' || typeof rawDate === 'number'
+       ? new Date(rawDate).toLocaleDateString('en-GB')
+       : '-';
+     const isDateValid = parsedDate !== 'Invalid Date';
+     return {
+      id: (row.appointmentid as number | string | undefined) ?? index + 1,
+      doctorName: String(row.app_doc_name ?? row.doctor_name ?? row.doctor_id ?? 'N/A'),
+      mobileNo: String(row.app_doc_mobile ?? row.phone ?? row.mobile_no ?? 'N/A'),
+      clinicName: String(row.app_clinic_name ?? row.clinic_name ?? row.clinicName ?? 'N/A'),
+      date: isDateValid ? parsedDate : '-',
+      confirmationStatus: String(row.app_confirmation_status ?? row.confirm_appointment ?? 'pending').toLowerCase(),
+      status: String(row.lifecycle_status ?? row.app_status ?? row.status ?? 'active').toLowerCase(),
+      assignTo: String(row.assign_to ?? row.assigned_to ?? row.pex_id ?? '-'),
+     };
+    });
+    setAppointments(mappedRows);
+   } catch (error) {
+    if (cancelled) return;
+    const message = error instanceof Error ? error.message : 'Unable to load appointments.';
+    setLoadError(message);
+    setAppointments([]);
+   } finally {
+    if (!cancelled) setIsLoading(false);
+   }
+  };
+  void loadAppointments();
+  return () => {
+   cancelled = true;
+  };
+ }, []);
 
  // Sort function
  const handleSort = (field: keyof Appointment) => {
@@ -82,16 +76,19 @@ const DoctorAppointments = () => {
  };
 
  // Sort appointments
- const sortedAppointments = [...appointments].sort((a, b) => {
-  if (!sortField) return 0;
-  
-  const aValue = a[sortField];
-  const bValue = b[sortField];
-  
-  if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-  if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-  return 0;
- });
+ const sortedAppointments = useMemo(() => {
+  return [...appointments].sort((a, b) => {
+   if (!sortField) return 0;
+   const aValue = a[sortField];
+   const bValue = b[sortField];
+   if (typeof aValue === 'number' && typeof bValue === 'number') {
+    return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+   }
+   const aText = String(aValue).toLowerCase();
+   const bText = String(bValue).toLowerCase();
+   return sortDirection === 'asc' ? aText.localeCompare(bText) : bText.localeCompare(aText);
+  });
+ }, [appointments, sortDirection, sortField]);
 
  // Pagination
  const totalRecords = sortedAppointments.length;
@@ -99,6 +96,13 @@ const DoctorAppointments = () => {
  const startIndex = (currentPage - 1) * recordsPerPage;
  const endIndex = startIndex + recordsPerPage;
  const currentAppointments = sortedAppointments.slice(startIndex, endIndex);
+ const safeTotalPages = Math.max(totalPages, 1);
+
+ useEffect(() => {
+  if (currentPage > safeTotalPages) {
+   setCurrentPage(safeTotalPages);
+  }
+ }, [currentPage, safeTotalPages]);
 
  const goToNextPage = () => {
   if (currentPage < totalPages) {
@@ -113,7 +117,7 @@ const DoctorAppointments = () => {
  };
 
  const getStatusColor = (status: string) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
    case 'confirmed':
     return 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium';
    case 'pending':
@@ -159,6 +163,8 @@ const DoctorAppointments = () => {
    </div>
    
    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+    {isLoading && <div className="px-4 pt-4 text-sm text-gray-500">Loading appointments...</div>}
+    {loadError && <div className="px-4 pt-4 text-sm text-red-600">{loadError}</div>}
     {/* Records info */}
     <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
      <p className="text-sm text-gray-600">
@@ -177,13 +183,13 @@ const DoctorAppointments = () => {
        Previous
       </button>
       <span className="px-3 py-2 text-sm text-gray-600 flex items-center">
-       Page {currentPage} of {totalPages}
+       Page {currentPage} of {safeTotalPages}
       </span>
       <button
        onClick={goToNextPage}
-       disabled={currentPage === totalPages}
+       disabled={currentPage === safeTotalPages}
        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-        currentPage === totalPages
+        currentPage === safeTotalPages
          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
          : 'bg-gray-100 text-slate-900 hover:bg-gray-200'
        }`}
@@ -264,6 +270,13 @@ const DoctorAppointments = () => {
           </td>
          </tr>
         ))}
+        {!isLoading && currentAppointments.length === 0 && (
+         <tr>
+          <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+           No appointments found.
+          </td>
+         </tr>
+        )}
        </tbody>
       </table>
      </div>

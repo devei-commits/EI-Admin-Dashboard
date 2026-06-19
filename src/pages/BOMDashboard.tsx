@@ -1,12 +1,61 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Trash2, Plus } from 'lucide-react';
+import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type PackBomRow, type ProcessStep } from '../services/productsMaster.service';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaSummaryChunk, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaSummaryGroupResult, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
+import { parseFormulaBomWorkbook, chunkSummaryRows, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
+import {
+  validateSkuBomTotals,
+  countMeaningfulFormulaRmLines,
+  countMeaningfulPackLines,
+  countMeaningfulSkuRmLines,
+  formatSkuBomLimitAsPack,
+  getEffectiveSkuBomLimitFields,
+  formulaRowsToSkuBomLines,
+  flattenFormulaBomPhases,
+} from '../lib/skuBomMath';
+import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
+import { computeSkuBomQtyDisplay, formatSkuBomStdQtyWithUnit, resolveRmMasterForSkuLine } from '../lib/skuBomDisplay';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
+import { formatQtyWithUnit } from '../utils/formatQty';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { compareMasterTableSort } from '../lib/masterTableSort';
+import {
+  PM_SKU_CATEGORY_SELECT_OPTIONS,
+  normalizePmDetailSubCategoryForSelect,
+  normalizePmSkuCategoryForSelect,
+  pmDetailSubCategoryHasSubSubCategory,
+  pmDetailSubCategoryOptionsForSkuCategory,
+  pmLevelForSubCategory,
+  pmSubSubCategoryOptionsForDetailSubCategory,
+  normalizePmSubSubCategoryForSelect,
+} from '../constants/materialMasterSkuRules';
+
+type PrListSortColumn =
+  | 'code'
+  | 'record'
+  | 'product'
+  | 'category'
+  | 'form'
+  | 'packSize'
+  | 'batchKg'
+  | 'shelfLife'
+  | 'rmIngs'
+  | 'packItems'
+  | 'status'
+  | 'version'
+  | 'openSos';
 
 const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
+
+/** Summary rows per chunk POST. */
+const FORMULA_SUMMARY_CHUNK_ROWS = 25;
+
+/** Composite SKU groups per RM BOM chunk POST. */
+const FORMULA_BOM_CHUNK_GROUPS = 5;
 
 const BOMDashboard: React.FC = () => {
   const { hasModuleAccess } = usePermissions();
@@ -27,7 +76,68 @@ const BOMDashboard: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<PrListSortColumn | null>('code');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [bomEditPopupId, setBomEditPopupId] = useState<string | null>(null);
+  const [formulaRmExcelUploading, setFormulaRmExcelUploading] = useState(false);
+  /** Full BOM reset for the product currently open in the side panel (toolbar). */
+  const [prToolbarFullResetting, setPrToolbarFullResetting] = useState(false);
+  /** 0–100 while chunked Formula BOM import runs */
+  const [formulaBomUploadPercent, setFormulaBomUploadPercent] = useState<number | null>(null);
+  const formulaRmFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
+  const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
+
+  const rmById = useMemo(() => {
+    const map = new Map<number, RawMaterialRecord>();
+    for (const rm of rawMaterials) {
+      const id = Number(rm.id);
+      if (Number.isFinite(id)) map.set(id, rm);
+    }
+    return map;
+  }, [rawMaterials]);
+
+  const rmByCode = useMemo(() => {
+    const map = new Map<string, RawMaterialRecord>();
+    for (const rm of rawMaterials) {
+      const code = rm.code?.trim();
+      if (code) map.set(code.toUpperCase(), rm);
+    }
+    return map;
+  }, [rawMaterials]);
+
+  const reloadRawMaterialsMaster = useCallback(async (): Promise<void> => {
+    try {
+      const [rows, groupsRes] = await Promise.all([
+        fetchRawMaterialsList(),
+        fetchItemGroups('RM'),
+      ]);
+      setRawMaterials(rows ?? []);
+      setItemGroupsRm(groupsRes.success && groupsRes.data ? groupsRes.data : []);
+    } catch {
+      setRawMaterials([]);
+      setItemGroupsRm([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadRawMaterialsMaster();
+  }, [reloadRawMaterialsMaster]);
+
+  const refreshOpenProductDetail = useCallback(
+    async (productId?: number | string): Promise<void> => {
+      const id = productId ?? selectedProduct?.product_id;
+      if (id == null || !isPanelOpen) return;
+      const res = await fetchPRProductDetail(id);
+      if (res.success && res.data) {
+        setSelectedProduct(res.data);
+        if (isEditMode) {
+          setEditDraft({ ...res.data });
+        }
+      }
+    },
+    [selectedProduct?.product_id, isPanelOpen, isEditMode]
+  );
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -36,7 +146,8 @@ const BOMDashboard: React.FC = () => {
     if (res.success && res.data) {
       setList(res.data);
     } else {
-      setError(res.error ?? 'Failed to load products');
+      const err = res.error;
+      setError(typeof err === 'string' ? err : err?.message ?? 'Failed to load products');
       setList([]);
     }
     setLoading(false);
@@ -49,12 +160,15 @@ const BOMDashboard: React.FC = () => {
     setEditDraft(null);
     setIsEditMode(false);
     setPanelTab(0);
-    const res = await fetchPRProductDetail(product.product_id);
+    const [res] = await Promise.all([
+      fetchPRProductDetail(product.product_id),
+      reloadRawMaterialsMaster(),
+    ]);
     setDetailLoading(false);
     if (res.success && res.data) {
       setSelectedProduct(res.data);
     }
-  }, []);
+  }, [reloadRawMaterialsMaster]);
 
   const handleClosePanel = () => {
     setIsPanelOpen(false);
@@ -93,8 +207,75 @@ const BOMDashboard: React.FC = () => {
       if (!fb[phaseIdx]) return prev;
       fb[phaseIdx] = {
         ...fb[phaseIdx],
-        ingredients: [...fb[phaseIdx].ingredients, { inci_name: '', rm_code: '', pct_w_w: 0, uom: 'kg' }],
+        ingredients: [
+          ...fb[phaseIdx].ingredients,
+          { inci_name: '', rm_code: '', pct_w_w: 0, uom: 'kg' },
+        ],
       };
+      return { ...prev, formulaBom: fb };
+    });
+  };
+  const setFormulaIngredientKind = (phaseIdx: number, ingIdx: number, kind: 'rm' | 'item_group') => {
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const fb = (prev.formulaBom ?? []).map((p, i) => {
+        if (i !== phaseIdx) return p;
+        return {
+          ...p,
+          ingredients: p.ingredients.map((ing, j) => {
+            if (j !== ingIdx) return ing;
+            if (kind === 'item_group') {
+              return {
+                ...ing,
+                raw_material_id: null,
+                inci_name: '',
+                rm_code: '',
+                item_group_id: null,
+                item_group_name: null,
+              };
+            }
+            return {
+              ...ing,
+              item_group_id: null,
+              item_group_name: null,
+            };
+          }),
+        };
+      });
+      return { ...prev, formulaBom: fb };
+    });
+  };
+  const setFormulaIngredientItemGroup = (phaseIdx: number, ingIdx: number, groupId: string) => {
+    const grp = itemGroupsRm.find((g) => String(g.id) === groupId);
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const fb = (prev.formulaBom ?? []).map((p, i) => {
+        if (i !== phaseIdx) return p;
+        return {
+          ...p,
+          ingredients: p.ingredients.map((ing, j) => {
+            if (j !== ingIdx) return ing;
+            if (!grp) {
+              return {
+                ...ing,
+                item_group_id: null,
+                item_group_name: null,
+                raw_material_id: null,
+                inci_name: '',
+                rm_code: '',
+              };
+            }
+            return {
+              ...ing,
+              item_group_id: Number(grp.id),
+              item_group_name: grp.name,
+              inci_name: grp.name,
+              rm_code: grp.code,
+              raw_material_id: null,
+            };
+          }),
+        };
+      });
       return { ...prev, formulaBom: fb };
     });
   };
@@ -133,16 +314,330 @@ const BOMDashboard: React.FC = () => {
     });
   };
 
+  const importFormulaBomIntoSkuBom = () => {
+    if (!editDraft) return;
+    const limQ = editDraft.skuBomLimitQty != null ? String(editDraft.skuBomLimitQty) : '';
+    const limU = String(editDraft.skuBomLimitUom ?? 'GM');
+    const { limitQty, limitUom } = getEffectiveSkuBomLimitFields({
+      skuBomLimitQty: limQ,
+      skuBomLimitUom: limU,
+    });
+    if (!limitQty || !limitUom) {
+      toast.error('Set net per-unit quantity and UOM on the SKU BOM tab before importing from Formula BOM.');
+      return;
+    }
+    const formulaLines = flattenFormulaBomPhases(editDraft.formulaBom ?? []);
+    const res = formulaRowsToSkuBomLines({ formulaLines, limitQty, limitUom });
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    if ((editDraft.skuBom ?? []).length > 0) {
+      const ok = window.confirm(
+        'Replace all SKU BOM lines with quantities derived from Formula BOM % w/w? Existing SKU lines will be removed from this draft.'
+      );
+      if (!ok) return;
+    }
+    const skuBom: SkuBomRow[] = res.rows.map((r, i) => ({
+      row_number: i + 1,
+      inci_name: r.inciName,
+      rm_code: r.rmCode,
+      raw_material_id: r.rawMaterialId && !Number.isNaN(Number(r.rawMaterialId)) ? Number(r.rawMaterialId) : null,
+      qty_per_unit: r.qtyPerUnit,
+      uom: r.uom,
+    }));
+    updateDraft({
+      skuBom,
+      skuBomLimitQty: res.limitQty,
+      skuBomLimitUom: res.limitUom,
+    });
+    toast.success(
+      `Imported ${skuBom.length} SKU line(s) from Formula BOM for net ${res.limitQty} ${res.limitUom}.`
+    );
+  };
+
+  /** Toolbar: wipe BOM line data on every PR (next to Formula BOM Excel). Requires typed confirmation. */
+  const handleToolbarClearAllPrBom = useCallback(async () => {
+    if (isEditMode) {
+      const okDraft = window.confirm(
+        'Global reset updates the server for all products. Any unsaved edits in the side panel will be lost when data reloads. Continue?'
+      );
+      if (!okDraft) return;
+    }
+    const ok = window.confirm(
+      'This permanently HARD-deletes ALL PR master data from the database (rows are removed, not archived):\n' +
+        '• Every product row in the catalogue table (including previously soft-deleted)\n' +
+        '• Every row in the BOM table (including orphan BOMs)\n' +
+        '• Related planning, warehouse FG rows, items-list PR links, and product customizations\n\n' +
+        'Raw material and pack material masters are not deleted. If any ecommerce order lines still reference these products, the reset will be blocked. You will be asked to type a confirmation phrase next.'
+    );
+    if (!ok) return;
+    const phrase = window.prompt(`Type exactly: ${ALL_PR_BOM_RESET_CONFIRM}`);
+    if (phrase !== ALL_PR_BOM_RESET_CONFIRM) {
+      toast.error('Confirmation phrase did not match — no changes made.');
+      return;
+    }
+    setPrToolbarFullResetting(true);
+    try {
+      const res = await clearAllPrBomFullReset(ALL_PR_BOM_RESET_CONFIRM);
+      if (!res.success || !res.data) {
+        const err = res.error;
+        const msg =
+          typeof err === 'string'
+            ? err
+            : err && typeof err === 'object' && 'message' in err
+              ? String(err.message)
+              : 'Failed to reset';
+        toast.error(msg);
+        return;
+      }
+      toast.success(res.data.message ?? 'All PR BOM data cleared.');
+      if (selectedProduct) {
+        const detail = await fetchPRProductDetail(selectedProduct.product_id);
+        if (detail.success && detail.data) {
+          setSelectedProduct(detail.data);
+          if (isEditMode) setEditDraft({ ...detail.data });
+        }
+      }
+      loadProducts();
+    } finally {
+      setPrToolbarFullResetting(false);
+    }
+  }, [selectedProduct, isEditMode, loadProducts]);
+
+  const handleFormulaRmBomExcelUpload = useCallback(
+    async (file: File) => {
+      setFormulaRmExcelUploading(true);
+      setFormulaBomUploadPercent(0);
+      try {
+        const buf = await file.arrayBuffer();
+        const parsed = parseFormulaBomWorkbook(buf);
+
+        if (parsed.errors.length > 0) {
+          for (const err of parsed.errors) {
+            toast.error(err);
+          }
+          return;
+        }
+
+        if (parsed.warnings.length > 0) {
+          for (const w of parsed.warnings) {
+            toast.info(w);
+          }
+        }
+
+        const summaryRows = parsed.summary?.rows ?? [];
+        if (summaryRows.length === 0) {
+          toast.error('No data rows found on the Summary sheet.');
+          return;
+        }
+
+        const rmRows = parsed.rm?.rows ?? [];
+        const packRows = parsed.pack?.rows ?? [];
+        const summaryChunks = chunkSummaryRows(summaryRows, FORMULA_SUMMARY_CHUNK_ROWS);
+        const rmChunks = chunkCompositeGroups(groupRowsByCompositeSku(rmRows), FORMULA_BOM_CHUNK_GROUPS);
+        const packChunks = chunkCompositeGroups(groupRowsByCompositeSku(packRows), FORMULA_BOM_CHUNK_GROUPS);
+        const totalSteps = summaryChunks.length + rmChunks.length + packChunks.length;
+
+        let stepDone = 0;
+        const setProgressFromStep = () => {
+          stepDone += 1;
+          if (totalSteps > 0) {
+            setFormulaBomUploadPercent(Math.min(100, Math.round((stepDone / totalSteps) * 100)));
+          }
+        };
+
+        const allSummaryResults: FormulaSummaryGroupResult[] = [];
+        const allRmResults: FormulaRmBomGroupResult[] = [];
+        const allPackResults: FormulaPackBomGroupResult[] = [];
+
+        for (let i = 0; i < summaryChunks.length; i += 1) {
+          const res = await postFormulaSummaryChunk({
+            chunk_index: i,
+            chunk_total: summaryChunks.length,
+            rows: summaryChunks[i],
+          });
+          if (!res.success || !res.data) {
+            toast.error(
+              typeof res.error === 'object' && res.error && 'message' in res.error
+                ? String(res.error.message)
+                : 'Summary chunk import failed'
+            );
+            return;
+          }
+          allSummaryResults.push(...res.data.results);
+          setProgressFromStep();
+        }
+
+        if (rmRows.length > 0) {
+          for (let i = 0; i < rmChunks.length; i += 1) {
+            const res = await postFormulaRmBomChunk({
+              chunk_index: i,
+              chunk_total: rmChunks.length,
+              apply_sg: false,
+              groups: rmChunks[i],
+            });
+            if (!res.success || !res.data) {
+              toast.error(
+                typeof res.error === 'object' && res.error && 'message' in res.error
+                  ? String(res.error.message)
+                  : 'RM BOM chunk import failed'
+              );
+              return;
+            }
+            allRmResults.push(...res.data.results);
+            setProgressFromStep();
+          }
+        } else if (parsed.rm?.sheetName) {
+          toast.info(`RM BOM sheet "${parsed.rm.sheetName}" had no importable formula lines.`);
+        }
+
+        if (packRows.length > 0) {
+          for (let i = 0; i < packChunks.length; i += 1) {
+            const res = await postFormulaPackBomChunk({
+              chunk_index: i,
+              chunk_total: packChunks.length,
+              groups: packChunks[i],
+            });
+            if (!res.success || !res.data) {
+              toast.error(
+                typeof res.error === 'object' && res.error && 'message' in res.error
+                  ? String(res.error.message)
+                  : 'PM BOM chunk import failed'
+              );
+              return;
+            }
+            allPackResults.push(...res.data.results);
+            setProgressFromStep();
+          }
+        } else if (parsed.pack?.sheetName) {
+          toast.info(`PM BOM sheet "${parsed.pack.sheetName}" had no importable packaging lines.`);
+        }
+
+        if (totalSteps === 0) {
+          setFormulaBomUploadPercent(100);
+        }
+
+        const summaryOk = allSummaryResults.filter((r) => r.success).length;
+        const summaryFail = allSummaryResults.filter((r) => !r.success).length;
+        const summaryNewPr = allSummaryResults.filter((r) => r.success && r.product_created).length;
+        const rmOk = allRmResults.filter((r) => r.success).length;
+        const rmFail = allRmResults.filter((r) => !r.success).length;
+        const packOk = allPackResults.filter((r) => r.success).length;
+        const packFail = allPackResults.filter((r) => !r.success).length;
+
+        const parts: string[] = [];
+        const newBit = summaryNewPr > 0 ? `, ${summaryNewPr} new PR` : '';
+        parts.push(
+          `Summary (${parsed.summary?.sheetName ?? 'Summary'}): ${summaryOk} ok${newBit}, ${summaryFail} failed`
+        );
+        if (rmRows.length > 0) {
+          parts.push(`RM (${parsed.rm?.sheetName ?? 'RM BOM'}): ${rmOk} ok, ${rmFail} failed`);
+        }
+        if (packRows.length > 0) {
+          parts.push(`PM (${parsed.pack?.sheetName ?? 'PM BOM'}): ${packOk} ok, ${packFail} failed`);
+        }
+        toast.success(`Formula BOM import — ${parts.join('; ')}.`);
+
+        const selectedZoho = String(
+          (selectedProduct as unknown as { zoho_sku_code?: string })?.zoho_sku_code ?? ''
+        ).trim();
+        if (selectedZoho && selectedProduct) {
+          const z = selectedZoho.toLowerCase();
+          const hitSummary = allSummaryResults.some(
+            (r) => r.success && String(r.sku ?? '').trim().toLowerCase() === z
+          );
+          const hitRm = allRmResults.some(
+            (r) => r.success && String(r.composite_sku ?? '').trim().toLowerCase() === z
+          );
+          const hitPack = allPackResults.some(
+            (r) => r.success && String(r.composite_sku ?? '').trim().toLowerCase() === z
+          );
+          if (hitSummary || hitRm || hitPack) {
+            const detail = await fetchPRProductDetail(selectedProduct.product_id);
+            if (detail.success && detail.data) {
+              setSelectedProduct(detail.data);
+              if (isEditMode) setEditDraft({ ...detail.data });
+            }
+          }
+        }
+        loadProducts();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Formula BOM import failed');
+      } finally {
+        setFormulaRmExcelUploading(false);
+        setFormulaBomUploadPercent(null);
+        if (formulaRmFileInputRef.current) formulaRmFileInputRef.current.value = '';
+      }
+    },
+    [selectedProduct, isEditMode, loadProducts]
+  );
+
   const addPackRow = () => {
     setEditDraft((prev) => ({
       ...prev!,
-      packBom: [...(prev?.packBom ?? []), { row_number: (prev?.packBom?.length ?? 0) + 1, pm_id: null, pm_description: '', pm_code: '', pack_type: 'Primary', qty_per_unit: 1, uom: 'pc/unit' }],
+      packBom: [
+        ...(prev?.packBom ?? []),
+        {
+          row_number: (prev?.packBom?.length ?? 0) + 1,
+          pm_id: null,
+          pm_description: '',
+          pm_code: '',
+          pack_type: 'Primary',
+          pm_sku_category: '',
+          pm_sub_category: '',
+          pm_sub_sub_category: '',
+          qty_per_unit: 1,
+          uom: 'pc/unit',
+        },
+      ],
     }));
   };
   const updatePackRow = (rowIdx: number, field: keyof Omit<PackBomRow, 'row_number' | 'pm_id'>, value: string | number) => {
     setEditDraft((prev) => {
       if (!prev) return null;
       const packBom = (prev.packBom ?? []).map((row, i) => (i !== rowIdx ? row : { ...row, [field]: value }));
+      return { ...prev, packBom };
+    });
+  };
+  const updatePackRowCategory = (rowIdx: number, categoryRaw: string) => {
+    const canon = normalizePmSkuCategoryForSelect(categoryRaw) || '';
+    const level = pmLevelForSubCategory(canon);
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const packBom = (prev.packBom ?? []).map((row, i) => {
+        if (i !== rowIdx) return row;
+        return {
+          ...row,
+          pm_sku_category: canon,
+          pm_sub_category: normalizePmDetailSubCategoryForSelect(
+            canon,
+            row.pm_sub_category ?? ''
+          ),
+          pm_sub_sub_category: '',
+          pack_type: level || row.pack_type,
+        };
+      });
+      return { ...prev, packBom };
+    });
+  };
+  const updatePackRowSubCategory = (rowIdx: number, subRaw: string) => {
+    setEditDraft((prev) => {
+      if (!prev) return null;
+      const packBom = (prev.packBom ?? []).map((row, i) => {
+        if (i !== rowIdx) return row;
+        const detail =
+          normalizePmDetailSubCategoryForSelect(row.pm_sku_category ?? '', subRaw) || subRaw;
+        return {
+          ...row,
+          pm_sub_category: detail,
+          pm_sub_sub_category: normalizePmSubSubCategoryForSelect(
+            detail,
+            row.pm_sub_sub_category ?? '',
+            row.pm_sku_category ?? ''
+          ),
+        };
+      });
       return { ...prev, packBom };
     });
   };
@@ -181,12 +676,15 @@ const BOMDashboard: React.FC = () => {
     const payload: Record<string, unknown> = {
       product_name: editDraft.product_name ?? selectedProduct.product_name,
       product_code: editDraft.product_code ?? selectedProduct.product_code,
-      product_sku: editDraft.product_sku ?? selectedProduct.product_sku,
+      zoho_sku_code:
+        (editDraft as unknown as { zoho_sku_code?: string }).zoho_sku_code
+        ?? (editDraft as unknown as { product_sku?: string }).product_sku
+        ?? (selectedProduct as unknown as { zoho_sku_code?: string }).zoho_sku_code
+        ?? (selectedProduct as unknown as { product_sku?: string }).product_sku,
       product_description: editDraft.product_description ?? selectedProduct.product_description,
       category: editDraft.category ?? selectedProduct.category,
       status: editDraft.status ?? selectedProduct.status,
       form: editDraft.form ?? selectedProduct.form,
-      fill_size: editDraft.fill_size ?? selectedProduct.fill_size,
       batch_size_kg: editDraft.batch_size_kg ?? selectedProduct.batch_size_kg,
       shelf_life_months: editDraft.shelf_life_months ?? selectedProduct.shelf_life_months,
       version: editDraft.version ?? selectedProduct.version,
@@ -205,26 +703,86 @@ const BOMDashboard: React.FC = () => {
       odour: editDraft.odour ?? selectedProduct.odour,
       fill_weight_spec: editDraft.fill_weight_spec ?? selectedProduct.fill_weight_spec,
       stability_summary: editDraft.stability_summary ?? selectedProduct.stability_summary,
+      pr_record_type:
+        editDraft.pr_record_type !== undefined ? editDraft.pr_record_type : selectedProduct.pr_record_type,
     };
     const formulaBom = editDraft.formulaBom ?? selectedProduct.formulaBom ?? [];
+    const skuBom = editDraft.skuBom ?? selectedProduct.skuBom ?? [];
     const packBom = editDraft.packBom ?? selectedProduct.packBom ?? [];
     const processSteps = editDraft.processSteps ?? selectedProduct.processSteps ?? [];
-    const rm_lines = formulaBom.flatMap((p) => p.ingredients.map((ing) => ({ phase: p.phase, inci_name: ing.inci_name, rm_code: ing.rm_code, pct_w_w: ing.pct_w_w, uom: ing.uom || 'kg' })));
-    const pm_lines = packBom.map((r) => ({ pm_code: r.pm_code, description: r.pm_description, pack_type: r.pack_type, qty_per_unit: r.qty_per_unit, uom: r.uom }));
+    const rm_lines = formulaBom.flatMap((p) =>
+      p.ingredients.map((ing) => ({
+        phase: p.phase,
+        inci_name: ing.inci_name,
+        rm_code: ing.rm_code,
+        pct_w_w: ing.pct_w_w,
+        uom: ing.uom || 'kg',
+        ...(ing.raw_material_id != null ? { raw_material_id: ing.raw_material_id } : {}),
+        ...(ing.item_group_id != null && Number(ing.item_group_id) > 0
+          ? {
+              item_group_id: Number(ing.item_group_id),
+              item_group_name: ing.item_group_name ?? ing.inci_name,
+            }
+          : {}),
+      }))
+    );
+    const sku_rm_lines = skuBom.map((r) => ({
+      inci_name: r.inci_name,
+      rm_code: r.rm_code,
+      qty_per_unit: r.qty_per_unit,
+      uom: r.uom || 'GM',
+      ...(r.raw_material_id != null ? { raw_material_id: r.raw_material_id } : {}),
+    }));
+    const sku_bom_limit_qty = editDraft.skuBomLimitQty ?? selectedProduct.skuBomLimitQty ?? null;
+    const sku_bom_limit_uom = editDraft.skuBomLimitUom ?? selectedProduct.skuBomLimitUom ?? null;
+    if (countMeaningfulFormulaRmLines(rm_lines) < 1) {
+      setSaving(false);
+      toast.error('At least one Formula BOM line is required.');
+      return;
+    }
+    if (countMeaningfulPackLines(pm_lines) < 1) {
+      setSaving(false);
+      toast.error('At least one Pack BOM line is required.');
+      return;
+    }
+    if (countMeaningfulSkuRmLines(sku_rm_lines) > 0) {
+      const skuPanelV = validateSkuBomTotals({
+        lines: sku_rm_lines,
+        limitQty: sku_bom_limit_qty,
+        limitUom: sku_bom_limit_uom,
+      });
+      if (!skuPanelV.ok) {
+        setSaving(false);
+        toast.error(skuPanelV.error);
+        return;
+      }
+    }
+    const pm_lines = packBom.map((r) => ({
+      pm_code: r.pm_code,
+      description: r.pm_description,
+      pack_type: r.pack_type,
+      pm_sku_category: r.pm_sku_category || undefined,
+      pm_sub_category: r.pm_sub_category || undefined,
+      optional_pm_sub_category: r.pm_sub_category || undefined,
+      pm_sub_sub_category: r.pm_sub_sub_category || undefined,
+      optional_pm_sub_sub_category: r.pm_sub_sub_category || undefined,
+      qty_per_unit: r.qty_per_unit,
+      uom: r.uom,
+    }));
     const process_steps = processSteps.map((s, i) => ({ step_number: i + 1, description: s.description, duration_minutes: s.duration_minutes }));
-    payload.bom = { rm_lines, pm_lines, process_steps };
+    payload.bom = { rm_lines, sku_rm_lines, sku_bom_limit_qty, sku_bom_limit_uom, pm_lines, process_steps };
     const res = await updatePRProduct(selectedProduct.product_id, payload);
     setSaving(false);
     if (res.success && res.data) {
       setSelectedProduct(res.data);
       setEditDraft(null);
       setIsEditMode(false);
-      loadProducts();
+      await Promise.all([loadProducts(), reloadRawMaterialsMaster()]);
       toast.success('Product updated');
     } else {
       toast.error(res.error ?? 'Update failed');
     }
-  }, [selectedProduct, editDraft, loadProducts]);
+  }, [selectedProduct, editDraft, loadProducts, reloadRawMaterialsMaster]);
 
   const displayProduct = isEditMode && editDraft ? editDraft : selectedProduct;
 
@@ -235,20 +793,94 @@ const BOMDashboard: React.FC = () => {
   useEffect(() => {
     // Reset to page 1 whenever filters/search/page size change.
     setCurrentPage(1);
-  }, [searchTerm, selectedCategory, selectedStatus, pageSize]);
+  }, [searchTerm, selectedCategory, selectedStatus, pageSize, sortColumn, sortDirection]);
 
-  const filteredList = list.filter((p) => {
-    const matchSearch = !searchTerm.trim() || [p.product_name, p.product_code, p.product_sku].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
-    const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
-    return matchSearch && matchCat && matchStatus;
-  });
+  const togglePrSort = useCallback((column: PrListSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  }, [sortColumn]);
 
-  const totalFiltered = filteredList.length;
+  const filteredList = useMemo(() => {
+    return list.filter((p) => {
+      const matchSearch = !searchTerm.trim() || [
+        p.product_name,
+        p.product_code,
+        (p as unknown as { zoho_sku_code?: string }).zoho_sku_code,
+        (p as unknown as { product_sku?: string }).product_sku,
+      ].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
+      const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
+      return matchSearch && matchCat && matchStatus;
+    });
+  }, [list, searchTerm, selectedCategory, selectedStatus]);
+
+  const sortedFilteredList = useMemo(() => {
+    if (!sortColumn) return filteredList;
+    const dir = sortDirection;
+    const packSizeKey = (p: PRProductListItem): string =>
+      formatSkuBomLimitAsPack(p.skuBomLimitQty, p.skuBomLimitUom);
+    const recordKey = (p: PRProductListItem): string => p.pr_record_type ?? '';
+    const cmp = (a: PRProductListItem, b: PRProductListItem): number => {
+      switch (sortColumn) {
+        case 'code':
+          return compareMasterTableSort(a.product_code ?? '', b.product_code ?? '', dir);
+        case 'record':
+          return compareMasterTableSort(recordKey(a), recordKey(b), dir);
+        case 'product':
+          return compareMasterTableSort(a.product_name ?? '', b.product_name ?? '', dir);
+        case 'category':
+          return compareMasterTableSort(a.category ?? '', b.category ?? '', dir);
+        case 'form':
+          return compareMasterTableSort(a.form ?? '', b.form ?? '', dir);
+        case 'packSize':
+          return compareMasterTableSort(packSizeKey(a), packSizeKey(b), dir);
+        case 'batchKg':
+          return compareMasterTableSort(Number(a.batch_size_kg ?? 0), Number(b.batch_size_kg ?? 0), dir);
+        case 'shelfLife':
+          return compareMasterTableSort(
+            Number(a.shelf_life_months ?? 0),
+            Number(b.shelf_life_months ?? 0),
+            dir
+          );
+        case 'rmIngs':
+          return compareMasterTableSort(
+            Number(a.rm_ingredients_count ?? 0),
+            Number(b.rm_ingredients_count ?? 0),
+            dir
+          );
+        case 'packItems':
+          return compareMasterTableSort(
+            Number(a.pack_items_count ?? 0),
+            Number(b.pack_items_count ?? 0),
+            dir
+          );
+        case 'status':
+          return compareMasterTableSort(a.status ?? '', b.status ?? '', dir);
+        case 'version':
+          return compareMasterTableSort(a.version ?? '', b.version ?? '', dir);
+        case 'openSos':
+          return compareMasterTableSort(
+            Number(a.open_sos_count ?? 0),
+            Number(b.open_sos_count ?? 0),
+            dir
+          );
+        default:
+          return 0;
+      }
+    };
+    return [...filteredList].sort(cmp);
+  }, [filteredList, sortColumn, sortDirection]);
+
+  const totalFiltered = sortedFilteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const pagedFilteredList = filteredList.slice(startIndex, startIndex + pageSize);
+  const pagedFilteredList = sortedFilteredList.slice(startIndex, startIndex + pageSize);
 
   const statCardData = [
     { label: 'TOTAL PRODUCTS', value: list.length, sub: 'Registered PR masters', accent: 'border-l-blue-500', num: 'text-blue-600' },
@@ -344,6 +976,52 @@ const BOMDashboard: React.FC = () => {
                 <PlusCircle className="w-4 h-4" />
                 New PR
               </Link>
+
+              {canEdit && (
+                <>
+                  <input
+                    ref={formulaRmFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleFormulaRmBomExcelUpload(f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={formulaRmExcelUploading}
+                    title='Requires Summary, RM BOM, and PM BOM worksheets. Summary: category, pack, SG. RM: Formula % (RM Count). PM: Qty/Unit per FG (PM Count).'
+                    onClick={() => formulaRmFileInputRef.current?.click()}
+                    className="inline-flex items-center px-3 py-2 border border-blue-200 bg-white text-blue-800 text-xs font-semibold rounded-lg hover:bg-blue-50 disabled:opacity-50 whitespace-nowrap gap-1"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {formulaRmExcelUploading ? 'Importing…' : 'Formula BOM (Excel)'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={formulaRmExcelUploading || prToolbarFullResetting}
+                    title="Permanently deletes all PR-linked catalogue products, every BOM row, and related planning/inventory rows. Raw and pack material masters are kept. Blocked if ecommerce orders still reference these products. Requires typing a confirmation phrase."
+                    onClick={() => void handleToolbarClearAllPrBom()}
+                    className="inline-flex items-center px-3 py-2 border border-amber-300 bg-amber-50 text-amber-950 text-xs font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap gap-1"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    {prToolbarFullResetting ? 'Deleting…' : 'Delete all PR masters'}
+                  </button>
+                  {formulaRmExcelUploading && formulaBomUploadPercent != null && (
+                    <div className="flex items-center gap-2 min-w-[10rem]">
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[9rem]">
+                        <div
+                          className="h-full bg-blue-600 transition-[width] duration-150 ease-out"
+                          style={{ width: `${formulaBomUploadPercent}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-600 tabular-nums w-9">{formulaBomUploadPercent}%</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -364,20 +1042,111 @@ const BOMDashboard: React.FC = () => {
                 <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CODE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PRODUCT</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">CATEGORY</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FORM</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">FILL SIZE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">BATCH (KG)</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">SHELF LIFE</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM INGS.</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PACK ITEMS</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">MRP</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">STATUS</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">VER.</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">OPEN SOS</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">ACTIONS</th>
+                    <SortableTableTh
+                      label="Code"
+                      column="code"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Record"
+                      column="record"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Product"
+                      column="product"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Category"
+                      column="category"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Form"
+                      column="form"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Pack size"
+                      column="packSize"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Batch (kg)"
+                      column="batchKg"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Shelf life"
+                      column="shelfLife"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="RM ings."
+                      column="rmIngs"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Pack items"
+                      column="packItems"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Status"
+                      column="status"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Ver."
+                      column="version"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
+                      label="Open SOs"
+                      column="openSos"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -391,15 +1160,30 @@ const BOMDashboard: React.FC = () => {
                     pagedFilteredList.map((p) => (
                       <tr key={p.product_id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewItem(p)}>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">{p.product_code || '—'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {p.pr_record_type === 'temporary' ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+                              Temporary
+                            </span>
+                          ) : p.pr_record_type === 'permanent' ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                              Permanent
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{p.product_name || 'Product'}</p>
-                            <p className="text-xs text-gray-500">SKU: {p.product_sku || '—'}</p>
+                            <p className="text-xs text-gray-500">SKU: {(p as unknown as { zoho_sku_code?: string; product_sku?: string }).zoho_sku_code ?? (p as unknown as { product_sku?: string }).product_sku ?? '—'}</p>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.category || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.form ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.fill_size ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm font-mono text-gray-600">
+                          {formatSkuBomLimitAsPack(p.skuBomLimitQty, p.skuBomLimitUom)}
+                        </td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.batch_size_kg ?? '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.shelf_life_months != null ? `${p.shelf_life_months}M` : '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">{p.rm_ingredients_count ?? 0}</td>
@@ -543,7 +1327,7 @@ const BOMDashboard: React.FC = () => {
           ) : selectedProduct ? (
             <>
               <div className="flex gap-1 px-4 py-2 border-b border-gray-100 bg-gray-50/50">
-                {['Overview', 'Formula BOM', 'Pack BOM', 'Process', 'Specs & Stability'].map((label, i) => (
+                {['Overview', 'Formula BOM', 'SKU BOM', 'Pack BOM', 'Process', 'Specs & Stability'].map((label, i) => (
                   <button
                     key={label}
                     onClick={() => setPanelTab(i)}
@@ -559,6 +1343,65 @@ const BOMDashboard: React.FC = () => {
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Identity</div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Internal PR code</span>
+                          {isEditMode ? (
+                            <input
+                              value={displayProduct.product_code ?? ''}
+                              onChange={(e) => updateDraft({ product_code: e.target.value })}
+                              className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono text-sm text-gray-900"
+                            />
+                          ) : (
+                            <div className="font-mono mt-1 font-semibold text-gray-900">{displayProduct.product_code ?? '—'}</div>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-500">PR record type</span>
+                          {isEditMode ? (
+                            <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-900">
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={displayProduct.pr_record_type === 'permanent'}
+                                  onChange={() => updateDraft({ pr_record_type: 'permanent' })}
+                                />
+                                Permanent <span className="font-mono text-xs text-gray-500">(PR…)</span>
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={displayProduct.pr_record_type === 'temporary'}
+                                  onChange={() => updateDraft({ pr_record_type: 'temporary' })}
+                                />
+                                Temporary <span className="font-mono text-xs text-gray-500">(TPR…)</span>
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="prRecordTypeDash"
+                                  checked={
+                                    displayProduct.pr_record_type !== 'temporary' &&
+                                    displayProduct.pr_record_type !== 'permanent'
+                                  }
+                                  onChange={() => updateDraft({ pr_record_type: null })}
+                                />
+                                Legacy / unspecified
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="mt-1">
+                              {displayProduct.pr_record_type === 'temporary' ? (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900">Temporary</span>
+                              ) : displayProduct.pr_record_type === 'permanent' ? (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800">Permanent</span>
+                              ) : (
+                                <span className="text-gray-500">Legacy / unspecified</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <div><span className="text-gray-500">Category</span>
                           {isEditMode ? <input value={displayProduct.category ?? ''} onChange={(e) => updateDraft({ category: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded text-gray-900" /> : <div className="font-medium">{displayProduct.category ?? '—'}</div>}
                         </div>
@@ -572,11 +1415,32 @@ const BOMDashboard: React.FC = () => {
                         <div><span className="text-gray-500">Form</span>
                           {isEditMode ? <input value={displayProduct.form ?? ''} onChange={(e) => updateDraft({ form: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.form ?? '—'}</div>}
                         </div>
-                        <div><span className="text-gray-500">Fill Size</span>
-                          {isEditMode ? <input value={displayProduct.fill_size ?? ''} onChange={(e) => updateDraft({ fill_size: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.fill_size ?? '—'}</div>}
+                        <div><span className="text-gray-500">Pack size (SKU BOM)</span>
+                          <div className="font-mono mt-1">
+                            {formatSkuBomLimitAsPack(
+                              isEditMode ? editDraft?.skuBomLimitQty : selectedProduct?.skuBomLimitQty,
+                              isEditMode ? editDraft?.skuBomLimitUom : selectedProduct?.skuBomLimitUom
+                            )}
+                          </div>
                         </div>
                         <div><span className="text-gray-500">SKU Code</span>
-                          {isEditMode ? <input value={displayProduct.product_sku ?? ''} onChange={(e) => updateDraft({ product_sku: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.product_sku ?? '—'}</div>}
+                          {isEditMode ? (
+                            <input
+                              value={
+                                (displayProduct as unknown as { zoho_sku_code?: string }).zoho_sku_code
+                                ?? (displayProduct as unknown as { product_sku?: string }).product_sku
+                                ?? ''
+                              }
+                              onChange={(e) => updateDraft({ zoho_sku_code: e.target.value } as unknown as Partial<typeof displayProduct>)}
+                              className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono"
+                            />
+                          ) : (
+                            <div className="font-mono">{
+                              (displayProduct as unknown as { zoho_sku_code?: string }).zoho_sku_code
+                              ?? (displayProduct as unknown as { product_sku?: string }).product_sku
+                              ?? '—'
+                            }</div>
+                          )}
                         </div>
                         <div><span className="text-gray-500">License / CML</span>
                           {isEditMode ? <input value={displayProduct.license_cml ?? ''} onChange={(e) => updateDraft({ license_cml: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.license_cml ?? '—'}</div>}
@@ -586,9 +1450,6 @@ const BOMDashboard: React.FC = () => {
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Commercials</div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-gray-500">MRP</span>
-                          {isEditMode ? <input type="number" step="0.01" value={displayProduct.mrp_price ?? ''} onChange={(e) => updateDraft({ mrp_price: e.target.value === '' ? undefined : Number(e.target.value) })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded" /> : <div className="text-lg font-semibold text-gray-900">{displayProduct.mrp_price != null ? `Rs.${displayProduct.mrp_price}` : '—'}</div>}
-                        </div>
                         <div><span className="text-gray-500">Version</span>
                           {isEditMode ? <input value={displayProduct.version ?? ''} onChange={(e) => updateDraft({ version: e.target.value })} className="mt-1 w-full px-2 py-1.5 border border-gray-300 rounded font-mono" /> : <div className="font-mono">{displayProduct.version ?? '—'}</div>}
                         </div>
@@ -648,7 +1509,7 @@ const BOMDashboard: React.FC = () => {
                   return (
                     <div className="space-y-4">
                       {isEditMode && (
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex flex-wrap items-center gap-2 mb-3">
                           <button type="button" onClick={addFormulaPhase} className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700">
                             <Plus className="w-3.5 h-3.5" /> Add phase
                           </button>
@@ -672,24 +1533,88 @@ const BOMDashboard: React.FC = () => {
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">INCI Name</th><th className="text-left p-2">RM Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2 w-24">Type</th><th className="text-left p-2">INCI / Group</th><th className="text-left p-2">RM / Group Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                               <tbody>
-                                {phase.ingredients.map((ing, i) => (
+                                {phase.ingredients.map((ing, i) => {
+                                  const isGroupLine =
+                                    ing.item_group_id != null && Number(ing.item_group_id) > 0;
+                                  return (
                                   <tr key={i} className="border-t border-gray-100">
                                     <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
                                     {isEditMode ? (
                                       <>
-                                        <td className="p-2"><input value={ing.inci_name} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'inci_name', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
-                                        <td className="p-2"><input value={ing.rm_code} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'rm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                        <td className="p-2">
+                                          <select
+                                            value={isGroupLine ? 'item_group' : 'rm'}
+                                            onChange={(e) =>
+                                              setFormulaIngredientKind(
+                                                phaseIdx,
+                                                i,
+                                                e.target.value === 'item_group' ? 'item_group' : 'rm'
+                                              )
+                                            }
+                                            className="w-full px-1 py-1 border rounded text-xs bg-white"
+                                          >
+                                            <option value="rm">RM</option>
+                                            <option value="item_group">Item group</option>
+                                          </select>
+                                        </td>
+                                        {isGroupLine ? (
+                                          <>
+                                            <td className="p-2" colSpan={2}>
+                                              <select
+                                                value={
+                                                  ing.item_group_id != null ? String(ing.item_group_id) : ''
+                                                }
+                                                onChange={(e) =>
+                                                  setFormulaIngredientItemGroup(phaseIdx, i, e.target.value)
+                                                }
+                                                className="w-full px-2 py-1 border rounded text-xs bg-white"
+                                              >
+                                                <option value="">— Select item group —</option>
+                                                {itemGroupsRm.map((g) => (
+                                                  <option key={g.id} value={g.id}>
+                                                    {g.name} ({g.code}) · {(g.approvedMembers ?? []).length} member(s)
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </td>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <td className="p-2"><input value={ing.inci_name} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'inci_name', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
+                                            <td className="p-2"><input value={ing.rm_code} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'rm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                          </>
+                                        )}
                                         <td className="p-2"><input type="number" step="0.01" value={ing.pct_w_w} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'pct_w_w', Number(e.target.value) || 0)} className="w-16 px-2 py-1 border rounded text-right text-xs" /></td>
                                         <td className="p-2"><input value={ing.uom} onChange={(e) => updateFormulaIngredient(phaseIdx, i, 'uom', e.target.value)} className="w-14 px-2 py-1 border rounded text-xs" /></td>
                                         <td className="p-2"><button type="button" onClick={() => removeFormulaIngredient(phaseIdx, i)} className="text-red-600 hover:text-red-700"><Trash2 className="w-3.5 h-3.5" /></button></td>
                                       </>
                                     ) : (
-                                      <><td className="p-2 font-medium">{ing.inci_name}</td><td className="p-2 font-mono text-xs text-indigo-600">{ing.rm_code}</td><td className="p-2 text-right font-mono">{ing.pct_w_w}</td><td className="p-2 text-gray-500">{ing.uom}</td></>
+                                      <>
+                                        <td className="p-2">
+                                          {isGroupLine ? (
+                                            <span className="text-[10px] font-semibold uppercase text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">Group</span>
+                                          ) : (
+                                            <span className="text-[10px] font-semibold uppercase text-gray-500">RM</span>
+                                          )}
+                                        </td>
+                                        <td className="p-2 font-medium">
+                                          {ing.inci_name}
+                                          {isGroupLine && ing.item_group_name ? (
+                                            <span className="block text-[10px] text-violet-600 font-normal">
+                                              Swap among group members at Planning BOM confirm
+                                            </span>
+                                          ) : null}
+                                        </td>
+                                        <td className="p-2 font-mono text-xs text-indigo-600">{ing.rm_code}</td>
+                                        <td className="p-2 text-right font-mono">{ing.pct_w_w}</td>
+                                        <td className="p-2 text-gray-500">{ing.uom}</td>
+                                      </>
                                     )}
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -700,6 +1625,135 @@ const BOMDashboard: React.FC = () => {
                   );
                 })()}
                 {panelTab === 2 && (selectedProduct || editDraft) && (() => {
+                  const skuList = (isEditMode ? editDraft?.skuBom : selectedProduct?.skuBom) ?? [];
+                  const limQ = isEditMode ? editDraft?.skuBomLimitQty : selectedProduct?.skuBomLimitQty;
+                  const limU = isEditMode ? editDraft?.skuBomLimitUom : selectedProduct?.skuBomLimitUom;
+                  const hasNet = limQ != null && Number(limQ) > 0 && String(limU ?? '').trim();
+                  return (
+                    <div className="space-y-4">
+                      <p className="text-xs text-gray-600">
+                        Per-unit RM required for <strong>1 finished product</strong>, derived from <strong>Formula BOM</strong> via Import below. First qty column is always <strong>kg</strong>; second column is the same requirement in each RM&apos;s <strong>standard UoM</strong> from Raw Materials master (e.g. L for liquids, KG for solids). Net per unit is used as pack size on sale orders.
+                      </p>
+                      {hasNet ? (
+                        <div className="p-3 bg-violet-50 border border-violet-100 rounded-lg space-y-1">
+                          <p className="text-[10px] font-semibold text-violet-900 uppercase">Net per 1 product unit</p>
+                          <p className="text-lg font-mono font-bold text-violet-900">
+                            {limQ}{' '}
+                            <span className="text-base font-semibold text-violet-700">{limU}</span>
+                            <span className="text-sm font-normal text-violet-700 ml-2">
+                              (pack {formatSkuBomLimitAsPack(limQ, limU)})
+                            </span>
+                          </p>
+                        </div>
+                      ) : isEditMode ? (
+                        <div className="flex flex-wrap items-end gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-amber-900 uppercase mb-1">Net / unit qty (manual)</label>
+                            <input
+                              type="number"
+                              step="0.0001"
+                              value={limQ ?? ''}
+                              onChange={(e) =>
+                                updateDraft({
+                                  skuBomLimitQty: e.target.value === '' ? null : Number(e.target.value),
+                                })
+                              }
+                              className="w-28 px-2 py-1.5 border border-amber-200 rounded text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-amber-900 uppercase mb-1">UOM</label>
+                            <select
+                              value={limU || 'GM'}
+                              onChange={(e) => updateDraft({ skuBomLimitUom: e.target.value })}
+                              className="px-2 py-1.5 border border-amber-200 rounded text-sm"
+                            >
+                              <option value="GM">GM</option>
+                              <option value="KG">KG</option>
+                              <option value="ML">ML</option>
+                              <option value="L">L</option>
+                            </select>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-mono text-violet-800">
+                          Net per unit:{' '}
+                          <span className="font-bold">
+                            {limQ != null ? limQ : '—'} {limU || ''}
+                          </span>
+                          <span className="block text-xs font-normal text-gray-500 mt-1">Set net per unit (qty + UOM) for pack size on sale orders.</span>
+                        </p>
+                      )}
+                      {canEdit && (
+                        <div className="p-3 rounded-lg border border-blue-200 bg-blue-50/80 space-y-2">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">
+                                Import from Formula BOM
+                              </p>
+                              <p className="text-[11px] text-blue-900/80 mt-0.5">
+                                Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> (must total 100%). Uses net per unit above. Replaces existing SKU BOM lines.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={importFormulaBomIntoSkuBom}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-blue-300 bg-white text-blue-900 hover:bg-blue-100 shrink-0"
+                              title="Populate SKU BOM from Formula % w/w and net per-unit qty"
+                            >
+                              <ArrowUpFromLine className="w-3.5 h-3.5" />
+                              Import from Formula BOM
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className="text-left p-2 w-8">#</th>
+                              <th className="text-left p-2">INCI / Name</th>
+                              <th className="text-left p-2">RM Code</th>
+                              <th className="text-right p-2">Required / unit (kg)</th>
+                              <th className="text-right p-2">Required / unit (Std UoM)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {skuList.map((row, i) => {
+                              const formulaBom =
+                                (isEditMode ? editDraft?.formulaBom : selectedProduct?.formulaBom) ?? [];
+                              const rmMaster = resolveRmMasterForSkuLine(row, rmById, rmByCode);
+                              const display = computeSkuBomQtyDisplay({
+                                row,
+                                formulaBom,
+                                rmMaster,
+                              });
+                              return (
+                                <tr key={i} className="border-t border-gray-100">
+                                  <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
+                                  <td className="p-2 font-medium">{row.inci_name}</td>
+                                  <td className="p-2 font-mono text-xs text-violet-700">{row.rm_code}</td>
+                                  <td className="p-2 text-right font-mono font-bold text-violet-700">
+                                    {formatQtyWithUnit(display.kgQty, 'kg')}
+                                  </td>
+                                  <td className="p-2 text-right font-mono font-bold text-indigo-700">
+                                    {formatSkuBomStdQtyWithUnit(display.stdQty, display.stdUom)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {skuList.length === 0 && (
+                        <p className="text-gray-500 text-sm">
+                          No SKU-level RM lines. {canEdit ? 'Complete Formula BOM, then use Import from Formula BOM.' : ''}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+                {panelTab === 3 && (selectedProduct || editDraft) && (() => {
                   const packList = (isEditMode ? editDraft?.packBom : selectedProduct?.packBom) ?? [];
                   return (
                     <div>
@@ -713,15 +1767,74 @@ const BOMDashboard: React.FC = () => {
                       )}
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Category</th><th className="text-left p-2">Sub-category</th><th className="text-left p-2">Sub-sub category</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                           <tbody>
-                            {packList.map((row, i) => (
+                            {packList.map((row, i) => {
+                              const subCategoryOpts = pmDetailSubCategoryOptionsForSkuCategory(row.pm_sku_category ?? '');
+                              const subSubCategoryOpts = pmSubSubCategoryOptionsForDetailSubCategory(
+                                row.pm_sub_category ?? '',
+                                row.pm_sku_category ?? ''
+                              );
+                              const categoryLabel =
+                                PM_SKU_CATEGORY_SELECT_OPTIONS.find((o) => o.value === row.pm_sku_category)?.label ||
+                                row.pm_sku_category ||
+                                '—';
+                              return (
                               <tr key={i} className="border-t border-gray-100">
                                 <td className="p-2 text-gray-400 font-mono">{i + 1}</td>
                                 {isEditMode ? (
                                   <>
                                     <td className="p-2"><input value={row.pm_description} onChange={(e) => updatePackRow(i, 'pm_description', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
                                     <td className="p-2"><input value={row.pm_code} onChange={(e) => updatePackRow(i, 'pm_code', e.target.value)} className="w-full px-2 py-1 border rounded font-mono text-xs" /></td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sku_category ?? ''}
+                                        onChange={(e) => updatePackRowCategory(i, e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs"
+                                      >
+                                        <option value="">Category…</option>
+                                        {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sub_category ?? ''}
+                                        disabled={!String(row.pm_sku_category ?? '').trim()}
+                                        onChange={(e) => updatePackRowSubCategory(i, e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs disabled:bg-gray-50"
+                                      >
+                                        <option value="">Sub-category…</option>
+                                        {subCategoryOpts.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {row.pm_sub_category &&
+                                        !subCategoryOpts.some((o) => o.value === row.pm_sub_category) ? (
+                                          <option value={row.pm_sub_category}>{row.pm_sub_category}</option>
+                                        ) : null}
+                                      </select>
+                                    </td>
+                                    <td className="p-2">
+                                      <select
+                                        value={row.pm_sub_sub_category ?? ''}
+                                        disabled={
+                                          !String(row.pm_sub_category ?? '').trim() ||
+                                          !pmDetailSubCategoryHasSubSubCategory(row.pm_sub_category ?? '')
+                                        }
+                                        onChange={(e) => updatePackRow(i, 'pm_sub_sub_category', e.target.value)}
+                                        className="w-full min-w-[7rem] px-2 py-1 border rounded text-xs disabled:bg-gray-50"
+                                      >
+                                        <option value="">Sub-sub…</option>
+                                        {subSubCategoryOpts.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {row.pm_sub_sub_category &&
+                                        !subSubCategoryOpts.some((o) => o.value === row.pm_sub_sub_category) ? (
+                                          <option value={row.pm_sub_sub_category}>{row.pm_sub_sub_category}</option>
+                                        ) : null}
+                                      </select>
+                                    </td>
                                     <td className="p-2"><input value={row.pack_type} onChange={(e) => updatePackRow(i, 'pack_type', e.target.value)} className="w-full px-2 py-1 border rounded text-xs" /></td>
                                     <td className="p-2"><input type="number" step="0.01" value={row.qty_per_unit} onChange={(e) => updatePackRow(i, 'qty_per_unit', Number(e.target.value) || 0)} className="w-20 px-2 py-1 border rounded text-right text-xs" /></td>
                                     <td className="p-2"><input value={row.uom} onChange={(e) => updatePackRow(i, 'uom', e.target.value)} className="w-14 px-2 py-1 border rounded text-xs" /></td>
@@ -733,13 +1846,17 @@ const BOMDashboard: React.FC = () => {
                                     <td className="p-2">
                                       <Link to={`/packaging?pm=${encodeURIComponent(row.pm_code)}`} className="font-mono text-xs text-amber-600 hover:text-amber-700 underline" title="Open in Pack Materials to edit; changes apply everywhere">{row.pm_code}</Link>
                                     </td>
+                                    <td className="p-2 text-xs text-gray-700">{categoryLabel}</td>
+                                    <td className="p-2 text-xs text-gray-700">{row.pm_sub_category || '—'}</td>
+                                    <td className="p-2 text-xs text-gray-700">{row.pm_sub_sub_category || '—'}</td>
                                     <td className="p-2"><span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-800">{row.pack_type}</span></td>
                                     <td className="p-2 text-right font-mono font-bold text-indigo-600">{row.qty_per_unit}</td>
-                                    <td className="p-2 text-gray-500">{row.uom}</td>
+                                    <td className="p-2 text-gray-500">{toPmDisplayUnit(row.uom)}</td>
                                   </>
                                 )}
                               </tr>
-                            ))}
+                            );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -748,7 +1865,7 @@ const BOMDashboard: React.FC = () => {
                     </div>
                   );
                 })()}
-                {panelTab === 3 && (selectedProduct || editDraft) && (() => {
+                {panelTab === 4 && (selectedProduct || editDraft) && (() => {
                   const stepsList = (isEditMode ? editDraft?.processSteps : selectedProduct?.processSteps) ?? [];
                   return (
                     <div className="space-y-2">
@@ -784,7 +1901,7 @@ const BOMDashboard: React.FC = () => {
                     </div>
                   );
                 })()}
-                {panelTab === 4 && displayProduct && (
+                {panelTab === 5 && displayProduct && (
                   <div className="space-y-6">
                     <div>
                       <div className="text-xs font-semibold text-gray-500 uppercase mb-2">FP Specifications</div>
@@ -854,7 +1971,14 @@ const BOMDashboard: React.FC = () => {
             <BOMForm
               productId={bomEditPopupId}
               onClose={() => setBomEditPopupId(null)}
-              onSaved={() => loadProducts()}
+              onSaved={async () => {
+                await loadProducts();
+                const pid = bomEditPopupId ?? selectedProduct?.product_id;
+                if (pid != null) {
+                  await refreshOpenProductDetail(pid);
+                }
+                await reloadRawMaterialsMaster();
+              }}
             />
           </div>
         </div>

@@ -76,7 +76,7 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
      {/* Role Permissions */}
      <div>
       <h4 className="text-lg font-semibold text-gray-800 mb-5 uppercase tracking-wider">Permissions</h4>
-      <RolePermissionsDisplay roleId={role.id} />
+      <RolePermissionsDisplay roleId={role.id} roleName={role.roleName} />
      </div>
     </div>
 

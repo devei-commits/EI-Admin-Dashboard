@@ -124,15 +124,6 @@ export const usePermissions = (): UsePermissionsReturn => {
    };
   }
 
-  // Backend /me returns allowedModules: only show sidebar items and allow API calls for those modules
-  if (user.allowedModules && user.allowedModules.length > 0) {
-   return {
-    userPermissions: null as RolePermissions | null,
-    globalSettings: DEFAULT_GLOBAL_SETTINGS,
-    isAdmin: user.allowedModules.includes('*')
-   };
-  }
-
   if (isAdminByRole) {
    const fullAccessPermissions: RolePermissions = {
     roleId: String(user.roleId || 'super-admin'),
@@ -175,22 +166,22 @@ export const usePermissions = (): UsePermissionsReturn => {
   return {
    userPermissions: null,
    globalSettings: DEFAULT_GLOBAL_SETTINGS,
-   isAdmin: false
+   isAdmin: Boolean(user.allowedModules?.includes('*'))
   };
  }, [user, isAdminByRole, rolePermissionsFromApi]);
 
  // Check if user has access to a module (allowedModules from /me, or role permissions)
  const hasModuleAccess = (moduleId: string): boolean => {
-  if (user?.allowedModules?.length) {
-   return user.allowedModules!.includes('*') || user.allowedModules!.includes(moduleId);
-  }
   if (isAdmin) return true;
-  if (!userPermissions) return false;
-
-  const module = userPermissions.modules.find(m => m.moduleId === moduleId);
-  if (!module) return false;
-
-  return module.subModules.some(sub => sub.actions.view);
+  if (userPermissions) {
+   const module = userPermissions.modules.find(m => m.moduleId === moduleId);
+   if (!module) return false;
+   return module.subModules.some(sub => sub.actions.view);
+  }
+  if (user?.allowedModules?.length) {
+   return user.allowedModules.includes('*') || user.allowedModules.includes(moduleId);
+  }
+  return false;
  };
 
  // Get permissions for a specific sub-module
@@ -296,14 +287,14 @@ export const usePermissions = (): UsePermissionsReturn => {
    return DEFAULT_MODULE_PERMISSIONS.map(m => m.moduleId);
   }
 
-  if (!userPermissions) {
-   // Default: only dashboard visible
-   return ['dashboard'];
+  if (userPermissions) {
+   return userPermissions.modules
+    .filter(module => module.subModules.some(sub => sub.actions.view))
+    .map(m => m.moduleId);
   }
 
-  return userPermissions.modules
-   .filter(module => module.subModules.some(sub => sub.actions.view))
-   .map(m => m.moduleId);
+  if (user?.allowedModules?.length) return user.allowedModules.filter((m) => m !== '*');
+  return ['dashboard'];
  };
 
  return {

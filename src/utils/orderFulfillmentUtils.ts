@@ -83,6 +83,18 @@ export const formatLakhs = (amount: number): string => {
   return `₹${(amount / 100000).toFixed(1)}L`;
 };
 
+/** True when pack size is present and not a UI placeholder. */
+export const isValidPackSize = (pack: string | null | undefined): boolean => {
+  const p = String(pack ?? '').trim();
+  if (!p) return false;
+  if (p === '0') return true;
+  const lower = p.toLowerCase();
+  return lower !== '—' && lower !== '-' && lower !== 'n/a' && lower !== 'na';
+};
+
+export const normalizePackSize = (pack: string | null | undefined): string =>
+  isValidPackSize(pack) ? String(pack).trim() : '';
+
 // ═══════════════════════════════════════════════════════════
 // SALE ORDER CALCULATIONS
 // ═══════════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VendorClient as VendorClientType } from '../context/VendorClientContext';
 import {
@@ -6,10 +6,59 @@ import {
  fetchVendorClientById,
  updateVendorClient as updateVendorClientApi,
  deleteVendorClient as deleteVendorClientApi,
+ importClientMasterExcel,
+ importVendorMasterExcel,
 } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
+import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
+
+type VendorClientSortColumn =
+ | 'code'
+ | 'name'
+ | 'zohoId'
+ | 'category'
+ | 'email'
+ | 'phone'
+ | 'state'
+ | 'status'
+ | 'updated';
+
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+ let cmp: number;
+ if (typeof av === 'number' && typeof bv === 'number') {
+  cmp = av - bv;
+ } else {
+  cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+ }
+ return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForVendorClientRow(row: VendorClientType, col: VendorClientSortColumn): string | number {
+ switch (col) {
+  case 'code':
+   return String(row.data?.entityCode || '');
+  case 'name':
+   return row.name || '';
+  case 'zohoId':
+   return row.zohoId || String((row.data as { zohoId?: string } | undefined)?.zohoId || '');
+  case 'category':
+   return row.category || '';
+  case 'email':
+   return row.email || '';
+  case 'phone':
+   return row.phone || '';
+  case 'state':
+   return row.location || '';
+  case 'status':
+   return row.status || '';
+  case 'updated':
+   return row.lastModified ? new Date(row.lastModified).getTime() : 0;
+  default:
+   return '';
+ }
+}
 
 const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boolean }> = ({ label, value, mono }) => {
  const isEl = React.isValidElement(value);
@@ -58,6 +107,14 @@ const VendorClient: React.FC = () => {
  const [clientCategory, setClientCategory] = useState<string>('all');
  const [clientPage, setClientPage] = useState(1);
  const [clientPageSize, setClientPageSize] = useState(10);
+ const [vendorSortColumn, setVendorSortColumn] = useState<VendorClientSortColumn | null>(null);
+ const [vendorSortDirection, setVendorSortDirection] = useState<SortDirection>('asc');
+ const [clientSortColumn, setClientSortColumn] = useState<VendorClientSortColumn | null>(null);
+ const [clientSortDirection, setClientSortDirection] = useState<SortDirection>('asc');
+ const [importingClientExcel, setImportingClientExcel] = useState(false);
+ const [importingVendorExcel, setImportingVendorExcel] = useState(false);
+ const clientExcelFileRef = useRef<HTMLInputElement>(null);
+ const vendorExcelFileRef = useRef<HTMLInputElement>(null);
 
  const csvEscape = (value: unknown) => {
   const str = String(value ?? '');
@@ -95,7 +152,15 @@ const VendorClient: React.FC = () => {
  const trimmedClientSearch = clientSearch.trim();
 
  const { data: vendorPageData } = useQuery({
-  queryKey: ['vendor-client-page', 'vendor', trimmedVendorSearch, vendorStatus, vendorCategory, vendorPageSize, vendorOffset],
+  queryKey: [
+   'vendor-client-page',
+   'vendor',
+   trimmedVendorSearch,
+   vendorStatus,
+   vendorCategory,
+   vendorPageSize,
+   vendorPage,
+  ],
   queryFn: () =>
    fetchVendorClientsPage({
     type: 'vendor',
@@ -106,10 +171,19 @@ const VendorClient: React.FC = () => {
     offset: vendorOffset,
    }),
   staleTime: 2 * 60 * 1000,
+  placeholderData: (previousData) => previousData,
  });
 
  const { data: clientPageData } = useQuery({
-  queryKey: ['vendor-client-page', 'client', trimmedClientSearch, clientStatus, clientCategory, clientPageSize, clientOffset],
+  queryKey: [
+   'vendor-client-page',
+   'client',
+   trimmedClientSearch,
+   clientStatus,
+   clientCategory,
+   clientPageSize,
+   clientPage,
+  ],
   queryFn: () =>
    fetchVendorClientsPage({
     type: 'client',
@@ -120,6 +194,7 @@ const VendorClient: React.FC = () => {
     offset: clientOffset,
    }),
   staleTime: 2 * 60 * 1000,
+  placeholderData: (previousData) => previousData,
  });
 
  const vendors = vendorPageData?.rows ?? [];
@@ -148,13 +223,67 @@ const VendorClient: React.FC = () => {
  const pagedVendors = filteredVendors;
  const pagedClients = filteredClients;
 
- useEffect(() => {
-  if (vendorPage > vendorTotalPages) setVendorPage(vendorTotalPages);
- }, [vendorPage, vendorTotalPages]);
+ const sortedPagedVendors = useMemo(() => {
+  if (!vendorSortColumn) return pagedVendors;
+  return [...pagedVendors].sort((a, b) => {
+   const cmp = compareSortValues(
+    sortValueForVendorClientRow(a, vendorSortColumn),
+    sortValueForVendorClientRow(b, vendorSortColumn),
+    vendorSortDirection
+   );
+   if (cmp !== 0) return cmp;
+   return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+  });
+ }, [pagedVendors, vendorSortColumn, vendorSortDirection]);
+
+ const sortedPagedClients = useMemo(() => {
+  if (!clientSortColumn) return pagedClients;
+  return [...pagedClients].sort((a, b) => {
+   const cmp = compareSortValues(
+    sortValueForVendorClientRow(a, clientSortColumn),
+    sortValueForVendorClientRow(b, clientSortColumn),
+    clientSortDirection
+   );
+   if (cmp !== 0) return cmp;
+   return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+  });
+ }, [pagedClients, clientSortColumn, clientSortDirection]);
+
+ const toggleVendorSort = (column: VendorClientSortColumn) => {
+  if (vendorSortColumn === column) {
+   setVendorSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setVendorSortColumn(column);
+  setVendorSortDirection('asc');
+ };
+
+ const toggleClientSort = (column: VendorClientSortColumn) => {
+  if (clientSortColumn === column) {
+   setClientSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setClientSortColumn(column);
+  setClientSortDirection('asc');
+ };
 
  useEffect(() => {
+  setVendorPage(1);
+ }, [trimmedVendorSearch, vendorStatus, vendorCategory]);
+
+ useEffect(() => {
+  setClientPage(1);
+ }, [trimmedClientSearch, clientStatus, clientCategory]);
+
+ useEffect(() => {
+  if (!vendorPageData) return;
+  if (vendorPage > vendorTotalPages) setVendorPage(vendorTotalPages);
+ }, [vendorPage, vendorTotalPages, vendorPageData]);
+
+ useEffect(() => {
+  if (!clientPageData) return;
   if (clientPage > clientTotalPages) setClientPage(clientTotalPages);
- }, [clientPage, clientTotalPages]);
+ }, [clientPage, clientTotalPages, clientPageData]);
 
  const openVendorCreate = () => {
   setVendorCreateModalOpen(true);
@@ -234,6 +363,102 @@ const VendorClient: React.FC = () => {
   setEditing(null);
  };
 
+ const handleVendorExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  setImportingVendorExcel(true);
+  try {
+   const res = await importVendorMasterExcel(file, { details: true });
+   const s = res.summary;
+   if (!res.ok) {
+    addToast('error', res.error ?? 'Vendor import failed');
+    return;
+   }
+   const ps = res.parse_stats;
+   const is = res.import_stats;
+   const skipHint =
+    ps && (ps.skipped_no_identity || ps.skipped_no_name)
+     ? ` (${ps.skipped_no_identity ?? 0} empty rows, ${ps.skipped_no_name ?? 0} without name skipped)`
+     : '';
+   const zohoHint =
+    ps?.zoho_unreliable_rows
+     ? ` · ${ps.zoho_unreliable_rows} rows matched by vendor details (scientific Zoho IDs in Excel)`
+     : '';
+   const mergeHint =
+    is && (is.merged_duplicate_rows || is.zoho_id_collisions_cleared)
+     ? ` · ${is.unique_zoho_ids ?? 0} unique Zoho IDs (${is.merged_duplicate_rows ?? 0} duplicate lines merged, ${is.zoho_id_collisions_cleared ?? 0} ID collisions split)`
+     : is?.unique_zoho_ids != null
+       ? ` · ${is.unique_zoho_ids} unique Zoho IDs`
+       : '';
+   addToast(
+    'success',
+    `Vendors: ${s?.vendors_created ?? 0} created, ${s?.vendors_updated ?? 0} updated, ${res.rows_imported ?? res.rows_total ?? 0} imported from ${res.rows_total ?? 0} Excel rows${mergeHint}${zohoHint}${skipHint}, ${s?.errors ?? 0} errors`
+   );
+   if ((s?.errors ?? 0) > 0 && res.row_log?.length) {
+    const sample = res.row_log
+     .filter((r) => r.action === 'error')
+     .slice(0, 3)
+     .map((r) => `row ${r.excel_row}: ${r.reason ?? r.action}`)
+     .join('; ');
+    if (sample) addToast('info', `Sample issues: ${sample}`);
+   }
+   await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+  } catch (err) {
+   addToast('error', err instanceof Error ? err.message : 'Vendor import failed');
+  } finally {
+   setImportingVendorExcel(false);
+  }
+ };
+
+ const handleClientExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  setImportingClientExcel(true);
+  try {
+   const res = await importClientMasterExcel(file, { details: true });
+   const s = res.summary;
+   if (!res.ok) {
+    addToast('error', res.error ?? 'Client import failed');
+    return;
+   }
+   const ps = res.parse_stats;
+   const is = res.import_stats;
+   const skipHint =
+    ps && (ps.skipped_no_identity || ps.skipped_no_name)
+     ? ` (${ps.skipped_no_identity ?? 0} empty rows, ${ps.skipped_no_name ?? 0} without name skipped)`
+     : '';
+   const zohoHint =
+    ps?.zoho_unreliable_rows
+     ? ` · ${ps.zoho_unreliable_rows} rows matched by client details (scientific Zoho IDs in Excel)`
+     : '';
+   const mergeHint =
+    is && (is.merged_duplicate_rows || is.zoho_id_collisions_cleared)
+     ? ` · ${is.unique_zoho_ids ?? 0} unique Zoho IDs (${is.merged_duplicate_rows ?? 0} duplicate lines merged, ${is.zoho_id_collisions_cleared ?? 0} ID collisions split)`
+     : is?.unique_zoho_ids != null
+       ? ` · ${is.unique_zoho_ids} unique Zoho IDs`
+       : '';
+   addToast(
+    'success',
+    `Clients: ${s?.clients_created ?? 0} created, ${s?.clients_updated ?? 0} updated, ${res.rows_imported ?? res.rows_total ?? 0} imported from ${res.rows_total ?? 0} Excel rows${mergeHint}${zohoHint}${skipHint}, ${s?.errors ?? 0} errors`
+   );
+   if ((s?.errors ?? 0) > 0 && res.row_log?.length) {
+    const sample = res.row_log
+     .filter((r) => r.action === 'error')
+     .slice(0, 3)
+     .map((r) => `row ${r.excel_row}: ${r.reason ?? r.action}`)
+     .join('; ');
+    if (sample) addToast('info', `Sample issues: ${sample}`);
+   }
+   await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+  } catch (err) {
+   addToast('error', err instanceof Error ? err.message : 'Client import failed');
+  } finally {
+   setImportingClientExcel(false);
+  }
+ };
+
  const renderListTable = (
   headers: string[],
   rows: Array<Array<unknown>>,
@@ -284,9 +509,24 @@ const VendorClient: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
        <div>
         <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Vendor Master</h2>
-        <p className="text-sm text-gray-500">{filteredVendors.length} vendor(s)</p>
+        <p className="text-sm text-gray-500">{vendorTotal} vendor(s)</p>
        </div>
-       <div className="flex gap-2">
+       <div className="flex flex-wrap gap-2">
+        <input
+         ref={vendorExcelFileRef}
+         type="file"
+         accept=".xlsx,.xlsm"
+         className="hidden"
+         onChange={handleVendorExcelChange}
+        />
+        <button
+         type="button"
+         disabled={importingVendorExcel}
+         onClick={() => vendorExcelFileRef.current?.click()}
+         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm disabled:opacity-50"
+        >
+         {importingVendorExcel ? 'Importing…' : 'Import vendors (Excel)'}
+        </button>
         <button
          type="button"
          onClick={() => {
@@ -353,27 +593,27 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
+        <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Vendor</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
+          <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Category" column="category" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Email" column="email" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Phone" column="phone" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="State" column="state" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Status" column="status" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <SortableTableTh label="Updated" column="updated" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
-         {filteredVendors.length === 0 ? (
+         {vendorTotal === 0 ? (
           <tr>
            <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
           </tr>
          ) : (
-          pagedVendors.map((v) => (
+          sortedPagedVendors.map((v) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
@@ -411,10 +651,10 @@ const VendorClient: React.FC = () => {
 
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
-       {filteredVendors.length === 0 ? (
+       {vendorTotal === 0 ? (
         <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No vendors found.</div>
        ) : (
-        pagedVendors.map((v) => (
+        sortedPagedVendors.map((v) => (
          <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">
@@ -466,7 +706,7 @@ const VendorClient: React.FC = () => {
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
        <div className="text-sm text-gray-600">
-        Page {Math.min(vendorPage, vendorTotalPages)} of {vendorTotalPages} • Showing {pagedVendors.length} of {filteredVendors.length}
+        Page {Math.min(vendorPage, vendorTotalPages)} of {vendorTotalPages} • Showing {pagedVendors.length} of {vendorTotal}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select
@@ -507,9 +747,24 @@ const VendorClient: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
        <div>
         <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Client Master</h2>
-        <p className="text-sm text-gray-500">{filteredClients.length} client(s)</p>
+        <p className="text-sm text-gray-500">{clientTotal} client(s)</p>
        </div>
-       <div className="flex gap-2">
+       <div className="flex flex-wrap gap-2">
+        <input
+         ref={clientExcelFileRef}
+         type="file"
+         accept=".xlsx,.xlsm"
+         className="hidden"
+         onChange={handleClientExcelChange}
+        />
+        <button
+         type="button"
+         disabled={importingClientExcel}
+         onClick={() => clientExcelFileRef.current?.click()}
+         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm disabled:opacity-50"
+        >
+         {importingClientExcel ? 'Importing…' : 'Import clients (Excel)'}
+        </button>
         <button
          type="button"
          onClick={() => {
@@ -576,27 +831,27 @@ const VendorClient: React.FC = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-900" style={{ backgroundColor: '#111827' }}>
+        <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Client</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Zoho ID</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Email</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Phone</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>State</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Status</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'white' }}>Updated</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'white' }}>Actions</th>
+          <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Category" column="category" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Email" column="email" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Phone" column="phone" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="State" column="state" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Status" column="status" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <SortableTableTh label="Updated" column="updated" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
-         {filteredClients.length === 0 ? (
+         {clientTotal === 0 ? (
           <tr>
            <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
           </tr>
          ) : (
-          pagedClients.map((c) => (
+          sortedPagedClients.map((c) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
@@ -634,10 +889,10 @@ const VendorClient: React.FC = () => {
 
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
-       {filteredClients.length === 0 ? (
+       {clientTotal === 0 ? (
         <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No clients found.</div>
        ) : (
-        pagedClients.map((c) => (
+        sortedPagedClients.map((c) => (
          <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">
@@ -689,7 +944,7 @@ const VendorClient: React.FC = () => {
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
        <div className="text-sm text-gray-600">
-        Page {Math.min(clientPage, clientTotalPages)} of {clientTotalPages} • Showing {pagedClients.length} of {filteredClients.length}
+        Page {Math.min(clientPage, clientTotalPages)} of {clientTotalPages} • Showing {pagedClients.length} of {clientTotal}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select

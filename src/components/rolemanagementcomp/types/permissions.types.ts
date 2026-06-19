@@ -135,48 +135,96 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
   moduleId: 'order-management',
   moduleName: 'Order Management',
   icon: 'order',
-  description: 'Order processing and tracking',
+ description: 'Lifecycle permissions from SO to fulfillment closure',
   subModules: [
    {
-    subModuleId: 'orders-list',
-    subModuleName: 'Orders List',
+   subModuleId: 'sales-orders',
+   subModuleName: 'Sales Orders',
     actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
     columns: [
-     { columnId: 'order-id', columnName: 'Order ID', view: false, edit: false },
-     { columnId: 'company-name', columnName: 'Company Name', view: false, edit: false },
-     { columnId: 'product-type', columnName: 'Product Type', view: false, edit: false },
-     { columnId: 'quantity', columnName: 'Quantity', view: false, edit: false },
-     { columnId: 'total-amount', columnName: 'Total Amount', view: false, edit: false },
-     { columnId: 'priority', columnName: 'Priority', view: false, edit: false },
-     { columnId: 'order-date', columnName: 'Order Date', view: false, edit: false },
-     { columnId: 'delivery-date', columnName: 'Delivery Date', view: false, edit: false },
-     { columnId: 'order-status', columnName: 'Order Status', view: false, edit: false },
-     { columnId: 'payment-status', columnName: 'Payment Status', view: false, edit: false },
+    { columnId: 'so-create', columnName: 'Create SO', view: false, edit: false },
+    { columnId: 'so-validate', columnName: 'Validate SO', view: false, edit: false },
+    { columnId: 'so-approve', columnName: 'Approve SO', view: false, edit: false },
+    { columnId: 'so-release-planning', columnName: 'Release SO to Planning', view: false, edit: false },
     ]
    },
    {
-    subModuleId: 'order-hub',
-    subModuleName: 'Order Hub',
+   subModuleId: 'planning',
+   subModuleName: 'Planning',
     actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
     columns: [
-     { columnId: 'hub-dashboard', columnName: 'Hub Dashboard', view: false, edit: false },
-     { columnId: 'pending-orders', columnName: 'Pending Orders', view: false, edit: false },
-     { columnId: 'processing-orders', columnName: 'Processing Orders', view: false, edit: false },
-     { columnId: 'completed-orders', columnName: 'Completed Orders', view: false, edit: false },
+    { columnId: 'demand-extraction', columnName: 'Demand Extraction', view: false, edit: false },
+    { columnId: 'availability-check', columnName: 'Availability Check', view: false, edit: false },
+    { columnId: 'batch-confirmation', columnName: 'Batch Confirmation', view: false, edit: false },
+    { columnId: 'planning-release', columnName: 'Release Planning Output', view: false, edit: false },
     ]
    },
    {
-    subModuleId: 'goods-receiving',
-    subModuleName: 'Goods Receiving',
+   subModuleId: 'procurement',
+   subModuleName: 'Procurement',
     actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
     columns: [
-     { columnId: 'grn-number', columnName: 'GRN Number', view: false, edit: false },
-     { columnId: 'item-name', columnName: 'Item Name', view: false, edit: false },
-     { columnId: 'ordered-qty', columnName: 'Ordered Quantity', view: false, edit: false },
-     { columnId: 'received-qty', columnName: 'Received Quantity', view: false, edit: false },
-     { columnId: 'unit', columnName: 'Unit', view: false, edit: false },
-     { columnId: 'condition', columnName: 'Condition', view: false, edit: false },
-     { columnId: 'notes', columnName: 'Notes', view: false, edit: false },
+    { columnId: 'request', columnName: 'Requests', view: false, edit: false },
+    { columnId: 'quotation', columnName: 'Quotations', view: false, edit: false },
+    { columnId: 'draft-po', columnName: 'Draft PO', view: false, edit: false },
+    { columnId: 'issued-po', columnName: 'Issued PO', view: false, edit: false },
+    { columnId: 'grn', columnName: 'GRN / Inward', view: false, edit: false },
+   ]
+  },
+  {
+   subModuleId: 'warehouse-inventory',
+   subModuleName: 'Warehouse / Inventory',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'reservation', columnName: 'Reservation', view: false, edit: false },
+    { columnId: 'dispensing-issue', columnName: 'Dispensing / Issue', view: false, edit: false },
+    { columnId: 'putaway-transfer', columnName: 'Putaway / Transfer', view: false, edit: false },
+    { columnId: 'inventory-adjustment', columnName: 'Inventory Adjustment', view: false, edit: false },
+   ]
+  },
+  {
+   subModuleId: 'production-bmr',
+   subModuleName: 'Production - BMR',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'batch-schedule-confirm', columnName: 'Schedule / Confirm Batch', view: false, edit: false },
+    { columnId: 'rm-reservation', columnName: 'RM Reservation', view: false, edit: false },
+    { columnId: 'dispensing', columnName: 'Dispensing', view: false, edit: false },
+    { columnId: 'process-execution', columnName: 'Process Execution', view: false, edit: false },
+    { columnId: 'bmr-review-close', columnName: 'BMR Review / Close', view: false, edit: false },
+   ]
+  },
+  {
+   subModuleId: 'production-bpr',
+   subModuleName: 'Production - BPR',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'bpr-initiate', columnName: 'Initiate BPR', view: false, edit: false },
+    { columnId: 'pm-issue', columnName: 'PM Issue', view: false, edit: false },
+    { columnId: 'packing-execution', columnName: 'Packing Execution', view: false, edit: false },
+    { columnId: 'bpr-reconciliation', columnName: 'BPR Reconciliation', view: false, edit: false },
+    { columnId: 'bpr-close', columnName: 'BPR Close', view: false, edit: false },
+   ]
+  },
+  {
+   subModuleId: 'production-transfer-yield',
+   subModuleName: 'Production - Transfer / Yield',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'transfer-orders', columnName: 'Transfer Orders', view: false, edit: false },
+    { columnId: 'yield-report', columnName: 'Yield Report', view: false, edit: false },
+   ]
+  },
+  {
+   subModuleId: 'fulfillment',
+   subModuleName: 'Fulfillment',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'fulfillment-create', columnName: 'Create Fulfillment', view: false, edit: false },
+    { columnId: 'allocation-pick-pack', columnName: 'Allocation / Pick-Pack', view: false, edit: false },
+    { columnId: 'dispatch-tracking', columnName: 'Dispatch / Tracking', view: false, edit: false },
+    { columnId: 'invoice-generate', columnName: 'Invoice Generation', view: false, edit: false },
+    { columnId: 'fulfillment-close', columnName: 'Fulfillment Closure', view: false, edit: false },
     ]
    }
   ]

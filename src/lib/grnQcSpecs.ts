@@ -1,0 +1,143 @@
+/** GRN inbound QC — master quality specs with measured results and pass/fail tracking. */
+
+export interface GrnQcTestRow {
+  specId: string;
+  parameter: string;
+  specLimit: string;
+  method: string;
+  mandatory: boolean;
+  tolerance: string;
+  frequency: string;
+  sample: string;
+  acceptance: string;
+  result: string;
+  passed: boolean | null;
+}
+
+export interface GrnQcLineSpec {
+  lineItemId: string;
+  itemCode: string;
+  itemName: string;
+  masterType: 'RM' | 'PM';
+  masterId: number | null;
+  /** master = from item master; default-inbound = fallback checklist when master has no specs */
+  testsSource?: 'master' | 'default-inbound';
+  tests: GrnQcTestRow[];
+}
+
+export interface GrnQcSpecsStored {
+  lines: GrnQcLineSpec[];
+  remarks?: string;
+}
+
+export type GrnDerivedQcStatus = 'Under test' | 'Passed' | 'Rejected';
+
+export function collectGrnQcTests(payload: GrnQcSpecsStored | null | undefined): GrnQcTestRow[] {
+  const lines = payload?.lines ?? [];
+  return lines.flatMap((l) => l.tests ?? []);
+}
+
+function hasMeasuredResult(test: GrnQcTestRow): boolean {
+  return String(test.result ?? '').trim().length > 0;
+}
+
+function isTestReviewed(test: GrnQcTestRow): boolean {
+  return test.passed === true || test.passed === false;
+}
+
+/** Mandatory (Mand) rows must have result + Pass. Optional rows may stay untested. */
+export function isMandatoryTestComplete(test: GrnQcTestRow): boolean {
+  if (!test.mandatory) return true;
+  return test.passed === true && hasMeasuredResult(test);
+}
+
+export function isMandatoryTestPending(test: GrnQcTestRow): boolean {
+  if (!test.mandatory) return false;
+  return test.passed !== true || !hasMeasuredResult(test);
+}
+
+export function deriveGrnQcStatusFromSpecs(payload: GrnQcSpecsStored | null | undefined): GrnDerivedQcStatus {
+  const tests = collectGrnQcTests(payload);
+  if (tests.length === 0) return 'Under test';
+
+  const failed = tests.filter((t) => t.passed === false);
+  if (failed.length > 0) return 'Rejected';
+
+  const mandatoryPending = tests.filter((t) => isMandatoryTestPending(t));
+  if (mandatoryPending.length > 0) return 'Under test';
+
+  const reviewedWithoutResult = tests.filter((t) => isTestReviewed(t) && !hasMeasuredResult(t));
+  if (reviewedWithoutResult.length > 0) return 'Under test';
+
+  return 'Passed';
+}
+
+export function grnQcCompletionBlockers(
+  payload: GrnQcSpecsStored | null | undefined
+): string[] {
+  const tests = collectGrnQcTests(payload);
+  const blockers: string[] = [];
+  if (tests.length === 0) {
+    blockers.push('No QC tests available — refresh the GRN or link the line item to an RM/PM master.');
+    return blockers;
+  }
+  const mandatoryPending = tests.filter((t) => isMandatoryTestPending(t));
+  if (mandatoryPending.length > 0) {
+    blockers.push(
+      `${mandatoryPending.length} mandatory QC test(s) still need a measured result and Pass verdict (Mand).`
+    );
+  }
+  const reviewedWithoutResult = tests.filter((t) => isTestReviewed(t) && !hasMeasuredResult(t));
+  if (reviewedWithoutResult.length > 0) {
+    blockers.push('Enter a measured result for each QC test you marked Pass or Fail.');
+  }
+  const failed = tests.filter((t) => t.passed === false);
+  if (failed.length > 0) {
+    blockers.push(`${failed.length} QC test(s) failed.`);
+  }
+  return blockers;
+}
+
+export function summarizeGrnQcTests(payload: GrnQcSpecsStored | null | undefined): {
+  total: number;
+  mandatory: number;
+  mandatoryPending: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  optionalSkipped: number;
+} {
+  const tests = collectGrnQcTests(payload);
+  const mandatory = tests.filter((t) => t.mandatory);
+  return {
+    total: tests.length,
+    mandatory: mandatory.length,
+    mandatoryPending: mandatory.filter((t) => isMandatoryTestPending(t)).length,
+    passed: tests.filter((t) => t.passed === true).length,
+    failed: tests.filter((t) => t.passed === false).length,
+    pending: tests.filter((t) => t.passed === null).length,
+    optionalSkipped: tests.filter((t) => !t.mandatory && t.passed === null).length,
+  };
+}
+
+export function updateGrnQcTestAt(
+  payload: GrnQcSpecsStored,
+  lineItemId: string,
+  testIndex: number,
+  patch: Partial<Pick<GrnQcTestRow, 'result' | 'passed'>>
+): GrnQcSpecsStored {
+  return {
+    ...payload,
+    lines: payload.lines.map((line) => {
+      if (line.lineItemId !== lineItemId) return line;
+      const tests = line.tests.map((t, idx) => (idx === testIndex ? { ...t, ...patch } : t));
+      return { ...line, tests };
+    }),
+  };
+}
+
+export function cycleGrnQcTestPassed(current: boolean | null): boolean | null {
+  if (current === null) return true;
+  if (current === true) return false;
+  return null;
+}

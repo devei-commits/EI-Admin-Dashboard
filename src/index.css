@@ -885,6 +885,56 @@ textarea:focus-visible {
  @apply ml-0 md:ml-64 transition-all duration-300;
 }
 
+/* Medium viewport: icon-only collapsed rail (see Sidebar.tsx) */
+.is-sidebar-icon-only .sidebar-label,
+.is-sidebar-icon-only .sidebar-section-label,
+.is-sidebar-icon-only .sidebar-chevron,
+.is-sidebar-icon-only .sidebar-user-text,
+.is-sidebar-icon-only .sidebar-logout-text,
+.is-sidebar-icon-only .sidebar-copyright {
+ @apply hidden;
+}
+
+.is-sidebar-icon-only .sidebar-logo-section {
+ @apply p-2 justify-center;
+}
+
+.is-sidebar-icon-only .sidebar-submenu {
+ @apply max-h-0 overflow-hidden;
+}
+
+.is-sidebar-icon-only nav {
+ @apply p-2;
+}
+
+.is-sidebar-icon-only .sidebar-nav-link {
+ @apply justify-center px-2 border-l-0;
+}
+
+.is-sidebar-icon-only .sidebar-nav-link > svg:first-of-type {
+ @apply mr-0;
+}
+
+.is-sidebar-icon-only .sidebar-footer {
+ @apply p-2;
+}
+
+.is-sidebar-icon-only .sidebar-user-row {
+ @apply justify-center px-0;
+}
+
+.is-sidebar-icon-only li > div.rounded-xl {
+ @apply border-l-0 shadow-none;
+}
+
+.is-sidebar-icon-only li > div.rounded-xl > .flex {
+ @apply justify-center;
+}
+
+.is-sidebar-icon-only li > div.rounded-xl .sidebar-nav-link {
+ @apply w-full;
+}
+
 /* Mobile Bottom Navigation Safe Area */
 .pb-safe {
  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
@@ -931,5 +981,16 @@ textarea:focus-visible {
 
   .font-archivo {
     font-family: var(--font-archivo);
+  }
+
+  /* Hide browser steppers on numeric fields where values must stay readable (e.g. BOM SG). */
+  .no-number-spinner {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .no-number-spinner::-webkit-outer-spin-button,
+  .no-number-spinner::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
 }

@@ -16,6 +16,8 @@ interface ArrayItemManagerProps {
   label: string;
   type?: 'text' | 'number' | 'select' | 'date';
   options?: Array<{ label: string; value: string }>;
+  /** When true, shows a red asterisk — only for fields validated on add (e.g. test name + result). */
+  required?: boolean;
  }>;
 }
 
@@ -58,9 +60,9 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
     <div className="grid grid-cols-2 gap-4 mb-4">
      {displayColumns.map(col => (
       <div key={col.key}>
-      <label htmlFor={`${itemType}-${col.key}`} className="block text-xs font-medium text-gray-600 mb-1 capitalize">
+      <label htmlFor={`${itemType}-${col.key}`} className="block text-xs font-medium text-gray-600 mb-1">
         {col.label}
-        {tempFieldNames.includes(col.key) && '*'}
+        {col.required ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
        </label>
        {col.type === 'select' && col.options ? (
         <select

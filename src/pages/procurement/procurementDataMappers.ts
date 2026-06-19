@@ -10,26 +10,36 @@ import type {
   Vendor,
   PurchaseOrder,
   RequestType,
+  RequestStatus,
   DraftPO,
   DraftPOLineItem,
   ItemDetail,
 } from '../../types/procurement.types';
+import { formatIsoWeekLabel, isoWeekFromDateString } from '../../lib/isoWeek';
+import { procurementItemMergeKey } from '../../lib/procurementRequestMerge';
 import type { ProcurementRequest as BackendPR, ProcurementRequestItem } from '../../services/procurement.service';
 import type { ProcurementQuotation } from '../../services/procurementQuotations.service';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 import type { Order } from '../../types/salesPurchase.types';
+import type { PriceListItemPage } from '../../services/itemsList.service';
 import {
-  serializeStagedPaymentTerms,
-  stagedPaymentTermsFromVendorData,
+  formatStagedPaymentTermsObject,
+  formatStagedPaymentTermsSummary,
+  resolveStagedPaymentTermsFromVendorRecord,
 } from '../../lib/stagedPaymentTerms';
 
-/** Prefer vendor `data` payables split as JSON; else top-level paymentTerms string (VendorForm computed line). */
+/** Human-readable payment terms for vendor directory (never raw staged JSON). */
 function buildVendorPaymentTermsForProcurement(v: VendorClientRecord): string {
   const data = v.data && typeof v.data === 'object' ? (v.data as Record<string, unknown>) : {};
-  const fromData = stagedPaymentTermsFromVendorData(data);
-  if (fromData) return serializeStagedPaymentTerms(fromData);
-  const plain = String(v.paymentTerms ?? '').trim();
-  if (plain) return plain;
+  const plain = String(v.paymentTerms ?? (data as { paymentTerms?: unknown }).paymentTerms ?? '').trim();
+  if (plain) return formatStagedPaymentTermsSummary(plain);
+  const staged = resolveStagedPaymentTermsFromVendorRecord(null, data);
+  const hasSplit =
+    staged.advance_pct > 0 ||
+    staged.pre_shipment_pct > 0 ||
+    staged.post_shipment_pct > 0 ||
+    staged.credit_days > 0;
+  if (hasSplit) return formatStagedPaymentTermsObject(staged);
   return 'As per contract';
 }
 
@@ -59,10 +69,329 @@ export function parseQuantityRequested(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number } {
+/** Non-negative integer lead days from API/UI; undefined if missing or invalid. */
+export function normalizeLeadTimeDays(raw: unknown): number | undefined {
+  if (raw == null || raw === '') return undefined;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw).replace(/,/g, ''), 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.floor(n);
+}
+
+/** Parse YYYY-MM-DD, ISO datetime, or DD-MM-YYYY to a local calendar Date (noon). */
+export function parseDateStringToLocalDate(raw: string | undefined | null): Date | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]) - 1;
+    const d = Number(iso[3]);
+    const dt = new Date(y, m, d, 12, 0, 0, 0);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const m = Number(dmy[2]) - 1;
+    const y = Number(dmy[3]);
+    const dt = new Date(y, m, day, 12, 0, 0, 0);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const t = new Date(s);
+  return Number.isNaN(t.getTime()) ? null : t;
+}
+
+/** Normalize API/UI date strings to YYYY-MM-DD for `<input type="date">` and storage. */
+export function normalizeDateOnlyString(raw: string | Date | undefined | null): string {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    const y = raw.getFullYear();
+    const m = String(raw.getMonth() + 1).padStart(2, '0');
+    const day = String(raw.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const d = parseDateStringToLocalDate(raw);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function formatDateEnInSafe(raw: string | Date | null | undefined): string {
+  const d = raw instanceof Date ? raw : parseDateStringToLocalDate(String(raw ?? ''));
+  if (!d) return '—';
+  return d.toLocaleDateString('en-IN');
+}
+
+/** Calendar date (en-IN) plus ISO week label, e.g. `1/10/2025 · Week 40, 2025`. */
+export function formatDateWithIsoWeek(raw: string | Date | null | undefined): string {
+  const normalized =
+    raw instanceof Date
+      ? normalizeDateOnlyString(raw)
+      : normalizeDateOnlyString(String(raw ?? ''));
+  const dateLabel = formatDateEnInSafe(normalized || raw);
+  if (dateLabel === '—') return '—';
+  const weekLabel = formatIsoWeekLabel(isoWeekFromDateString(normalized));
+  return weekLabel === '—' ? dateLabel : `${dateLabel} · ${weekLabel}`;
+}
+
+function calendarDaysBetween(from: Date, to: Date): number {
+  const startFrom = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 12, 0, 0, 0);
+  const startTo = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 12, 0, 0, 0);
+  return Math.ceil((startTo.getTime() - startFrom.getTime()) / 86400000);
+}
+
+function parseRequestAnchorDate(raw: string | undefined | null): Date | null {
+  const cal = parseDateStringToLocalDate(raw);
+  if (cal) return cal;
+  const s = raw != null ? String(raw).trim() : '';
+  if (!s) return null;
+  const t = new Date(s);
+  return Number.isNaN(t.getTime()) ? null : t;
+}
+
+/**
+ * Days until the request is due (negative = overdue).
+ * 1) required-by / dueDate when set
+ * 2) else created date + max item lead time (from API or line notes)
+ * 3) else days since created (open age)
+ */
+export function timestampFromDateString(raw: string | undefined | null): number {
+  if (raw == null || !String(raw).trim()) return 0;
+  const cal = parseDateStringToLocalDate(raw);
+  if (cal) return cal.getTime();
+  const t = new Date(raw);
+  return Number.isNaN(t.getTime()) ? 0 : t.getTime();
+}
+
+export function getVendorQuoteSortKey(quote: Pick<VendorQuote, 'id' | 'createdAt' | 'updatedAt' | 'quotedOn'>): number {
+  const fromCreated = timestampFromDateString(quote.createdAt);
+  if (fromCreated) return fromCreated;
+  const fromUpdated = timestampFromDateString(quote.updatedAt);
+  if (fromUpdated) return fromUpdated;
+  const fromQuoted = timestampFromDateString(quote.quotedOn);
+  if (fromQuoted) return fromQuoted;
+  const idNum = parseInt(String(quote.id).replace(/\D/g, ''), 10);
+  return Number.isFinite(idNum) ? idNum : 0;
+}
+
+export function sortVendorQuotesLatestFirst(quotes: VendorQuote[]): VendorQuote[] {
+  return [...quotes].sort((a, b) => getVendorQuoteSortKey(b) - getVendorQuoteSortKey(a));
+}
+
+export function getProcurementRequestSortKey(req: Pick<ProcurementRequest, 'createdDate' | 'id'>): number {
+  const ts = timestampFromDateString(req.createdDate);
+  if (ts) return ts;
+  const idNum = parseInt(String(req.id), 10);
+  return Number.isFinite(idNum) ? idNum : 0;
+}
+
+export function sortProcurementRequestsLatestFirst<T extends Pick<ProcurementRequest, 'createdDate' | 'id'>>(
+  rows: T[],
+): T[] {
+  return [...rows].sort((a, b) => getProcurementRequestSortKey(b) - getProcurementRequestSortKey(a));
+}
+
+function planningAskTimestamp(raw: string | undefined | null): number {
+  if (raw == null || !String(raw).trim()) return 0;
+  const full = new Date(String(raw).trim()).getTime();
+  if (Number.isFinite(full) && full > 0) return full;
+  return timestampFromDateString(raw);
+}
+
+/** Newest planning quotation ask first (full createdAt time, then id). */
+export function getPlanningQuotationAskSortKey(ask: {
+  id: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): number {
+  const created =
+    ask.createdAt ?? ask.created_at ?? ask.updatedAt ?? ask.updated_at ?? '';
+  const ts = planningAskTimestamp(created);
+  return ts > 0 ? ts : ask.id;
+}
+
+export function sortPlanningQuotationAsksLatestFirst<
+  T extends {
+    id: number;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  },
+>(asks: T[]): T[] {
+  return [...asks].sort((a, b) => {
+    const diff = getPlanningQuotationAskSortKey(b) - getPlanningQuotationAskSortKey(a);
+    return diff !== 0 ? diff : b.id - a.id;
+  });
+}
+
+export function computeRequestDaysUntilDue(
+  request: Pick<ProcurementRequest, 'dueDate' | 'createdDate' | 'itemDetails'>,
+  today: Date = new Date(),
+): number {
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+
+  const explicitDue = parseDateStringToLocalDate(request.dueDate);
+  if (explicitDue) {
+    return calendarDaysBetween(startToday, explicitDue);
+  }
+
+  const anchor = parseRequestAnchorDate(request.createdDate ?? '');
+  if (!anchor) return 0;
+
+  let maxLead = 0;
+  let hasLead = false;
+  for (const d of request.itemDetails ?? []) {
+    const ld = normalizeLeadTimeDays(d.leadTimeDays);
+    if (ld !== undefined) {
+      hasLead = true;
+      if (ld > maxLead) maxLead = ld;
+    }
+  }
+
+  if (hasLead && maxLead > 0) {
+    const effectiveDue = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 12, 0, 0, 0);
+    effectiveDue.setDate(effectiveDue.getDate() + maxLead);
+    return calendarDaysBetween(startToday, effectiveDue);
+  }
+
+  return Math.max(0, calendarDaysBetween(anchor, startToday));
+}
+
+function normItemKeyForLead(s: string): string {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Issued PO ETA: PO release date + max(per-line lead days from raw PO lines, draft, quote, PR item details).
+ * When no lead exists anywhere, falls back to PR due date / PO expected shipment date.
+ */
+export function computeIssuedPoEtaFromLeadTimes(opts: {
+  today: Date;
+  poReleaseDateStr: string | undefined;
+  request: ProcurementRequest;
+  linkedQuote: VendorQuote | undefined;
+  linkedPO?: PurchaseOrder;
+  draftOverlay?: DraftPO;
+  lineItems: { item: string; itemCode: string }[];
+}): { etaDays: number; etaDateDisplay: string; maxLeadDays: number } {
+  const { today, poReleaseDateStr, request, linkedQuote, linkedPO, draftOverlay, lineItems } = opts;
+
+  const rawArr = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as Record<string, unknown>[]) : [];
+  const details = request.itemDetails ?? [];
+  const quoteLines = linkedQuote?.lines ?? [];
+
+  const leadForLineIndex = (idx: number): number | undefined => {
+    const line = lineItems[idx];
+    if (!line) return undefined;
+
+    const raw = rawArr[idx] as Record<string, unknown> | undefined;
+    const fromRaw = normalizeLeadTimeDays(raw?.lead_time_days ?? raw?.leadTimeDays);
+    if (fromRaw !== undefined) return fromRaw;
+
+    const dLine = draftOverlay?.lineItems?.find(
+      (l) =>
+        normItemKeyForLead(l.itemCode) === normItemKeyForLead(line.itemCode) ||
+        (!!line.item && normItemKeyForLead(l.item) === normItemKeyForLead(line.item)),
+    );
+    const fromDraft = normalizeLeadTimeDays(dLine?.leadTimeDays);
+    if (fromDraft !== undefined) return fromDraft;
+
+    const qLine =
+      quoteLines[idx] ??
+      quoteLines.find(
+        (l) =>
+          normItemKeyForLead(l.item ?? '') === normItemKeyForLead(line.item) ||
+          (!!l.itemId && normItemKeyForLead(String(l.itemId)) === normItemKeyForLead(line.itemCode)),
+      );
+    const fromQuoteLine = normalizeLeadTimeDays(qLine?.leadTimeDays);
+    if (fromQuoteLine !== undefined) return fromQuoteLine;
+
+    const fromQuoteHeader = normalizeLeadTimeDays(linkedQuote?.leadTimeDays);
+    if (fromQuoteHeader !== undefined) return fromQuoteHeader;
+
+    const det = details.find(
+      (d) =>
+        normItemKeyForLead(d.itemCode) === normItemKeyForLead(line.itemCode) ||
+        (!!line.item && normItemKeyForLead(d.itemName) === normItemKeyForLead(line.item)),
+    );
+    return normalizeLeadTimeDays(det?.leadTimeDays);
+  };
+
+  let maxLead = 0;
+  let anyLead = false;
+  for (let i = 0; i < lineItems.length; i++) {
+    const ld = leadForLineIndex(i);
+    if (ld !== undefined) {
+      anyLead = true;
+      if (ld > maxLead) maxLead = ld;
+    }
+  }
+
+  const anchor =
+    parseDateStringToLocalDate(poReleaseDateStr) ??
+    parseDateStringToLocalDate(request.createdDate) ??
+    parseDateStringToLocalDate(linkedPO?.date) ??
+    today;
+
+  let etaDate: Date | null = null;
+  if (anyLead && lineItems.length > 0) {
+    etaDate = new Date(anchor.getTime());
+    etaDate.setDate(etaDate.getDate() + maxLead);
+  } else {
+    etaDate =
+      parseDateStringToLocalDate(request.dueDate) ??
+      parseDateStringToLocalDate(linkedPO?.expectedShipmentDate) ??
+      parseDateStringToLocalDate(linkedPO?.date);
+  }
+
+  if (!etaDate) {
+    return { etaDays: 0, etaDateDisplay: '—', maxLeadDays: maxLead };
+  }
+
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+  const startEta = new Date(etaDate.getFullYear(), etaDate.getMonth(), etaDate.getDate(), 12, 0, 0, 0);
+  const etaDays = Math.ceil((startEta.getTime() - startToday.getTime()) / (1000 * 60 * 60 * 24));
+
+  return {
+    etaDays,
+    etaDateDisplay: formatDateEnInSafe(etaDate),
+    maxLeadDays: maxLead,
+  };
+}
+
+/**
+ * Single resolution order for draft PO line lead (days):
+ * PR line → matched quote line → Items List vendor rate (quote-line-defaults) → quote header → 0.
+ */
+export function resolveDraftLineLeadTimeDays(opts: {
+  prLine?: Pick<ProcurementRequestItem, 'lead_time_days'> | null;
+  quoteLineLead?: number | null;
+  itemsListLead?: number | null;
+  quoteHeaderLead?: number | null;
+}): number {
+  const fromPr = normalizeLeadTimeDays(opts.prLine?.lead_time_days);
+  if (fromPr !== undefined) return fromPr;
+  const fromQuoteLine = normalizeLeadTimeDays(opts.quoteLineLead);
+  if (fromQuoteLine !== undefined) return fromQuoteLine;
+  const fromItemsList = normalizeLeadTimeDays(opts.itemsListLead);
+  if (fromItemsList !== undefined) return fromItemsList;
+  const fromHeader = normalizeLeadTimeDays(opts.quoteHeaderLead);
+  if (fromHeader !== undefined) return fromHeader;
+  return 0;
+}
+
+function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: number; leadTimeDays: number | null } {
   const raw = String(lineNotes ?? '');
   let plannedPrice = 0;
-  let leadTimeDays = 0;
+  let leadTimeDays: number | null = null;
   const rateMatch =
     raw.match(/Planned rate\s*[₹]?\s*([\d.,]+)/i) || raw.match(/[₹]\s*([\d.,]+)/);
   if (rateMatch) {
@@ -70,8 +399,110 @@ function parsePlannedLineNotes(lineNotes: string | undefined): { plannedPrice: n
     if (Number.isFinite(n)) plannedPrice = n;
   }
   const leadMatch = raw.match(/Lead:\s*(\d+)\s*d/i);
-  if (leadMatch) leadTimeDays = Number(leadMatch[1]) || 0;
+  if (leadMatch) {
+    const n = Number(leadMatch[1]);
+    leadTimeDays = Number.isFinite(n) && n >= 0 ? n : null;
+  }
   return { plannedPrice, leadTimeDays };
+}
+
+/** Planned ₹/unit from `planned_unit_price` or legacy `line_notes` ("Planned rate ₹…"). */
+export function resolvePlannedUnitPrice(item: {
+  planned_unit_price?: number | string | null;
+  line_notes?: string | null;
+}): number {
+  const fieldRate = Number(item?.planned_unit_price);
+  if (Number.isFinite(fieldRate) && fieldRate > 0) return fieldRate;
+  return parsePlannedLineNotes(item?.line_notes ?? undefined).plannedPrice;
+}
+
+/** Keep `line_notes` in sync when user edits planned unit price in Procurement. */
+export function mergePlannedRateIntoLineNotes(
+  lineNotes: string | undefined | null,
+  price: number
+): string {
+  let raw = String(lineNotes ?? '').trim();
+  const hasPrice = Number.isFinite(price) && price > 0;
+  const rateLabel = hasPrice ? `Planned rate ₹${price.toFixed(2)}` : '';
+
+  if (!rateLabel) {
+    raw = raw.replace(/\s*\|\s*Planned rate\s*[₹]?\s*[\d.,]+/gi, '');
+    raw = raw.replace(/Planned rate\s*[₹]?\s*[\d.,]+/gi, '');
+    return raw.replace(/^\s*\|\s*|\s*\|\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  if (/Planned rate\s*[₹]?\s*[\d.,]+/i.test(raw)) {
+    return raw.replace(/Planned rate\s*[₹]?\s*[\d.,]+/i, rateLabel);
+  }
+  return raw ? `${rateLabel} | ${raw}` : rateLabel;
+}
+
+function normVendorKey(s: string): string {
+  return String(s ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * When API line has no lead, resolve from Items List price-list page (same source as Planning vendor slabs).
+ * Uses preferred vendor, then quote vendor as fallback (card often shows quote vendor when PR pref is empty).
+ */
+export function fillItemLeadFromPriceListPages(
+  req: ProcurementRequest,
+  itemsListRm: PriceListItemPage[],
+  itemsListPm: PriceListItemPage[],
+  quoteVendorFallback?: string | null
+): ProcurementRequest {
+  const prefRaw =
+    String(req.preferredVendor ?? '').trim() || String(quoteVendorFallback ?? '').trim();
+  const prefN = prefRaw ? normVendorKey(prefRaw) : '';
+
+  const leadFromRate = (rate: { lead_time_days?: number | null }): number | undefined => {
+    const lead = rate.lead_time_days;
+    if (lead == null || lead === '') return undefined;
+    const n = Number(lead);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+
+  const resolveFromList = (d: ItemDetail): number | undefined => {
+    const lineType = d.type ?? (d.pack_material_id != null ? 'PM' : 'RM');
+    const source = lineType === 'PM' ? itemsListPm : itemsListRm;
+    const matched = source.find((row) => {
+      if (lineType === 'PM' && d.pack_material_id != null && Number(d.pack_material_id) > 0) {
+        return Number(row.pack_material_id) === Number(d.pack_material_id);
+      }
+      if (lineType === 'RM' && d.raw_material_id != null && Number(d.raw_material_id) > 0) {
+        return Number(row.raw_material_id) === Number(d.raw_material_id);
+      }
+      return false;
+    });
+    if (!matched?.vendorRates?.length) return undefined;
+    if (prefN) {
+      for (const rate of matched.vendorRates) {
+        const vn = normVendorKey(String(rate.vendor_name ?? ''));
+        if (!vn) continue;
+        if (vn === prefN || vn.includes(prefN) || prefN.includes(vn)) {
+          const ld = leadFromRate(rate);
+          if (ld !== undefined) return ld;
+        }
+      }
+    }
+    for (const rate of matched.vendorRates) {
+      const ld = leadFromRate(rate);
+      if (ld !== undefined) return ld;
+    }
+    return undefined;
+  };
+
+  const itemDetails = (req.itemDetails ?? []).map((d) => {
+    if (d.leadTimeDays !== undefined) return d;
+    const filled = resolveFromList(d);
+    if (filled === undefined) return d;
+    return { ...d, leadTimeDays: filled };
+  });
+
+  return { ...req, itemDetails };
 }
 
 /** Backend procurement request (from /api/v1/procurement) -> ProcurementRequest */
@@ -94,6 +525,8 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     if (c) return c;
     return 'Item';
   });
+  const requestDueDate = normalizeDateOnlyString(pr.requiredByDate) || '';
+
   return {
     id: String(pr.id),
     code,
@@ -101,10 +534,11 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     priority: (pr.priority as ProcurementRequest['priority']) ?? 'Medium',
     status: PR_STATUS_MAP[pr.status ?? ''] ?? 'New',
     items: itemLabels,
-    dueDate: pr.requiredByDate ?? '',
-    createdDate: pr.createdAt ?? '',
+    dueDate: requestDueDate,
+    createdDate: normalizeDateOnlyString(pr.createdAt) || String(pr.createdAt ?? ''),
     requestedBy: pr.requestedBy ?? undefined,
-    preferredVendor: pr.preferredVendor ?? undefined,
+    preferredVendor:
+      (pr as { preferred_vendor?: string | null }).preferred_vendor ?? pr.preferredVendor ?? undefined,
     batchId: pr.planningBatchId != null ? String(pr.planningBatchId) : undefined,
     notes: pr.notes ?? null,
     planningSoNumber: pr.planningSoNumber ?? null,
@@ -121,22 +555,38 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
         moq_min?: number;
         planned_unit_price?: number;
         lead_time_days?: number;
+        required_by_date?: string | null;
         raw_material_id?: number;
         pack_material_id?: number;
         type?: string;
       }) => {
-        const parsed = parsePlannedLineNotes(i?.line_notes);
+        const notes = i?.line_notes ?? (i as { lineNotes?: string }).lineNotes;
+        const parsed = parsePlannedLineNotes(notes);
         const fieldRate = Number(i?.planned_unit_price);
         const plannedPrice =
           Number.isFinite(fieldRate) && fieldRate > 0 ? fieldRate : parsed.plannedPrice;
-        const fieldLead = Number(i?.lead_time_days);
-        const leadTimeDays =
-          Number.isFinite(fieldLead) && fieldLead > 0 ? fieldLead : parsed.leadTimeDays;
+        const rawLead = i?.lead_time_days;
+        const fieldLead =
+          rawLead !== null && rawLead !== undefined && rawLead !== ''
+            ? Number(rawLead)
+            : NaN;
+        const leadTimeDays: number | undefined = Number.isFinite(fieldLead) && fieldLead >= 0
+          ? fieldLead
+          : parsed.leadTimeDays !== null && parsed.leadTimeDays !== undefined
+            ? parsed.leadTimeDays
+            : undefined;
         const moqMin = i?.moq_min != null ? Number(i.moq_min) : NaN;
         const moqStr = Number.isFinite(moqMin) && moqMin > 0 ? String(moqMin) : '';
         const reqQty = parseQuantityRequested(i?.quantity_requested);
+        const pmIdForType = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
         const lineType: ItemDetail['type'] =
-          i?.type === 'PM' ? 'PM' : i?.type === 'FG' ? 'FG' : 'RM';
+          i?.type === 'PM' || (Number.isFinite(pmIdForType) && pmIdForType > 0)
+            ? 'PM'
+            : i?.type === 'FG'
+              ? 'FG'
+              : 'RM';
+        const lineExpected =
+          normalizeDateOnlyString(i?.required_by_date ?? null) || requestDueDate;
         return {
           itemCode: i?.code ?? '',
           itemName: i?.name ?? '',
@@ -146,6 +596,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
           packSize: '',
           plannedPrice,
           leadTimeDays,
+          expectedDate: lineExpected,
           estValue: reqQty * plannedPrice,
           raw_material_id: i?.raw_material_id != null ? Number(i.raw_material_id) : undefined,
           pack_material_id: i?.pack_material_id != null ? Number(i.pack_material_id) : undefined,
@@ -176,16 +627,24 @@ export function mapBackendQuotationToQuote(
     const total = item.totalValue ?? item.orderQty * item.pricePerUnit;
     const ld = item.leadTimeDays ?? (item as { lead_time_days?: number }).lead_time_days;
     const leadTimeDays = ld != null && ld !== '' ? Number(ld) : undefined;
+    const uom = String(item.uom ?? item.unit ?? '').trim();
     return {
       item: item.name,
       itemId: item.itemId,
-      qty: `${item.orderQty} ${item.uom}`,
+      unit: uom || undefined,
+      qty: uom ? `${item.orderQty} ${uom}` : String(item.orderQty),
       pricePerUnit: item.pricePerUnit,
       totalValue: total,
       vsPlanned: '',
-      leadTimeDays: Number.isFinite(leadTimeDays) && (leadTimeDays as number) > 0 ? (leadTimeDays as number) : undefined,
+      leadTimeDays:
+        Number.isFinite(leadTimeDays) && (leadTimeDays as number) >= 0
+          ? (leadTimeDays as number)
+          : undefined,
       raw_material_id: item.raw_material_id != null ? Number(item.raw_material_id) : undefined,
       pack_material_id: item.pack_material_id != null ? Number(item.pack_material_id) : undefined,
+      priceHistory: Array.isArray((item as { priceHistory?: unknown[] }).priceHistory)
+        ? ((item as { priceHistory?: unknown[] }).priceHistory as QuoteLine['priceHistory'])
+        : undefined,
     };
   });
   const prId = q.procurementRequestId;
@@ -197,6 +656,8 @@ export function mapBackendQuotationToQuote(
     vendor: q.vendorName ?? '',
     vendorId: String(q.vendorId),
     status: QUOTE_STATUS_MAP[q.status ?? ''] ?? 'Pending Review',
+    createdAt: q.createdAt ?? undefined,
+    updatedAt: q.updatedAt ?? undefined,
     quotedOn: q.quoteDate ?? '',
     leadTimeDays: q.leadTimeDays ?? 0,
     terms: q.paymentTerms ?? '',
@@ -246,7 +707,13 @@ export function mapVendorClientToVendor(v: VendorClientRecord): Vendor {
 /** Order (PO from sales-purchase API) -> PurchaseOrder */
 export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
   const items = Array.isArray(po.items) ? po.items : [];
-  const totalValue = items.reduce((sum, i: any) => sum + (Number(i.rate ?? i.price ?? 0) * Number(i.quantity ?? 0)), 0);
+  const totalValue = items.reduce((sum, i: any) => {
+    const directTotal = Number(i.itemTotal ?? i.lineTotal ?? i.total ?? NaN);
+    if (Number.isFinite(directTotal) && directTotal > 0) return sum + directTotal;
+    const unit = Number(i.rate ?? i.price ?? i.unitPrice ?? 0);
+    const qty = Number(i.quantity ?? i.orderedQty ?? i.reqQty ?? i.quotedQty ?? 0);
+    return sum + unit * qty;
+  }, 0);
   const expected = po.expectedShipmentDate ?? '';
   const etaDays = expected ? Math.max(0, Math.ceil((new Date(expected).getTime() - Date.now()) / 86400000)) : 0;
   const formData = po.formData && typeof po.formData === 'object' ? po.formData : {};
@@ -292,11 +759,13 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
         const codeFromApi = String(i.itemCode ?? i.code ?? '').trim();
+        const leadParsed = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
         return {
           item: i.itemName || i.name || String(items[idx] ?? ''),
           itemCode: codeFromApi || `EI-${type}-${String(idx + 1).padStart(3, '0')}`,
           type,
           qty: String(i.quantity ?? qty),
+          ...(leadParsed !== undefined ? { leadTimeDays: leadParsed } : {}),
           pricePerUnit: rate,
           gstPercent: gstPct,
           gstAmount,
@@ -451,6 +920,105 @@ export function assignPrItemToDraftLines(
   });
 }
 
+/**
+ * When draft PO line quantities change, keep linked `procurement_requests.items` aligned with the PO.
+ * If qty is reduced, remainder lines are emitted so planned material stays visible for re-sourcing (same idea as partial release split).
+ */
+export function syncProcurementItemsAfterDraftPoLineQtyEdit(
+  backendItems: ProcurementRequestItem[],
+  oldLines: DraftPOLineItem[],
+  newLines: DraftPOLineItem[]
+): { updatedItems: ProcurementRequestItem[]; remainderItems: ProcurementRequestItem[] } {
+  if (!Array.isArray(backendItems) || backendItems.length === 0) {
+    return { updatedItems: backendItems, remainderItems: [] };
+  }
+  const updatedItems = backendItems.map((b) => ({ ...b }));
+  if (!Array.isArray(newLines) || newLines.length === 0) {
+    return { updatedItems, remainderItems: [] };
+  }
+
+  const assigned = assignPrItemToDraftLines(newLines, updatedItems);
+  const remainderItems: ProcurementRequestItem[] = [];
+
+  for (let i = 0; i < newLines.length; i += 1) {
+    const prHit = assigned[i];
+    if (!prHit) continue;
+
+    const newQ = parseQuantityRequested(newLines[i]?.qty);
+    const backendQBefore = parseQuantityRequested(prHit.quantity_requested);
+    const oldDraftQ = parseQuantityRequested(oldLines[i]?.qty ?? newLines[i]?.qty);
+    const reductionRemainder = Math.max(0, oldDraftQ - newQ);
+    const consolidationGapRemainder = oldDraftQ === newQ ? Math.max(0, backendQBefore - newQ) : 0;
+    const delta = Math.max(reductionRemainder, consolidationGapRemainder);
+
+    if (delta > 0) {
+      remainderItems.push({
+        ...prHit,
+        quantity_requested: delta,
+        ...(prHit.required != null ? { required: delta } : {}),
+        ...(prHit.shortage != null ? { shortage: delta } : {}),
+        partial_release_remainder: true,
+      } as ProcurementRequestItem);
+    }
+
+    prHit.quantity_requested = newQ;
+    if (prHit.required != null) {
+      prHit.required = newQ;
+    }
+    if (prHit.shortage != null) {
+      prHit.shortage = newQ;
+    }
+  }
+
+  return { updatedItems, remainderItems };
+}
+
+/** Map UI itemDetails → API-shaped PR lines so release/split can attach raw_material_id / pack_material_id to PO rows. */
+export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): ProcurementRequestItem[] {
+  return details.map((d) => {
+    const pmId = d.pack_material_id != null ? Number(d.pack_material_id) : NaN;
+    const lineType: 'RM' | 'PM' =
+      d.type === 'PM' || (Number.isFinite(pmId) && pmId > 0) ? 'PM' : 'RM';
+    const req = Number(d.reqQty) || 0;
+    return {
+      type: lineType,
+      code: d.itemCode ?? '',
+      name: d.itemName ?? '',
+      required: req,
+      sih: 0,
+      shortage: 0,
+      quantity_requested: req,
+      unit: d.unit ?? '',
+      raw_material_id: d.raw_material_id != null ? Number(d.raw_material_id) : undefined,
+      pack_material_id: d.pack_material_id != null ? Number(d.pack_material_id) : undefined,
+    };
+  });
+}
+
+/** Recompute GST and line total after qty or price/unit change on a draft PO line. */
+export function recalcDraftPoLineItem(
+  line: DraftPOLineItem,
+  patch: Partial<Pick<DraftPOLineItem, 'qty' | 'pricePerUnit'>>,
+): DraftPOLineItem {
+  const qtyStr = patch.qty !== undefined ? patch.qty : line.qty;
+  const qty = parseQuantityRequested(qtyStr);
+  const price =
+    patch.pricePerUnit !== undefined
+      ? Number(patch.pricePerUnit) || 0
+      : Number(line.pricePerUnit) || 0;
+  const gstPct = line.gstPercent ?? 18;
+  const subtotal = qty * price;
+  const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+  const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+  return {
+    ...line,
+    ...(patch.qty !== undefined ? { qty: patch.qty } : {}),
+    ...(patch.pricePerUnit !== undefined ? { pricePerUnit: price } : {}),
+    gstAmount,
+    lineTotal,
+  };
+}
+
 /** Build purchase_orders.items payload from draft lines (optionally enrich ids from PR). */
 export function draftLineItemsToPurchaseOrderItems(
   lines: DraftPOLineItem[],
@@ -465,14 +1033,423 @@ export function draftLineItemsToPurchaseOrderItems(
         : [];
   return lines.map((l, idx) => {
     const src = assigned[idx];
+    const ld = normalizeLeadTimeDays(l.leadTimeDays);
+    const rmId = src?.raw_material_id ?? l.raw_material_id;
+    const pmId = src?.pack_material_id ?? l.pack_material_id;
+    const unitFromLine = String(l.unit ?? '').trim();
+    const unitFromPr = String(src?.unit ?? '').trim();
+    const defaultUnit = src?.type === 'PM' || (pmId != null && Number(pmId) > 0) ? 'PCS' : 'KG';
+    const unit = unitFromLine || unitFromPr || defaultUnit;
     return {
       itemName: l.item,
       itemCode: l.itemCode,
       quantity: l.qty,
+      unit,
       rate: String(l.pricePerUnit),
       tax: String(l.gstPercent || 18),
-      ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
-      ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
+      ...(ld !== undefined ? { lead_time_days: ld } : {}),
+      ...(rmId != null && Number(rmId) > 0 ? { raw_material_id: Number(rmId) } : {}),
+      ...(pmId != null && Number(pmId) > 0 ? { pack_material_id: Number(pmId) } : {}),
     };
   });
+}
+
+/** Match a release line edit row to a backend procurement item line. */
+export function releaseEditMatchesBackendPrItem(
+  ed: {
+    itemName?: string;
+    itemCode?: string;
+    raw_material_id?: number;
+    pack_material_id?: number;
+    type?: string;
+  },
+  bi: ProcurementRequestItem
+): boolean {
+  const rmB = bi.raw_material_id != null ? Number(bi.raw_material_id) : NaN;
+  const pmB = bi.pack_material_id != null ? Number(bi.pack_material_id) : NaN;
+  const rmE = ed.raw_material_id != null ? Number(ed.raw_material_id) : NaN;
+  const pmE = ed.pack_material_id != null ? Number(ed.pack_material_id) : NaN;
+  if (Number.isFinite(rmB) && rmB > 0 && Number.isFinite(rmE) && rmE > 0) return rmB === rmE;
+  if (Number.isFinite(pmB) && pmB > 0 && Number.isFinite(pmE) && pmE > 0) return pmB === pmE;
+  const cB = String(bi.code ?? '').trim().toLowerCase();
+  const nB = String(bi.name ?? '').trim().toLowerCase();
+  const cE = String(ed.itemCode ?? '').trim().toLowerCase();
+  const nE = String(ed.itemName ?? '').trim().toLowerCase();
+  if (cE.length > 0 && cB.length > 0 && cE === cB) return true;
+  if (nE.length > 0 && nB.length > 0 && (nE === nB || nE.includes(nB) || nB.includes(nE))) return true;
+  return false;
+}
+
+export type ReleaseLineEditRow = {
+  itemName: string;
+  itemCode: string;
+  type: RequestType;
+  qty: number;
+  originalQty: number;
+  unit: string;
+  moq: number;
+  unitPrice: number;
+  leadDays: number;
+  raw_material_id?: number;
+  pack_material_id?: number;
+};
+
+export type CommittedPoQtyItemRef = {
+  itemName?: string;
+  itemCode?: string;
+  raw_material_id?: number;
+  pack_material_id?: number;
+  type?: string;
+};
+
+/** Open qty on a PR line = total requested minus qty already on draft/released POs for the same request + item. */
+export function computeOpenProcurementLineQty(totalRequested: number, committedPoQty: number): number {
+  const total = Math.max(0, totalRequested);
+  const committed = Math.max(0, committedPoQty);
+  return Math.max(0, total - committed);
+}
+
+function committedPoLineMatchesItemRef(
+  line: {
+    itemName?: string;
+    itemCode?: string;
+    name?: string;
+    code?: string;
+    raw_material_id?: number;
+    pack_material_id?: number;
+    type?: string;
+  },
+  ref: CommittedPoQtyItemRef
+): boolean {
+  return releaseEditMatchesBackendPrItem(
+    {
+      itemName: String(line.itemName ?? line.name ?? ''),
+      itemCode: String(line.itemCode ?? line.code ?? ''),
+      type: line.type === 'PM' ? 'PM' : 'RM',
+      raw_material_id: line.raw_material_id,
+      pack_material_id: line.pack_material_id,
+    },
+    {
+      type: ref.type === 'PM' ? 'PM' : 'RM',
+      code: ref.itemCode,
+      name: ref.itemName,
+      raw_material_id: ref.raw_material_id,
+      pack_material_id: ref.pack_material_id,
+    } as ProcurementRequestItem
+  );
+}
+
+/** Sum qty already on draft or released POs for this procurement request line (excludes a PO being edited). */
+export function sumCommittedPoQtyForPrItem(
+  ref: CommittedPoQtyItemRef,
+  opts: {
+    requestId: string;
+    purchaseOrders?: Array<{
+      status?: string;
+      poNumber?: string;
+      formData?: Record<string, unknown>;
+      rawItems?: unknown[];
+    }>;
+    draftPOs?: Array<{ requestId?: string; dpoNumber?: string; lineItems: DraftPOLineItem[] }>;
+    excludePoNumber?: string;
+  }
+): number {
+  const reqId = String(opts.requestId ?? '').trim();
+  if (!reqId) return 0;
+
+  let sum = 0;
+  const seenPoNumbers = new Set<string>();
+
+  for (const po of opts.purchaseOrders ?? []) {
+    const status = String(po.status ?? '');
+    if (status !== 'Draft' && status !== 'Released') continue;
+    const fd = po.formData ?? {};
+    const poReqId = String(fd.requestId ?? fd.request_id ?? '').trim();
+    if (poReqId !== reqId) continue;
+    const poNumber = String(po.poNumber ?? '').trim();
+    if (poNumber && opts.excludePoNumber && poNumber === opts.excludePoNumber) continue;
+    if (poNumber) seenPoNumbers.add(poNumber);
+    const raw = Array.isArray(po.rawItems) ? po.rawItems : [];
+    for (const ln of raw) {
+      const row = ln as {
+        itemName?: string;
+        name?: string;
+        itemCode?: string;
+        code?: string;
+        quantity?: number | string;
+        raw_material_id?: number;
+        pack_material_id?: number;
+      };
+      if (!committedPoLineMatchesItemRef(row, ref)) continue;
+      sum += parseQuantityRequested(row.quantity);
+    }
+  }
+
+  for (const d of opts.draftPOs ?? []) {
+    if (String(d.requestId ?? '').trim() !== reqId) continue;
+    const dpoNumber = String(d.dpoNumber ?? '').trim();
+    if (dpoNumber && opts.excludePoNumber && dpoNumber === opts.excludePoNumber) continue;
+    if (dpoNumber && seenPoNumbers.has(dpoNumber)) continue;
+    for (const ln of d.lineItems ?? []) {
+      if (!committedPoLineMatchesItemRef(
+        {
+          itemName: ln.item,
+          itemCode: ln.itemCode,
+          type: ln.type,
+          raw_material_id: ln.raw_material_id,
+          pack_material_id: ln.pack_material_id,
+        },
+        ref
+      )) {
+        continue;
+      }
+      sum += parseQuantityRequested(ln.qty);
+    }
+  }
+
+  return sum;
+}
+
+function partialReleaseBaselineQty(
+  backendQty: number,
+  edit: ReleaseLineEditRow
+): number {
+  const backendOrig = Math.max(0, backendQty);
+  const openCap = Math.max(0, edit.originalQty);
+  return Math.min(backendOrig, openCap);
+}
+
+/**
+ * After creating a draft PO for a subset of qty, reduce open quantities on the procurement request.
+ * Lines not included in `linesForCreate` keep their previous open qty.
+ */
+export function mergeBackendPrItemsAfterPartialRelease(
+  backendItems: ProcurementRequestItem[],
+  lineEdits: ReleaseLineEditRow[],
+  linesForCreate: ReleaseLineEditRow[]
+): ProcurementRequestItem[] {
+  const out: ProcurementRequestItem[] = [];
+  for (const bi of backendItems) {
+    const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
+    if (!edit) {
+      out.push({ ...bi });
+      continue;
+    }
+    const orig = partialReleaseBaselineQty(parseQuantityRequested(bi.quantity_requested), edit);
+    const onThisPo = linesForCreate.some((c) => releaseEditMatchesBackendPrItem(c, bi));
+    const releaseQty = onThisPo ? Math.min(Math.max(0, edit.qty), orig) : 0;
+    const remaining = Math.max(0, orig - releaseQty);
+    if (remaining <= 0) {
+      continue;
+    }
+    out.push({
+      ...bi,
+      quantity_requested: remaining,
+    });
+  }
+  return out;
+}
+
+/**
+ * Split a backend PR's items into:
+ * - releasedItems: only the qty included in the draft PO (linesForCreate), with quantity_requested set to released qty
+ * - remainingItems: all untouched items + remaining qty for included lines (backlog).
+ *
+ * This enables creating a new procurement request row for the remainder, instead of mutating the same PR id.
+ */
+export function splitBackendPrItemsAfterPartialRelease(
+  backendItems: ProcurementRequestItem[],
+  lineEdits: ReleaseLineEditRow[],
+  linesForCreate: ReleaseLineEditRow[]
+): { releasedItems: ProcurementRequestItem[]; remainingItems: ProcurementRequestItem[] } {
+  const releasedItems: ProcurementRequestItem[] = [];
+  const remainingItems: ProcurementRequestItem[] = [];
+
+  for (const bi of backendItems) {
+    const edit = lineEdits.find((e) => releaseEditMatchesBackendPrItem(e, bi));
+
+    if (!edit) {
+      // Lines not part of the modal edits: keep them untouched only in remaining.
+      remainingItems.push({ ...bi });
+      continue;
+    }
+
+    const onThisPo = linesForCreate.some((c) => releaseEditMatchesBackendPrItem(c, bi));
+    if (!onThisPo) {
+      // Edited in UI but not selected for this draft PO: still part of the remaining.
+      remainingItems.push({ ...bi });
+      continue;
+    }
+
+    const orig = partialReleaseBaselineQty(parseQuantityRequested(bi.quantity_requested), edit);
+    const releaseQty = Math.min(Math.max(0, edit.qty), orig);
+    const remaining = Math.max(0, orig - releaseQty);
+
+    if (releaseQty > 0) {
+      releasedItems.push({
+        ...bi,
+        quantity_requested: releaseQty,
+        // For released portion we should not tag as backlog remainder.
+        partial_release_remainder: undefined,
+      } as ProcurementRequestItem);
+    }
+
+    if (remaining <= 0) {
+      continue;
+    }
+
+    const slabMoq = Number(edit.moq) > 0 ? Number(edit.moq) : 0;
+    const lineMoq = Number(bi.moq_min) > 0 ? Number(bi.moq_min) : slabMoq;
+    remainingItems.push({
+      ...bi,
+      quantity_requested: remaining,
+    });
+  }
+
+  return { releasedItems, remainingItems };
+}
+
+function applyQtyToProcurementLine(
+  line: ProcurementRequestItem,
+  qty: number
+): ProcurementRequestItem {
+  const q = Math.max(0, qty);
+  return {
+    ...line,
+    quantity_requested: q,
+    ...(line.required != null ? { required: q } : {}),
+    ...(line.shortage != null ? { shortage: q } : {}),
+    partial_release_remainder: undefined,
+  };
+}
+
+/**
+ * Merge sibling remainder PR lines back into the parent request (reverses partial-release split).
+ */
+export function mergeRemainderPrsIntoParentItems(
+  parentItems: ProcurementRequestItem[],
+  remainderPrs: Array<Pick<ProcurementRequest, 'items'>>
+): ProcurementRequestItem[] {
+  const out = parentItems.map((line) => ({ ...line }));
+  for (const remPr of remainderPrs) {
+    const remItems = Array.isArray(remPr.items) ? remPr.items : [];
+    for (const rem of remItems) {
+      const key = procurementItemMergeKey(rem);
+      const addQ = parseQuantityRequested(rem.quantity_requested);
+      if (addQ <= 0) continue;
+      const idx = out.findIndex((line) => procurementItemMergeKey(line) === key);
+      if (idx >= 0) {
+        const oldQ = parseQuantityRequested(out[idx].quantity_requested);
+        out[idx] = applyQtyToProcurementLine(out[idx], oldQ + addQ);
+      } else {
+        out.push({
+          ...rem,
+          partial_release_remainder: undefined,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** PR status after removing a draft PO when no other draft PO remains for the request. */
+export function resolveRequestStatusAfterDraftPoRemoved(
+  hasOtherDraftPoForRequest: boolean,
+  hasConfirmedOrAnyQuote: boolean
+): RequestStatus {
+  if (hasOtherDraftPoForRequest) return 'PO Draft';
+  return hasConfirmedOrAnyQuote ? 'Quoted' : 'New';
+}
+
+export function requestHasOtherDraftPurchaseOrder(
+  requestId: string,
+  purchaseOrders: Order[],
+  excludeBackendPoId?: string
+): boolean {
+  const want = String(requestId).replace(/\D/g, '').trim();
+  const exclude = String(excludeBackendPoId ?? '').replace(/^PO-/, '').replace(/\D/g, '').trim();
+  if (!want) return false;
+
+  for (const po of purchaseOrders) {
+    if (String(po.status ?? '').trim() !== 'Draft') continue;
+    const poId = String(po.id ?? '').replace(/^PO-/, '').replace(/\D/g, '').trim();
+    if (exclude && poId === exclude) continue;
+    const fd = po.formData ?? {};
+    const poReq = String(fd.requestId ?? fd.request_id ?? '').replace(/\D/g, '').trim();
+    if (poReq === want) return true;
+  }
+  return false;
+}
+
+function draftPoLineMergeKey(line: DraftPOLineItem): string {
+  return procurementItemMergeKey({
+    type: line.type,
+    code: line.itemCode,
+    name: line.item,
+    required: 0,
+    sih: 0,
+    shortage: 0,
+    quantity_requested: 0,
+    unit: line.unit ?? (line.type === 'RM' ? 'KG' : 'PCS'),
+    raw_material_id: line.raw_material_id,
+    pack_material_id: line.pack_material_id,
+  });
+}
+
+/** Remove qty that was on a draft PO from linked PR lines (when another draft PO still shares the request). */
+export function subtractDraftPoLineQtyFromProcurementItems(
+  parentItems: ProcurementRequestItem[],
+  draftLines: DraftPOLineItem[]
+): ProcurementRequestItem[] {
+  const subtractByKey = new Map<string, number>();
+  for (const line of draftLines) {
+    const key = draftPoLineMergeKey(line);
+    const q = parseQuantityRequested(line.qty);
+    if (q <= 0) continue;
+    subtractByKey.set(key, (subtractByKey.get(key) ?? 0) + q);
+  }
+
+  const out: ProcurementRequestItem[] = [];
+  for (const bi of parentItems) {
+    const key = procurementItemMergeKey(bi);
+    const sub = subtractByKey.get(key) ?? 0;
+    const oldQ = parseQuantityRequested(bi.quantity_requested);
+    const remaining = Math.max(0, oldQ - sub);
+    if (remaining <= 0) continue;
+    out.push(applyQtyToProcurementLine(bi, remaining));
+  }
+  return out;
+}
+
+export type DraftPoDeleteProcurementPlan =
+  | { kind: 'delete-parent' }
+  | { kind: 'update-parent'; items: ProcurementRequestItem[]; status: RequestStatus };
+
+/**
+ * After deleting a draft PO: remove linked PR from procurement (full delete) so qty returns to Planning.
+ * Sibling remainder PRs from partial release are kept. When another draft PO shares the request, subtract this PO's lines only.
+ */
+export function planDraftPoDeleteProcurementCleanup(
+  draft: Pick<DraftPO, 'lineItems'>,
+  parentPr: Pick<ProcurementRequest, 'items'>,
+  hasOtherDraftPoForRequest: boolean,
+  hasQuote: boolean
+): DraftPoDeleteProcurementPlan {
+  if (!hasOtherDraftPoForRequest) {
+    return { kind: 'delete-parent' };
+  }
+
+  const items = subtractDraftPoLineQtyFromProcurementItems(
+    Array.isArray(parentPr.items) ? parentPr.items : [],
+    Array.isArray(draft.lineItems) ? draft.lineItems : []
+  );
+  if (items.length === 0) {
+    return { kind: 'delete-parent' };
+  }
+
+  return {
+    kind: 'update-parent',
+    items,
+    status: resolveRequestStatusAfterDraftPoRemoved(false, hasQuote),
+  };
 }

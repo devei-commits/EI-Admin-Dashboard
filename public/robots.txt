@@ -1,0 +1,3 @@
+# Internal admin SPA — discourage indexing (matches <meta name="robots">).
+User-agent: *
+Disallow: /

@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useVendorClient } from '../context/VendorClientContext';
 import { useToast } from '../context/ToastContext';
-import { fetchVendorClientById, createVendorClient as apiCreateVendorClient, updateVendorClient as apiUpdateVendorClient, fetchNextCode } from '../services/vendorClient.service';
+import {
+  fetchVendorClientById,
+  createVendorClient as apiCreateVendorClient,
+  updateVendorClient as apiUpdateVendorClient,
+  type VendorClientRecord,
+} from '../services/vendorClient.service';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 
 interface Document {
   type: string;
@@ -111,6 +117,10 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
   const [currentStage, setCurrentStage] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const [saveSuccessCode, setSaveSuccessCode] = useState('');
+  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+  const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
   const [fetchedRecord, setFetchedRecord] = useState<Record<string, unknown> | null>(null);
 
   const existingClient = useMemo(() => {
@@ -196,7 +206,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
   });
 
   const stages = [
-    { title: 'Setup & Coding', hint: 'Pick entity type and generate code series.' },
+    { title: 'Setup', hint: 'Category and contact details; entity code is assigned on save.' },
     { title: 'Organization Details', hint: 'Brand, addresses, website, segment and industry.' },
     { title: 'Tax, Compliance & Documents', hint: 'GST/PAN/TAN/CIN/Licenses + document register.' },
     { title: 'Multi-level POCs', hint: 'Multiple contacts with escalation levels and departments.' },
@@ -333,61 +343,32 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     if (currentStage > 0) setCurrentStage(currentStage - 1);
   };
 
-  const generateCode = async () => {
-    const res = await fetchNextCode('client');
-    if (res.success && res.data) {
-      setFormData(prev => ({ ...prev, entityCode: res.data }));
-      addToast('success', `Client code generated: ${res.data}`);
-    } else {
-      addToast('error', res.error || 'Failed to generate code');
-    }
-  };
+  const entityCodeFromRecord = (record: VendorClientRecord) =>
+    String(record.entityCode ?? (record.data as { entityCode?: string })?.entityCode ?? '').trim();
 
-  const regenerateCode = async () => {
-    const res = await fetchNextCode('client');
-    if (res.success && res.data) {
-      setFormData(prev => ({ ...prev, entityCode: res.data }));
-      addToast('success', `Client code regenerated: ${res.data}`);
-    } else {
-      addToast('error', res.error || 'Failed to generate code');
-    }
-  };
-
-  const handleFillMockValues = async () => {
-    const res = await fetchNextCode('client');
-    const code = res.success && res.data ? res.data : `EI-CLI-${Date.now().toString(36).toUpperCase()}`;
-    setFormData(prev => ({
-      ...prev,
-      entityCode: code,
-      legalName: 'Mock Client Pvt Ltd',
-      tradeName: 'Mock Client',
-      brandName: 'Mock Brand',
-      primaryEmail: 'client@mock.com',
-      primaryPhone: '+91-9123456789',
-      billingAddress: '456 Client Avenue, Business Park',
-      shippingAddress: '456 Client Avenue, Business Park',
-      state: 'Telangana',
-      country: 'India',
-      website: 'https://mock-client.example.com',
-      segment: 'BUSINESS',
-      industry: 'FMCG',
-      businessType: 'B2B',
-      notes: 'Mock data for testing',
-      gstin: '36AABCM5678B1Z2',
-      pan: 'AABCM5678B',
-      paymentTerms: 'Custom',
-      customTerms: '50% advance + 50% on delivery',
-      paymentCreditType: 'Mixed',
-      payablesAdvancedPct: '50',
-      payablesBeforeDispatchPct: '0',
-      payablesAfterDispatchPct: '50',
-      advanceRequired: '50',
-    }));
-    setDocuments([{ type: 'GST Certificate', link: 'https://example.com/doc', date: new Date().toISOString().slice(0, 10) }]);
-    setPocs([{ name: 'Jane Smith', role: 'Account Manager', email: 'jane@mock.com', phone: '+91-9123456789', level: 'Primary', preferred: 'Email', notes: '' }]);
-    setBanks([]);
-    setProductInterests([]);
-    addToast('success', 'Mock values filled. Edit as needed and submit.');
+  const closeSaveSuccessModal = () => {
+    setSaveSuccessOpen(false);
+    setSaveSuccessCode('');
+    setSaveSuccessRows([]);
+    setSaveSuccessZohoNote(null);
+    setFormData({
+      setupType: 'CLIENT', setupCategory: '', setupPrefix: 'CLI', entityCode: '', zohoId: '',
+      legalName: '', tradeName: '', brandName: '', primaryEmail: '', primaryPhone: '',
+      billingAddress: '', shippingAddress: '', state: '', country: 'India',
+      website: '', segment: '', industry: '', businessType: '', notes: '',
+      gstin: '', pan: '', tan: '', cin: '', fssaiLicense: '', drugLicense: '',
+      paymentTerms: '', customTerms: '', paymentCreditType: 'Credit', payablesAdvancedPct: '0', payablesBeforeDispatchPct: '0', payablesAfterDispatchPct: '100',
+      creditLimit: '', advanceRequired: '',
+      tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
+      agreementType: '', agreementStatus: '', startDate: '', endDate: '',
+      agreementLink: '', owner: '', agreementNotes: '',
+      salesOwner: '', accountManager: '', leadSource: '', referredBy: '',
+      clientStage: '', potentialValue: '', acquisitionDate: '',
+      linkedUserId: '',
+    });
+    setDocuments([]); setPocs([]); setBanks([]); setProductInterests([]);
+    setCurrentStage(0);
+    onSaved?.();
   };
 
   const addDocument = () => {
@@ -449,6 +430,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
     const before = Number(String(formData.payablesBeforeDispatchPct ?? '').trim()) || 0;
     const after = Number(String(formData.payablesAfterDispatchPct ?? '').trim()) || 0;
     const computedPaymentTerms = `Advanced ${adv}% + Before dispatch ${before}% + After dispatch/On delivery ${after}%`;
+    const shippingResolved =
+      String(formData.shippingAddress || '').trim() || String(formData.billingAddress || '').trim();
 
     const payload = {
       name: formData.tradeName || formData.legalName,
@@ -459,7 +442,16 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       category: formData.setupCategory,
       paymentTerms: computedPaymentTerms,
       notes: formData.notes,
-      data: { ...formData, paymentTerms: computedPaymentTerms, advanceRequired: String(adv), documents, pocs, banks, productInterests },
+      data: {
+        ...formData,
+        shippingAddress: shippingResolved,
+        paymentTerms: computedPaymentTerms,
+        advanceRequired: String(adv),
+        documents,
+        pocs,
+        banks,
+        productInterests,
+      },
     };
 
     if (editingId && existingClient) {
@@ -487,19 +479,8 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       return;
     }
 
-    let entityCode = (formData.entityCode || '').trim();
-    if (!entityCode) {
-      const codeRes = await fetchNextCode('client');
-      if (codeRes.success && codeRes.data) entityCode = codeRes.data;
-      else {
-        addToast('error', 'Entity code is required. Click "Generate" or "Fill mock values" to get one.');
-        setIsSaving(false);
-        return;
-      }
-    }
     const res = await apiCreateVendorClient({
       type: 'client',
-      entityCode,
       zohoId: formData.zohoId || undefined,
       ...(formData.linkedUserId.trim() ? { userId: formData.linkedUserId.trim() } : {}),
       name: payload.name,
@@ -508,33 +489,33 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
       location: payload.location,
       country: payload.country,
       category: payload.category,
-      status: 'pending',
+      status: 'active',
       paymentTerms: payload.paymentTerms,
       notes: payload.notes,
       data: payload.data as Record<string, unknown>,
     });
 
-    if (res.success) {
-      addToast('success', 'Client created successfully!');
-      setFormData({
-        setupType: 'CLIENT', setupCategory: '', setupPrefix: 'CLI', entityCode: '', zohoId: '',
-        legalName: '', tradeName: '', brandName: '', primaryEmail: '', primaryPhone: '',
-        billingAddress: '', shippingAddress: '', state: '', country: 'India',
-        website: '', segment: '', industry: '', businessType: '', notes: '',
-        gstin: '', pan: '', tan: '', cin: '', fssaiLicense: '', drugLicense: '',
-        paymentTerms: '', customTerms: '', paymentCreditType: 'Credit', payablesAdvancedPct: '0', payablesBeforeDispatchPct: '0', payablesAfterDispatchPct: '100',
-        creditLimit: '', advanceRequired: '',
-        tdsApplicable: '', preferredPaymentMode: '', paymentNotes: '',
-        agreementType: '', agreementStatus: '', startDate: '', endDate: '',
-        agreementLink: '', owner: '', agreementNotes: '',
-        salesOwner: '', accountManager: '', leadSource: '', referredBy: '',
-        clientStage: '', potentialValue: '', acquisitionDate: '',
-        linkedUserId: '',
-      });
-      setDocuments([]); setPocs([]); setBanks([]); setProductInterests([]);
-      setCurrentStage(0);
+    if (res.success && res.data) {
+      const code = entityCodeFromRecord(res.data);
+      setSaveSuccessCode(code);
+      setSaveSuccessRows([
+        { label: 'Legal name', value: formData.legalName || res.data.name || '' },
+        { label: 'Trade name', value: formData.tradeName || '' },
+        { label: 'Category', value: res.data.category || formData.setupCategory || '' },
+        { label: 'Email', value: res.data.email || formData.primaryEmail || '' },
+      ]);
+      const zohoSynced = res.data.zoho_sync?.synced === true;
+      setSaveSuccessZohoNote(
+        zohoSynced && res.data.zoho_sync?.contact_id
+          ? `Synced to Zoho Books (contact ${res.data.zoho_sync.contact_id}).`
+          : zohoSynced
+            ? 'Synced to Zoho Books.'
+            : res.data.zoho_sync?.error
+              ? `Saved locally; Zoho sync failed: ${res.data.zoho_sync.error}`
+              : null
+      );
+      setSaveSuccessOpen(true);
       setIsSaving(false);
-      onSaved?.();
       return;
     }
     addToast('error', (res.error && typeof res.error === 'object' && 'message' in res.error ? (res.error as { message: string }).message : String(res.error || 'Failed to create client')));
@@ -557,15 +538,6 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
             <p className="text-sm text-gray-500 mt-1">{stages[currentStage].hint}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {!editingId && (
-              <button
-                type="button"
-                onClick={handleFillMockValues}
-                className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-200 transition font-medium text-sm"
-              >
-                Fill mock values
-              </button>
-            )}
             <button
               type="button"
               onClick={handlePrevStage}
@@ -659,29 +631,12 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 </div>
               </div>
 
-              <div className={sectionTitleClass}>Code Series</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Series Prefix</label>
-                  <input type="text" value="CLI" readOnly className={`${inputClass} bg-gray-50`} />
+              {editingId && String(formData.entityCode || '').trim() ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Entity code</p>
+                  <p className="text-sm font-mono text-gray-800 mt-0.5">{formData.entityCode}</p>
                 </div>
-                <div>
-                  <label className={labelClass}>Next Code Preview</label>
-                  <input type="text" value={formData.entityCode || '— Generate to get code —'} readOnly className={`${inputClass} bg-gray-50`} />
-                </div>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <span className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-mono"><b>Vendor:</b> EI-VEN-00001</span>
-                <span className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-xs font-mono"><b>Client:</b> EI-CLI-00001</span>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={generateCode} className="px-4 py-2 bg-gray-100 text-amber-900 border border-amber-300 rounded-lg hover:bg-gray-200 transition font-medium text-sm">
-                  Generate Code
-                </button>
-                <button type="button" onClick={regenerateCode} className="px-4 py-2 bg-red-100 text-red-800 border border-red-300 rounded-lg hover:bg-red-200 transition font-medium text-sm">
-                  Regenerate
-                </button>
-              </div>
+              ) : null}
             </div>
           )}
 
@@ -715,7 +670,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 </div>
                 <div>
                   <label className={labelClass}>Shipping Address</label>
-                  <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="If different from billing" className={inputClass} rows={3} />
+                  <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="Leave blank to use billing address" className={inputClass} rows={3} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1463,6 +1418,16 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           </div>
         </div>
       </form>
+      <MasterSaveSuccessModal
+        isOpen={saveSuccessOpen}
+        onClose={closeSaveSuccessModal}
+        title="Client created"
+        subtitle="Your client is saved. Details and the generated entity code are below."
+        generatedCode={saveSuccessCode}
+        codeLabel="Generated entity code"
+        rows={saveSuccessRows}
+        zohoNote={saveSuccessZohoNote}
+      />
     </div>
   );
 };

@@ -12,6 +12,7 @@ export const MODULE_ROUTE_MAP: Record<string, string> = {
   'settings': '/settings',
   'catalogue-management': '/catalogue-management',
   'active-ingredients': '/active-ingredients',
+  'customization-catalog': '/customization-catalog',
   'coupon-management': '/coupon-management',
   'discount-management': '/discount-management',
   'doctor-appointments': '/doctor-appointments',
@@ -46,6 +47,7 @@ export const ROUTE_MODULE_MAP: Record<string, string> = {
   '/catalogue-management': 'catalogue-management',
   '/packaging-management': 'packaging-management',
   '/active-ingredients': 'active-ingredients',
+  '/customization-catalog': 'active-ingredients',
   '/coupon-management': 'coupon-management',
   '/discount-management': 'discount-management',
 };

@@ -1,4 +1,5 @@
 import { api } from '../lib/apiClient';
+import type { BatchMaterialCoverage, ProductionReservedItemRow } from '../lib/productionBatchReserve';
 
 const BASE = '/api/v1/production';
 
@@ -122,6 +123,9 @@ export interface BatchRow {
   monocarton: boolean; shrink: boolean;
   teamBMR: string[]; teamBPR: string[];
   qcOfficerBMR: string; qcOfficerBPR: string;
+  /** Manufacturing unit zone (MTR receive) set when scheduling the batch. */
+  scheduledMuZone?: string;
+  scheduleRemarks?: string;
   mfgDate: string; fillDate: string; packDate: string; fgDate: string;
   rmConnectDate: string; pmConnectDate: string;
   rmReserved: boolean; pmReserved: boolean;
@@ -171,14 +175,66 @@ export async function fetchBatchById(pk: number): Promise<BatchRow | null> {
   }
 }
 
+export type BatchReservedStockMaps = {
+  /** Reserved for this production batch (reserved_batch_items). */
+  byCode: Record<string, number>;
+  /** Reserved by other batches — not available for this batch's reserve/MTR. */
+  otherBatchesByCode: Record<string, number>;
+};
+
+/** Reserved qty maps for this production batch by material code (MTR + Reserve modals). */
+export async function fetchBatchMtrReserved(pk: number): Promise<BatchReservedStockMaps> {
+  try {
+    const res = await api.get<{
+      success?: boolean;
+      byCode?: Record<string, number>;
+      otherBatchesByCode?: Record<string, number>;
+    }>(`${BASE}/batches/${pk}/mtr-reserved`);
+    const data = (res as { data?: BatchReservedStockMaps })?.data ?? res;
+    const byCode =
+      (data as { byCode?: Record<string, number> })?.byCode &&
+      typeof (data as { byCode?: Record<string, number> }).byCode === 'object'
+        ? (data as { byCode: Record<string, number> }).byCode
+        : {};
+    const otherBatchesByCode =
+      (data as { otherBatchesByCode?: Record<string, number> })?.otherBatchesByCode &&
+      typeof (data as { otherBatchesByCode?: Record<string, number> }).otherBatchesByCode === 'object'
+        ? (data as { otherBatchesByCode: Record<string, number> }).otherBatchesByCode
+        : {};
+    return { byCode, otherBatchesByCode };
+  } catch {
+    return { byCode: {}, otherBatchesByCode: {} };
+  }
+}
+
 export async function createBatch(payload: Record<string, unknown>): Promise<BatchRow> {
   const res = await api.post<BatchRow>(`${BASE}/batches`, payload);
   return (res as any)?.data ?? res;
 }
 
-/** Create a rework batch (BMR-YYYY-NNN-rw-01, rw-02, ...) from an existing batch. Same SO; optional reason stored in remarks. */
-export async function createRworkBatch(baseBatchId: number, reason?: string): Promise<BatchRow> {
-  const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, { baseBatchId, reason: reason ?? '' });
+export type CreateReworkOptions = {
+  reason?: string;
+  targetOrderQty?: number;
+  targetBatchSizeKg?: number;
+  rmLines?: Array<Record<string, unknown>>;
+  pmLines?: Array<Record<string, unknown>>;
+};
+
+/** Create a rework batch (BMR-YYYY-NNN-rw-01, rw-02, ...) from an existing batch. */
+export async function createRworkBatch(baseBatchId: number, reasonOrOptions?: string | CreateReworkOptions): Promise<BatchRow> {
+  const payload: Record<string, unknown> = { baseBatchId };
+  if (typeof reasonOrOptions === 'string') {
+    payload.reason = reasonOrOptions;
+  } else if (reasonOrOptions && typeof reasonOrOptions === 'object') {
+    payload.reason = reasonOrOptions.reason ?? '';
+    if (reasonOrOptions.targetOrderQty != null) payload.targetOrderQty = reasonOrOptions.targetOrderQty;
+    if (reasonOrOptions.targetBatchSizeKg != null) payload.targetBatchSizeKg = reasonOrOptions.targetBatchSizeKg;
+    if (Array.isArray(reasonOrOptions.rmLines)) payload.rmLines = reasonOrOptions.rmLines;
+    if (Array.isArray(reasonOrOptions.pmLines)) payload.pmLines = reasonOrOptions.pmLines;
+  } else {
+    payload.reason = '';
+  }
+  const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, payload);
   return (res as any)?.data ?? res;
 }
 
@@ -223,6 +279,49 @@ export interface BatchBOMResponse {
   error?: string;
 }
 
+export interface BatchDispensingMuStockResponse {
+  success: boolean;
+  scheduledMuZone?: string;
+  /** Exact DECIMAL strings from DB (ml1_stock / ml2_stock bucket). */
+  rmByCode?: Record<string, string>;
+  pmByCode?: Record<string, string>;
+  error?: string;
+}
+
+/** Qty at batch manufacturing zone per code (same source as dispensing PATCH validation). */
+export async function fetchBatchDispensingMuStock(batchPk: number): Promise<BatchDispensingMuStockResponse> {
+  try {
+    const res = await api.get<BatchDispensingMuStockResponse>(`${BASE}/batches/${batchPk}/dispensing-mu-stock`);
+    const body = (res as {
+      success?: boolean;
+      scheduledMuZone?: string;
+      rmByCode?: Record<string, string | number>;
+      pmByCode?: Record<string, string | number>;
+    }) ?? res;
+    if (body?.success) {
+      const toStrMap = (m: Record<string, string | number> | undefined): Record<string, string> => {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(m ?? {})) {
+          out[k] = typeof v === 'string' ? v : String(v);
+        }
+        return out;
+      };
+      return {
+        success: true,
+        scheduledMuZone: body.scheduledMuZone,
+        rmByCode: toStrMap(body.rmByCode),
+        pmByCode: toStrMap(body.pmByCode),
+      };
+    }
+    return { success: false, error: 'Invalid response' };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Failed to load dispensing MU stock',
+    };
+  }
+}
+
 export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMResponse> {
   try {
     const path = `${BASE}/batches/${batchPk}/bom`;
@@ -255,5 +354,74 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load batch BOM';
     return { success: false, data: undefined, error: message };
+  }
+}
+
+export async function fetchProductionReservedItems(): Promise<ProductionReservedItemRow[]> {
+  try {
+    const res = await api.get<{ success?: boolean; data?: ProductionReservedItemRow[] }>(`${BASE}/reserved-items`);
+    const data = (res as { data?: ProductionReservedItemRow[] })?.data ?? res;
+    const items = (data as { data?: ProductionReservedItemRow[] })?.data ?? data;
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function reserveProductionBatchLines(
+  batchPk: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] },
+): Promise<{ success: boolean; error?: string; shortages?: unknown }> {
+  try {
+    await api.post(`${BASE}/batches/${batchPk}/reserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string; shortages?: unknown } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Reserve failed'),
+      shortages: err?.body?.shortages,
+    };
+  }
+}
+
+export async function unreserveProductionBatchLines(
+  batchPk: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await api.post(`${BASE}/batches/${batchPk}/unreserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Unreserve failed'),
+    };
+  }
+}
+
+export async function fetchBatchReservationCoverage(
+  batchPk: number,
+): Promise<{ rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } | null> {
+  try {
+    const res = await api.get<{
+      success?: boolean;
+      data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage };
+    }>(`${BASE}/batches/${batchPk}/reservation-coverage`);
+    const body = (res as { data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } })?.data ?? res;
+    const data = (body as { data?: { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } })?.data ?? body;
+    if (data && typeof data === 'object' && 'rm' in data && 'pm' in data) {
+      return data as { rm: BatchMaterialCoverage; pm: BatchMaterialCoverage };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }

@@ -21,6 +21,11 @@ export interface ZoneDTO {
   areaSqm: number | null;
   description: string | null;
   utilisationPct: number;
+  zohoWarehouseId?: string | null;
+  zohoLocationId?: string | null;
+  isActive?: boolean;
+  isZohoPrimary?: boolean;
+  isDefault?: boolean;
   racks?: RackDTO[];
 }
 
@@ -31,6 +36,7 @@ export interface FacilityAreaDTO {
   areaType: 'warehouse' | 'production';
   icon: string | null;
   description: string | null;
+  zohoLocationId?: string | null;
   zones: ZoneDTO[];
 }
 
@@ -175,5 +181,67 @@ export async function createRack(payload: CreateRackPayload): Promise<ServiceRes
     return { data: extractOne<RackDTO>(res), error: null, success: true };
   } catch (e) {
     return { data: null as unknown as RackDTO, error: e instanceof Error ? e.message : 'Failed to create rack', success: false };
+  }
+}
+
+export interface EnsureCustomLocationPayload {
+  areaType: 'warehouse' | 'production';
+  zoneText: string;
+  rackText: string;
+}
+
+export interface EnsureCustomLocationResult {
+  areaId: number;
+  zoneId: number;
+  rackId: number;
+  zoneCode: string;
+  zoneName: string;
+  rackCode: string;
+  areaType: 'warehouse' | 'production';
+  routedToDefault?: boolean;
+  stockLinesMoved?: number;
+  createdZone?: boolean;
+  createdRack?: boolean;
+}
+
+/**
+ * Warehouse custom GRN put-away: find or create zone under main warehouse, then rack in that zone.
+ * Production still uses PROD-CUSTOM find-or-create.
+ */
+export async function setZoneAsDefault(zoneId: number): Promise<ServiceResult<{
+  id: number;
+  isDefault: boolean;
+  defaultRackId: number;
+  defaultRackCode: string;
+}>> {
+  try {
+    const res = await api.post<{
+      id: number;
+      isDefault: boolean;
+      defaultRackId: number;
+      defaultRackCode: string;
+    }>(`${ZONES_BASE}/${zoneId}/set-default`, {});
+    return { data: extractOne(res), error: null, success: true };
+  } catch (e) {
+    return {
+      data: null as unknown as { id: number; isDefault: boolean; defaultRackId: number; defaultRackCode: string },
+      error: e instanceof Error ? e.message : 'Failed to set default location',
+      success: false,
+    };
+  }
+}
+
+export async function ensureCustomZoneAndRack(
+  payload: EnsureCustomLocationPayload
+): Promise<ServiceResult<EnsureCustomLocationResult>> {
+  try {
+    const res = await api.post<EnsureCustomLocationResult>(`${BASE}/ensure-custom`, payload);
+    return { data: extractOne<EnsureCustomLocationResult>(res), error: null, success: true };
+  } catch (e) {
+    return {
+      data: null as unknown as EnsureCustomLocationResult,
+      error: e instanceof Error ? e.message : 'Failed to register custom location',
+      success: false,
+    };
   }
 }

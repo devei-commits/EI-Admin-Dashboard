@@ -16,9 +16,13 @@ export interface PriceListSyncResult {
 export interface VendorClientRecord {
   id: string;
   type: "vendor" | "client";
+  /** EI-VEN-##### / EI-CLI-##### — also in data.entityCode */
+  entityCode?: string;
   /** users.userid when this master is linked to a portal/login user */
   userId?: string | null;
   zohoId?: string;
+  /** Set when backend syncs vendor/client to Zoho Books on create or update */
+  zoho_sync?: { synced: boolean; contact_id?: string; error?: string };
   /** Present for vendors after save when backend syncs vendorItems → items_list */
   priceListSync?: PriceListSyncResult;
   name: string;
@@ -48,7 +52,8 @@ export interface PaginatedRowsResponse<T> {
 
 export interface CreateVendorClientPayload {
   type: "vendor" | "client";
-  entityCode: string;
+  /** Omit on create — server allocates EI-VEN / EI-CLI series. */
+  entityCode?: string;
   zohoId?: string | null;
   /** Optional link to portal/user management record. */
   userId?: string | null;
@@ -126,6 +131,60 @@ export async function fetchVendorClientById(
   }
 }
 
+/** Response from POST /vendor-client/sync-zoho (draft → Zoho Books contact) */
+export interface SyncZohoVendorDraftResponse {
+  zohoId: string;
+  /** Fields to merge into VendorForm state (camelCase keys) */
+  mappedFields: Record<string, string>;
+  alreadySynced?: boolean;
+  zoho_sync?: { synced: boolean; contact_id?: string };
+}
+
+/**
+ * Create a Zoho Books vendor contact from the current form draft and return contact id + mapped fields.
+ * Does not persist a vendor_client row.
+ */
+export async function syncVendorDraftToZoho(
+  payload: CreateVendorClientPayload,
+): Promise<ServiceResult<SyncZohoVendorDraftResponse>> {
+  try {
+    const body = {
+      type: payload.type,
+      entityCode: payload.entityCode,
+      ...(payload.userId != null && payload.userId !== ""
+        ? { userId: payload.userId }
+        : {}),
+      zohoId: payload.zohoId ?? undefined,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      location: payload.location,
+      country: payload.country,
+      city: payload.city,
+      category: payload.category,
+      status: payload.status ?? "pending",
+      paymentTerms: payload.paymentTerms,
+      notes: payload.notes,
+      data: payload.data ?? {},
+    };
+    const row = await api.post<SyncZohoVendorDraftResponse>(
+      "/api/v1/vendor-client/sync-zoho",
+      body,
+    );
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const err = e as Error & { status?: number; body?: { error?: string } };
+    const message =
+      err.body?.error ??
+      (err instanceof Error ? err.message : "Zoho sync failed");
+    return {
+      data: null,
+      error: { code: "ERROR", message, timestamp: new Date().toISOString() },
+      success: false,
+    };
+  }
+}
+
 export async function fetchNextCode(
   type: "vendor" | "client",
 ): Promise<ServiceResult<string>> {
@@ -145,9 +204,11 @@ export async function createVendorClient(
   payload: CreateVendorClientPayload,
 ): Promise<ServiceResult<VendorClientRecord>> {
   try {
-    const body = {
+    const body: Record<string, unknown> = {
       type: payload.type,
-      entityCode: payload.entityCode,
+      ...(payload.entityCode != null && String(payload.entityCode).trim()
+        ? { entityCode: payload.entityCode.trim() }
+        : {}),
       ...(payload.userId != null && payload.userId !== ""
         ? { userId: payload.userId }
         : {}),
@@ -199,6 +260,104 @@ export async function updateVendorClient(
       e instanceof Error ? e.message : "Failed to update vendor/client";
     return { data: null, error: message, success: false };
   }
+}
+
+export interface ClientMasterExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+    skipped_no_name?: number;
+    zoho_unreliable_rows?: number;
+    zoho_overlay_unreliable?: number;
+  } | null;
+  rows_imported?: number;
+  import_stats?: {
+    unique_zoho_ids?: number;
+    merged_duplicate_rows?: number;
+    zoho_id_collisions_cleared?: number;
+  };
+  summary?: {
+    clients_created: number;
+    clients_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    excel_row: number;
+    sheet?: string;
+    action: string;
+    reason?: string;
+    entity_code?: string;
+    zoho_id?: string;
+  }>;
+}
+
+/** Import clients from workbook sheet "Active Clients" (ignores Summary tab). */
+export async function importClientMasterExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<ClientMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const suffix = options?.details ? "?details=true" : "";
+  return api.post<ClientMasterExcelImportResponse>(
+    `/api/v1/vendor-client/import-excel${suffix}`,
+    fd,
+  );
+}
+
+export interface VendorMasterExcelImportResponse {
+  ok: boolean;
+  error?: string;
+  rows_total?: number;
+  sheet?: string;
+  header_row?: number;
+  parse_stats?: {
+    scanned_through_row?: number;
+    skipped_no_identity?: number;
+    skipped_no_name?: number;
+    zoho_unreliable_rows?: number;
+    zoho_overlay_unreliable?: number;
+  } | null;
+  rows_imported?: number;
+  import_stats?: {
+    unique_zoho_ids?: number;
+    merged_duplicate_rows?: number;
+    zoho_id_collisions_cleared?: number;
+  };
+  summary?: {
+    vendors_created: number;
+    vendors_updated: number;
+    skipped: number;
+    errors: number;
+  };
+  row_log?: Array<{
+    excel_row: number;
+    sheet?: string;
+    action: string;
+    reason?: string;
+    entity_code?: string;
+    zoho_id?: string;
+  }>;
+}
+
+/** Import vendors from workbook sheet "Active Vendors" (ignores Summary tab). */
+export async function importVendorMasterExcel(
+  file: File,
+  options?: { details?: boolean },
+): Promise<VendorMasterExcelImportResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const suffix = options?.details ? "?details=true" : "";
+  return api.post<VendorMasterExcelImportResponse>(
+    `/api/v1/vendor-client/import-vendor-excel${suffix}`,
+    fd,
+  );
 }
 
 export async function deleteVendorClient(

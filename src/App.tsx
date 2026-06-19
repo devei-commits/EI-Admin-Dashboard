@@ -8,8 +8,10 @@ import { VendorClientProvider } from './context/VendorClientContext'
 import { GlobalStateProvider } from './context/GlobalStateContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
+import SessionExpiredNotifier from './components/SessionExpiredNotifier'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
 import Sidebar from "./components/Sidebar"
+import StandaloneModuleLayout from "./components/StandaloneModuleLayout"
 import { monitorConnection } from './lib/performanceOptimization'
 
 // Lazy loaded pages for better performance
@@ -20,6 +22,7 @@ const UserManagement = lazy(() => import('./pages/UserManagement'))
 
 const CatalogueManagement = lazy(() => import('./pages/CatalogueManagement'))
 const ActiveIngredients = lazy(() => import('./pages/ActiveIngredients'))
+const CustomizationCatalog = lazy(() => import('./pages/CustomizationCatalog'))
 const EnquiryManagement = lazy(() => import('./pages/EnquiryManagement'))
 const DoctorAppointments = lazy(() => import('./pages/DoctorAppointments'))
 const ContactEnquiry = lazy(() => import('./pages/ContactEnquiry'))
@@ -28,6 +31,7 @@ const ProductSamples = lazy(() => import('./pages/ProductSamples'))
 const TreasuryApp = lazy(() => import('./pages/TreasuryApp'))
 const PackagingRefactored = lazy(() => import('./pages/PackagingForm'))
 const PackagingManagement = lazy(() => import('./pages/PackagingManagement'))
+const CustomizationPackagingCatalog = lazy(() => import('./pages/CustomizationPackagingCatalog'))
 const RawMaterialRefactored = lazy(() => import('./pages/RawMaterialForm'))
 const BOMDashboard = lazy(() => import('./pages/BOMDashboard'))
 const BOMRefactored = lazy(() => import('./pages/BOMForm'))
@@ -111,9 +115,11 @@ const AppLayout = () => {
        // Handle login route
        if (location.pathname === '/login') {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <Login />
-                     </Suspense>
+                     <main id="main-content" className="min-h-screen">
+                            <Suspense fallback={<PageLoader />}>
+                                   <Login />
+                            </Suspense>
+                     </main>
               );
        }
 
@@ -139,146 +145,174 @@ const AppLayout = () => {
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/pis/*" element={<PIS />} />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/pis/*" element={<PIS />} />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        // If it's a Treasury route, render Treasury standalone without admin sidebar
        if (isTreasuryRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/treasury/*" element={<TreasuryApp />} />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/treasury/*" element={<TreasuryApp />} />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isProcurementRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/procurement" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Procurement />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/procurement" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" anySubModuleIds={["procurement", "sales-orders"]}>
+                                                                      <Procurement />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isWarehouseRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/warehouse/*" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <WarehousePage />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/warehouse/*" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" subModuleId="warehouse-inventory">
+                                                                      <WarehousePage />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isPlanningRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
-                                          <Route path="/planning/pis-extracted" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                          <Route path="/planning/items-involved" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                          <Route path="/planning/availability-summary" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                          <Route path="/planning/batches" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Planning />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/planning" element={<Navigate to="/planning/pis-extracted" replace />} />
+                                                        <Route path="/planning/pis-extracted" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
+                                                                      <Planning />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                        <Route path="/planning/items-involved" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
+                                                                      <Planning />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                        <Route path="/planning/availability-summary" element={<Navigate to="/planning/pis-extracted" replace />} />
+                                                        <Route path="/planning/batches" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" subModuleId="planning">
+                                                                      <Planning />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isProductionRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/production" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Production />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/production" element={
+                                                               <ProtectedModuleRoute moduleId="order-management">
+                                                                      <Production />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isFulfillmentRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/fulfillment" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <Fulfillment />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/fulfillment" element={
+                                                               <ProtectedModuleRoute moduleId="order-management">
+                                                                      <Fulfillment />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        if (isClientHubRoute) {
               return (
-                     <Suspense fallback={<PageLoader />}>
-                            <ErrorBoundary>
-                                   <Routes>
-                                          <Route path="/client-hub" element={
-                                                 <ProtectedModuleRoute moduleId="order-management">
-                                                        <ClientHub />
-                                                 </ProtectedModuleRoute>
-                                          } />
-                                   </Routes>
-                            </ErrorBoundary>
-                     </Suspense>
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/client-hub" element={
+                                                               <ProtectedModuleRoute moduleId="order-management">
+                                                                      <ClientHub />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
               );
        }
 
        // Otherwise render with admin sidebar
        return (
-              <div className="flex flex-row min-h-screen bg-background">
+              <div className="flex flex-row min-h-screen min-w-0 bg-background">
                      <Sidebar />
-                     <div className="flex-1 pt-14 md:pt-0 overflow-auto p-4 md:p-6 pb-20 md:pb-6">
+                     <main id="main-content" className="min-w-0 flex-1 pt-14 md:pt-0 overflow-x-auto overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
                             <Suspense fallback={<PageLoader />}>
                                    <ErrorBoundary>
                                           <Routes>
@@ -301,6 +335,11 @@ const AppLayout = () => {
                                                  <Route path="/active-ingredients" element={
                                                         <ProtectedModuleRoute moduleId="active-ingredients">
                                                                <ActiveIngredients />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/customization-catalog" element={
+                                                        <ProtectedModuleRoute moduleId="active-ingredients">
+                                                               <CustomizationCatalog />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/enquiry-management" element={
@@ -336,6 +375,11 @@ const AppLayout = () => {
                                                  <Route path="/packaging-management" element={
                                                         <ProtectedModuleRoute moduleId="packaging-management">
                                                                <PackagingManagement />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/customization-packaging-catalog" element={
+                                                        <ProtectedModuleRoute moduleId="packaging-management">
+                                                               <CustomizationPackagingCatalog />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/packaging" element={
@@ -403,7 +447,7 @@ const AppLayout = () => {
                                           </Routes>
                                    </ErrorBoundary>
                             </Suspense>
-                     </div>
+                     </main>
               </div>
        );
 };
@@ -422,6 +466,7 @@ const App = () => {
                             <AuthProvider>
                                    <NetworkStatus isOnline={isOnline} />
                                    <ToastProvider>
+                                          <SessionExpiredNotifier />
                                           <VendorClientProvider>
                                                  <ItemsProvider>
                                                         <GlobalStateProvider>

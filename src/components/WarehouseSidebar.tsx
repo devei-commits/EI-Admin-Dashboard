@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
+import AdminMainMenuButton from './AdminMainMenuButton';
 
 interface WarehouseSidebarProps {
   activeSection: string;
@@ -18,6 +19,7 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
     { id: 'inventory', label: 'Inventory', icon: '' },
     { id: 'inbound', label: 'Inbound', icon: '' },
     { id: 'outbound', label: 'Transfer orders', icon: '' },
+    { id: 'stock-check-requests', label: 'Stock Check Requests', icon: '' },
   ];
 
   const handleSectionClick = (sectionId: string) => {
@@ -38,6 +40,7 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
     <>
       {/* Mobile Header Bar */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-background border-b border-slate-200 z-50 flex items-center px-4 shadow-sm">
+        <AdminMainMenuButton />
         <button
           className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
           onClick={() => setIsOpen(!isOpen)}
@@ -83,8 +86,9 @@ const WarehouseSidebar: React.FC<WarehouseSidebarProps> = ({
           mt-14 md:mt-0`}
       >
         {/* Logo Section */}
-        <div className="hidden md:flex p-5 items-center justify-center border-b border-slate-100 bg-transparent">
-          <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain" />
+        <div className="hidden md:flex p-5 items-center gap-2 border-b border-slate-100 bg-transparent">
+          <AdminMainMenuButton />
+          <img src={eilogofull} alt="Logo" className="max-h-10 max-w-full object-contain mx-auto" />
         </div>
 
         {/* Navigation Links */}

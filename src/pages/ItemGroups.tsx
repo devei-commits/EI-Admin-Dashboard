@@ -14,6 +14,9 @@ import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import type { PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
+import RmMasterTypeahead from '../components/RmMasterTypeahead';
+import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 
 const EMPTY_FORM = {
   name: '',
@@ -25,11 +28,19 @@ const EMPTY_FORM = {
   rationale: '',
 };
 
+type EditMemberRow = {
+  id: number;
+  code: string;
+  sku: string;
+  name: string;
+};
+
 const ItemGroups: React.FC = () => {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
+  const [mastersLoading, setMastersLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<'All' | 'RM' | 'PM'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [pageSize, setPageSize] = useState(25);
@@ -40,12 +51,20 @@ const ItemGroups: React.FC = () => {
   const [editingGroup, setEditingGroup] = useState<ItemGroupRecord | null>(null);
   const [editForm, setEditForm] = useState<{ name: string; description: string; purpose: string; notes: string; status: string; member_ids: number[]; proposedAlternates: ItemGroupAlternate[] }>({ name: '', description: '', purpose: '', notes: '', status: 'Active', member_ids: [], proposedAlternates: [] });
   const [saving, setSaving] = useState(false);
+  const [primaryRmQuery, setPrimaryRmQuery] = useState('');
+  const [memberRmFilter, setMemberRmFilter] = useState('');
+  const [alternateRmQuery, setAlternateRmQuery] = useState('');
+  const [editSubmitStep, setEditSubmitStep] = useState<'form' | 'preview'>('form');
+  const [createSubmitStep, setCreateSubmitStep] = useState<'form' | 'preview'>('form');
 
   useEffect(() => {
-    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()]).then(([rms, pms]) => {
-      setRawMaterials(rms ?? []);
-      setPackMaterials(pms ?? []);
-    });
+    setMastersLoading(true);
+    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList()])
+      .then(([rms, pms]) => {
+        setRawMaterials(rms ?? []);
+        setPackMaterials(pms ?? []);
+      })
+      .finally(() => setMastersLoading(false));
   }, []);
 
   useEffect(() => {
@@ -69,10 +88,39 @@ const ItemGroups: React.FC = () => {
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: warehouseInventoryData } = useQuery({
+    queryKey: ['warehouse-inventory-for-item-groups'],
+    queryFn: async () => {
+      const res = await fetchWarehouseInventory();
+      return res.data?.rows ?? [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+
   const primaryItemOptions = useMemo(() => {
     if (form.type === 'PM') return packMaterials.map(p => ({ id: p.id, name: p.description || p.code }));
     return rawMaterials.map(r => ({ id: r.id, name: r.name || r.code }));
   }, [form.type, rawMaterials, packMaterials]);
+
+  const rmTypeaheadOptions = useMemo(() => buildRmTypeaheadOptions(rawMaterials), [rawMaterials]);
+
+  const stockByItemKey = useMemo(() => {
+    const index = new Map<string, WarehouseInventoryRow>();
+    const rows = warehouseInventoryData ?? [];
+    for (const row of rows) {
+      if (!row?.type || row.sourceId == null) continue;
+      index.set(`${row.type}:${row.sourceId}`, row);
+    }
+    return index;
+  }, [warehouseInventoryData]);
+
+  const alternateRmTypeaheadOptions = useMemo(() => {
+    const excludeIds = new Set([
+      ...editForm.member_ids.map((id) => String(id)),
+      ...editForm.proposedAlternates.map((a) => String(a.item_id)),
+    ]);
+    return buildRmTypeaheadOptions(rawMaterials, { excludeIds });
+  }, [rawMaterials, editForm.member_ids, editForm.proposedAlternates]);
 
   useEffect(() => {
     if (!showCreateModal) return;
@@ -80,6 +128,33 @@ const ItemGroups: React.FC = () => {
       if (res.success && res.data?.nextCode) setForm(f => ({ ...f, code: res.data!.nextCode }));
     });
   }, [showCreateModal, form.type]);
+
+  useEffect(() => {
+    if (!showCreateModal) {
+      setPrimaryRmQuery('');
+      return;
+    }
+    if (form.type === 'RM' && form.primaryItemId) {
+      setPrimaryRmQuery(rmTypeaheadLabelForId(rawMaterials, form.primaryItemId));
+    } else if (form.type !== 'RM') {
+      setPrimaryRmQuery('');
+    }
+  }, [showCreateModal, form.type, form.primaryItemId, rawMaterials]);
+
+  const closeCreateModal = (): void => {
+    setForm(EMPTY_FORM);
+    setPrimaryRmQuery('');
+    setCreateSubmitStep('form');
+    setShowCreateModal(false);
+  };
+
+  const requestCreatePreview = (): void => {
+    if (!form.name.trim()) {
+      addToast('error', 'Group name is required.');
+      return;
+    }
+    setCreateSubmitStep('preview');
+  };
 
   const handleCreateGroup = async () => {
     if (!form.name.trim()) return;
@@ -100,15 +175,25 @@ const ItemGroups: React.FC = () => {
     if (res.success && res.data) {
       setSelectedGroup(res.data);
       queryClient.invalidateQueries({ queryKey: ['item-groups-page'] });
-      setForm(EMPTY_FORM);
-      setShowCreateModal(false);
+      closeCreateModal();
       addToast('success', `Item Group "${res.data.name}" created`);
     } else {
       addToast('error', res.error?.message ?? 'Failed to create group');
     }
   };
 
+  const closeDetailPanel = (): void => {
+    setSelectedGroup(null);
+    setEditingGroup(null);
+    setEditSubmitStep('form');
+    setMemberRmFilter('');
+    setAlternateRmQuery('');
+  };
+
   const openEdit = (group: ItemGroupRecord) => {
+    setMemberRmFilter('');
+    setAlternateRmQuery('');
+    setEditSubmitStep('form');
     setEditingGroup(group);
     const alts = Array.isArray(group.proposedAlternates) ? group.proposedAlternates : [];
     const normalized = alts.map(a => ({
@@ -131,23 +216,64 @@ const ItemGroups: React.FC = () => {
     });
   };
 
-  const availableMembersForEdit = useMemo(() => {
+  const memberPoolForEdit = useMemo((): EditMemberRow[] => {
     if (!editingGroup) return [];
-    if (editingGroup.type === 'PM') return packMaterials.map(p => ({ id: parseInt(p.id, 10), code: p.code, name: p.description || p.code }));
-    return rawMaterials.map(r => ({ id: parseInt(r.id, 10), code: r.code, name: r.name || r.code }));
+    if (editingGroup.type === 'PM') {
+      return packMaterials.map((p) => ({
+        id: parseInt(p.id, 10),
+        code: p.code,
+        sku: '',
+        name: p.description || p.code,
+      }));
+    }
+    return rawMaterials.map((r) => ({
+      id: parseInt(r.id, 10),
+      code: r.code,
+      sku: String(r.zohoSkuCode ?? '').trim(),
+      name: r.name || r.inci || r.code,
+    }));
   }, [editingGroup, rawMaterials, packMaterials]);
+
+  const selectedMembersForEdit = useMemo((): EditMemberRow[] => {
+    const byId = new Map(memberPoolForEdit.map((m) => [m.id, m]));
+    return editForm.member_ids
+      .map((id) => byId.get(id))
+      .filter((m): m is EditMemberRow => m != null);
+  }, [editForm.member_ids, memberPoolForEdit]);
+
+  const addableMembersForEdit = useMemo((): EditMemberRow[] => {
+    const selected = new Set(editForm.member_ids);
+    let list = memberPoolForEdit.filter((m) => !selected.has(m.id));
+    if (editingGroup?.type === 'RM' && memberRmFilter.trim()) {
+      const q = memberRmFilter.trim().toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.code.toLowerCase().includes(q) ||
+          m.name.toLowerCase().includes(q) ||
+          m.sku.toLowerCase().includes(q) ||
+          String(m.id).includes(q)
+      );
+    }
+    return list;
+  }, [memberPoolForEdit, editForm.member_ids, editingGroup?.type, memberRmFilter]);
+
+  const removeEditMember = (id: number): void => {
+    setEditForm((prev) => ({ ...prev, member_ids: prev.member_ids.filter((m) => m !== id) }));
+  };
 
   /** RM/PM items that can be added as proposed alternates (not already approved members, not already in proposed list). */
   const availableAlternatesForEdit = useMemo(() => {
     const memberIds = new Set(editForm.member_ids);
     const alternateIds = new Set(editForm.proposedAlternates.map(a => a.item_id));
-    return availableMembersForEdit.filter(m => !memberIds.has(m.id) && !alternateIds.has(m.id));
-  }, [availableMembersForEdit, editForm.member_ids, editForm.proposedAlternates]);
+    return memberPoolForEdit.filter((m) => !memberIds.has(m.id) && !alternateIds.has(m.id));
+  }, [memberPoolForEdit, editForm.member_ids, editForm.proposedAlternates]);
 
   const toggleEditMember = (id: number) => {
     setEditForm(prev => ({
       ...prev,
-      member_ids: prev.member_ids.includes(id) ? prev.member_ids.filter(m => m !== id) : [...prev.member_ids, id],
+      member_ids: prev.member_ids.includes(id)
+        ? prev.member_ids.filter(m => m !== id)
+        : [...prev.member_ids, id],
     }));
   };
 
@@ -167,8 +293,22 @@ const ItemGroups: React.FC = () => {
     setEditForm(prev => ({ ...prev, proposedAlternates: prev.proposedAlternates.filter((_, i) => i !== index) }));
   };
 
+  const validateEditBeforeSubmit = (): boolean => {
+    if (!editForm.name.trim()) {
+      addToast('error', 'Group name is required.');
+      return false;
+    }
+    return true;
+  };
+
+  const requestEditPreview = (): void => {
+    if (!validateEditBeforeSubmit()) return;
+    setEditSubmitStep('preview');
+  };
+
   const handleSaveEdit = async () => {
     if (!editingGroup) return;
+    if (!validateEditBeforeSubmit()) return;
     setSaving(true);
     const res = await updateItemGroup(editingGroup.id, {
       name: editForm.name,
@@ -183,6 +323,7 @@ const ItemGroups: React.FC = () => {
     if (res.success && res.data) {
       setSelectedGroup(res.data);
       setEditingGroup(null);
+      setEditSubmitStep('form');
       queryClient.invalidateQueries({ queryKey: ['item-groups-page'] });
       addToast('success', 'Group updated');
     } else {
@@ -214,9 +355,46 @@ const ItemGroups: React.FC = () => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
+  const renderStockWindow = (groupType: 'RM' | 'PM', memberId: string | number) => {
+    const sourceId = Number(memberId);
+    if (!Number.isFinite(sourceId) || sourceId <= 0) {
+      return (
+        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+          Stock unavailable
+        </div>
+      );
+    }
+    const key = `${groupType}:${sourceId}`;
+    const stock = stockByItemKey.get(key);
+    if (!stock) {
+      return (
+        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+          Stock unavailable
+        </div>
+      );
+    }
+    return (
+      <div className="mt-1 inline-flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] text-violet-800">
+        <span className="font-semibold">Total {stock.stockInHand}</span>
+        <span className="text-violet-400">|</span>
+        <span>WH {stock.whStock}</span>
+        <span>ML1 {stock.ml1Stock}</span>
+        <span>ML2 {stock.ml2Stock}</span>
+      </div>
+    );
+  };
+
+  const detailPanelOpen = selectedGroup != null;
+  const detailPanelWide = editingGroup != null;
+
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
-      <div className="px-6 md:px-10 py-8 space-y-6 max-w-400 mx-auto">
+      <div className="flex min-h-screen">
+        <main
+          className={`flex-1 min-w-0 px-6 md:px-10 py-8 space-y-6 ${
+            detailPanelOpen ? 'lg:max-w-none' : 'max-w-400 mx-auto w-full'
+          }`}
+        >
 
         <div className="relative">
           <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
@@ -270,7 +448,10 @@ const ItemGroups: React.FC = () => {
                 ))}
               </div>
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => {
+                  setCreateSubmitStep('form');
+                  setShowCreateModal(true);
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold shadow-lg"
               >
                 <span className="text-base leading-none">+</span> New Group
@@ -283,7 +464,15 @@ const ItemGroups: React.FC = () => {
           ) : (
             <div className="divide-y divide-gray-100">
               {filtered.map(ig => (
-                <div key={ig.id} className="p-5 hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setSelectedGroup(ig)}>
+                <div
+                  key={ig.id}
+                  className={`p-5 transition-colors cursor-pointer ${
+                    selectedGroup?.id === ig.id
+                      ? 'bg-violet-50/90 ring-1 ring-inset ring-violet-200'
+                      : 'hover:bg-gray-50/50'
+                  }`}
+                  onClick={() => setSelectedGroup(ig)}
+                >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-start gap-2">
@@ -312,8 +501,13 @@ const ItemGroups: React.FC = () => {
                       <ul className="space-y-1">
                         {ig.approvedMembers.map(member => (
                           <li key={member.id} className="flex items-center gap-2 text-xs">
-                            <span className="text-yellow-500"></span>
-                            <span className="text-gray-800 font-medium">{member.name}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-yellow-500"></span>
+                                <span className="text-gray-800 font-medium">{member.name}</span>
+                              </div>
+                              {renderStockWindow(ig.type, member.id)}
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -331,6 +525,7 @@ const ItemGroups: React.FC = () => {
                             <li key={alt.id} className="text-xs">
                               <div className="text-gray-800 font-medium">{alt.name}</div>
                               <div className="text-gray-500 text-[10px]">{alt.notes}</div>
+                              {renderStockWindow(ig.type, alt.item_id)}
                             </li>
                           ))}
                         </ul>
@@ -387,19 +582,40 @@ const ItemGroups: React.FC = () => {
           </div>
         )}
 
-      </div>
+        </main>
 
-      {/* Side Panel */}
+      {/* Detail / edit panel — split view on large screens so the list stays visible on the left */}
       {selectedGroup && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={() => { setSelectedGroup(null); setEditingGroup(null); }} />
-          <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col">
+        <>
+          <button
+            type="button"
+            aria-label="Close panel"
+            className="lg:hidden fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm"
+            onClick={closeDetailPanel}
+          />
+          <aside
+            className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl border-l border-gray-200 w-full max-w-md
+              lg:static lg:z-auto lg:shrink-0 lg:h-screen lg:shadow-none
+              ${detailPanelWide ? 'lg:max-w-2xl xl:max-w-3xl' : 'lg:max-w-md xl:max-w-lg'}`}
+          >
             <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
               <div className="flex items-start gap-3 min-w-0">
                 <span className="text-2xl shrink-0 mt-0.5">{selectedGroup?.icon}</span>
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-gray-900 leading-snug">{editingGroup ? editForm.name : selectedGroup.name}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{editingGroup ? editForm.description : selectedGroup.description}</p>
+                  <h2 className="text-lg font-bold text-gray-900 leading-snug">
+                    {editingGroup
+                      ? editSubmitStep === 'preview'
+                        ? 'Review changes'
+                        : editForm.name
+                      : selectedGroup.name}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {editingGroup
+                      ? editSubmitStep === 'preview'
+                        ? 'Verify details before saving to the database.'
+                        : editForm.description
+                      : selectedGroup.description}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -408,16 +624,106 @@ const ItemGroups: React.FC = () => {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
                 ) : null}
-                <button onClick={() => { setSelectedGroup(null); setEditingGroup(null); }} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <button type="button" onClick={closeDetailPanel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-              {editingGroup ? (
+              {editingGroup && editSubmitStep === 'preview' ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-violet-900">Confirm item group update</p>
+                    <p className="text-xs text-violet-800/90 mt-1">
+                      Check every field below. Use Back to edit, or confirm to save permanently.
+                    </p>
+                  </div>
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Code</dt>
+                      <dd className="font-mono font-semibold text-violet-700">{editingGroup.code}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Type</dt>
+                      <dd className="font-semibold text-gray-900">{editingGroup.type}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Name</dt>
+                      <dd className="font-semibold text-gray-900">{editForm.name.trim()}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Status</dt>
+                      <dd className="font-semibold text-gray-900">{editForm.status}</dd>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Description</dt>
+                      <dd className="text-gray-800">{editForm.description.trim() || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Purpose</dt>
+                      <dd className="text-gray-800">{editForm.purpose.trim() || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Notes</dt>
+                      <dd className="text-gray-800">{editForm.notes.trim() || '—'}</dd>
+                    </div>
+                  </dl>
+                  <div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-teal-700 mb-2">
+                      Approved members ({selectedMembersForEdit.length})
+                    </h4>
+                    {selectedMembersForEdit.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic">No members selected.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {selectedMembersForEdit.map((m, idx) => (
+                          <li key={m.id} className="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {idx === 0 ? (
+                                <span className="text-[9px] font-bold uppercase text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                                  Primary
+                                </span>
+                              ) : null}
+                              <span className="text-xs font-mono font-semibold text-teal-800">{m.code}</span>
+                              {m.sku ? <span className="text-[10px] font-mono text-gray-500">SKU {m.sku}</span> : null}
+                            </div>
+                            <p className="text-sm font-medium text-gray-900 mt-0.5">{m.name}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-2">
+                      Proposed alternates ({editForm.proposedAlternates.length})
+                    </h4>
+                    {editForm.proposedAlternates.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic">None.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {editForm.proposedAlternates.map((alt, idx) => (
+                          <li key={`${alt.item_id}-${idx}`} className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
+                            <p className="text-xs font-mono text-amber-900">{alt.code}</p>
+                            <p className="text-sm font-medium text-gray-900">{alt.name}</p>
+                            {alt.notes ? <p className="text-xs text-gray-600 mt-1">{alt.notes}</p> : null}
+                            <span className="inline-block mt-1 text-[10px] font-semibold text-amber-800 capitalize">{alt.status}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ) : editingGroup ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-violet-100 bg-violet-50/40 px-3 py-2.5 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-mono font-bold text-violet-700">{editingGroup.code}</span>
+                    <span className="text-gray-400">·</span>
+                    <span className="font-semibold text-gray-700">{editingGroup.type}</span>
+                    <span className="text-gray-400">·</span>
+                    <span className="text-gray-600">{editForm.member_ids.length} member(s)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Name</label>
                       <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
@@ -429,30 +735,114 @@ const ItemGroups: React.FC = () => {
                         <option value="Inactive">Inactive</option>
                       </select>
                     </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Description</label>
+                      <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Purpose</label>
+                      <input value={editForm.purpose} onChange={e => setEditForm(f => ({ ...f, purpose: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Notes</label>
+                      <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Description</label>
-                    <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Purpose</label>
-                    <input value={editForm.purpose} onChange={e => setEditForm(f => ({ ...f, purpose: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Notes</label>
-                    <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-2">Members ({editingGroup.type === 'RM' ? 'Raw materials' : 'Pack materials'})</h3>
-                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                      {availableMembersForEdit.map(m => (
-                        <label key={m.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-                          <input type="checkbox" checked={editForm.member_ids.includes(m.id)} onChange={() => toggleEditMember(m.id)} className="rounded border-gray-300 text-violet-600" />
-                          <span className="text-xs font-mono text-gray-600">{m.code}</span>
-                          <span className="text-sm text-gray-800 truncate">{m.name}</span>
-                        </label>
-                      ))}
-                      {availableMembersForEdit.length === 0 && <p className="text-xs text-gray-400 p-2">No {editingGroup.type === 'RM' ? 'raw' : 'pack'} materials in DB.</p>}
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600">
+                      Members ({editingGroup.type === 'RM' ? 'Raw materials' : 'Pack materials'})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <section className="rounded-xl border border-teal-200 bg-teal-50/40 p-3 flex flex-col min-h-48">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h4 className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                            Selected ({selectedMembersForEdit.length})
+                          </h4>
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-2 min-h-0 max-h-56">
+                          {selectedMembersForEdit.length === 0 ? (
+                            <p className="text-xs text-teal-700/80 italic p-1">No members selected. Add from the list on the right.</p>
+                          ) : (
+                            selectedMembersForEdit.map((m, idx) => (
+                              <div
+                                key={m.id}
+                                className="flex items-start justify-between gap-2 rounded-lg border border-teal-200 bg-white px-2.5 py-2 shadow-sm"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {idx === 0 ? (
+                                      <span className="text-[9px] font-bold uppercase tracking-wide text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                                        Primary
+                                      </span>
+                                    ) : null}
+                                    <span className="text-[10px] font-mono font-semibold text-teal-800">{m.code}</span>
+                                  </div>
+                                  <p className="text-sm font-medium text-gray-900 truncate mt-0.5">{m.name}</p>
+                                  {m.sku ? (
+                                    <p className="text-[10px] text-gray-500 font-mono mt-0.5">SKU {m.sku}</p>
+                                  ) : null}
+                                  {editingGroup.type === 'RM' ? renderStockWindow('RM', m.id) : renderStockWindow('PM', m.id)}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeEditMember(m.id)}
+                                  className="shrink-0 p-1.5 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                  title="Remove member"
+                                  aria-label={`Remove ${m.name}`}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </section>
+
+                      <section className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 flex flex-col min-h-48">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">
+                          Add members
+                        </h4>
+                        {editingGroup.type === 'RM' ? (
+                          <input
+                            type="text"
+                            value={memberRmFilter}
+                            onChange={(e) => setMemberRmFilter(e.target.value)}
+                            placeholder="Search by name, code, or SKU…"
+                            className="w-full mb-2 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-violet-500"
+                          />
+                        ) : null}
+                        <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg bg-white p-1.5 space-y-0.5 min-h-0 max-h-56">
+                          {addableMembersForEdit.map((m) => (
+                            <label
+                              key={m.id}
+                              className="flex items-center gap-2 p-2 hover:bg-violet-50/60 rounded-lg cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={false}
+                                onChange={() => toggleEditMember(m.id)}
+                                className="rounded border-gray-300 text-violet-600"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] font-mono text-gray-600">{m.code}</span>
+                                {m.sku ? (
+                                  <span className="text-[10px] text-gray-400 font-mono ml-1">· {m.sku}</span>
+                                ) : null}
+                                <span className="block text-sm text-gray-800 truncate">{m.name}</span>
+                              </div>
+                            </label>
+                          ))}
+                          {addableMembersForEdit.length === 0 && (
+                            <p className="text-xs text-gray-400 p-2">
+                              {memberRmFilter.trim() && editingGroup.type === 'RM'
+                                ? 'No more materials match your search.'
+                                : selectedMembersForEdit.length > 0
+                                  ? 'All available materials are already selected.'
+                                  : `No ${editingGroup.type === 'RM' ? 'raw' : 'pack'} materials available to add.`}
+                            </p>
+                          )}
+                        </div>
+                      </section>
                     </div>
                   </div>
                   <div>
@@ -476,22 +866,41 @@ const ItemGroups: React.FC = () => {
                       {editForm.proposedAlternates.length === 0 && <p className="text-xs text-gray-400 p-2">No proposed alternates. Add from the list below.</p>}
                     </div>
                     {availableAlternatesForEdit.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select
-                          className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700"
-                          value=""
-                          onChange={e => {
-                            const id = e.target.value ? parseInt(e.target.value, 10) : 0;
-                            const item = availableAlternatesForEdit.find(m => m.id === id);
-                            if (item) addEditAlternate(item);
-                            e.target.value = '';
-                          }}
-                        >
-                          <option value="">— Add {editingGroup?.type === 'PM' ? 'pack material' : 'raw material'} —</option>
-                          {availableAlternatesForEdit.map(m => (
-                            <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
-                          ))}
-                        </select>
+                      <div className="mt-2">
+                        {editingGroup.type === 'RM' ? (
+                          <RmMasterTypeahead
+                            options={alternateRmTypeaheadOptions}
+                            value={alternateRmQuery}
+                            selectedId=""
+                            onValueChange={setAlternateRmQuery}
+                            onSelect={(opt) => {
+                              const id = parseInt(opt.id, 10);
+                              const item = availableAlternatesForEdit.find((m) => m.id === id);
+                              if (item) addEditAlternate(item);
+                              setAlternateRmQuery('');
+                            }}
+                            onClearSelection={() => setAlternateRmQuery('')}
+                            requirePickFromList
+                            placeholder="Search by name, code, or SKU…"
+                            className="[&_input]:text-xs [&_input]:border-amber-200 [&_input]:rounded-lg"
+                          />
+                        ) : (
+                          <select
+                            className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700 w-full"
+                            value=""
+                            onChange={e => {
+                              const id = e.target.value ? parseInt(e.target.value, 10) : 0;
+                              const item = availableAlternatesForEdit.find(m => m.id === id);
+                              if (item) addEditAlternate(item);
+                              e.target.value = '';
+                            }}
+                          >
+                            <option value="">— Add pack material —</option>
+                            {availableAlternatesForEdit.map(m => (
+                              <option key={m.id} value={m.id}>{m.code} — {m.name}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     ) : (
                       <p className="mt-2 text-xs text-gray-400">No more {editingGroup?.type === 'RM' ? 'raw materials' : 'pack materials'} available to add as alternates.</p>
@@ -554,32 +963,122 @@ const ItemGroups: React.FC = () => {
 
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
               {editingGroup ? (
-                <>
-                  <button onClick={() => setEditingGroup(null)} className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-                  <button onClick={handleSaveEdit} disabled={saving} className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50">
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
-                </>
+                editSubmitStep === 'preview' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditSubmitStep('form')}
+                      disabled={saving}
+                      className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Back to edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                      className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {saving ? 'Saving…' : 'Confirm & save'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingGroup(null);
+                        setEditSubmitStep('form');
+                      }}
+                      className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestEditPreview}
+                      className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+                    >
+                      Review & save
+                    </button>
+                  </>
+                )
               ) : (
-                <button onClick={() => { setSelectedGroup(null); setEditingGroup(null); }} className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
+                <button type="button" onClick={closeDetailPanel} className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
               )}
             </div>
-          </div>
-        </div>
+          </aside>
+        </>
       )}
+      </div>
 
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={() => setShowCreateModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={closeCreateModal} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[min(90vh,720px)] flex flex-col">
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
-              <h2 className="text-lg font-bold text-gray-900">Create Item Group</h2>
-              <button onClick={() => setShowCreateModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {createSubmitStep === 'preview' ? 'Review new group' : 'Create Item Group'}
+                </h2>
+                {createSubmitStep === 'preview' ? (
+                  <p className="text-xs text-gray-500 mt-1">Verify details before creating the group.</p>
+                ) : null}
+              </div>
+              <button type="button" onClick={closeCreateModal} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            <div className="px-6 py-4 space-y-4">
+            <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+              {createSubmitStep === 'preview' ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-teal-900">Confirm new item group</p>
+                    <p className="text-xs text-teal-800/90 mt-1">
+                      Check every field below. Use Back to edit, or confirm to create the group.
+                    </p>
+                  </div>
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      {form.icon ? <span className="text-2xl">{form.icon}</span> : null}
+                      <div>
+                        <dt className="text-[10px] font-bold uppercase text-gray-500">Group name</dt>
+                        <dd className="font-semibold text-gray-900">{form.name.trim()}</dd>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <dt className="text-[10px] font-bold uppercase text-gray-500">Type</dt>
+                        <dd className="font-semibold text-gray-900">{form.type}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-bold uppercase text-gray-500">Code</dt>
+                        <dd className="font-mono font-semibold text-teal-700">{form.code || '—'}</dd>
+                      </div>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Primary member</dt>
+                      <dd className="text-gray-900 mt-0.5">
+                        {form.type === 'RM'
+                          ? rmTypeaheadLabelForId(rawMaterials, form.primaryItemId) || '—'
+                          : packMaterials.find((p) => p.id === form.primaryItemId)?.description ||
+                            packMaterials.find((p) => p.id === form.primaryItemId)?.code ||
+                            '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Description</dt>
+                      <dd className="text-gray-800">{form.description.trim() || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase text-gray-500">Rationale</dt>
+                      <dd className="text-gray-800">{form.rationale.trim() || '—'}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : (
+              <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Group Name <span className="text-red-500">*</span></label>
@@ -587,7 +1086,7 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Type</label>
-                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                  <select value={form.type} onChange={e => { setPrimaryRmQuery(''); setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' })); }} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
                     <option value="RM">RM</option>
                     <option value="PM">PM</option>
                   </select>
@@ -600,12 +1099,37 @@ const ItemGroups: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Primary Item</label>
-                  <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
-                    <option value="">— Select —</option>
-                    {primaryItemOptions.map(item => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
+                  {form.type === 'RM' ? (
+                    <>
+                      <RmMasterTypeahead
+                        options={rmTypeaheadOptions}
+                        value={primaryRmQuery}
+                        selectedId={form.primaryItemId}
+                        onValueChange={setPrimaryRmQuery}
+                        onSelect={(opt) => {
+                          setForm((f) => ({ ...f, primaryItemId: opt.id }));
+                          setPrimaryRmQuery(opt.label);
+                        }}
+                        onClearSelection={() => setForm((f) => ({ ...f, primaryItemId: '' }))}
+                        loading={mastersLoading}
+                        requirePickFromList
+                        placeholder="Search by name, code, or SKU…"
+                        className="[&_input]:w-full [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm [&_input]:border-gray-300 [&_input]:rounded-lg [&_input]:focus:ring-2 [&_input]:focus:ring-teal-500"
+                      />
+                      {!mastersLoading && rmTypeaheadOptions.length === 0 ? (
+                        <p className="mt-1 text-xs text-amber-700" role="status">
+                          No raw materials in master.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                      <option value="">— Select pack material —</option>
+                      {primaryItemOptions.map(item => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Icon (Emoji)</label>
@@ -620,10 +1144,40 @@ const ItemGroups: React.FC = () => {
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Rationale</label>
                 <textarea value={form.rationale} onChange={e => setForm(f => ({ ...f, rationale: e.target.value }))} placeholder="Why these items are grouped" rows={3} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg resize-y focus:ring-2 focus:ring-teal-500" />
               </div>
+              </>
+              )}
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => { setForm(EMPTY_FORM); setShowCreateModal(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={handleCreateGroup} disabled={!form.name.trim()} className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed">Create Group</button>
+              {createSubmitStep === 'preview' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCreateSubmitStep('form')}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Back to edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateGroup}
+                    className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                  >
+                    Confirm & create
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={closeCreateModal} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={requestCreatePreview}
+                    disabled={!form.name.trim()}
+                    className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Review & create
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

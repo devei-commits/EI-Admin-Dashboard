@@ -1,7 +1,44 @@
 import { api } from '../lib/apiClient';
-import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
+import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData, BatchSplit, BatchTimelineStep } from '../types/orderFulfillment';
 
 const BASE = '/api/v1/fulfillment';
+
+const TIMELINE_FLOW: BatchTimelineStep['key'][] = [
+  'planned',
+  'in_production',
+  'fg_ready',
+  'picking',
+  'invoiced',
+  'shipped',
+  'delivered',
+];
+
+function timelineCursorFromSplit(split: BatchSplit): BatchTimelineStep['key'] {
+  const ff = String(split.ffStatus || '').toLowerCase();
+  if (ff === 'delivered' || ff === 'closed') return 'delivered';
+  if (ff === 'shipped') return 'shipped';
+  if (ff === 'invoiced') return 'invoiced';
+  if (ff === 'picking') return 'picking';
+  if (ff === 'fg_ready') return 'fg_ready';
+  return 'in_production';
+}
+
+export function buildBatchTimelineSteps(split: BatchSplit): BatchTimelineStep[] {
+  const activeKey = timelineCursorFromSplit(split);
+  const activeIdx = TIMELINE_FLOW.indexOf(activeKey);
+  return TIMELINE_FLOW.map((key, idx) => ({
+    key,
+    label:
+      key === 'planned' ? 'Planned'
+        : key === 'in_production' ? 'In Production'
+          : key === 'fg_ready' ? 'FG Ready'
+            : key === 'picking' ? 'Picking'
+              : key === 'invoiced' ? 'Invoiced'
+                : key === 'shipped' ? 'Shipped'
+                  : 'Delivered',
+    status: idx < activeIdx ? 'done' : idx === activeIdx ? 'active' : 'pending',
+  }));
+}
 
 /** Normalize GET payloads whether the API returns a raw array or a wrapped `{ data: [...] }`. */
 function unwrapList<T>(res: unknown): T[] {
@@ -13,17 +50,87 @@ function unwrapList<T>(res: unknown): T[] {
   return [];
 }
 
+function compactSpaces(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pickFirstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = compactSpaces(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function normalizeSaleOrder(order: SaleOrder | Record<string, unknown>): SaleOrder {
+  const raw = order as SaleOrder & {
+    clientName?: string;
+    customerName?: string;
+    client?: string;
+    client_name?: string;
+    customer_name?: string;
+    city?: string;
+    customer_city?: string;
+    so_no?: string;
+    so_date?: string;
+    order_date?: string;
+    due_date?: string;
+    so_status?: string;
+    so_value?: number;
+    ship_address?: string;
+    payment_terms?: string;
+    invoice_no?: string;
+    invoice_date?: string;
+    awb_no?: string;
+    dispatch_date?: string;
+    zoho_invoice_id?: string;
+  };
+  const customer = pickFirstNonEmpty(
+    raw.customer,
+    raw.clientName,
+    raw.customerName,
+    raw.client,
+    raw.client_name,
+    raw.customer_name
+  );
+  const customerCity = pickFirstNonEmpty(raw.customerCity, raw.city, raw.customer_city);
+  return {
+    ...raw,
+    soNo: pickFirstNonEmpty(raw.soNo, raw.so_no),
+    soDate: pickFirstNonEmpty(raw.soDate, raw.so_date, raw.orderDate, raw.order_date),
+    orderDate: pickFirstNonEmpty(raw.orderDate, raw.order_date, raw.soDate, raw.so_date),
+    dueDate: pickFirstNonEmpty(raw.dueDate, raw.due_date),
+    soStatus: (pickFirstNonEmpty(raw.soStatus, raw.so_status) || 'planned') as SaleOrder['soStatus'],
+    soValue: Number(raw.soValue ?? raw.so_value ?? 0) || 0,
+    shipAddress: pickFirstNonEmpty(raw.shipAddress, raw.ship_address),
+    paymentTerms: pickFirstNonEmpty(raw.paymentTerms, raw.payment_terms),
+    invoiceNo: pickFirstNonEmpty(raw.invoiceNo, raw.invoice_no) || undefined,
+    invoiceDate: pickFirstNonEmpty(raw.invoiceDate, raw.invoice_date) || undefined,
+    awbNo: pickFirstNonEmpty(raw.awbNo, raw.awb_no) || undefined,
+    dispatchDate: pickFirstNonEmpty(raw.dispatchDate, raw.dispatch_date) || undefined,
+    zohoInvoiceId: pickFirstNonEmpty(
+      (raw as Record<string, unknown>).zohoInvoiceId,
+      raw.zoho_invoice_id
+    ) || undefined,
+    customer: customer || 'Unknown Client',
+    customerCity: customerCity || '',
+  } as SaleOrder;
+}
+
 /* ── List / Get ── */
 
 export async function fetchFulfillmentOrders(): Promise<SaleOrder[]> {
   const res = await api.get<unknown>(BASE);
-  return unwrapList<SaleOrder>(res);
+  return unwrapList<SaleOrder>(res).map((order) => normalizeSaleOrder(order));
 }
 
 export async function fetchFulfillmentOrderById(id: number): Promise<SaleOrder | null> {
   try {
     const res = await api.get<SaleOrder>(`${BASE}/${id}`);
-    return ((res as any)?.data ?? res) ?? null;
+    const payload = ((res as { data?: SaleOrder })?.data ?? res) ?? null;
+    return payload ? normalizeSaleOrder(payload) : null;
   } catch {
     return null;
   }
@@ -39,12 +146,12 @@ export async function fetchBatchSplits(): Promise<unknown[]> {
 
 export async function createFulfillmentOrder(payload: Record<string, unknown>): Promise<SaleOrder> {
   const res = await api.post<SaleOrder>(BASE, payload);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function updateFulfillmentOrder(id: number, payload: Record<string, unknown>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}`, payload);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function deleteFulfillmentOrder(id: number) {
@@ -55,7 +162,30 @@ export async function deleteFulfillmentOrder(id: number) {
 /* ── Lookup endpoints for AddSOModal ── */
 
 export interface NextSoNoResponse { soNo: string; }
-export interface CustomerOption { id: number; code: string; name: string; city: string; paymentTerms: string; shippingAddress: string; }
+export interface CustomerOption {
+  id: number;
+  code: string;
+  name: string;
+  city: string;
+  /** State / region (from master `location`, `data.state`, or linked `addresses`). */
+  state?: string;
+  location?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  category?: string;
+  notes?: string;
+  priority?: string;
+  segment?: string;
+  contacts?: { name?: string; role?: string }[];
+  contactLine?: string;
+  paymentTerms: string;
+  shippingAddress: string;
+  billingAddress?: string;
+  creditLimit?: string;
+  /** Subset of vendor_clients.data for ClientForm payables + receivables credit days. */
+  clientData?: Record<string, unknown>;
+}
 export interface ProductOption { id: string; type: string; name: string; sku: string; pack: string; category: string; price: number; }
 
 export async function fetchNextSoNo(): Promise<string> {
@@ -64,16 +194,59 @@ export async function fetchNextSoNo(): Promise<string> {
   return data?.soNo ?? '';
 }
 
+const VENDOR_ENTITY_CODE_PREFIX = /^EI-VEN-/i;
+
 export async function fetchCustomers(): Promise<CustomerOption[]> {
   const res = await api.get<CustomerOption[]>(`${BASE}/customers`);
   const data = (res as any)?.data ?? res;
-  return Array.isArray(data) ? data : [];
+  if (!Array.isArray(data)) return [];
+  return data.filter((row) => !VENDOR_ENTITY_CODE_PREFIX.test(String(row.code || '').trim()));
 }
 
 export async function fetchProducts(): Promise<ProductOption[]> {
   const res = await api.get<ProductOption[]>(`${BASE}/products`);
   const data = (res as any)?.data ?? res;
   return Array.isArray(data) ? data : [];
+}
+
+export interface StagedPaymentTermsPayload {
+  advance_pct: number;
+  pre_shipment_pct: number;
+  post_shipment_pct: number;
+  credit_days: number;
+}
+
+export interface ClientProductPriceResult {
+  product_id: number;
+  client_id: number;
+  quantity: number;
+  price_per_unit: number | null;
+  currency: string;
+  payment_terms: string | null;
+  staged_payment_terms: StagedPaymentTermsPayload | null;
+  source: string;
+  items_list_id?: number | null;
+  rate_id?: number | null;
+  tier_id?: number | null;
+  moq_min?: number | null;
+  moq_max?: number | null;
+  lowest_moq?: number | null;
+  message?: string;
+}
+
+/** PR unit price from Items List client rate + MOQ tier (sale orders, not PO). */
+export async function fetchClientProductPrice(params: {
+  clientId: number;
+  productId: number;
+  quantity?: number;
+}): Promise<ClientProductPriceResult> {
+  const qs = new URLSearchParams({
+    client_id: String(params.clientId),
+    product_id: String(params.productId),
+    quantity: String(params.quantity ?? 1),
+  });
+  const res = await api.get<ClientProductPriceResult>(`${BASE}/client-product-price?${qs}`);
+  return ((res as { data?: ClientProductPriceResult })?.data ?? res) as ClientProductPriceResult;
 }
 
 /* ── Transporters ── */
@@ -88,15 +261,22 @@ export async function fetchTransporters(): Promise<TransporterOption[]> {
 
 /* ── Invoices ── */
 
-export async function fetchNextInvoiceNo(): Promise<string> {
-  const res = await api.get<{ invoiceNo: string }>(`${BASE}/next-invoice-no`);
-  const data = (res as any)?.data ?? res;
-  return data?.invoiceNo ?? '';
+/** POST /fulfillment/invoices — matches backend `createInvoice` JSON body. */
+export interface FulfillmentInvoiceCreateResult {
+  id: number;
+  invoiceNo: string;
+  fulfillmentOrderId?: number;
+  invoiceDate?: string;
+  dueDate?: string | null;
+  zoho_invoice_id?: string | null;
+  zoho_sync?: { synced: boolean; error?: string };
 }
 
-export async function createInvoice(payload: Record<string, unknown>) {
-  const res = await api.post(`${BASE}/invoices`, payload);
-  return (res as any)?.data ?? res;
+export async function createInvoice(
+  payload: Record<string, unknown>
+): Promise<FulfillmentInvoiceCreateResult> {
+  const res = await api.post<FulfillmentInvoiceCreateResult>(`${BASE}/invoices`, payload);
+  return (res as { data?: FulfillmentInvoiceCreateResult })?.data ?? (res as FulfillmentInvoiceCreateResult);
 }
 
 export async function fetchInvoices(fulfillmentOrderId?: number) {
@@ -110,22 +290,22 @@ export async function fetchInvoices(fulfillmentOrderId?: number) {
 
 export async function pickFulfillmentSplits(id: number, data: PickData): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/pick`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function invoiceFulfillmentSplits(id: number, data: Partial<InvoiceData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/invoice`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function shipFulfillmentSplits(id: number, data: Partial<ShipData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/ship`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 export async function deliverFulfillmentSplits(id: number, data: Partial<DeliveryData>): Promise<SaleOrder> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}/deliver`, data);
-  return (res as any)?.data ?? res;
+  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
 /* ── Planning availability for SO ── */

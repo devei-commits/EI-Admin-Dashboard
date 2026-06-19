@@ -1,24 +1,71 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query';
+import type { Query } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
-import logoFull from '../../assets/logo/eilogofull.svg';
+import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
+import IssuedPOsView from '../../components/procurement/IssuedPOsView';
+import { WeekVendorConsolidationView } from '../../components/procurement/WeekVendorConsolidationView';
+import { InventoryAuditView } from '../../components/procurement/InventoryAuditView';
+import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inventoryAuditLines';
+import {
+  bumpProcurementRequestItemQty,
+  bumpPurchaseOrderItemsQty,
+  findDraftPurchaseOrderForRequest,
+  mergeGapApprovalIntoStockCheckNotes,
+  resolveInventoryStockAfterGapApproval,
+} from '../../lib/inventoryAuditGapApproval';
+import { findStockCheckNoteForItem } from '../../lib/stockCheckNotes';
+import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
+import type { Order } from '../../types/salesPurchase.types';
+import {
+  buildWeekVendorConsolidationLines,
+  type WeekVendorItemBucket,
+} from '../../lib/weekVendorConsolidation';
+import { formatIsoWeekLabel } from '../../lib/isoWeek';
+import { buildProcurementRequestItemLines } from '../../lib/procurementRequestItemLines';
 import procurementData from '../../mocks/procurement-data.json';
-import { fetchProcurementRequests as fetchProcurementRequestsApi, updateProcurementRequest as updateProcurementRequestApi } from '../../services/procurement.service';
+import {
+  fetchProcurementRequests as fetchProcurementRequestsApi,
+  updateProcurementRequest as updateProcurementRequestApi,
+  createProcurementRequest as createProcurementRequestApi,
+  deleteProcurementRequest as deleteProcurementRequestApi,
+} from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as ApiProcurementRequest } from '../../services/procurement.service';
 import {
   fetchProcurementQuotations,
   fetchQuoteLineDefaults,
   createProcurementQuotation,
   deleteProcurementQuotation,
+  updateProcurementQuotation as updateProcurementQuotationApi,
 } from '../../services/procurementQuotations.service';
+import {
+  fetchPlanningQuotationAsks,
+  updatePlanningQuotationAsk,
+  type PlanningQuotationAsk,
+} from '../../services/planningQuotationAsks.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
-import { fetchPurchaseOrders, createPurchaseOrder, updatePurchaseOrder } from '../../services/salesPurchase.service';
+import {
+  fetchPurchaseOrders,
+  createPurchaseOrder,
+  updatePurchaseOrder,
+  deletePurchaseOrder,
+  importPrRowsExcel,
+} from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
-import { createGRN, fetchGRNList, type GRNRecordFromApi } from '../../services/grn.service';
-import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
+import {
+  createGRN,
+  fetchGRNById,
+  fetchGRNList,
+  grnLineItemDisplayName,
+  grnLineItemsNameSummary,
+  updateGRN,
+  type GRNRecordFromApi,
+} from '../../services/grn.service';
+import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
 import {
   fetchPriceListPage,
   createItemList,
@@ -32,14 +79,41 @@ import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/ra
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import {
   mapBackendPrToRequest,
+  fillItemLeadFromPriceListPages,
   mapBackendQuotationToQuote,
   mapVendorClientToVendor,
   mapOrderToPurchaseOrder,
   mapPurchaseOrderToDraftPO,
   draftLineItemsToPurchaseOrderItems,
+  recalcDraftPoLineItem,
+  itemDetailsToProcurementRequestItems,
   assignPrItemToDraftLines,
   matchBackendPrItemForDraftLine,
+  splitBackendPrItemsAfterPartialRelease,
+  syncProcurementItemsAfterDraftPoLineQtyEdit,
+  computeOpenProcurementLineQty,
+  sumCommittedPoQtyForPrItem,
+  parseQuantityRequested,
+  resolveDraftLineLeadTimeDays,
+  normalizeLeadTimeDays,
+  computeIssuedPoEtaFromLeadTimes,
+  computeRequestDaysUntilDue,
+  sortVendorQuotesLatestFirst,
+  sortProcurementRequestsLatestFirst,
+  sortPlanningQuotationAsksLatestFirst,
+  formatDateEnInSafe,
+  formatDateWithIsoWeek,
+  parseDateStringToLocalDate,
+  normalizeDateOnlyString,
+  resolvePlannedUnitPrice,
+  mergePlannedRateIntoLineNotes,
+  planDraftPoDeleteProcurementCleanup,
+  requestHasOtherDraftPurchaseOrder,
 } from './procurementDataMappers';
+import { applyDraftPoLinePrices, applyEditRequestSideEffects } from './syncEditRequestSideEffects';
+import type { ReleaseLineEditRow } from './procurementDataMappers';
+import { formatMoqDisplay, moqValuesEqual, parseMoqInput } from '../../utils/moqQuantity';
+import { formatQtyWithPrimaryUnit, normRmPrimaryUom } from '../../lib/rmUnitConversion';
 import type {
   RequestType,
   RequestPriority,
@@ -54,10 +128,10 @@ import type {
   DraftPOLineItem,
   DraftPO,
   PurchaseOrder,
+  POTimelineStep,
   CompletedGrn,
   StockCheckStatus,
   StockCheckLineData,
-  ItemTrackerRow,
   LiveProcurementState,
   ReleaseToPlannedItem,
   QuoteLine,
@@ -65,6 +139,7 @@ import type {
 import StockCheckUpdateModal from './StockCheckUpdateModal';
 import ProcurementVendors from './ProcurementVendors';
 import ProcurementReports from './ProcurementReports';
+import { Search, X, Package, Loader2 } from 'lucide-react';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -74,6 +149,51 @@ import {
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import GrnMonitorDetailPanel from '../../components/procurement/GrnMonitorDetailPanel';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Pagination } from '../../components/ui/Pagination';
+import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
+import {
+  parseStagedPaymentTerms,
+  serializeStagedPaymentTerms,
+  validateStagedPercents,
+  parseVendorThreeWayFromPlainText,
+  formatStagedPaymentTermsObject,
+  resolveStagedPaymentTermsForForm,
+} from '../../lib/stagedPaymentTerms';
+import { queryKeys } from '../../lib/queryClient';
+import {
+  PROCUREMENT_PRE_DRAFT_STATUSES,
+  isProcurementRequestPreDraftPipelineStatus,
+} from '../../lib/procurementRequestMerge';
+
+/** Populate tier editor fields from Items List payment_terms (JSON or legacy vendor text). */
+function paymentTermsToStagedFields(raw: string): {
+  advancePct: string;
+  preShipmentPct: string;
+  postShipmentPct: string;
+  creditDays: string;
+} {
+  const j = parseStagedPaymentTerms(raw);
+  if (j) {
+    return {
+      advancePct: String(j.advance_pct),
+      preShipmentPct: String(j.pre_shipment_pct),
+      postShipmentPct: String(j.post_shipment_pct),
+      creditDays: String(j.credit_days),
+    };
+  }
+  const v = parseVendorThreeWayFromPlainText(raw);
+  if (v) {
+    return {
+      advancePct: String(v.advance_pct),
+      preShipmentPct: String(v.pre_shipment_pct),
+      postShipmentPct: String(v.post_shipment_pct),
+      creditDays: String(v.credit_days),
+    };
+  }
+  return { advancePct: '', preShipmentPct: '', postShipmentPct: '', creditDays: '0' };
+}
 
 const DRAFT_POS_SEED: DraftPO[] = (procurementData as any).draftPOs as DraftPO[];
 const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
@@ -81,6 +201,26 @@ const ENABLE_PROCUREMENT_LOCAL_PERSISTENCE =
   typeof import.meta.env?.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === 'string'
     && import.meta.env.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === '1';
 const DEBUG_PROC_RELEASE = import.meta.env.DEV;
+
+/** Query roots used on this screen — `useIsFetching` predicate so the global loader tracks refetches too. */
+const PROCUREMENT_PAGE_QUERY_ROOTS = new Set<string>([
+  'procurement-requests',
+  'procurement-quotations',
+  'vendor-client',
+  'purchase-orders',
+  'grn-list',
+  'warehouse-inventory',
+  'raw-materials-list',
+  'pack-materials-list',
+  'po-tracking-released-map',
+  'po-tracking',
+  'items-list-page',
+]);
+
+function procurementPageQueryPredicate(query: Query): boolean {
+  const key0 = query.queryKey[0];
+  return typeof key0 === 'string' && PROCUREMENT_PAGE_QUERY_ROOTS.has(key0);
+}
 
 /** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
 function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
@@ -92,6 +232,50 @@ function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
     if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
   }
   return [];
+}
+
+/** Detect API-driven PR changes that the list sync must apply (stock check, line qty, etc.). */
+function procurementRequestApiSyncKey(req: ProcurementRequest): string {
+  const itemSig = (req.itemDetails ?? [])
+    .map((d) => `${d.itemCode}:${d.itemName}:${d.reqQty}`)
+    .join('|');
+  return [
+    req.id,
+    req.status,
+    req.dueDate,
+    req.priority,
+    req.preferredVendor ?? '',
+    req.stockCheckStatus ?? '',
+    req.stockCheckDueDate ?? '',
+    req.stockCheckAssignedTo ?? '',
+    req.stockCheckNotes ?? '',
+    itemSig,
+  ].join('\0');
+}
+
+/**
+ * PR lines for PO release/split: prefer API `procurement_requests.items`; if missing/empty (cache/sync gap),
+ * fall back to mapped UI `itemDetails` so PO rows keep raw_material_id / pack_material_id for warehouse PO Qty.
+ */
+function resolvePrItemsForPurchaseOrderLines(
+  backendPrArray: ApiProcurementRequest[],
+  requestsMapped: ProcurementRequest[],
+  opts: { backendRequestId: string; draftRequestId: string; requestCode: string }
+): BackendPRItem[] {
+  const { backendRequestId, draftRequestId, requestCode } = opts;
+  const key = String(backendRequestId || draftRequestId || '').trim();
+  const prRow = backendPrArray.find((p) => String(p.id) === key) as { items?: BackendPRItem[] } | undefined;
+  let lines: BackendPRItem[] = Array.isArray(prRow?.items) ? [...prRow.items] : [];
+  if (lines.length === 0) {
+    const codeNorm = String(requestCode ?? '').trim().toUpperCase();
+    const liveReq =
+      requestsMapped.find((r) => String(r.id) === key) ||
+      (codeNorm ? requestsMapped.find((r) => String(r.code).toUpperCase() === codeNorm) : undefined);
+    if (liveReq?.itemDetails?.length) {
+      lines = itemDetailsToProcurementRequestItems(liveReq.itemDetails) as BackendPRItem[];
+    }
+  }
+  return lines;
 }
 
 /** Avoid setDraftPOs on every purchase-orders refetch when mapped drafts are logically unchanged (prevents update-depth loops + flickering ids). */
@@ -169,11 +353,31 @@ function extractMasterCodeFromText(value: unknown): string {
   return m && m[0] ? m[0].toUpperCase() : '';
 }
 
+/**
+ * Numeric / alphanumeric RM-PM master codes such as "1000612", "4000640", "5L00471" are the real
+ * primary keys the backend uses to resolve PO -> GRN line items. extractMasterCodeFromText only
+ * matches the synthetic "EI-..." prefix, so anything that needs to survive a round-trip (PO line,
+ * GRN payload, warehouse Inbound display) must keep the original code as-is.
+ */
+function isRealMasterCode(value: unknown): boolean {
+  const s = String(value ?? '').trim();
+  if (!s) return false;
+  if (/^EI-/i.test(s)) return false;
+  return /^[A-Z0-9]+$/i.test(s);
+}
+
 function resolveItemCodeFromSources(
   sources: unknown[],
   fallbackType: RequestType,
   fallbackIndex: number
 ): string {
+  // Prefer real master codes (e.g. "1000612", "4000640", "5L00471") over synthetic "EI-..." codes.
+  // Stripping the real codes here was breaking the procurement -> warehouse GRN flow: the backend
+  // could no longer match the line to its PO row by code, fell back to positional matching, and
+  // ended up labelling PM lines as the first RM of the PO (the "AQUA" bug).
+  for (const src of sources) {
+    if (isRealMasterCode(src)) return String(src).trim();
+  }
   for (const src of sources) {
     const code = extractMasterCodeFromText(src);
     if (code) return code;
@@ -197,7 +401,83 @@ function resolveMasterIdsFromRawItem(raw: any): {
 }
 
 const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
-const SIDE_SECTIONS: SideSection[] = ['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs', 'GRN Monitor', 'Item Tracker'];
+const SIDE_SECTIONS: SideSection[] = [
+  'Overview',
+  'Requests',
+  'Quotations',
+  'Draft POs',
+  'Issued POs',
+  'GRN Monitor',
+  'Inventory Audit',
+];
+
+type RequestListTab = 'All' | 'Active' | RequestStatus | 'Week + Vendor';
+type RequestListViewMode = 'item' | 'pr';
+
+const GRN_MONITOR_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+
+type GrnMonitorSortColumn =
+  | 'grnNo'
+  | 'poNo'
+  | 'vendor'
+  | 'type'
+  | 'items'
+  | 'poValue'
+  | 'receivedDate'
+  | 'assignedTo'
+  | 'qcStatus'
+  | 'status';
+
+function grnMonitorStatusLabel(grn: GRNRecordFromApi): string {
+  const s = String(grn.status ?? '').trim();
+  if (s === 'GRN Complete') return 'Completed';
+  if (s === 'Under GRN') return 'Under GRN';
+  if (s) return s;
+  return 'Pending GRN';
+}
+
+function compareGrnSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForGrnMonitorRow(grn: GRNRecordFromApi, col: GrnMonitorSortColumn): string | number {
+  switch (col) {
+    case 'grnNo':
+      return grn.grnNo ?? '';
+    case 'poNo':
+      return grn.poNo ?? '';
+    case 'vendor':
+      return grn.vendor ?? '';
+    case 'type':
+      return grn.type ?? '';
+    case 'items':
+      return grnLineItemsNameSummary(grn.lineItems);
+    case 'poValue':
+      return Number(grn.poValue) || 0;
+    case 'receivedDate': {
+      const d = grn.receivedDate ? new Date(grn.receivedDate) : null;
+      return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+    }
+    case 'assignedTo':
+      return grn.assignedTo ?? '';
+    case 'qcStatus':
+      return grn.qcStatus ?? '';
+    case 'status':
+      return grnMonitorStatusLabel(grn);
+    default:
+      return '';
+  }
+}
+
+const QUOTATIONS_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+/** Vendor-consolidated quotation cards show this many item rows before "View more". */
+const QUOTATION_VENDOR_LINES_PREVIEW = 5;
 
 /**
  * Procurement requests whose released POs should appear under Issued POs.
@@ -214,11 +494,21 @@ function requestStatusShowsIssuedPOs(status: RequestStatus): boolean {
   return REQUEST_STATUSES_FOR_ISSUED_PO_LIST.includes(status);
 }
 
-/** True when payment terms include an advance % (cannot issue PO until advance is recorded in PO tracking). */
-function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null): boolean {
-  const { type } = parsePaymentTermsString(paymentTerms);
-  return paymentTermsTypeRequiresAdvancePercent(type);
+/** PRs still in the RFQ / request queue (before Release to Draft PO). Hidden from the Requests "Active" tab once status is PO Draft or later. */
+const REQUEST_STATUSES_PRE_DRAFT_PIPELINE = PROCUREMENT_PRE_DRAFT_STATUSES;
+
+function requestStatusIsPreDraftPipeline(status: RequestStatus): boolean {
+  return isProcurementRequestPreDraftPipelineStatus(status);
 }
+
+/** True when payment terms include a positive advance % (transaction details + advance recording apply). */
+function draftPaymentTermsRequireAdvance(paymentTerms: string | undefined | null): boolean {
+  const { type, advancePercent } = parsePaymentTermsString(paymentTerms);
+  return paymentTermsTypeRequiresAdvancePercent(type) && Number(advancePercent) > 0;
+}
+
+const RELEASE_PAYMENT_MODES = ['NEFT', 'RTGS', 'IMPS', 'UPI', 'Cheque', 'Cash', 'Bank Transfer'] as const;
+type ReleasePaymentMode = (typeof RELEASE_PAYMENT_MODES)[number];
 
 /** Normalise PO number for matching GRN poNo ↔ issued card poNumber. */
 function normPoNumberKeyForTimeline(n: string) {
@@ -314,25 +604,168 @@ function issuedPoCardTimelineCompletedIndex(
     if (ov?.underGrn) idx = Math.max(idx, 5);
     if (grnCompleteForPo) idx = Math.max(idx, 6);
   }
-  if (idx > 0) return idx;
-  if (recordStatus === 'In Transit' || recordStatus === 'At Risk') return 3;
-  return 0;
+  return idx;
+}
+
+/**
+ * Timeline rows for Issued PO cards + detail modal — same 7 stages and same completion rule as
+ * `issuedPoCardTimelineCompletedIndex` (avoids modal-only extra "Order Tracking" step / different progressive logic).
+ */
+function buildIssuedPoTimelineSteps(
+  recordStatus: string,
+  tracking: PoTrackingRecord | null | undefined,
+  ov: IssuedPoTimelineOverride | undefined,
+  grnCompleteForPo: boolean,
+  poDateFallback: string,
+): POTimelineStep[] {
+  const has = (v: unknown) => v != null && String(v).trim() !== '';
+  const completedIdx = issuedPoCardTimelineCompletedIndex(recordStatus, tracking, ov, grnCompleteForPo);
+  const meta: { label: string; at: keyof PoTrackingRecord; note: keyof PoTrackingRecord }[] = [
+    { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
+    { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },
+    { label: 'Vendor Confirmed', at: 'vendorConfirmedAt', note: 'vendorConfirmedNote' },
+    { label: 'Shipped', at: 'shippedAt', note: 'shippedNote' },
+    { label: 'Delivered', at: 'deliveredAt', note: 'deliveredNote' },
+    { label: 'Under GRN', at: 'underGrnAt', note: 'underGrnNote' },
+    { label: 'GRN Complete', at: 'grnCompleteAt', note: 'grnCompleteNote' },
+  ];
+  return meta.map((m, index) => {
+    const done = index <= completedIdx;
+    let timestamp: string | null = null;
+    if (tracking) {
+      const raw = tracking[m.at];
+      if (has(raw) && typeof raw === 'string') timestamp = raw;
+    }
+    if (index === 0 && !timestamp && has(poDateFallback)) timestamp = poDateFallback;
+    let note: string | null = null;
+    if (tracking) {
+      const n = tracking[m.note];
+      if (has(n) && typeof n === 'string') note = n;
+    }
+    if (index === 0 && !note && done) note = 'PO shared with vendor';
+    return {
+      stage: m.label,
+      done,
+      timestamp,
+      actor: index === 0 && done ? 'Procurement' : null,
+      note,
+    };
+  });
 }
 
 const isMainTab = (value: string | null): value is MainTab => Boolean(value && MAIN_TABS.includes(value as MainTab));
 const isSideSection = (value: string | null): value is SideSection => Boolean(value && SIDE_SECTIONS.includes(value as SideSection));
 
+/** Same tag Planning writes on procurement_requests.notes when requesting vendor rates. */
+const PLANNING_QUOTATION_REQUEST_NOTE_TAG = 'Quotation requested from Planning';
+
+function isPlanningQuotationRequest(req: ProcurementRequest): boolean {
+  return String(req.notes ?? '').includes(PLANNING_QUOTATION_REQUEST_NOTE_TAG);
+}
+
+/** Planning "request quotation" rows belong in Quotations, not the procurement-requests queue. */
+function isProcurementRequestsListRow(req: ProcurementRequest): boolean {
+  return !isPlanningQuotationRequest(req);
+}
+
+function planningQuotationRequestHasRecordedQuote(req: ProcurementRequest, quoteList: VendorQuote[]): boolean {
+  return quoteList.some(
+    (q) => String(q.requestId) === String(req.id) && !String(q.id).startsWith('IL-'),
+  );
+}
+
 const getInitialMainTab = (searchParams: URLSearchParams): MainTab => (isMainTab(searchParams.get('tab')) ? (searchParams.get('tab') as MainTab) : 'Procurement');
 const getInitialSideSection = (searchParams: URLSearchParams): SideSection => (isSideSection(searchParams.get('section')) ? (searchParams.get('section') as SideSection) : 'Overview');
 
 const deriveStockCheckStatusForRequest = (request: ProcurementRequest): StockCheckStatus => {
-  if (request.status === 'New' || request.status === 'Quoted') {
+  const sc = String(request.stockCheckStatus ?? '').trim();
+  if (sc) {
+    if (sc.toLowerCase() === 'completed') return 'Completed';
+    if (sc.toLowerCase() === 'in progress') return 'In Progress';
     return 'Assigned';
   }
-  if (request.status === 'PO Draft') {
-    return 'In Progress';
+  // Do not infer stock-check completion from procurement request lifecycle.
+  // Warehouse status is the source of truth for stock-check progress.
+  return 'Assigned';
+};
+
+const isStockCheckPendingForRequest = (request: ProcurementRequest): boolean => {
+  const sc = String(request.stockCheckStatus ?? '').trim().toLowerCase();
+  return sc === 'pending' || sc === 'requested' || sc === 'in progress';
+};
+
+const parseStockCheckOutcome = (notes: string | null | undefined): 'all_ok' | 'not_ok' | null => {
+  if (!notes || !notes.trim()) return null;
+  try {
+    const parsed = JSON.parse(notes) as { outcome?: string };
+    if (parsed?.outcome === 'all_ok' || parsed?.outcome === 'not_ok') return parsed.outcome;
+    return null;
+  } catch {
+    return null;
   }
-  return 'Completed';
+};
+
+const parseStockCheckNotesLines = (
+  notes: string | null | undefined,
+): Array<{
+  itemCode?: string;
+  itemName?: string;
+  physicalQty?: number;
+  updatedStockQty?: number;
+  zone?: string;
+  rack?: string;
+  batchNo?: string;
+}> => {
+  if (!notes || !notes.trim()) return [];
+  try {
+    const parsed = JSON.parse(notes) as { lines?: unknown[] };
+    return Array.isArray(parsed?.lines) ? (parsed.lines as Array<any>) : [];
+  } catch {
+    return [];
+  }
+};
+
+const isStockCheckOneTimeCompleted = (request: ProcurementRequest): boolean => {
+  const status = String(request.stockCheckStatus ?? '').trim().toLowerCase();
+  if (status !== 'completed') return false;
+  const outcome = parseStockCheckOutcome(request.stockCheckNotes);
+  const lines = parseStockCheckNotesLines(request.stockCheckNotes);
+  return outcome === 'all_ok' && lines.length > 0;
+};
+
+type IlPriceHistoryEntry = {
+  oldPrice: number;
+  newPrice: number;
+  changedAt: string;
+  changedBy?: string | null;
+  reason?: string | null;
+};
+
+const parseIlTierHistory = (tierNote: unknown): IlPriceHistoryEntry[] => {
+  const raw = String(tierNote ?? '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { history?: unknown[] };
+    if (!Array.isArray(parsed?.history)) return [];
+    return parsed.history
+      .map((h) => {
+        if (!h || typeof h !== 'object') return null;
+        const oldPrice = Number((h as { oldPrice?: unknown }).oldPrice);
+        const newPrice = Number((h as { newPrice?: unknown }).newPrice);
+        const changedAt = String((h as { changedAt?: unknown }).changedAt ?? '').trim();
+        if (!Number.isFinite(oldPrice) || !Number.isFinite(newPrice)) return null;
+        return {
+          oldPrice,
+          newPrice,
+          changedAt: changedAt || new Date().toISOString(),
+          changedBy: String((h as { changedBy?: unknown }).changedBy ?? '').trim() || null,
+          reason: String((h as { reason?: unknown }).reason ?? '').trim() || null,
+        };
+      })
+      .filter((x): x is IlPriceHistoryEntry => x != null);
+  } catch {
+    return [];
+  }
 };
 
 const getInitialLiveState = (): LiveProcurementState => {
@@ -453,32 +886,17 @@ const Procurement: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'All' | RequestType>('All');
   const [vendorFilter, setVendorFilter] = useState('All Vendors');
   const [statusFilter, setStatusFilter] = useState<'All Statuses' | QuoteStatus>('All Statuses');
-  /** Requests tab: All = no status filter; Active = exclude PO Released; else match exact status */
-  const [requestTab, setRequestTab] = useState<'All' | 'Active' | RequestStatus>('All');
+  /** Requests tab: All = no filter; Active = New + Quoted only (excludes PO Draft+ once moved to Draft POs) */
+  const [requestTab, setRequestTab] = useState<RequestListTab>('New');
+  /** Requests list: one card per item line vs one card per PR (multi-line → one PO). */
+  const [requestListView, setRequestListView] = useState<RequestListViewMode>('pr');
   const [draftPOStatusFilter, setDraftPOStatusFilter] = useState<'All Statuses' | 'Pending Approval' | 'Approved'>('All Statuses');
   const [draftPOSearch, setDraftPOSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
+  /** Per-quote id: show all item lines (vendor cards with many consolidated items). */
+  const [expandedQuoteLineLists, setExpandedQuoteLineLists] = useState<Record<string, boolean>>({});
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
-  const [showNewRequestModal, setShowNewRequestModal] = useState(false);
-  const [newRequestForm, setNewRequestForm] = useState({
-    category: '',
-    type: 'RM' as RequestType,
-    source: 'Planning Team',
-    priority: 'High' as 'High' | 'Medium' | 'Low',
-    requestDate: '27-02-2026',
-    requiredDate: '',
-    itemName: '',
-    reqQty: '',
-    uom: '',
-    moq: '',
-    plannedPrice: '',
-    packSize: '',
-    leadTimeDays: '',
-    preferredVendor: '',
-    notes: '',
-    requireStockCheck: 'No'
-  });
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
   /** In PR View: which quotation is selected for "Create Draft PO" (dropdown) */
   const [selectedQuoteIdInPrView, setSelectedQuoteIdInPrView] = useState<string>('');
@@ -501,6 +919,8 @@ const Procurement: React.FC = () => {
   const [updateStockCheckRequest, setUpdateStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [stockCheckForm, setStockCheckForm] = useState<{ assignedTo: string; status: string; dueDate: string; notes: string }>({ assignedTo: '', status: '', dueDate: '', notes: '' });
   const [stockCheckSaving, setStockCheckSaving] = useState(false);
+  const [approvingGapLineKey, setApprovingGapLineKey] = useState<string | null>(null);
+  const [releasingWeekVendorBucketKey, setReleasingWeekVendorBucketKey] = useState<string | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [showRecordQuoteModal, setShowRecordQuoteModal] = useState(false);
   const [recordQuoteForm, setRecordQuoteForm] = useState<{
@@ -509,12 +929,18 @@ const Procurement: React.FC = () => {
     validTill: string;
     leadTimeDays: string;
     notes: string;
+    /** When set, save links quotation to this PR and syncs Items List for Planning. */
+    procurementRequestId: string;
+    /** Planning quotation ask — fulfill on Items List save (no PR). */
+    planningQuotationAskId: string;
   }>({
     vendorId: '',
     quoteDate: '',
     validTill: '',
     leadTimeDays: '',
     notes: '',
+    procurementRequestId: '',
+    planningQuotationAskId: '',
   });
   const [recordQuoteLines, setRecordQuoteLines] = useState<
     {
@@ -530,6 +956,8 @@ const Procurement: React.FC = () => {
       itemType?: 'RM' | 'PM';
     }[]
   >([]);
+  const [recordQuoteLineSearch, setRecordQuoteLineSearch] = useState<Record<number, string>>({});
+  const [recordQuoteSaving, setRecordQuoteSaving] = useState(false);
 
   const [editItemsListLineTarget, setEditItemsListLineTarget] = useState<{
     itemsListId: number;
@@ -544,15 +972,33 @@ const Procurement: React.FC = () => {
     moqMax: number | null;
     pricePerUnit: number;
     paymentTerms: string;
+    tierNote: string;
   } | null>(null);
   const [editItemsListLineSaving, setEditItemsListLineSaving] = useState(false);
   const [editItemsListLineForm, setEditItemsListLineForm] = useState<{
     pricePerUnit: string;
     moqMin: string;
     moqMax: string;
-    paymentTerms: string;
-  }>({ pricePerUnit: '', moqMin: '', moqMax: '', paymentTerms: '' });
+    advancePct: string;
+    preShipmentPct: string;
+    postShipmentPct: string;
+    creditDays: string;
+  }>({
+    pricePerUnit: '',
+    moqMin: '',
+    moqMax: '',
+    advancePct: '',
+    preShipmentPct: '',
+    postShipmentPct: '',
+    creditDays: '0',
+  });
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
+  const [editingQuoteLine, setEditingQuoteLine] = useState<{
+    quoteId: string;
+    lineIndex: number;
+    nextPrice: string;
+  } | null>(null);
+  const [savingQuoteLine, setSavingQuoteLine] = useState(false);
   const [selectedGrn, setSelectedGrn] = useState<{
     request: ProcurementRequest;
     vendor: string;
@@ -572,21 +1018,35 @@ const Procurement: React.FC = () => {
   const [splitPOTarget, setSplitPOTarget] = useState<DraftPO | null>(null);
   const [splitSelectedLineIndexes, setSplitSelectedLineIndexes] = useState<number[]>([]);
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
+  const [deletingDraftPoId, setDeletingDraftPoId] = useState<string | null>(null);
+  const [draftPoDeleteConfirmTarget, setDraftPoDeleteConfirmTarget] = useState<DraftPO | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [requestDeleteConfirmTarget, setRequestDeleteConfirmTarget] = useState<ProcurementRequest | null>(null);
   const [releaseMethod, setReleaseMethod] = useState<'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email'>('Email + Portal');
   const [releaseNotes, setReleaseNotes] = useState('');
+  const [releasePaymentTransactionNo, setReleasePaymentTransactionNo] = useState('');
+  const [releasePaymentMode, setReleasePaymentMode] = useState<ReleasePaymentMode | ''>('');
+  const [releasePaymentDate, setReleasePaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [recordingAdvancePayment, setRecordingAdvancePayment] = useState(false);
+  const [releasingPO, setReleasingPO] = useState(false);
   const [issuedSearch, setIssuedSearch] = useState('');
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
+  /** Timeline stage filter for Issued POs itemised dashboard (parity with Fulfillment pipeline strip). Keys `issued-0` … `issued-6`. */
+  const [issuedPoPipelineStageKey, setIssuedPoPipelineStageKey] = useState<string | null>(null);
   const [_issuedViewMode, _setIssuedViewMode] = useState<'Table' | 'Cards'>('Cards');
   const [grnCategoryFilter, setGrnCategoryFilter] = useState<'All' | RequestType>('All');
   const [grnVendorFilter, setGrnVendorFilter] = useState('All Vendors');
   const [grnStatusFilter, setGrnStatusFilter] = useState<'All' | 'Pending GRN' | 'Under GRN' | 'Completed'>('All');
   const [grnSearch, setGrnSearch] = useState('');
-  const [itemTrackerCategory, setItemTrackerCategory] = useState<'All' | RequestType>('All');
-  const [itemTrackerVendor, setItemTrackerVendor] = useState('All Vendors');
-  const [itemTrackerStatus, setItemTrackerStatus] = useState<'All Statuses' | RequestStatus>('All Statuses');
-  const [itemTrackerSearch, setItemTrackerSearch] = useState('');
+  const [grnSortColumn, setGrnSortColumn] = useState<GrnMonitorSortColumn | null>('receivedDate');
+  const [grnSortDirection, setGrnSortDirection] = useState<SortDirection>('desc');
+  const [grnMonitorPage, setGrnMonitorPage] = useState(1);
+  const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
+  const [quotationsPage, setQuotationsPage] = useState(1);
+  const [quotationsPageSize, setQuotationsPageSize] = useState<number>(10);
+  const [selectedGrnMonitor, setSelectedGrnMonitor] = useState<GRNRecordFromApi | null>(null);
+  const [grnMonitorDetailLoading, setGrnMonitorDetailLoading] = useState(false);
   const [releaseToPlannedTarget, setReleaseToPlannedTarget] = useState<{ request: ProcurementRequest; item: ReleaseToPlannedItem } | null>(null);
   const [releaseToPlannedForm, setReleaseToPlannedForm] = useState<{
     vendor: string;
@@ -606,18 +1066,7 @@ const Procurement: React.FC = () => {
     leadTimeDays: 0,
   });
   const [releaseToPlannedNotes, setReleaseToPlannedNotes] = useState('');
-  const [releaseToPlannedLineEdits, setReleaseToPlannedLineEdits] = useState<Array<{
-    itemName: string;
-    itemCode: string;
-    type: RequestType;
-    qty: number;
-    unit: string;
-    moq: number;
-    unitPrice: number;
-    leadDays: number;
-    raw_material_id?: number;
-    pack_material_id?: number;
-  }>>([]);
+  const [releaseToPlannedLineEdits, setReleaseToPlannedLineEdits] = useState<ReleaseLineEditRow[]>([]);
 
   /**
    * For Draft POs created from Planning > Items Involved, we release a purchase order without
@@ -631,11 +1080,20 @@ const Procurement: React.FC = () => {
   >({});
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { dispatch: globalDispatch } = useGlobalState();
+  const isIssuedLikePoStatus = useCallback((status: unknown): boolean => {
+    const s = String(status ?? '').trim().toLowerCase();
+    return s === 'released' || s === 'issued';
+  }, []);
+
+  const procurementQueriesFetching = useIsFetching({ predicate: procurementPageQueryPredicate }) > 0;
 
   // Prevent double-click / race conditions from creating multiple GRNs for the same PO.
   // Keyed by `record.poNumber`.
   const receiveGrnLockRef = useRef<Record<string, boolean>>({});
+  const poExcelInputRef = useRef<HTMLInputElement>(null);
+  const [importingPoExcel, setImportingPoExcel] = useState(false);
 
   const { data: backendPrResult } = useQuery({
     queryKey: ['procurement-requests'],
@@ -655,7 +1113,20 @@ const Procurement: React.FC = () => {
     },
   });
 
-  const { data: vendorClientList } = useQuery({
+  const { data: planningQuotationAsksResult } = useQuery({
+    queryKey: ['planning-quotation-asks', 'pending'],
+    queryFn: async () => {
+      const res = await fetchPlanningQuotationAsks({ status: 'pending' });
+      return res.success ? (res.data ?? []) : [];
+    },
+  });
+
+  const planningQuotationAsksPending = useMemo(
+    () => sortPlanningQuotationAsksLatestFirst(planningQuotationAsksResult ?? []),
+    [planningQuotationAsksResult],
+  );
+
+  const { data: vendorClientList, isLoading: vendorClientsLoading } = useQuery({
     queryKey: ['vendor-client', 'vendor'],
     queryFn: async () => {
       const res = await fetchVendorClients('vendor');
@@ -674,7 +1145,8 @@ const Procurement: React.FC = () => {
   const { data: grnListFromApi, isLoading: grnListLoading } = useQuery({
     queryKey: ['grn-list'],
     queryFn: fetchGRNList,
-    enabled: sideSection === 'GRN Monitor' || sideSection === 'Issued POs',
+    /** Always fetch so sidebar GRN badge matches `grnListFromApi.length` on every visit. */
+    enabled: true,
   });
 
   const grnCompletePoNormSet = useMemo(() => {
@@ -687,27 +1159,208 @@ const Procurement: React.FC = () => {
     return set;
   }, [grnListFromApi]);
 
-  const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading } = useQuery({
+  const openGrnMonitorDetail = useCallback(async (grn: GRNRecordFromApi) => {
+    setSelectedGrnMonitor(grn);
+    setGrnMonitorDetailLoading(true);
+    try {
+      const full = await fetchGRNById(String(grn.id));
+      if (full) setSelectedGrnMonitor(full);
+    } finally {
+      setGrnMonitorDetailLoading(false);
+    }
+  }, []);
+
+  const toggleGrnMonitorSort = useCallback((column: GrnMonitorSortColumn) => {
+    if (grnSortColumn === column) {
+      setGrnSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setGrnSortColumn(column);
+      setGrnSortDirection('asc');
+    }
+    setGrnMonitorPage(1);
+  }, [grnSortColumn]);
+
+  const filteredGrnMonitorLines = useMemo(() => {
+    const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
+    const filtered = grnList.filter((grn) => {
+      if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
+      if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
+      const statusNorm =
+        (grn.status || '') === 'GRN Complete'
+          ? 'Completed'
+          : (grn.status || '') === 'Under GRN'
+            ? 'Under GRN'
+            : 'Pending GRN';
+      if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
+      if (grnSearch.trim()) {
+        const q = grnSearch.toLowerCase();
+        const globalHit =
+          (grn.grnNo ?? '').toLowerCase().includes(q) ||
+          (grn.poNo ?? '').toLowerCase().includes(q) ||
+          (grn.vendor ?? '').toLowerCase().includes(q) ||
+          (grn.lineItems ?? []).some((l) => {
+            const name = grnLineItemDisplayName(l).toLowerCase();
+            return name.includes(q) || (l.itemCode ?? '').toLowerCase().includes(q);
+          });
+        if (!globalHit) return false;
+      }
+      return true;
+    });
+    if (!grnSortColumn) return filtered;
+    return [...filtered].sort((a, b) => {
+      const cmp = compareGrnSortValues(
+        sortValueForGrnMonitorRow(a, grnSortColumn),
+        sortValueForGrnMonitorRow(b, grnSortColumn),
+        grnSortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [
+    grnListFromApi,
+    grnCategoryFilter,
+    grnVendorFilter,
+    grnStatusFilter,
+    grnSearch,
+    grnSortColumn,
+    grnSortDirection,
+  ]);
+
+  const grnMonitorTotalPages = Math.max(
+    1,
+    Math.ceil(filteredGrnMonitorLines.length / grnMonitorPageSize)
+  );
+  const grnMonitorSafePage = Math.min(grnMonitorPage, grnMonitorTotalPages);
+  const grnMonitorStartIndex = (grnMonitorSafePage - 1) * grnMonitorPageSize;
+  const pagedGrnMonitorLines = filteredGrnMonitorLines.slice(
+    grnMonitorStartIndex,
+    grnMonitorStartIndex + grnMonitorPageSize
+  );
+
+  useEffect(() => {
+    setGrnMonitorPage(1);
+  }, [grnCategoryFilter, grnVendorFilter, grnStatusFilter, grnSearch, grnSortColumn, grnSortDirection, grnMonitorPageSize]);
+
+  useEffect(() => {
+    if (grnMonitorPage > grnMonitorTotalPages) {
+      setGrnMonitorPage(grnMonitorTotalPages);
+    }
+  }, [grnMonitorPage, grnMonitorTotalPages]);
+
+  const { data: warehouseInventoryData, isLoading: warehouseInventoryLoading, refetch: refetchWarehouseInventory } = useQuery({
     queryKey: ['warehouse-inventory'],
     queryFn: async () => {
       const res = await fetchWarehouseInventory();
       return res.success ? res.data : null;
     },
-    enabled: sideSection === 'Item Tracker' || !!selectedStockCheckRequest,
+    // Needed for Stock Summary in PR View modal as well.
+    enabled: !!selectedStockCheckRequest || !!selectedRequest,
+    staleTime: 0,
+    // Avoid repeated GETs when users switch tabs/windows.
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
-  const { data: rawMaterialsListForQuote = [] } = useQuery({
+  const openStockCheckModal = useCallback(
+    (req: ProcurementRequest) => {
+      setSelectedStockCheckRequest(req);
+      setSelectedStockCheckItemName(req.itemDetails?.[0]?.itemName ?? req.items[0] ?? null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+    },
+    [queryClient]
+  );
+
+  const { data: rawMaterialsListForQuote = [], isError: rawMaterialsListForQuoteError } = useQuery({
     queryKey: ['raw-materials-list'],
     queryFn: () => fetchRawMaterialsList(),
     enabled: showRecordQuoteModal,
   });
-  const { data: packMaterialsListForQuote = [] } = useQuery({
+  const { data: packMaterialsListForQuote = [], isError: packMaterialsListForQuoteError } = useQuery({
     queryKey: ['pack-materials-list'],
     queryFn: () => fetchPackMaterialsList(),
     enabled: showRecordQuoteModal,
   });
 
-  const requestsFromApi = useMemo(
+  const MAX_QUOTE_LINE_RM_PM_SUGGESTIONS = 100;
+
+  const quoteLineItemOptions = useMemo(() => {
+    const rmOptions = (rawMaterialsListForQuote as RawMaterialRecord[]).map((r) => {
+      const code = String(r.code ?? '').trim();
+      const name = String(r.name ?? '').trim();
+      const inci = String(r.inci ?? '').trim();
+      const sku = String(r.zohoSkuCode ?? '').trim();
+      const zoho = String(r.zohoId ?? '').trim();
+      const uom = String(r.uom ?? 'KG').trim() || 'KG';
+      const searchText = ['rm', String(r.id), code, name, inci, sku, zoho].filter(Boolean).join(' ').toLowerCase();
+      return {
+        key: `rm-${r.id}`,
+        label: `RM - ${code || String(r.id)} - ${name || code || String(r.id)}`,
+        searchText,
+        itemType: 'RM' as const,
+        itemId: code,
+        name: name || code || `RM ${r.id}`,
+        uom,
+      };
+    });
+    const pmOptions = (packMaterialsListForQuote as PackMaterialRecord[]).map((p) => {
+      const code = String(p.code ?? '').trim();
+      const name = String(p.description ?? p.code ?? '').trim();
+      const sku = String(p.zohoSkuCode ?? '').trim();
+      const zoho = String(p.zohoId ?? '').trim();
+      const material = String(p.material ?? '').trim();
+      const uom = String(p.unit ?? 'PCS').trim() || 'PCS';
+      const searchText = ['pm', String(p.id), code, name, sku, material, zoho].filter(Boolean).join(' ').toLowerCase();
+      return {
+        key: `pm-${p.id}`,
+        label: `PM - ${code || String(p.id)} - ${name || code || String(p.id)}`,
+        searchText,
+        itemType: 'PM' as const,
+        itemId: code,
+        name: name || code || `PM ${p.id}`,
+        uom,
+      };
+    });
+    return [...rmOptions, ...pmOptions];
+  }, [packMaterialsListForQuote, rawMaterialsListForQuote]);
+
+  const quoteLineOptionByKey = useMemo(
+    () => new Map(quoteLineItemOptions.map((opt) => [opt.key, opt])),
+    [quoteLineItemOptions]
+  );
+  const quoteLineOptionByLabelLower = useMemo(
+    () => new Map(quoteLineItemOptions.map((opt) => [opt.label.toLowerCase(), opt])),
+    [quoteLineItemOptions]
+  );
+
+  const filterQuoteLineOptionsForDatalist = useCallback(
+    (query: string) => {
+      const q = query.trim().toLowerCase();
+      const list = !q ? quoteLineItemOptions : quoteLineItemOptions.filter((o) => o.searchText.includes(q));
+      return list.slice(0, MAX_QUOTE_LINE_RM_PM_SUGGESTIONS);
+    },
+    [quoteLineItemOptions]
+  );
+
+  const resolveRecordQuoteLineOption = useCallback(
+    (raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const lower = trimmed.toLowerCase();
+      const exactLabel = quoteLineOptionByLabelLower.get(lower);
+      if (exactLabel) return exactLabel;
+      const idMatch = /^(rm|pm)-(\d+)$/i.exec(trimmed.replace(/\s+/g, ''));
+      if (idMatch) {
+        const key = `${idMatch[1].toLowerCase()}-${idMatch[2]}`;
+        return quoteLineOptionByKey.get(key) ?? null;
+      }
+      const cands = quoteLineItemOptions.filter((o) => o.searchText.includes(lower));
+      if (cands.length === 1) return cands[0];
+      return null;
+    },
+    [quoteLineItemOptions, quoteLineOptionByKey, quoteLineOptionByLabelLower]
+  );
+
+  const requestsMapped = useMemo(
     () => backendPrArray.map(mapBackendPrToRequest),
     [backendPrArray]
   );
@@ -729,7 +1382,7 @@ const Procurement: React.FC = () => {
       if (nameKey) byName.set(nameKey, row);
     }
 
-    for (const req of requestsFromApi) {
+    for (const req of requestsMapped) {
       const detailRows = Array.isArray(req.itemDetails) ? req.itemDetails : [];
       let stockInHand = 0;
       let openPOQty = 0;
@@ -761,15 +1414,16 @@ const Procurement: React.FC = () => {
       });
     }
     return byReq;
-  }, [warehouseInventoryData?.rows, requestsFromApi]);
+  }, [warehouseInventoryData?.rows, requestsMapped]);
 
   const quotesFromApi = useMemo(() => {
     const list = quotationsResult ?? [];
-    return list.map((q) => {
-      const req = requestsFromApi.find((r) => r.id === String(q.procurementRequestId));
+    const mapped = list.map((q) => {
+      const req = requestsMapped.find((r) => r.id === String(q.procurementRequestId));
       return mapBackendQuotationToQuote(q, req?.code, req?.type);
     });
-  }, [quotationsResult, requestsFromApi]);
+    return sortVendorQuotesLatestFirst(mapped);
+  }, [quotationsResult, requestsMapped]);
 
   const vendors: Vendor[] = useMemo(
     () => (vendorClientList ?? []).map(mapVendorClientToVendor),
@@ -781,14 +1435,40 @@ const Procurement: React.FC = () => {
     [purchaseOrdersRaw]
   );
 
+  const resolveOpenQtyForReleaseItem = useCallback(
+    (args: {
+      requestId: string;
+      reqType: RequestType;
+      itemName: string;
+      itemCode?: string;
+      totalReqQty: number;
+      raw_material_id?: number;
+      pack_material_id?: number;
+      itemType?: 'RM' | 'PM';
+    }): number => {
+      const committed = sumCommittedPoQtyForPrItem(
+        {
+          itemName: args.itemName,
+          itemCode: args.itemCode,
+          raw_material_id: args.raw_material_id,
+          pack_material_id: args.pack_material_id,
+          type: args.itemType ?? args.reqType,
+        },
+        { requestId: args.requestId, purchaseOrders, draftPOs },
+      );
+      return computeOpenProcurementLineQty(args.totalReqQty, committed);
+    },
+    [purchaseOrders, draftPOs],
+  );
+
   /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
   const releasedPoBackendIdsForTracking = useMemo(() => {
     const ids = purchaseOrders
-      .filter((p) => p.status === 'Released')
+      .filter((p) => isIssuedLikePoStatus(p.status))
       .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
       .filter((id) => /^\d+$/.test(id));
     return [...new Set(ids)].sort();
-  }, [purchaseOrders]);
+  }, [isIssuedLikePoStatus, purchaseOrders]);
 
   const { data: releasedPoTrackingByBackendId } = useQuery({
     queryKey: ['po-tracking-released-map', releasedPoBackendIdsForTracking.join(',')],
@@ -807,13 +1487,6 @@ const Procurement: React.FC = () => {
     enabled: sideSection === 'Issued POs' && releasedPoBackendIdsForTracking.length > 0,
     staleTime: 30_000,
   });
-
-  const draftPOsFromApi = useMemo(() => {
-    const reqs = requestsFromApi;
-    return purchaseOrders
-      .filter((p) => p.status === 'Draft')
-      .map((po) => mapPurchaseOrderToDraftPO(po, reqs));
-  }, [purchaseOrders, requestsFromApi]);
 
   const { data: poTrackingData } = useQuery({
     queryKey: ['po-tracking', selectedPO?.backendPoId],
@@ -850,6 +1523,21 @@ const Procurement: React.FC = () => {
     releaseDraftTracking?.advancePaidAt != null && String(releaseDraftTracking.advancePaidAt).trim() !== '',
   );
 
+  useEffect(() => {
+    if (!releasePOTarget || !releaseDraftTracking) return;
+    if (releaseDraftTracking.paymentTransactionNo) {
+      setReleasePaymentTransactionNo(releaseDraftTracking.paymentTransactionNo);
+    }
+    if (releaseDraftTracking.paymentMode) {
+      setReleasePaymentMode(releaseDraftTracking.paymentMode as ReleasePaymentMode);
+    }
+    if (releaseDraftTracking.paymentTransactionDate) {
+      setReleasePaymentDate(String(releaseDraftTracking.paymentTransactionDate).slice(0, 10));
+    } else if (releaseDraftTracking.advancePaidAt) {
+      setReleasePaymentDate(String(releaseDraftTracking.advancePaidAt).slice(0, 10));
+    }
+  }, [releasePOTarget?.id, releaseDraftTracking]);
+
   const needItemsListForQuotesOrDraftPO =
     sideSection === 'Quotations' ||
     sideSection === 'Draft POs' ||
@@ -862,7 +1550,7 @@ const Procurement: React.FC = () => {
       const res = await fetchPriceListPage('RM');
       return res.success ? res.data ?? [] : [];
     },
-    enabled: needItemsListForQuotesOrDraftPO,
+    enabled: needItemsListForQuotesOrDraftPO || backendPrArray.length > 0,
   });
   const { data: itemsListPm = [] } = useQuery({
     queryKey: ['items-list-page', 'PM'],
@@ -870,8 +1558,64 @@ const Procurement: React.FC = () => {
       const res = await fetchPriceListPage('PM');
       return res.success ? res.data ?? [] : [];
     },
-    enabled: needItemsListForQuotesOrDraftPO,
+    enabled: needItemsListForQuotesOrDraftPO || backendPrArray.length > 0,
   });
+
+  const resolveRmPrimaryUnit = useCallback(
+    (rawMaterialId?: number | null, itemCode?: string | null, fallback?: string | null): string => {
+      const rmId = rawMaterialId != null ? Number(rawMaterialId) : NaN;
+      const code = String(itemCode ?? '').trim().toLowerCase();
+      const hit = (itemsListRm ?? []).find((row) => {
+        const rowRmId = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+        if (Number.isFinite(rmId) && rmId > 0 && Number.isFinite(rowRmId) && rowRmId > 0) return rowRmId === rmId;
+        const rowCode = String(row.code ?? '').trim().toLowerCase();
+        return !!code && !!rowCode && rowCode === code;
+      });
+      return normRmPrimaryUom(hit?.uom ?? fallback ?? 'KG');
+    },
+    [itemsListRm]
+  );
+
+  const requestsFromApi = useMemo(() => {
+    return requestsMapped.map((req) => {
+      const quote = quotesFromApi.find((q) => q.requestId === req.id) ?? null;
+      const withLead = fillItemLeadFromPriceListPages(req, itemsListRm, itemsListPm, quote?.vendor ?? null);
+      const itemDetails = (withLead.itemDetails ?? []).map((d) => {
+        const lineType: 'RM' | 'PM' = d.type === 'PM' ? 'PM' : 'RM';
+        const master =
+          lineType === 'RM'
+            ? (itemsListRm ?? []).find((row) => {
+                const rid = d.raw_material_id != null ? Number(d.raw_material_id) : NaN;
+                const rowRm = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+                if (Number.isFinite(rid) && rid > 0 && Number.isFinite(rowRm) && rowRm === rid) return true;
+                const c = String(d.itemCode ?? '').trim().toLowerCase();
+                const rc = String(row.code ?? '').trim().toLowerCase();
+                return !!c && !!rc && c === rc;
+              })
+            : undefined;
+        const unit =
+          lineType === 'PM'
+            ? normRmPrimaryUom(d.unit || 'PCS')
+            : resolveRmPrimaryUnit(
+                d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                d.itemCode,
+                d.unit || (master as { uom?: string } | undefined)?.uom
+              );
+        const requestExpected = normalizeDateOnlyString(withLead.dueDate) || '';
+        const expectedDate =
+          normalizeDateOnlyString(d.expectedDate) || requestExpected;
+        return { ...d, unit, expectedDate };
+      });
+      return { ...withLead, itemDetails };
+    });
+  }, [requestsMapped, itemsListRm, itemsListPm, quotesFromApi, resolveRmPrimaryUnit]);
+
+  const draftPOsFromApi = useMemo(() => {
+    const reqs = requestsFromApi;
+    return purchaseOrders
+      .filter((p) => p.status === 'Draft')
+      .map((po) => mapPurchaseOrderToDraftPO(po, reqs));
+  }, [purchaseOrders, requestsFromApi]);
 
   const vendorItemPriceMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -939,14 +1683,60 @@ const Procurement: React.FC = () => {
   const isProcurementDataLoading =
     vendorClientList === undefined ||
     purchaseOrdersRaw === undefined ||
+    (sideSection === 'Quotations' &&
+      (quotationsResult === undefined || planningQuotationAsksResult === undefined)) ||
     (sideSection !== 'Quotations' && (backendPrResult === undefined || quotationsResult === undefined));
 
   useEffect(() => {
-    if (backendPrResult !== undefined) setRequests(requestsFromApi);
+    if (backendPrResult === undefined) return;
+    setRequests((prev) => {
+      if (prev.length !== requestsFromApi.length) return requestsFromApi;
+      const same = prev.every((p, i) => {
+        const n = requestsFromApi[i];
+        if (!n || p.id !== n.id) return false;
+        return procurementRequestApiSyncKey(p) === procurementRequestApiSyncKey(n);
+      });
+      return same ? prev : requestsFromApi;
+    });
   }, [backendPrResult, requestsFromApi]);
 
+  /** Keep open request detail in sync after list refetch (e.g. Edit Request saved required date). */
   useEffect(() => {
-    if (quotationsResult !== undefined) setQuotes(quotesFromApi);
+    if (!selectedRequest?.id) return;
+    const fresh = requestsFromApi.find((r) => r.id === selectedRequest.id);
+    if (!fresh) return;
+    setSelectedRequest((prev) => {
+      if (!prev || prev.id !== fresh.id) return prev;
+      if (
+        prev.dueDate === fresh.dueDate &&
+        prev.priority === fresh.priority &&
+        prev.status === fresh.status &&
+        prev.preferredVendor === fresh.preferredVendor
+      ) {
+        return prev;
+      }
+      return { ...prev, ...fresh };
+    });
+  }, [requestsFromApi, selectedRequest?.id]);
+
+  useEffect(() => {
+    if (quotationsResult === undefined) return;
+    setQuotes((prev) => {
+      const same =
+        prev.length === quotesFromApi.length &&
+        prev.every((p, i) => {
+          const n = quotesFromApi[i];
+          if (!n) return false;
+          return (
+            p.id === n.id &&
+            p.requestId === n.requestId &&
+            p.vendor === n.vendor &&
+            p.status === n.status &&
+            p.validTill === n.validTill
+          );
+        });
+      return same ? prev : quotesFromApi;
+    });
   }, [quotationsResult, quotesFromApi]);
 
   const lastDraftPOsFromApiKeyRef = useRef<string>('');
@@ -968,13 +1758,623 @@ const Procurement: React.FC = () => {
     await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
   }, [queryClient]);
 
+  const handleApproveInventoryAuditGap = useCallback(
+    async (line: InventoryAuditLine): Promise<boolean> => {
+      if (!(line.gapQty > 1e-6)) {
+        addToast('warning', 'No positive gap to approve on this line.');
+        return false;
+      }
+      if (line.stockCheckStatus.trim().toLowerCase() !== 'completed') {
+        addToast('warning', 'Warehouse must complete the stock check before gap approval.');
+        return false;
+      }
+
+      const prRow = backendPrArray.find((p) => String(p.id) === line.requestId);
+      if (!prRow) {
+        addToast('error', 'Linked procurement request was not found.');
+        return false;
+      }
+
+      const existingNote = findStockCheckNoteForItem(prRow.stockCheckNotes, line.itemCode, line.itemName);
+      if (existingNote?.gapApproved || line.gapApproved) {
+        addToast('warning', 'Gap already approved for this audit line.');
+        await queryClient.refetchQueries({ queryKey: ['procurement-requests'] });
+        return false;
+      }
+
+      const items = Array.isArray(prRow.items) ? [...prRow.items] : [];
+      if (items.length === 0) {
+        addToast('error', 'Request has no item lines to update.');
+        return false;
+      }
+
+      const approvedBy = user?.name?.trim() || 'Procurement';
+      const delta = line.gapQty;
+      const bumpedItems = bumpProcurementRequestItemQty(items, line.itemCode, line.itemName, delta);
+      const didBumpQty = bumpedItems.some((item, idx) => {
+        const nextQty = parseQuantityRequested(item.quantity_requested);
+        const prevQty = parseQuantityRequested(items[idx]?.quantity_requested);
+        return nextQty !== prevQty;
+      });
+      if (!didBumpQty) {
+        addToast('error', 'Could not match this audit line to a procurement request item.');
+        return false;
+      }
+
+      const stockCheckNotes = mergeGapApprovalIntoStockCheckNotes(
+        prRow.stockCheckNotes,
+        line.itemCode,
+        line.itemName,
+        delta,
+        approvedBy
+      );
+
+      const prUpd = await updateProcurementRequestApi(line.requestId, {
+        items: bumpedItems,
+        stockCheckNotes,
+      });
+      if (!prUpd.success) {
+        addToast('error', typeof prUpd.error === 'string' ? prUpd.error : 'Failed to update procurement request');
+        return false;
+      }
+
+      const targetStock = resolveInventoryStockAfterGapApproval(existingNote);
+      const whRows = warehouseInventoryData?.rows ?? [];
+      const whRow =
+        whRows.find((r) => {
+          if (line.raw_material_id != null && Number(line.raw_material_id) > 0) {
+            return r.type === 'RM' && Number(r.sourceId) === Number(line.raw_material_id);
+          }
+          if (line.pack_material_id != null && Number(line.pack_material_id) > 0) {
+            return r.type === 'PM' && Number(r.sourceId) === Number(line.pack_material_id);
+          }
+          const code = line.itemCode.trim().toLowerCase();
+          return code && String(r.code ?? '').trim().toLowerCase() === code;
+        }) ?? null;
+      let inventoryUpdated = false;
+      if (targetStock != null && whRow?.warehouseInventoryId != null) {
+        const invRes = await updateWarehouseStock(whRow.warehouseInventoryId, { wh_stock: targetStock });
+        if (!invRes.success) {
+          addToast(
+            'warning',
+            typeof invRes.error === 'string'
+              ? invRes.error
+              : 'Request updated, but warehouse inventory could not be adjusted.'
+          );
+        } else {
+          inventoryUpdated = true;
+        }
+      }
+
+      if (prUpd.data) {
+        const updated = mapBackendPrToRequest(prUpd.data);
+        setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      }
+
+      const rawOrders = (purchaseOrdersRaw ?? []) as Order[];
+      const draftPo = findDraftPurchaseOrderForRequest(rawOrders, line.requestId);
+      let poUpdated = false;
+      if (draftPo?.id) {
+        const poItems = bumpPurchaseOrderItemsQty(draftPo.items, line.itemCode, line.itemName, delta);
+        const poRes = await updatePurchaseOrder(draftPo.id, { items: poItems });
+        if (!poRes.success) {
+          addToast(
+            'warning',
+            typeof poRes.error === 'string'
+              ? poRes.error
+              : 'Request updated, but draft PO quantity could not be updated.'
+          );
+        } else {
+          poUpdated = true;
+        }
+      }
+
+      await queryClient.refetchQueries({ queryKey: ['procurement-requests'] });
+      await invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+
+      addToast(
+        'success',
+        `Gap +${delta.toLocaleString('en-IN')} ${line.unit} approved${
+          poUpdated ? ' — request and draft PO qty increased' : ' — request qty increased'
+        }${inventoryUpdated ? ' — warehouse stock set to physical count' : ''}.`
+      );
+      return true;
+    },
+    [
+      addToast,
+      backendPrArray,
+      invalidatePurchaseOrdersQueries,
+      purchaseOrdersRaw,
+      queryClient,
+      user?.name,
+      warehouseInventoryData?.rows,
+    ]
+  );
+
+  const handleReleaseWeekVendorConsolidated = useCallback(
+    async (bucket: WeekVendorItemBucket): Promise<void> => {
+      if (bucket.sourceLines.length === 0) {
+        addToast('warning', 'No source lines to release.');
+        return;
+      }
+
+      type SourceReleasePlan = {
+        line: (typeof bucket.sourceLines)[number];
+        request: ProcurementRequest;
+        openQty: number;
+        editRow: ReleaseLineEditRow;
+      };
+
+      const plans: SourceReleasePlan[] = [];
+      const reqType: RequestType = bucket.type === 'PM' ? 'PM' : 'RM';
+
+      for (const line of bucket.sourceLines) {
+        const req = requests.find((r) => r.id === line.requestId);
+        if (!req) {
+          addToast('error', `Request ${line.requestCode} not found.`);
+          return;
+        }
+        if (!isProcurementRequestPreDraftPipelineStatus(req.status)) {
+          addToast(
+            'warning',
+            `${line.requestCode} is not in New or Quoted status — cannot release to draft PO.`
+          );
+          return;
+        }
+        if (isStockCheckPendingForRequest(req)) {
+          addToast(
+            'warning',
+            `Stock check is pending on ${line.requestCode}. Release is locked until warehouse sends stock status.`
+          );
+          return;
+        }
+
+        const openQty = resolveOpenQtyForReleaseItem({
+          requestId: req.id,
+          reqType: req.type,
+          itemName: line.itemName,
+          itemCode: line.itemCode,
+          totalReqQty: line.reqQty,
+          raw_material_id: line.raw_material_id,
+          pack_material_id: line.pack_material_id,
+          itemType: reqType,
+        });
+
+        if (openQty <= 0) {
+          addToast(
+            'warning',
+            `No open quantity on ${line.requestCode} for ${line.itemName} (already on a draft PO).`
+          );
+          return;
+        }
+
+        const moqParsed = parseMoqInput(line.moq);
+        const moqNum =
+          typeof moqParsed === 'number' && !Number.isNaN(moqParsed)
+            ? moqParsed
+            : Number(line.moq) || 0;
+
+        plans.push({
+          line,
+          request: req,
+          openQty,
+          editRow: {
+            itemName: line.itemName,
+            itemCode: line.itemCode,
+            type: reqType,
+            originalQty: openQty,
+            qty: openQty,
+            unit:
+              reqType === 'PM'
+                ? normRmPrimaryUom(line.unit || 'PCS')
+                : resolveRmPrimaryUnit(
+                    line.raw_material_id != null ? Number(line.raw_material_id) : null,
+                    line.itemCode,
+                    line.unit
+                  ),
+            moq: moqNum,
+            unitPrice: 0,
+            leadDays: 0,
+            ...(line.raw_material_id != null ? { raw_material_id: line.raw_material_id } : {}),
+            ...(line.pack_material_id != null ? { pack_material_id: line.pack_material_id } : {}),
+          },
+        });
+      }
+
+      const consolidatedQty = plans.reduce((sum, p) => sum + p.openQty, 0);
+      if (consolidatedQty <= 0) {
+        addToast('warning', 'Consolidated release quantity must be greater than zero.');
+        return;
+      }
+
+      const itemSource = bucket.type === 'PM' ? itemsListPm : itemsListRm;
+      const matchedItemModal = itemSource.find((row) => {
+        const rmM = bucket.raw_material_id != null ? Number(bucket.raw_material_id) : NaN;
+        const pmM = bucket.pack_material_id != null ? Number(bucket.pack_material_id) : NaN;
+        const rowRmM = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+        const rowPmM = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+        if (Number.isFinite(rmM) && rmM > 0 && Number.isFinite(rowRmM) && rowRmM > 0) return rowRmM === rmM;
+        if (Number.isFinite(pmM) && pmM > 0 && Number.isFinite(rowPmM) && rowPmM > 0) return rowPmM === pmM;
+        const cM = String(bucket.itemCode ?? '').trim().toLowerCase();
+        const nM = String(bucket.itemName ?? '').trim().toLowerCase();
+        const rcM = String(row.code ?? '').trim().toLowerCase();
+        const rnM = String(row.name ?? '').trim().toLowerCase();
+        if (cM && rcM && cM === rcM) return true;
+        if (nM && rnM && (nM === rnM || nM.includes(rnM) || rnM.includes(nM))) return true;
+        return false;
+      });
+
+      let unitPrice = Number(bucket.plannedPrice) || 0;
+      let leadDays = 0;
+      const vendorKey = bucket.vendor.trim().toLowerCase();
+      const vendorRate = (matchedItemModal?.vendorRates ?? []).find(
+        (rate) => String(rate.vendor_name ?? '').trim().toLowerCase() === vendorKey
+      );
+      if (vendorRate) {
+        const tier =
+          (vendorRate.tiers ?? []).find((t) => {
+            const moqMin = Number(t.moq_min ?? 0) || 0;
+            return consolidatedQty >= moqMin;
+          }) ?? vendorRate.tiers?.[0];
+        if (tier && Number(tier.price_per_unit) > 0) {
+          unitPrice = Number(tier.price_per_unit);
+        }
+        leadDays = normalizeLeadTimeDays(vendorRate.lead_time_days) ?? leadDays;
+      }
+
+      for (const plan of plans) {
+        const relItem: ReleaseToPlannedItem = {
+          itemName: plan.line.itemName,
+          itemCode: plan.line.itemCode,
+          idx: 0,
+          qty: plan.openQty,
+          unit: plan.line.unit,
+          reqQty: plan.line.reqQty,
+          moq: plan.line.moq,
+          plannedPrice: plan.line.plannedPrice,
+          ...(plan.line.raw_material_id != null
+            ? { raw_material_id: plan.line.raw_material_id }
+            : {}),
+          ...(plan.line.pack_material_id != null
+            ? { pack_material_id: plan.line.pack_material_id }
+            : {}),
+        };
+        const reqQuotes = quotes.filter(
+          (q) =>
+            q.requestId === plan.request.id &&
+            String(q.vendor ?? '').trim().toLowerCase() === vendorKey &&
+            q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const quote =
+          reqQuotes.find((q) => q.status === 'Confirmed') ?? reqQuotes[0];
+        const quoteLine = quote?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        if (quoteLine && Number(quoteLine.pricePerUnit) > 0) {
+          unitPrice = quoteLine.pricePerUnit;
+        }
+        if (quote?.leadTimeDays) {
+          leadDays = Math.max(leadDays, Number(quote.leadTimeDays) || 0);
+        }
+      }
+
+      if (unitPrice <= 0) {
+        addToast(
+          'warning',
+          'Set unit price from Items List vendor rates or record a quotation before releasing consolidated PO.'
+        );
+        return;
+      }
+
+      const plansWithPrice = plans.map((p) => ({
+        ...p,
+        editRow: { ...p.editRow, unitPrice, leadDays },
+      }));
+
+      const requestIds = [...new Set(plansWithPrice.map((p) => p.request.id))];
+      const requestCodes = [...new Set(plansWithPrice.map((p) => p.line.requestCode))];
+      const primaryRequest = plansWithPrice[0]!.request;
+      const reference = requestCodes.join(' + ');
+      const weekLabel = bucket.hasWeek
+        ? formatIsoWeekLabel({ week: bucket.isoWeek, year: bucket.isoWeekYear })
+        : '';
+
+      const today = new Date();
+      const createdDateStr = today.toISOString().split('T')[0];
+      const expectedDelivery = new Date(today);
+      expectedDelivery.setDate(expectedDelivery.getDate() + Math.max(0, leadDays));
+      const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+
+      const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
+      const vendorName = bucket.vendor;
+      const matchedVendorForZoho = vendors.find(
+        (v) => (v.name || '').trim().toLowerCase() === vendorName.trim().toLowerCase()
+      );
+      const vendorMasterPaymentTerms = String(matchedVendorForZoho?.paymentTerms ?? '').trim();
+      const gstPercent = 18;
+      const subtotal = parseFloat((consolidatedQty * unitPrice).toFixed(2));
+      const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+      const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+
+      const draftLine: DraftPOLineItem = {
+        item: bucket.itemName,
+        itemCode:
+          bucket.itemCode ||
+          (bucket.type === 'PM' ? 'EI-PM-001' : 'EI-RM-001'),
+        type: reqType,
+        qty: String(consolidatedQty),
+        leadTimeDays: leadDays,
+        pricePerUnit: unitPrice,
+        gstPercent,
+        gstAmount,
+        lineTotal,
+        unit: bucket.unit,
+        ...(bucket.raw_material_id != null ? { raw_material_id: bucket.raw_material_id } : {}),
+        ...(bucket.pack_material_id != null ? { pack_material_id: bucket.pack_material_id } : {}),
+      };
+
+      setReleasingWeekVendorBucketKey(bucket.key);
+
+      const poPayload = {
+        orderId: newDpoId,
+        vendorName,
+        orderDate: createdDateStr,
+        expectedShipmentDate: expectedDeliveryStr,
+        reference,
+        paymentTerms: vendorMasterPaymentTerms || 'As per contract',
+        status: 'Draft',
+        formData: {
+          requestId: primaryRequest.id,
+          requestCode: reference,
+          consolidatedRequestIds: requestIds,
+          weekVendorConsolidationKey: bucket.key,
+          ...(weekLabel ? { consolidatedWeekLabel: weekLabel } : {}),
+          draftNotes: `Week+vendor consolidation (${requestCodes.join(', ')})`,
+          ...(matchedVendorForZoho && vendorName.trim()
+            ? {
+                vendorClientId: matchedVendorForZoho.id,
+                vendorEntityCode: matchedVendorForZoho.vendorCode,
+              }
+            : {}),
+        },
+        items: [
+          {
+            itemName: bucket.itemName,
+            itemCode: draftLine.itemCode,
+            quantity: String(consolidatedQty),
+            rate: String(unitPrice),
+            tax: String(gstPercent),
+            lead_time_days: leadDays,
+            ...(bucket.raw_material_id != null
+              ? { raw_material_id: Number(bucket.raw_material_id) }
+              : {}),
+            ...(bucket.pack_material_id != null
+              ? { pack_material_id: Number(bucket.pack_material_id) }
+              : {}),
+          },
+        ],
+      };
+
+      try {
+        const createResult = await createPurchaseOrder(poPayload);
+        if (!createResult.success || !createResult.data) {
+          addToast(
+            'error',
+            typeof createResult.error === 'string'
+              ? createResult.error
+              : (createResult.error as { message?: string })?.message ??
+                  'Failed to create consolidated purchase order'
+          );
+          return;
+        }
+
+        const backendId =
+          String(createResult.data.id ?? '').replace(/^PO-/, '') ||
+          String(createResult.data.id);
+
+        const byRequestId = new Map<string, typeof plansWithPrice>();
+        for (const plan of plansWithPrice) {
+          const arr = byRequestId.get(plan.request.id) ?? [];
+          arr.push(plan);
+          byRequestId.set(plan.request.id, arr);
+        }
+
+        const remainderCodes: string[] = [];
+
+        for (const [requestId, requestPlans] of byRequestId) {
+          const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === requestId) as
+            | {
+                items?: BackendPRItem[];
+                planningExtractedId?: number;
+                planningBatchId?: number | null;
+                priority?: string;
+                requiredByDate?: string | null;
+                notes?: string | null;
+                preferredVendor?: string | null;
+              }
+            | undefined;
+
+          const backendItemsForSplit = Array.isArray(prRow?.items) ? prRow!.items : [];
+          const lineEdits = requestPlans.map((p) => p.editRow);
+          const { releasedItems, remainingItems } = splitBackendPrItemsAfterPartialRelease(
+            backendItemsForSplit,
+            lineEdits,
+            lineEdits
+          );
+
+          const prUpd = await updateProcurementRequestApi(requestId, {
+            status: 'PO Draft',
+            items: releasedItems,
+          });
+          if (!prUpd.success) {
+            addToast(
+              'error',
+              typeof prUpd.error === 'string'
+                ? prUpd.error
+                : `Draft PO created but updating ${requestPlans[0]?.line.requestCode ?? 'request'} failed. Adjust manually.`
+            );
+            void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+            void invalidatePurchaseOrdersQueries();
+            return;
+          }
+
+          if (remainingItems.length > 0) {
+            if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+              addToast(
+                'warning',
+                `Cannot split remainder for ${requestPlans[0]?.line.requestCode ?? requestId}: missing planningExtractedId.`
+              );
+            } else {
+              const remainingRes = await createProcurementRequestApi({
+                planningExtractedId: prRow.planningExtractedId,
+                planningBatchId: prRow.planningBatchId ?? null,
+                priority: prRow.priority ?? 'Medium',
+                requiredByDate: prRow.requiredByDate ?? null,
+                notes: prRow.notes ?? null,
+                preferredVendor: prRow.preferredVendor ?? null,
+                items: remainingItems,
+              });
+              if (!remainingRes.success || !remainingRes.data) {
+                addToast(
+                  'error',
+                  typeof remainingRes.error === 'string'
+                    ? remainingRes.error
+                    : `Failed to create remainder PR for ${requestPlans[0]?.line.requestCode ?? requestId}.`
+                );
+              } else if (remainingRes.data.code) {
+                remainderCodes.push(remainingRes.data.code);
+              }
+            }
+          }
+        }
+
+        const newDraftPO: DraftPO = {
+          id: newDpoId,
+          dpoNumber: newDpoId,
+          requestId: primaryRequest.id,
+          requestCode: reference,
+          type: reqType,
+          vendor: vendorName,
+          vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,
+          status: 'Pending Approval',
+          createdDate: createdDateStr,
+          createdBy: 'Procurement — Admin',
+          paymentTerms: vendorMasterPaymentTerms || 'As per contract',
+          expectedDelivery: expectedDeliveryStr,
+          deliveryAddress: 'EI Plant 1, IDA Jeedimetla, Hyderabad - 500 055',
+          vendorRating: 0,
+          alertMessage: `Consolidated draft PO (${consolidatedQty.toLocaleString('en-IN')} ${bucket.unit}) from ${requestCodes.join(', ')}${weekLabel ? ` · ${weekLabel}` : ''}.`,
+          alertType: 'success',
+          lineItems: [draftLine],
+          subtotal,
+          gstTotal: gstAmount,
+          grandTotal: lineTotal,
+          backendPoId: backendId,
+        };
+
+        setDraftPOs((prev) => [newDraftPO, ...prev]);
+
+        void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        void invalidatePurchaseOrdersQueries();
+
+        addToast(
+          'success',
+          `Draft PO ${newDpoId} created — ${consolidatedQty.toLocaleString('en-IN')} ${bucket.unit} from ${requestCodes.join(' + ')}${
+            remainderCodes.length > 0 ? `; remainders: ${remainderCodes.join(', ')}` : ''
+          }`
+        );
+
+        setTimeout(() => {
+          setMainTab('Procurement');
+          setSideSection('Draft POs');
+          const nextSearchParams = new URLSearchParams(searchParams);
+          nextSearchParams.set('tab', 'Procurement');
+          nextSearchParams.set('section', 'Draft POs');
+          setSearchParams(nextSearchParams, { replace: true });
+        }, 500);
+      } finally {
+        setReleasingWeekVendorBucketKey(null);
+      }
+    },
+    [
+      addToast,
+      backendPrArray,
+      draftPOs,
+      invalidatePurchaseOrdersQueries,
+      itemsListPm,
+      itemsListRm,
+      purchaseOrders,
+      queryClient,
+      quotes,
+      requests,
+      resolveOpenQtyForReleaseItem,
+      resolveRmPrimaryUnit,
+      searchParams,
+      setSearchParams,
+      vendors,
+    ]
+  );
+
+  const handlePoExcelChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+
+      setImportingPoExcel(true);
+      try {
+        const res = await importPrRowsExcel(file, { details: true });
+        const summary = res.summary;
+        if (!res.ok) {
+          addToast('error', res.error ?? 'Purchase order import failed');
+          return;
+        }
+        const quoteHint =
+          res.quotation_rows_total != null && res.quotation_rows_total > 0
+            ? ` · ${res.quotation_rows_total} quotation rows`
+            : '';
+        const rawHint =
+          res.raw_detail_rows_total != null && res.raw_detail_rows_total > 0
+            ? ` · ${res.raw_detail_rows_total} reconcile rows`
+            : '';
+        addToast(
+          'success',
+          `POs imported: ${summary?.purchase_orders_created ?? 0} created, ${summary?.purchase_orders_updated ?? 0} updated, ${res.rows_total ?? 0} PR rows${quoteHint}${rawHint}, ${summary?.errors ?? 0} errors`,
+        );
+        if ((summary?.errors ?? 0) > 0 && Array.isArray(res.row_log) && res.row_log.length > 0) {
+          const sampleErrors = res.row_log
+            .filter((r) => r.action === 'error')
+            .slice(0, 3)
+            .map((r) => `${r.po_key ?? 'PO'}: ${r.reason ?? r.action}`)
+            .join('; ');
+          if (sampleErrors) addToast('warning', `Import issues: ${sampleErrors}`);
+        }
+        await invalidatePurchaseOrdersQueries();
+      } catch (err) {
+        addToast('error', err instanceof Error ? err.message : 'Purchase order import failed');
+      } finally {
+        setImportingPoExcel(false);
+      }
+    },
+    [addToast, invalidatePurchaseOrdersQueries],
+  );
+
   useEffect(() => {
     if (!editRequestTarget) return;
     const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === editRequestTarget.id) as { items?: BackendPRItem[]; preferredVendor?: string } | undefined;
-    const items = Array.isArray(backendPr?.items) ? backendPr.items.map((i) => ({ ...i })) : [];
+    const items = Array.isArray(backendPr?.items)
+      ? backendPr.items.map((i) => {
+          const price = resolvePlannedUnitPrice(i);
+          if (price <= 0) return { ...i };
+          return {
+            ...i,
+            planned_unit_price: price,
+            line_notes: mergePlannedRateIntoLineNotes(i.line_notes, price),
+          };
+        })
+      : [];
     setEditRequestForm({
       priority: editRequestTarget.priority,
-      requiredByDate: editRequestTarget.dueDate?.slice(0, 10) ?? '',
+      requiredByDate: normalizeDateOnlyString(editRequestTarget.dueDate) || '',
       notes: (backendPr as { notes?: string } | undefined)?.notes ?? '',
       status: editRequestTarget.status,
       preferredVendor: backendPr?.preferredVendor ?? '',
@@ -1055,7 +2455,20 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const backendPrs: ApiProcurementRequest[] = backendPrArray;
+  const updateEditRequestItemPrice = (index: number, rawValue: string) => {
+    const price = parseFloat(String(rawValue).replace(/,/g, '')) || 0;
+    setEditRequestForm((prev) => {
+      const next = [...prev.items];
+      const cur = next[index];
+      if (!cur) return prev;
+      next[index] = {
+        ...cur,
+        planned_unit_price: price > 0 ? price : undefined,
+        line_notes: mergePlannedRateIntoLineNotes(cur.line_notes, price),
+      };
+      return { ...prev, items: next };
+    });
+  };
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
     const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
@@ -1073,6 +2486,7 @@ const Procurement: React.FC = () => {
 
     setSearchParams(nextSearchParams, { replace: true });
   };
+
 
   const updateProcurementState = (
     updater: (current: {
@@ -1185,206 +2599,6 @@ const Procurement: React.FC = () => {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const sideCounts = useMemo(() => {
-    const requestCount = requests.length;
-    const quotationsCount = quotes.length;
-    const draftPosCount = draftPOs.length;
-    const issuedPos = requests.filter((request) => requestStatusShowsIssuedPOs(request.status)).length;
-    const grnCount = Math.max(issuedPos, 1);
-    const itemTracker = new Set(requests.flatMap((request) => request.items)).size;
-
-    return {
-      Overview: requestCount,
-      Requests: requestCount,
-      Quotations: quotationsCount,
-      'Draft POs': draftPosCount,
-      'Issued POs': issuedPos,
-      'GRN Monitor': grnCount,
-      'Item Tracker': itemTracker,
-    };
-  }, [draftPOs, quotes, requests]);
-
-  const itemTrackerRows = useMemo<ItemTrackerRow[]>(() => {
-    const quotesByRequestId = new Map<string, VendorQuote[]>();
-    quotes.forEach((quote) => {
-      const list = quotesByRequestId.get(quote.requestId) ?? [];
-      list.push(quote);
-      quotesByRequestId.set(quote.requestId, list);
-    });
-
-    const rows: ItemTrackerRow[] = [];
-
-    requests.forEach((request) => {
-      const requestQuotes = quotesByRequestId.get(request.id) ?? [];
-      const confirmedQuote = requestQuotes.find((q) => q.status === 'Confirmed') ?? null;
-      const primaryQuote = confirmedQuote ?? requestQuotes[0] ?? null;
-
-      const draftCandidates = draftPOs.filter((d) => d.requestId === request.id);
-      const releasedPosForRequest = purchaseOrders.filter(
-        (p) =>
-          p.status === 'Released' &&
-          (String((p.formData as { requestId?: string } | undefined)?.requestId) === String(request.id) ||
-            String((p.formData as { requestCode?: string } | undefined)?.requestCode).toUpperCase() ===
-              String(request.code).toUpperCase() ||
-            p.requestCode === request.code),
-      );
-
-      const details: ItemDetail[] =
-        request.itemDetails && request.itemDetails.length > 0
-          ? request.itemDetails
-          : request.items.map((itemName, idx) => {
-            const qty = request.quantities?.[idx] ?? 0;
-            const plannedPrice = request.plannedPrices?.[idx] ?? 0;
-            return {
-              itemCode: `EI-${request.type}-${String(idx + 1).padStart(3, '0')}`,
-              itemName,
-              reqQty: qty,
-              unit: request.units?.[idx] ?? '',
-              moq: '',
-              packSize: '',
-              plannedPrice,
-              leadTimeDays: 0,
-              estValue: plannedPrice * qty,
-            };
-          });
-
-      details.forEach((detail) => {
-        const itemName = detail.itemName;
-        const norm = (s: string) => String(s ?? '').trim().toLowerCase();
-
-        const po =
-          releasedPosForRequest.find((p) => {
-            const raw = Array.isArray(p.rawItems) ? (p.rawItems as { itemName?: string; name?: string; itemCode?: string; code?: string }[]) : [];
-            return raw.some(
-              (ri) =>
-                (norm(ri.itemName ?? ri.name ?? '') && norm(ri.itemName ?? ri.name ?? '') === norm(itemName)) ||
-                (!!detail.itemCode &&
-                  norm(String(ri.itemCode ?? ri.code ?? '')) &&
-                  norm(String(ri.itemCode ?? ri.code ?? '')) === norm(detail.itemCode)),
-            );
-          }) ??
-          (releasedPosForRequest.length === 1 ? releasedPosForRequest[0] : null);
-
-        const draftPo =
-          draftCandidates.find((d) =>
-            d.lineItems.some(
-              (ln) => norm(ln.item) === norm(itemName) || (!!detail.itemCode && norm(ln.itemCode) === norm(detail.itemCode)),
-            ),
-          ) ?? (draftCandidates.length === 1 ? draftCandidates[0] : null);
-
-        let quotedVendor: string | null = null;
-        let actualPrice: number | null = null;
-        let actualVsPlanned: string | null = null;
-        let orderQty: string | null = null;
-
-        if (requestQuotes.length > 0) {
-          const sourceQuote =
-            confirmedQuote ??
-            requestQuotes.find((q) => q.lines.some((line) => line.item === itemName)) ??
-            requestQuotes[0];
-
-          const matchedLine = sourceQuote.lines.find((line) => line.item === itemName) ?? sourceQuote.lines[0];
-          quotedVendor = sourceQuote.vendor;
-          actualPrice = matchedLine?.pricePerUnit ?? null;
-          actualVsPlanned = matchedLine?.vsPlanned ?? null;
-          orderQty = matchedLine?.qty ?? null;
-        }
-
-        let advPaid: string | null = null;
-        let lrNo: string | null = null;
-
-        if (po && po.timeline) {
-          const advanceStage = po.timeline.find((step) => step.stage === 'Advance Paid' && step.done);
-          if (advanceStage) {
-            advPaid = 'Yes';
-          }
-
-          const shippedStage = po.timeline.find((step) => step.stage === 'Shipped' && step.done && step.note);
-          if (shippedStage?.note) {
-            const match = shippedStage.note.match(/LR No: ([A-Za-z0-9-]+)/i);
-            if (match) {
-              lrNo = match[1];
-            }
-          }
-        }
-
-        const expDelivery = draftPo?.expectedDelivery ?? request.dueDate ?? null;
-
-        rows.push({
-          key: `${request.id}::${detail.itemCode}`,
-          requestId: request.id,
-          requestCode: request.code,
-          type: request.type,
-          priority: request.priority,
-          requestStatus: request.status,
-          itemName: detail.itemName,
-          itemCode: detail.itemCode,
-          reqQty: detail.reqQty,
-          unit: detail.unit,
-          plannedPrice: detail.plannedPrice,
-          plannedValue: detail.estValue,
-          preferredVendor: primaryQuote?.vendor ?? null,
-          quotedVendor,
-          actualPrice,
-          actualVsPlanned,
-          poNumber: po?.poNumber ?? null,
-          poStatus: po?.status ?? null,
-          orderQty,
-          advPaid,
-          lrNo,
-          expDelivery,
-          grnRef: null,
-          quoteId: primaryQuote?.id ?? null,
-          draftPoId: draftPo?.id ?? null,
-          poId: po?.id ?? null,
-        });
-      });
-    });
-
-    return rows;
-  }, [draftPOs, purchaseOrders, quotes, requests]);
-
-  const filteredItemTrackerRows = useMemo(() => {
-    return itemTrackerRows.filter((row) => {
-      if (itemTrackerCategory !== 'All' && row.type !== itemTrackerCategory) {
-        return false;
-      }
-
-      if (itemTrackerVendor !== 'All Vendors') {
-        if (row.preferredVendor !== itemTrackerVendor && row.quotedVendor !== itemTrackerVendor) {
-          return false;
-        }
-      }
-
-      if (itemTrackerStatus !== 'All Statuses' && row.requestStatus !== itemTrackerStatus) {
-        return false;
-      }
-
-      if (!itemTrackerSearch.trim()) {
-        return true;
-      }
-
-      const q = itemTrackerSearch.toLowerCase();
-      return (
-        row.itemName.toLowerCase().includes(q) ||
-        row.itemCode.toLowerCase().includes(q) ||
-        row.requestCode.toLowerCase().includes(q) ||
-        (row.poNumber ?? '').toLowerCase().includes(q) ||
-        (row.preferredVendor ?? '').toLowerCase().includes(q) ||
-        (row.quotedVendor ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [itemTrackerCategory, itemTrackerRows, itemTrackerSearch, itemTrackerStatus, itemTrackerVendor]);
-
-  const itemTrackerVendors = useMemo(() => {
-    const set = new Set<string>();
-    itemTrackerRows.forEach((row) => {
-      if (row.preferredVendor) set.add(row.preferredVendor);
-      if (row.quotedVendor) set.add(row.quotedVendor);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [itemTrackerRows]);
-
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
       if (categoryFilter !== 'All' && quote.requestType !== categoryFilter) {
@@ -1413,7 +2627,7 @@ const Procurement: React.FC = () => {
         }
       } else if (sideSection === 'Requests') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || linkedRequest.status !== 'New') {
+        if (!linkedRequest || !requestStatusIsPreDraftPipeline(linkedRequest.status)) {
           return false;
         }
       }
@@ -1446,12 +2660,20 @@ const Procurement: React.FC = () => {
       __moqMin: number;
       __moqMax: number | null;
       __paymentTerms: string;
+      __tierNote: string;
     };
     const bucket = new Map<string, { vendor: string; vendorId: string; requestType: RequestType; lines: TmpLine[]; terms?: string }>();
     const add = (type: RequestType, item: PriceListItemPage) => {
       const code = String(item.code ?? '').trim();
       const name = String(item.name ?? '').trim() || code;
-      const unit = type === 'RM' ? (String(item.uom ?? 'KG') || 'KG') : 'PCS';
+      const unit =
+        type === 'RM'
+          ? resolveRmPrimaryUnit(
+              item.raw_material_id != null ? Number(item.raw_material_id) : null,
+              item.code,
+              item.uom
+            )
+          : 'PCS';
       (item.vendorRates ?? []).forEach((rate) => {
         const vendorName = String(rate.vendor_name ?? rate.vendor_code ?? '').trim();
         if (!vendorName) return;
@@ -1485,6 +2707,8 @@ const Procurement: React.FC = () => {
             __moqMin: moq,
             __moqMax: tier.moq_max ?? null,
             __paymentTerms: String((rate as any).payment_terms ?? ''),
+            __tierNote: String((tier as { note?: unknown }).note ?? ''),
+            priceHistory: parseIlTierHistory((tier as { note?: unknown }).note),
           });
         });
         bucket.set(key, existing);
@@ -1535,9 +2759,85 @@ const Procurement: React.FC = () => {
 
   /** Quotations tab: show recorded procurement quotations (DB) and Items List–derived price cards. IL-* rows are not procurement_quotations rows. */
   const quotesForQuotationsSection = useMemo(() => {
-    if (sideSection !== 'Quotations') return filteredQuotes;
-    return [...filteredQuotes, ...filteredItemsListQuotes];
+    if (sideSection !== 'Quotations') return sortVendorQuotesLatestFirst(filteredQuotes);
+    return sortVendorQuotesLatestFirst([...filteredQuotes, ...filteredItemsListQuotes]);
   }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
+
+  const quotationsTotalPages = Math.max(
+    1,
+    Math.ceil(quotesForQuotationsSection.length / quotationsPageSize)
+  );
+  const quotationsSafePage = Math.min(quotationsPage, quotationsTotalPages);
+  const quotationsStartIndex = (quotationsSafePage - 1) * quotationsPageSize;
+  const pagedQuotesForQuotationsSection = useMemo(
+    () =>
+      quotesForQuotationsSection.slice(
+        quotationsStartIndex,
+        quotationsStartIndex + quotationsPageSize
+      ),
+    [quotesForQuotationsSection, quotationsStartIndex, quotationsPageSize]
+  );
+
+  useEffect(() => {
+    setQuotationsPage(1);
+    setExpandedQuoteLineLists({});
+  }, [searchQuery, categoryFilter, vendorFilter, statusFilter, quotationsPageSize]);
+
+  useEffect(() => {
+    if (quotationsPage > quotationsTotalPages) {
+      setQuotationsPage(quotationsTotalPages);
+    }
+  }, [quotationsPage, quotationsTotalPages]);
+
+  const procurementRequestsList = useMemo(
+    () => requests.filter(isProcurementRequestsListRow),
+    [requests],
+  );
+
+  const planningQuotationRequestsAwaitingQuote = useMemo(() => {
+    return requests.filter(
+      (r) => isPlanningQuotationRequest(r) && !planningQuotationRequestHasRecordedQuote(r, quotes),
+    );
+  }, [quotes, requests]);
+
+  const filteredPlanningQuotationRequestsAwaitingQuote = useMemo(() => {
+    return sortProcurementRequestsLatestFirst(planningQuotationRequestsAwaitingQuote.filter((req) => {
+      if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      const matchesCode = req.code.toLowerCase().includes(query);
+      const matchesItems = req.items.some((item) => item.toLowerCase().includes(query));
+      const matchesPlanning =
+        (req.planningSoNumber != null && String(req.planningSoNumber).toLowerCase().includes(query)) ||
+        (req.planningCustomerName != null && String(req.planningCustomerName).toLowerCase().includes(query)) ||
+        (req.planningProductName != null && String(req.planningProductName).toLowerCase().includes(query)) ||
+        (req.planningProductCode != null && String(req.planningProductCode).toLowerCase().includes(query));
+      const matchesItemDetails = (req.itemDetails ?? []).some(
+        (d) =>
+          (d.itemName != null && String(d.itemName).toLowerCase().includes(query)) ||
+          (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query)),
+      );
+      return matchesCode || matchesItems || matchesPlanning || matchesItemDetails;
+    }));
+  }, [categoryFilter, planningQuotationRequestsAwaitingQuote, searchQuery]);
+
+  const filteredPlanningQuotationAsks = useMemo(() => {
+    return sortPlanningQuotationAsksLatestFirst(planningQuotationAsksPending.filter((ask) => {
+      const askType = ask.itemType === 'PM' ? 'PM' : 'RM';
+      if (categoryFilter !== 'All' && askType !== categoryFilter) return false;
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      const matchesCode = String(ask.itemCode ?? '').toLowerCase().includes(query);
+      const matchesName = String(ask.itemName ?? '').toLowerCase().includes(query);
+      const matchesVendor = String(ask.vendorHint ?? '').toLowerCase().includes(query);
+      const matchesPlanning =
+        (ask.planningSoNumber != null && String(ask.planningSoNumber).toLowerCase().includes(query)) ||
+        (ask.planningCustomerName != null && String(ask.planningCustomerName).toLowerCase().includes(query)) ||
+        (ask.planningProductName != null && String(ask.planningProductName).toLowerCase().includes(query)) ||
+        (ask.planningProductCode != null && String(ask.planningProductCode).toLowerCase().includes(query));
+      return matchesCode || matchesName || matchesVendor || matchesPlanning;
+    }));
+  }, [categoryFilter, planningQuotationAsksPending, searchQuery]);
 
   const openEditItemsListTier = (quote: VendorQuote, line: QuoteLine) => {
     const meta = line as QuoteLine & {
@@ -1547,6 +2847,7 @@ const Procurement: React.FC = () => {
       __moqMin?: number;
       __moqMax?: number | null;
       __paymentTerms?: string;
+      __tierNote?: string;
     };
     const itemsListId = Number(meta.__itemsListId ?? 0) || 0;
     const rateId = Number(meta.__rateId ?? 0) || 0;
@@ -1571,12 +2872,14 @@ const Procurement: React.FC = () => {
       moqMax,
       pricePerUnit: Number(line.pricePerUnit ?? 0) || 0,
       paymentTerms,
+      tierNote: String(meta.__tierNote ?? ''),
     });
+    const staged = paymentTermsToStagedFields(paymentTerms || '');
     setEditItemsListLineForm({
       pricePerUnit: String(Number(line.pricePerUnit ?? 0) || ''),
       moqMin: String(moqMin || ''),
       moqMax: moqMax == null ? '' : String(moqMax),
-      paymentTerms: paymentTerms || '',
+      ...staged,
     });
   };
 
@@ -1587,12 +2890,43 @@ const Procurement: React.FC = () => {
     const tierId = editItemsListLineTarget.tierId;
     const nextPrice = Number(editItemsListLineForm.pricePerUnit || 0) || 0;
     const moqMaxRaw = String(editItemsListLineForm.moqMax ?? '').trim();
-    const nextMoqMax = moqMaxRaw === '' ? null : (Number(moqMaxRaw) || 0);
-    const nextPaymentTerms = String(editItemsListLineForm.paymentTerms ?? '').trim();
+    const nextMoqMax = moqMaxRaw === '' ? null : parseMoqInput(moqMaxRaw);
+    const adv = Number(editItemsListLineForm.advancePct);
+    const pre = Number(editItemsListLineForm.preShipmentPct);
+    const post = Number(editItemsListLineForm.postShipmentPct);
+    const cd = Math.max(0, parseInt(String(editItemsListLineForm.creditDays ?? '0'), 10) || 0);
+    const pctErr = validateStagedPercents(adv, pre, post);
+    if (pctErr) {
+      addToast('error', pctErr);
+      return;
+    }
+    const nextPaymentTerms = serializeStagedPaymentTerms({
+      advance_pct: adv,
+      pre_shipment_pct: pre,
+      post_shipment_pct: post,
+      credit_days: cd,
+    });
     if (nextPrice <= 0) {
       addToast('warning', 'Enter a valid price.');
       return;
     }
+    const existingHistory = parseIlTierHistory(editItemsListLineTarget.tierNote);
+    const appendedHistory =
+      Math.abs((Number(editItemsListLineTarget.pricePerUnit) || 0) - nextPrice) < 1e-9
+        ? existingHistory
+        : [
+            ...existingHistory,
+            {
+              oldPrice: Number(editItemsListLineTarget.pricePerUnit) || 0,
+              newPrice: nextPrice,
+              changedAt: new Date().toISOString(),
+              reason: 'Edited from Procurement -> Quotations',
+            } satisfies IlPriceHistoryEntry,
+          ];
+    const nextTierNote = JSON.stringify({
+      source: 'procurement-il-edit',
+      history: appendedHistory,
+    });
     setEditItemsListLineSaving(true);
     try {
       // Update payment terms at vendor-rate level (optional).
@@ -1608,15 +2942,57 @@ const Procurement: React.FC = () => {
       const resTier = await updateItemListTier(String(itemsListId), rateId, tierId, {
         moq_max: nextMoqMax,
         price_per_unit: nextPrice,
-        note: 'Edited from Procurement → Quotations',
+        note: nextTierNote,
       });
       if (!resTier.success) {
         addToast('error', 'Failed to update tier.');
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'RM'] });
-      await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'PM'] });
+      // Keep default rate aligned with edited tier for downstream consumers.
+      await updateItemListRate(String(itemsListId), rateId, { default_rate: nextPrice });
+
+      // Optimistically update cached items-list page to avoid stale IL card rows.
+      const patchItemsListPage = (pageType: 'RM' | 'PM') => {
+        queryClient.setQueryData<PriceListItemPage[]>(['items-list-page', pageType], (prev) => {
+          if (!Array.isArray(prev)) return prev;
+          return prev.map((item) => {
+            const currentItemsListId = Number(item.itemsListId ?? 0) || 0;
+            if (currentItemsListId !== itemsListId) return item;
+            return {
+              ...item,
+              vendorRates: (item.vendorRates ?? []).map((rate) => {
+                if (Number(rate.id) !== rateId) return rate;
+                return {
+                  ...rate,
+                  tiers: (rate.tiers ?? []).map((tier) =>
+                    Number(tier.id) === tierId
+                      ? {
+                          ...tier,
+                          price_per_unit: nextPrice,
+                          moq_max: nextMoqMax,
+                          note: nextTierNote,
+                        }
+                      : tier,
+                  ),
+                };
+              }),
+            };
+          });
+        });
+      };
+      patchItemsListPage('RM');
+      patchItemsListPage('PM');
+
+      await queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          typeof q.queryKey[0] === 'string' &&
+          q.queryKey[0].startsWith('items-list'),
+        refetchType: 'all',
+      });
+      await queryClient.refetchQueries({ queryKey: ['items-list-page', 'RM'], type: 'active' });
+      await queryClient.refetchQueries({ queryKey: ['items-list-page', 'PM'], type: 'active' });
       addToast('success', 'Saved to Items List.');
       setEditItemsListLineTarget(null);
     } finally {
@@ -1649,14 +3025,62 @@ const Procurement: React.FC = () => {
   /** Requests set to PO Draft via Edit Request but with no Draft PO created yet (create from PR modal + quotations) */
   const requestsPODraftNoDraftPO = useMemo(() => {
     const linkedRequestIds = new Set(draftPOs.map((d) => d.requestId));
-    return requests.filter(
-      (r) => r.status === 'PO Draft' && !linkedRequestIds.has(r.id)
+    return procurementRequestsList.filter(
+      (r) =>
+        r.status === 'PO Draft' &&
+        !linkedRequestIds.has(r.id) &&
+        (categoryFilter === 'All' || r.type === categoryFilter),
     );
-  }, [requests, draftPOs]);
+  }, [procurementRequestsList, draftPOs, categoryFilter]);
+
+  /** Requests sidebar tabs: counts must match list filters (Active = New + Quoted only). */
+  const procurementRequestTabCounts = useMemo(() => {
+    const rows = procurementRequestsList;
+    return {
+      all: rows.length,
+      active: rows.filter((r) => requestStatusIsPreDraftPipeline(r.status)).length,
+      new: rows.filter((r) => r.status === 'New').length,
+      quoted: rows.filter((r) => r.status === 'Quoted').length,
+      poDraft: rows.filter((r) => r.status === 'PO Draft').length,
+      poReleased: rows.filter((r) => r.status === 'PO Released').length,
+    };
+  }, [procurementRequestsList]);
+
+  const procurementRequestsMatchingSearchAndCategory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return procurementRequestsList.filter((req) => {
+      if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
+      if (!query) return true;
+      const matchesCode = req.code.toLowerCase().includes(query);
+      const matchesItems = req.items.some((item) => item.toLowerCase().includes(query));
+      const matchesPlanning =
+        (req.planningSoNumber != null && String(req.planningSoNumber).toLowerCase().includes(query)) ||
+        (req.planningCustomerName != null && String(req.planningCustomerName).toLowerCase().includes(query)) ||
+        (req.planningProductName != null && String(req.planningProductName).toLowerCase().includes(query)) ||
+        (req.planningProductCode != null && String(req.planningProductCode).toLowerCase().includes(query));
+      const matchesVendor =
+        req.preferredVendor != null && String(req.preferredVendor).toLowerCase().includes(query);
+      const matchesItemDetails = (req.itemDetails ?? []).some(
+        (d) =>
+          (d.itemName != null && String(d.itemName).toLowerCase().includes(query)) ||
+          (d.itemCode != null && String(d.itemCode).toLowerCase().includes(query))
+      );
+      return matchesCode || matchesItems || matchesPlanning || matchesVendor || matchesItemDetails;
+    });
+  }, [procurementRequestsList, categoryFilter, searchQuery]);
+
+  const weekVendorTabLineCount = useMemo(
+    () => buildWeekVendorConsolidationLines(procurementRequestsMatchingSearchAndCategory).length,
+    [procurementRequestsMatchingSearchAndCategory],
+  );
 
   const quoteStats = useMemo(() => {
     const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
-    const totalQuotes = list.length;
+    const totalQuotes =
+      list.length +
+      (sideSection === 'Quotations'
+        ? filteredPlanningQuotationAsks.length + filteredPlanningQuotationRequestsAwaitingQuote.length
+        : 0);
     const confirmed = list.filter((quote) => quote.status === 'Confirmed').length;
     const notSelected = list.filter((quote) => quote.status === 'Not Selected').length;
 
@@ -1664,10 +3088,20 @@ const Procurement: React.FC = () => {
       totalQuotes,
       confirmed,
       notSelected,
-      urgent: requests.filter((request) => request.priority === 'High' && request.status === 'New').length,
-      pendingAction: requests.filter((request) => request.status === 'New' || request.status === 'Quoted').length,
+      urgent: procurementRequestsList.filter((request) => request.priority === 'High' && request.status === 'New')
+        .length,
+      pendingAction: procurementRequestsList.filter((request) => request.status === 'New' || request.status === 'Quoted')
+        .length,
     };
-  }, [filteredQuotes, quotesForQuotationsSection, requests, sideSection]);
+  }, [
+    filteredPlanningQuotationAsks.length,
+    filteredPlanningQuotationRequestsAwaitingQuote.length,
+    filteredQuotes,
+    procurementRequestsList,
+    quotesForQuotationsSection,
+    requests,
+    sideSection,
+  ]);
 
   const issuedPORecords = useMemo(() => {
     const today = new Date();
@@ -1682,7 +3116,7 @@ const Procurement: React.FC = () => {
         const releasedPosForRequest = purchaseOrders
           .filter(
             (p) =>
-              p.status === 'Released' &&
+              isIssuedLikePoStatus(p.status) &&
               (String(p.formData?.requestId) === String(request.id) ||
                 String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase()),
           )
@@ -1691,14 +3125,6 @@ const Procurement: React.FC = () => {
             const nb = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
             return nb - na;
           });
-
-        const etaDays = Math.ceil((new Date(request.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        const computedStatus: 'Released' | 'In Transit' | 'At Risk' =
-          request.status === 'Delivery Pending'
-            ? 'In Transit'
-            : etaDays < 0 || (request.priority === 'High' && etaDays <= 2)
-              ? 'At Risk'
-              : 'Released';
 
         const fallbackLineItems = request.items.map((item, index) => {
           const qtyNum = Number(request.itemDetails?.[index]?.reqQty) || 0;
@@ -1743,6 +3169,17 @@ const Procurement: React.FC = () => {
                 const subtotal = qty * rate;
                 const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
                 const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+                const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
+                const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
+                const lineLead = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
+                const quoteLine = linkedQuote?.lines?.[idx] ?? linkedQuote?.lines?.find(
+                  (l) => l.item && String(l.item).trim() === String(i.itemName ?? i.name ?? '').trim(),
+                );
+                const resolvedLead =
+                  lineLead ??
+                  normalizeLeadTimeDays(quoteLine?.leadTimeDays) ??
+                  normalizeLeadTimeDays(request.itemDetails?.[idx]?.leadTimeDays) ??
+                  normalizeLeadTimeDays(linkedQuote?.leadTimeDays);
                 return {
                   item: i.itemName ?? i.name ?? request.items[idx] ?? '',
                   itemCode: resolveItemCodeFromSources(
@@ -1756,7 +3193,11 @@ const Procurement: React.FC = () => {
                   gstPercent: gstPct,
                   gstAmount,
                   lineTotal,
-                };
+                  ...(resolvedLead !== undefined ? { leadTimeDays: resolvedLead } : {}),
+                  ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
+                  ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+                  ...(i.unit ? { unit: String(i.unit) } : {}),
+                } as DraftPOLineItem;
               })
               : fallbackLineItems,
           );
@@ -1764,6 +3205,7 @@ const Procurement: React.FC = () => {
         // After a split, a *draft* split (e.g. …-S2) still shares requestId with the released half (…-S1).
         // Never let that draft override lines / PO number for Issued POs — vendor-facing data must come from each Released PO row.
         if (releasedPosForRequest.length > 0) {
+          const multiReleased = releasedPosForRequest.length > 1;
           return releasedPosForRequest.map((linkedPO) => {
             const lineItems = lineItemsForReleasedPo(linkedPO);
             const grandTotal =
@@ -1776,12 +3218,38 @@ const Procurement: React.FC = () => {
                 normPoKey(d.dpoNumber) === normPoKey(String(linkedPO.poNumber ?? '')),
             );
             const backendPoId = String(linkedPO.id ?? '').replace(/^PO-/, '');
+            const tr =
+              /^\d+$/.test(backendPoId) && releasedPoTrackingByBackendId
+                ? releasedPoTrackingByBackendId[backendPoId]
+                : undefined;
+            const shipped =
+              tr?.shippedAt != null && String(tr.shippedAt).trim() !== '';
+            /** Legacy: PR was set to Delivery Pending before per-PO tracking — only trust for a single released PO. */
+            const legacyInTransitFromPr = !multiReleased && request.status === 'Delivery Pending';
+            const rowInTransit = shipped || legacyInTransitFromPr;
+            const etaPayload = computeIssuedPoEtaFromLeadTimes({
+              today,
+              poReleaseDateStr: linkedPO.date ?? draftOverlay?.createdDate ?? request.createdDate,
+              request,
+              linkedQuote,
+              linkedPO,
+              draftOverlay,
+              lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+            });
+            const etaDays = etaPayload.etaDays;
+            const etaDateDisplay = etaPayload.etaDateDisplay;
+            const rowStatus: 'Released' | 'In Transit' | 'At Risk' = rowInTransit
+              ? 'In Transit'
+              : etaDays < 0 || (request.priority === 'High' && etaDays <= 2)
+                ? 'At Risk'
+                : 'Released';
             return {
               request,
               poNumber: String(linkedPO.poNumber ?? draftOverlay?.dpoNumber ?? request.code).replace('DPO', 'PO'),
               vendor: linkedPO.vendorName ?? draftOverlay?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
-              status: computedStatus,
+              status: rowStatus,
               etaDays,
+              etaDateDisplay,
               lineItems,
               grandTotal,
               requestCode: request.code,
@@ -1798,18 +3266,38 @@ const Procurement: React.FC = () => {
         const grandTotal =
           linkedDraftPO?.grandTotal ?? lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
 
+        const draftEta = computeIssuedPoEtaFromLeadTimes({
+          today,
+          poReleaseDateStr: linkedDraftPO?.createdDate ?? request.createdDate,
+          request,
+          linkedQuote,
+          linkedPO: undefined,
+          draftOverlay: linkedDraftPO,
+          lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+        });
+        const etaDaysDraft = draftEta.etaDays;
+        /** Request-level status for rows that are not tied to a specific released PO (draft-only card). */
+        const computedStatusDraftRow: 'Released' | 'In Transit' | 'At Risk' =
+          request.status === 'Delivery Pending'
+            ? 'In Transit'
+            : etaDaysDraft < 0 || (request.priority === 'High' && etaDaysDraft <= 2)
+              ? 'At Risk'
+              : 'Released';
+
         return [
           {
             request,
             poNumber: String(linkedDraftPO?.dpoNumber ?? request.code).replace('DPO', 'PO'),
             vendor: linkedDraftPO?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
-            status: computedStatus,
-            etaDays,
+            status: computedStatusDraftRow,
+            etaDays: etaDaysDraft,
+            etaDateDisplay: draftEta.etaDateDisplay,
             lineItems,
             grandTotal,
             requestCode: request.code,
             createdDate: linkedDraftPO?.createdDate ?? request.createdDate ?? '',
             paymentTerms: linkedDraftPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
+            backendPoId: undefined,
           },
         ];
       });
@@ -1819,7 +3307,7 @@ const Procurement: React.FC = () => {
     const requestPoNumbers = new Set(requestRecords.map((r) => r.poNumber));
 
     const unlinkedReleasedPOs = purchaseOrders
-      .filter((p) => p.status === 'Released')
+      .filter((p) => isIssuedLikePoStatus(p.status))
       .filter((p) => {
         const poNumber = String(p.poNumber ?? '').replace('DPO', 'PO');
         if (requestPoNumbers.has(poNumber)) return false;
@@ -1845,6 +3333,9 @@ const Procurement: React.FC = () => {
         const subtotal = qty * rate;
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+        const rmId = i?.raw_material_id != null ? Number(i.raw_material_id) : NaN;
+        const pmId = i?.pack_material_id != null ? Number(i.pack_material_id) : NaN;
+        const lineLead = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
         return {
           item: i.itemName ?? i.name ?? '',
           itemCode: resolveItemCodeFromSources(
@@ -1858,12 +3349,15 @@ const Procurement: React.FC = () => {
           gstPercent: gstPct,
           gstAmount,
           lineTotal,
-        };
+          ...(lineLead !== undefined ? { leadTimeDays: lineLead } : {}),
+          ...(Number.isFinite(rmId) && rmId > 0 ? { raw_material_id: rmId } : {}),
+          ...(Number.isFinite(pmId) && pmId > 0 ? { pack_material_id: pmId } : {}),
+          ...(i.unit ? { unit: String(i.unit) } : {}),
+        } as DraftPOLineItem;
       });
 
       const grandTotal = Number(po.value ?? 0) || lineItems.reduce((sum, line) => sum + line.lineTotal, 0);
       const expected = po.expectedShipmentDate || po.date || today.toISOString().slice(0, 10);
-      const etaDays = Math.ceil((new Date(expected).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
       const placeholderRequest: ProcurementRequest = {
         id: String(po.formData?.requestId ?? ''),
@@ -1878,6 +3372,15 @@ const Procurement: React.FC = () => {
         preferredVendor: null,
       };
 
+      const unlinkedEta = computeIssuedPoEtaFromLeadTimes({
+        today,
+        poReleaseDateStr: po.date,
+        request: placeholderRequest,
+        linkedQuote: undefined,
+        linkedPO: po,
+        lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+      });
+
       return {
         request: placeholderRequest,
         poNumber: String(po.poNumber ?? po.reference ?? '').replace('DPO', 'PO'),
@@ -1886,7 +3389,8 @@ const Procurement: React.FC = () => {
           ? ('In Transit' as const)
           : ('Released' as const),
         backendPoId,
-        etaDays,
+        etaDays: unlinkedEta.etaDays,
+        etaDateDisplay: unlinkedEta.etaDateDisplay,
         lineItems,
         grandTotal,
         requestCode: placeholderRequest.code,
@@ -1906,16 +3410,97 @@ const Procurement: React.FC = () => {
     return Array.from(dedupedByPo.values()).filter(
       (r) => !isIssuedPoHandedOffToWarehouse(r, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides),
     );
-  }, [draftPOs, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
+  }, [draftPOs, isIssuedLikePoStatus, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
+
+  /** KPI + timeline stage counts for Issued POs itemised dashboard (aligned with fulfillment overview). */
+  const issuedPoOverviewKpis = useMemo(() => {
+    const stageCounts = [0, 0, 0, 0, 0, 0, 0];
+    let advancePending = 0;
+    let inTransitCount = 0;
+    let rmPos = 0;
+    let pmPos = 0;
+    let totalValue = 0;
+    let pendingValue = 0;
+
+    for (const record of issuedPORecords) {
+      totalValue += record.grandTotal;
+      if (record.status === 'Released') advancePending++;
+      if (record.status === 'In Transit') inTransitCount++;
+      if (record.request.type === 'RM') rmPos++;
+      if (record.request.type === 'PM') pmPos++;
+
+      const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+      const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+      const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+      const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+      const idx = issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+      if (idx >= 0 && idx <= 6) stageCounts[idx]++;
+      if (idx < 6) pendingValue += record.grandTotal;
+    }
+
+    return {
+      totalPos: issuedPORecords.length,
+      rmPos,
+      pmPos,
+      advancePending,
+      inTransitCount,
+      totalValue,
+      pendingValue,
+      stageCounts,
+      grnCompletePoCount: stageCounts[6],
+    };
+  }, [issuedPORecords, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides, grnCompletePoNormSet]);
+
+  /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
+  const sideCounts = useMemo(
+    () => ({
+      Overview: procurementRequestsList.length,
+      Requests: procurementRequestTabCounts.active,
+      Quotations:
+        quotes.length +
+        filteredPlanningQuotationAsks.length +
+        planningQuotationRequestsAwaitingQuote.length,
+      'Draft POs': draftPOs.length,
+      'Issued POs': issuedPORecords.length,
+      'GRN Monitor': (grnListFromApi ?? []).length,
+      'Inventory Audit': buildInventoryAuditLines(procurementRequestsList).length,
+    }),
+    [
+      draftPOs,
+      grnListFromApi,
+      issuedPORecords,
+      procurementRequestsList,
+      filteredPlanningQuotationAsks.length,
+      planningQuotationRequestsAwaitingQuote.length,
+      procurementRequestTabCounts,
+      quotes,
+    ],
+  );
 
   const filteredIssuedPORecords = useMemo(() => {
     return issuedPORecords.filter((record) => {
+      if (categoryFilter !== 'All' && record.request.type !== categoryFilter) {
+        return false;
+      }
       if (issuedVendorFilter !== 'All Vendors' && record.vendor !== issuedVendorFilter) {
         return false;
       }
 
       if (issuedStatusFilter !== 'All' && record.status !== issuedStatusFilter) {
         return false;
+      }
+
+      if (issuedPoPipelineStageKey != null) {
+        const m = /^issued-(\d+)$/.exec(issuedPoPipelineStageKey);
+        const targetIdx = m ? Number(m[1]) : NaN;
+        if (Number.isFinite(targetIdx) && targetIdx >= 0 && targetIdx <= 6) {
+          const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+          const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+          const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+          const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+          const idx = issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+          if (idx !== targetIdx) return false;
+        }
       }
 
       if (!issuedSearch.trim()) {
@@ -1935,7 +3520,17 @@ const Procurement: React.FC = () => {
         )
       );
     });
-  }, [issuedPORecords, issuedSearch, issuedStatusFilter, issuedVendorFilter]);
+  }, [
+    categoryFilter,
+    grnCompletePoNormSet,
+    issuedPORecords,
+    issuedPoPipelineStageKey,
+    issuedSearch,
+    issuedStatusFilter,
+    issuedVendorFilter,
+    releasedPoTrackingByBackendId,
+    unlinkedPoTimelineOverrides,
+  ]);
 
   const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
     const recBackend = (record as { backendPoId?: string }).backendPoId;
@@ -1954,7 +3549,6 @@ const Procurement: React.FC = () => {
     const backendPoId = backendPo ? String(backendPo.id).replace(/^PO-/, '') : null;
     const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
     const tracking = backendPoId ? releasedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
-    const hasT = (v: unknown) => v != null && String(v).trim() !== '';
     const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
     setSelectedPO({
       id: record.poNumber,
@@ -1971,89 +3565,207 @@ const Procurement: React.FC = () => {
       requestId: record.request.id,
       contactPerson: 'Procurement Desk',
       backendPoId: backendPoId ?? undefined,
-      timeline: [
-        { stage: 'PO Released', done: true, timestamp: record.createdDate, actor: 'Procurement', note: 'PO shared with vendor' },
-        { stage: 'Advance Paid', done: hasT(tracking?.advancePaidAt), timestamp: tracking?.advancePaidAt ?? null, actor: null, note: tracking?.advancePaidNote ?? null },
-        { stage: 'Vendor Confirmed', done: hasT(tracking?.vendorConfirmedAt), timestamp: tracking?.vendorConfirmedAt ?? null, actor: null, note: tracking?.vendorConfirmedNote ?? null },
-        { stage: 'Shipped', done: hasT(tracking?.shippedAt) || !!ov?.shipped, timestamp: tracking?.shippedAt ?? null, actor: null, note: tracking?.shippedNote ?? null },
-        { stage: 'Delivered', done: hasT(tracking?.deliveredAt) || !!ov?.delivered, timestamp: tracking?.deliveredAt ?? null, actor: null, note: tracking?.deliveredNote ?? null },
-        { stage: 'Under GRN', done: hasT(tracking?.underGrnAt) || !!ov?.underGrn, timestamp: tracking?.underGrnAt ?? null, actor: null, note: tracking?.underGrnNote ?? null },
-        { stage: 'GRN Complete', done: hasT(tracking?.grnCompleteAt) || grnDone, timestamp: tracking?.grnCompleteAt ?? null, actor: null, note: tracking?.grnCompleteNote ?? null },
-      ],
+      timeline: buildIssuedPoTimelineSteps(
+        record.status,
+        tracking as PoTrackingRecord | undefined,
+        ov,
+        grnDone,
+        record.createdDate,
+      ),
     });
   };
 
-  const markIssuedPOInTransit = (record: any) => {
-    const requestId = record?.request?.id as string | undefined;
-    const requestCode = record?.requestCode as string | undefined;
-
-    // Normal path for linked POs.
-    if (requestId) {
-      updateRequestStatus(requestId, 'Delivery Pending');
-      addToast('success', `${requestCode ?? 'PO'} moved to In Transit`);
-      return;
-    }
-
-    // Fallback for unlinked Planning POs: update PO tracking (shippedAt).
-    const linkedPO =
-      purchaseOrders.find((p) => p.status === 'Released' && (p.poNumber === record.poNumber || p.poNumber === record.poNumber.replace(/^PO/, 'DPO'))) ??
+  const resolveIssuedPoBackendId = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+  }): string => {
+    const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+    let backendPoId = record?.backendPoId != null ? String(record.backendPoId).replace(/^PO-/, '').trim() : '';
+    if (backendPoId && /^\d+$/.test(backendPoId)) return backendPoId;
+    const fromPo =
       purchaseOrders.find(
         (p) =>
           p.status === 'Released' &&
-          String(p.formData?.requestCode).toUpperCase() === String(record.requestCode).toUpperCase(),
-      );
+          (normPoKey(p.poNumber ?? '') === normPoKey(record.poNumber ?? '') ||
+            normPoKey(String((p as { orderId?: string }).orderId ?? '')) === normPoKey(record.poNumber ?? '')),
+      ) ?? null;
+    if (fromPo) {
+      backendPoId = String(fromPo.id ?? '').replace(/^PO-/, '');
+    }
+    return backendPoId && /^\d+$/.test(backendPoId) ? backendPoId : '';
+  };
 
-    const backendPoId = linkedPO ? String(linkedPO.id).replace(/^PO-/, '') : null;
+  const markIssuedPOVendorConfirmed = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+    request?: { id?: string };
+  }) => {
+    const backendPoId = resolveIssuedPoBackendId(record);
     if (!backendPoId) {
-      addToast('error', 'Linked purchase order not found. Cannot mark In Transit.');
+      addToast('error', 'Purchase order not found. Cannot mark vendor confirmed.');
       return;
     }
-
     const today = new Date().toISOString().split('T')[0];
-    updatePoTracking(backendPoId, {
-      shippedAt: today,
-      shippedNote: 'Marked In Transit (unlinked Planning PO) from Procurement',
+    const prId = String(record?.request?.id ?? '').trim();
+    const isUnlinkedPlanning = !prId;
+    void updatePoTracking(backendPoId, {
+      vendorConfirmedAt: today,
+      vendorConfirmedNote: isUnlinkedPlanning
+        ? 'Vendor confirmed (unlinked Planning PO) from Procurement'
+        : 'Vendor confirmed from Procurement',
     }).then((trackingRes) => {
       if (!trackingRes.success) {
-        addToast('error', typeof trackingRes.error === 'string' ? trackingRes.error : (trackingRes.error?.message ?? 'Failed to update PO tracking'));
+        addToast(
+          'error',
+          typeof trackingRes.error === 'string'
+            ? trackingRes.error
+            : (trackingRes.error?.message ?? 'Failed to update PO tracking'),
+        );
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
       queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
-      setUnlinkedPoTimelineOverrides((prev) => ({
-        ...prev,
-        [backendPoId]: {
-          shipped: true,
-          delivered: prev[backendPoId]?.delivered ?? false,
-          underGrn: prev[backendPoId]?.underGrn ?? false,
-        },
-      }));
-      addToast('success', `${record.poNumber} marked In Transit (tracking updated).`);
+      addToast('success', `${String(record.poNumber ?? 'PO')} — vendor confirmed`);
     });
   };
 
-  const receiveIssuedPOGRN = async (record: any) => {
+  const markIssuedPOShipped = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+    requestCode?: string;
+    request?: { id?: string };
+  }) => {
+    const backendPoId = resolveIssuedPoBackendId(record);
+    if (!backendPoId) {
+      const requestId = record?.request?.id as string | undefined;
+      const requestCode = record?.requestCode as string | undefined;
+      if (requestId) {
+        void updateRequestStatus(requestId, 'Delivery Pending');
+        addToast('info', `${requestCode ?? 'PO'} marked delivery pending — link a released PO to update the timeline.`);
+        return;
+      }
+      addToast('error', 'Purchase order not found. Cannot mark shipped.');
+      return;
+    }
+
+    const tracking = releasedPoTrackingByBackendId?.[backendPoId];
+    if (!hasPoTrackingTimestamp(tracking?.vendorConfirmedAt)) {
+      addToast('error', 'Mark vendor confirmed before marking shipped.');
+      return;
+    }
+    if (hasPoTrackingTimestamp(tracking?.shippedAt)) {
+      addToast('info', `${String(record.poNumber ?? 'PO')} is already marked shipped.`);
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const prId = String(record?.request?.id ?? '').trim();
+    const isUnlinkedPlanning = !prId;
+    void updatePoTracking(backendPoId, {
+      shippedAt: today,
+      shippedNote: isUnlinkedPlanning
+        ? 'Marked shipped (unlinked Planning PO) from Procurement'
+        : 'Marked shipped from Procurement',
+    }).then((trackingRes) => {
+      if (!trackingRes.success) {
+        addToast(
+          'error',
+          typeof trackingRes.error === 'string'
+            ? trackingRes.error
+            : (trackingRes.error?.message ?? 'Failed to update PO tracking'),
+        );
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      if (isUnlinkedPlanning) {
+        setUnlinkedPoTimelineOverrides((prev) => ({
+          ...prev,
+          [backendPoId]: {
+            shipped: true,
+            delivered: prev[backendPoId]?.delivered ?? false,
+            underGrn: prev[backendPoId]?.underGrn ?? false,
+          },
+        }));
+      }
+      addToast('success', `${String(record.poNumber ?? 'PO')} marked shipped`);
+    });
+  };
+
+  const receiveIssuedPOGRN = async (
+    record: {
+      poNumber?: string;
+      vendor?: string;
+      requestCode?: string;
+      lineItems?: Array<Record<string, unknown>>;
+      request?: { id?: string; type?: RequestType };
+      backendPoId?: string;
+    },
+    scope?: { lineIndex?: number; allLines?: boolean },
+  ) => {
     const requestId = record?.request?.id as string | undefined;
     const requestCode = record?.requestCode as string | undefined;
     const poNo = String(record?.poNumber ?? '').trim();
+    const allLineItems = Array.isArray(record.lineItems) ? record.lineItems : [];
+    const scopedLineIndex =
+      scope?.lineIndex != null && Number.isFinite(scope.lineIndex) ? scope.lineIndex : null;
+    const lineEntries =
+      scopedLineIndex != null
+        ? allLineItems[scopedLineIndex]
+          ? [{ line: allLineItems[scopedLineIndex], idx: scopedLineIndex }]
+          : []
+        : allLineItems.map((line, idx) => ({ line, idx }));
 
     if (!poNo) {
       addToast('error', 'PO not found. Cannot mark delivered.');
       return;
     }
 
-    if (receiveGrnLockRef.current[poNo]) {
-      addToast('info', 'GRN creation already in progress for this PO.');
+    if (scopedLineIndex != null && lineEntries.length === 0) {
+      addToast('error', 'Line item not found on this PO.');
       return;
     }
 
-    receiveGrnLockRef.current[poNo] = true;
+    const lockKey = scopedLineIndex != null ? `${poNo}::L${scopedLineIndex}` : poNo;
+
+    if (receiveGrnLockRef.current[lockKey]) {
+      addToast('info', scopedLineIndex != null ? 'GRN creation already in progress for this item.' : 'GRN creation already in progress for this PO.');
+      return;
+    }
+
+    receiveGrnLockRef.current[lockKey] = true;
     try {
-      const hasUnderOrCompleteGrnForPo = async () => {
+      const splitLegacyMultiLineGrnsForPo = async (backendPoId: string) => {
         const existingGrns = await fetchGRNList();
-        return existingGrns.some(
-          (g) => String(g.poNo ?? '').trim().toUpperCase() === poNo.toUpperCase() && (g.status === 'Under GRN' || g.status === 'GRN Complete'),
+        const poGrns = existingGrns.filter(
+          (g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber)
         );
+        for (const g of poGrns) {
+          const lines = Array.isArray(g.lineItems) ? g.lineItems : [];
+          if (lines.length <= 1) continue;
+          // Splitting a multi-line GRN that is already GRN Complete would clone "Complete" rows without
+          // running warehouse inventory apply (only the PUT transition does). Skip — warehouse owns that case.
+          if (String(g.status || '').trim() === 'GRN Complete') continue;
+          const first = lines[0];
+          await updateGRN(String(g.id), { lineItems: [first] });
+          for (let i = 1; i < lines.length; i += 1) {
+            const li = lines[i];
+            await createGRN({
+              grnNo: `GRN-${record.poNumber}-${li.itemCode || i + 1}-${Date.now()}-${i}`,
+              purchase_order_id: parseInt(backendPoId, 10),
+              poNo: g.poNo || record.poNumber,
+              vendor: g.vendor || record.vendor,
+              type: g.type as 'RM' | 'PM',
+              items: 1,
+              poValue: Number(li.unitPrice || 0) * Number(li.poQty || 0),
+              status: g.status || 'Under GRN',
+              receivedDate: g.receivedDate ?? null,
+              lineItems: [li],
+            });
+          }
+        }
       };
 
       // Linked path: update procurement request + create GRN.
@@ -2092,6 +3804,7 @@ const Procurement: React.FC = () => {
         const today = new Date().toISOString().split('T')[0];
         const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === String(requestId));
         const items = (backendPr as { items?: BackendPRItem[] } | undefined)?.items ?? ([] as BackendPRItem[]);
+        await splitLegacyMultiLineGrnsForPo(backendPoId);
 
         const trackingRes = await updatePoTracking(backendPoId, {
           deliveredAt: today,
@@ -2106,57 +3819,91 @@ const Procurement: React.FC = () => {
 
         let grnCreated = false;
         try {
-          const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
-          if (!alreadyHasGrn) {
+          const normalizedLines = lineEntries.map(({ line, idx }) => {
+            // Pass the draft line's FK into the matcher so PR lookup is FK-first (matchBackend
+            // falls back to name/code only when no FK is set). Without this, mixed-type POs
+            // routed every PM line through the same name-only path and any subtle mismatch
+            // selected the wrong PR item.
+            const draftRm = line?.raw_material_id != null ? Number(line.raw_material_id) : undefined;
+            const draftPm = line?.pack_material_id != null ? Number(line.pack_material_id) : undefined;
+            const prItem =
+              matchBackendPrItemForDraftLine(
+                {
+                  item: String(line.item ?? ''),
+                  itemCode: String(line.itemCode ?? ''),
+                  type: (line?.type ?? record.request?.type ?? 'RM') as RequestType,
+                  qty: String(line.qty ?? ''),
+                  pricePerUnit: Number(line.pricePerUnit) || 0,
+                  gstPercent: Number(line.gstPercent) || 18,
+                  gstAmount: Number(line.gstAmount) || 0,
+                  lineTotal: Number(line.lineTotal) || 0,
+                  ...(Number.isFinite(draftRm) ? { raw_material_id: draftRm } : {}),
+                  ...(Number.isFinite(draftPm) ? { pack_material_id: draftPm } : {}),
+                },
+                items
+              ) ?? items[idx];
+            // Explicit FK from the draft line always wins. PR items only fill in the gap when
+            // the draft PO didn't carry one.
+            const resolvedRmId = Number.isFinite(draftRm)
+              ? draftRm
+              : (prItem?.raw_material_id != null ? Number(prItem.raw_material_id) : undefined);
+            const resolvedPmId = Number.isFinite(draftPm)
+              ? draftPm
+              : (prItem?.pack_material_id != null ? Number(prItem.pack_material_id) : undefined);
+            // PM lines never carry raw_material_id and RM lines never carry pack_material_id —
+            // mutually exclude them so a stale id from the other side cannot reach the GRN.
+            const finalRmId = resolvedPmId != null ? undefined : resolvedRmId;
+            const finalPmId = resolvedRmId != null ? undefined : resolvedPmId;
+            return {
+              id: `line-${idx}`,
+              item: String(line.item ?? prItem?.name ?? ''),
+              itemCode: resolveItemCodeFromSources(
+                [line.itemCode, prItem?.code, line.item, prItem?.name],
+                (line?.type ?? record.request?.type ?? 'RM') as RequestType,
+                idx
+              ),
+              poQty: Number(line.qty) || 0,
+              rcvdQty: 0,
+              invoiceQty: 0,
+              unitPrice: Number(line.pricePerUnit) || 0,
+              diff: 0,
+              qcStatus: 'Pending',
+              qcBy: '',
+              raw_material_id: finalRmId,
+              pack_material_id: finalPmId,
+              product_id: prItem?.product_id,
+            };
+          });
+          const existingGrns = await fetchGRNList();
+          const existingLineKeys = new Set(
+            existingGrns
+              .filter((g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber))
+              .flatMap((g) => (Array.isArray(g.lineItems) ? g.lineItems : []))
+              .map((li) => String(li.itemCode || '').trim().toUpperCase())
+              .filter(Boolean)
+          );
+          for (let idx = 0; idx < normalizedLines.length; idx += 1) {
+            const line = normalizedLines[idx];
+            const sourceLine = lineEntries[idx]?.line;
+            const lineKey = String(line.itemCode || '').trim().toUpperCase();
+            if (lineKey && existingLineKeys.has(lineKey)) continue;
             await createGRN({
-              grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+              grnNo: `GRN-${record.poNumber}-${line.itemCode || idx + 1}-${Date.now()}`,
               purchase_order_id: parseInt(backendPoId, 10),
               poNo: record.poNumber,
               vendor: record.vendor,
-              type: record.request.type as 'RM' | 'PM',
-              items: record.lineItems.length,
-              poValue: record.grandTotal ?? 0,
+              type: (sourceLine?.type ?? record.request?.type ?? 'RM') as 'RM' | 'PM',
+              items: 1,
+              poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
               status: 'Under GRN',
               receivedDate: today,
-              lineItems: record.lineItems.map((line: any, idx: number) => {
-                const prItem =
-                  matchBackendPrItemForDraftLine(
-                    {
-                      item: String(line.item ?? ''),
-                      itemCode: String(line.itemCode ?? ''),
-                      type: (record.request?.type ?? 'RM') as RequestType,
-                      qty: String(line.qty ?? ''),
-                      pricePerUnit: Number(line.pricePerUnit) || 0,
-                      gstPercent: Number(line.gstPercent) || 18,
-                      gstAmount: Number(line.gstAmount) || 0,
-                      lineTotal: Number(line.lineTotal) || 0,
-                    },
-                    items
-                  ) ?? items[idx];
-                return {
-                  id: `line-${idx}`,
-                  item: String(line.item ?? ''),
-                  itemCode: resolveItemCodeFromSources(
-                    [prItem?.code, line.itemCode, line.item, prItem?.name],
-                    record.request.type,
-                    idx
-                  ),
-                  poQty: Number(line.qty) || 0,
-                  rcvdQty: 0,
-                  invoiceQty: 0,
-                  unitPrice: Number(line.pricePerUnit) || 0,
-                  diff: 0,
-                  qcStatus: 'Pending',
-                  qcBy: '',
-                  raw_material_id: prItem?.raw_material_id,
-                  pack_material_id: prItem?.pack_material_id,
-                  product_id: prItem?.product_id,
-                };
-              }),
+              lineItems: [line],
             });
+            existingLineKeys.add(lineKey);
             grnCreated = true;
-          } else {
-            addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+          }
+          if (!grnCreated) {
+            addToast('info', 'GRN already exists for these PO items. Skipping duplicate creation.');
           }
         } catch (e) {
           addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
@@ -2179,8 +3926,12 @@ const Procurement: React.FC = () => {
         addToast(
           'success',
           grnCreated
-            ? `${requestCode ?? record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
-            : `${requestCode ?? record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+            ? scopedLineIndex != null
+              ? `${lineEntries[0]?.line?.item ?? 'Item'} on ${requestCode ?? record.poNumber} marked at WH — GRN created.`
+              : `${requestCode ?? record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+            : scopedLineIndex != null
+              ? `${lineEntries[0]?.line?.item ?? 'Item'} already has a GRN on this PO.`
+              : `${requestCode ?? record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
         );
         return;
       }
@@ -2201,6 +3952,7 @@ const Procurement: React.FC = () => {
       }
 
       const today = new Date().toISOString().split('T')[0];
+      await splitLegacyMultiLineGrnsForPo(backendPoId);
       const trackingRes = await updatePoTracking(backendPoId, {
         deliveredAt: today,
         deliveredNote: 'Marked delivered at WH (unlinked Planning PO) from Procurement',
@@ -2223,53 +3975,79 @@ const Procurement: React.FC = () => {
 
       let unlinkedGrnCreated = false;
       try {
-        const alreadyHasGrn = await hasUnderOrCompleteGrnForPo();
-        if (!alreadyHasGrn) {
-          const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
+        const rawItemsForGrn = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as any[]) : [];
+        const normalizedLines = lineEntries.map(({ line, idx }) => {
+          const raw = rawItemsForGrn[idx] ?? {};
+          // Prefer the explicit FK from the draft line; fall back to the matching PO raw item
+          // only when the draft didn't carry one. Mutually exclude RM/PM so a PM line cannot
+          // also stamp a raw_material_id (this was the "PM shows as AQUA" contamination).
+          const lineRm = line?.raw_material_id != null ? Number(line.raw_material_id) : NaN;
+          const linePm = line?.pack_material_id != null ? Number(line.pack_material_id) : NaN;
+          const fromRaw = resolveMasterIdsFromRawItem(raw);
+          const rmId = Number.isFinite(lineRm) && lineRm > 0 ? lineRm : (fromRaw.raw_material_id ?? undefined);
+          const pmId = Number.isFinite(linePm) && linePm > 0 ? linePm : (fromRaw.pack_material_id ?? undefined);
+          const finalRmId = pmId != null ? undefined : rmId;
+          const finalPmId = rmId != null ? undefined : pmId;
+          return {
+            id: `line-${idx}`,
+            item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
+            itemCode: resolveItemCodeFromSources(
+              [
+                raw.code,
+                raw.itemCode,
+                raw.item_code,
+                raw.itemId,
+                raw.item_id,
+                raw.rm_code,
+                raw.pm_code,
+                line.itemCode,
+                line.item,
+              ],
+              (record.request?.type ?? 'RM') as RequestType,
+              idx
+            ),
+            poQty: Number(line.qty) || Number(raw.quantity) || 0,
+            rcvdQty: 0,
+            invoiceQty: 0,
+            unitPrice: Number(line.pricePerUnit) || Number(raw.rate ?? raw.price ?? 0) || 0,
+            diff: 0,
+            qcStatus: 'Pending',
+            qcBy: '',
+            ...(finalRmId != null ? { raw_material_id: finalRmId } : {}),
+            ...(finalPmId != null ? { pack_material_id: finalPmId } : {}),
+            ...(fromRaw.product_id != null ? { product_id: fromRaw.product_id } : {}),
+          };
+        });
+        const existingGrns = await fetchGRNList();
+        const existingLineKeys = new Set(
+          existingGrns
+            .filter((g) => normPoNumberKeyForTimeline(g.poNo || '') === normPoNumberKeyForTimeline(record.poNumber))
+            .flatMap((g) => (Array.isArray(g.lineItems) ? g.lineItems : []))
+            .map((li) => String(li.itemCode || '').trim().toUpperCase())
+            .filter(Boolean)
+        );
+        for (let idx = 0; idx < normalizedLines.length; idx += 1) {
+          const line = normalizedLines[idx];
+          const sourceLine = lineEntries[idx]?.line;
+          const lineKey = String(line.itemCode || '').trim().toUpperCase();
+          if (lineKey && existingLineKeys.has(lineKey)) continue;
           await createGRN({
-            grnNo: `GRN-${record.poNumber}-${Date.now()}`,
+            grnNo: `GRN-${record.poNumber}-${line.itemCode || idx + 1}-${Date.now()}`,
             purchase_order_id: parseInt(backendPoId, 10),
             poNo: record.poNumber,
             vendor: record.vendor,
-            type: (record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
-            items: record.lineItems.length,
-            poValue: record.grandTotal ?? 0,
+            type: (sourceLine?.type ?? record.request?.type ?? record.lineItems?.[0]?.type ?? 'RM') as 'RM' | 'PM',
+            items: 1,
+            poValue: Number(line.unitPrice || 0) * Number(line.poQty || 0),
             status: 'Under GRN',
             receivedDate: today,
-            lineItems: record.lineItems.map((line: any, idx: number) => {
-              const raw = rawItemsForGrn[idx] ?? {};
-              return {
-                id: `line-${idx}`,
-                item: String(line.item ?? raw.itemName ?? raw.name ?? ''),
-                itemCode: resolveItemCodeFromSources(
-                  [
-                    raw.code,
-                    raw.itemCode,
-                    raw.item_code,
-                    raw.itemId,
-                    raw.item_id,
-                    raw.rm_code,
-                    raw.pm_code,
-                    line.itemCode,
-                    line.item,
-                  ],
-                  (record.request?.type ?? 'RM') as RequestType,
-                  idx
-                ),
-                poQty: Number(line.qty) || Number(raw.quantity) || 0,
-                rcvdQty: 0,
-                invoiceQty: 0,
-                unitPrice: Number(line.pricePerUnit) || Number(raw.rate ?? raw.price ?? 0) || 0,
-                diff: 0,
-                qcStatus: 'Pending',
-                qcBy: '',
-                ...resolveMasterIdsFromRawItem(raw),
-              };
-            }),
+            lineItems: [line],
           });
+          existingLineKeys.add(lineKey);
           unlinkedGrnCreated = true;
-        } else {
-          addToast('info', 'GRN already exists for this PO. Skipping duplicate creation.');
+        }
+        if (!unlinkedGrnCreated) {
+          addToast('info', 'GRN already exists for these PO items. Skipping duplicate creation.');
         }
       } catch (e) {
         addToast('error', e instanceof Error ? e.message : 'Failed to create GRN in warehouse');
@@ -2282,11 +4060,15 @@ const Procurement: React.FC = () => {
       addToast(
         'success',
         unlinkedGrnCreated
-          ? `${record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
-          : `${record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
+          ? scopedLineIndex != null
+            ? `${lineEntries[0]?.line?.item ?? 'Item'} on ${record.poNumber} marked at WH — GRN created.`
+            : `${record.poNumber} marked delivered at WH. GRN created — see Warehouse > Inbound.`
+          : scopedLineIndex != null
+            ? `${lineEntries[0]?.line?.item ?? 'Item'} already has a GRN on this PO.`
+            : `${record.poNumber} marked delivered at WH. GRN already existed — see Warehouse > Inbound.`,
       );
     } finally {
-      delete receiveGrnLockRef.current[poNo];
+      delete receiveGrnLockRef.current[lockKey];
     }
   };
 
@@ -2326,6 +4108,11 @@ const Procurement: React.FC = () => {
     requestType: RequestType,
     preferredQuotationId?: string
   ): Promise<boolean> => {
+    const reqForAction = requests.find((r) => r.id === requestId);
+    if (reqForAction && isStockCheckPendingForRequest(reqForAction)) {
+      addToast('warning', 'Stock check is pending. Draft PO creation is locked until warehouse sends stock status.');
+      return false;
+    }
     if (!items.length) {
       addToast('warning', 'Add at least one line item to the request to create a draft PO.');
       return false;
@@ -2341,11 +4128,16 @@ const Procurement: React.FC = () => {
     const vendorMasterTerms = String(matchedVendorForZoho?.paymentTerms ?? '').trim();
     const resolvedPaymentTerms = vendorMasterTerms || quoteTerms || 'As per contract';
 
-    let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number }[] = [];
+    let itemsListPrices: { name: string; itemId?: string; pricePerUnit: number; leadTimeDays?: number }[] = [];
     if (vendorId && vendor !== 'Unassigned') {
       const res = await fetchQuoteLineDefaults(parseInt(requestId, 10), parseInt(String(vendorId), 10));
       if (res.success && res.data?.items?.length) {
-        itemsListPrices = res.data.items.map((i) => ({ name: i.name ?? '', itemId: i.itemId, pricePerUnit: Number(i.pricePerUnit) || 0 }));
+        itemsListPrices = res.data.items.map((i) => ({
+          name: i.name ?? '',
+          itemId: i.itemId,
+          pricePerUnit: Number(i.pricePerUnit) || 0,
+          leadTimeDays: normalizeLeadTimeDays(i.leadTimeDays ?? (i as { lead_time_days?: unknown }).lead_time_days),
+        }));
       }
     }
 
@@ -2363,22 +4155,33 @@ const Procurement: React.FC = () => {
       let pricePerUnit = matchedLine != null && typeof matchedLine.pricePerUnit === 'number' && matchedLine.pricePerUnit > 0
         ? matchedLine.pricePerUnit
         : 0;
-      if (pricePerUnit === 0 && itemsListPrices.length > 0) {
+      let itemsListLead: number | undefined;
+      if (itemsListPrices.length > 0) {
         const byIndex = itemsListPrices[idx];
         const byName = itemsListPrices.find((p) => (p.name || '').trim().toLowerCase() === String(it.name ?? '').trim().toLowerCase());
         const byCode = itemsListPrices.find((p) => ((p.itemId ?? p.name) || '').trim().toLowerCase() === String(it.code ?? '').trim().toLowerCase());
-        pricePerUnit = byIndex?.pricePerUnit ?? byName?.pricePerUnit ?? byCode?.pricePerUnit ?? 0;
+        const picked = byIndex ?? byName ?? byCode;
+        itemsListLead = picked?.leadTimeDays;
+        if (pricePerUnit === 0) {
+          pricePerUnit = picked?.pricePerUnit ?? 0;
+        }
       }
       const gstPercent = 18;
       const subtotal = qty * pricePerUnit;
       const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
       const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
+      const leadTimeDays = resolveDraftLineLeadTimeDays({
+        prLine: it,
+        quoteLineLead: matchedLine?.leadTimeDays,
+        itemsListLead,
+        quoteHeaderLead: quoteToUse?.leadTimeDays,
+      });
       return {
         item: it.name ?? it.code ?? 'Item',
         itemCode: requestType === 'PM' ? `EI-PM-${String(idx + 1).padStart(3, '0')}` : `EI-RM-${String(idx + 1).padStart(3, '0')}`,
         type: requestType,
         qty: String(it.quantity_requested ?? 0),
-        leadTimeDays: quoteToUse?.leadTimeDays ?? 0,
+        leadTimeDays,
         pricePerUnit,
         gstPercent,
         gstAmount,
@@ -2418,12 +4221,14 @@ const Procurement: React.FC = () => {
       },
       items: lineItems.map((l, idx) => {
         const src = items[idx];
+        const ld = normalizeLeadTimeDays(l.leadTimeDays);
         return {
           itemName: l.item,
           itemCode: l.itemCode,
           quantity: l.qty,
           rate: String(l.pricePerUnit),
           tax: String(l.gstPercent || 18),
+          ...(ld !== undefined ? { lead_time_days: ld } : {}),
           ...(src?.raw_material_id != null ? { raw_material_id: Number(src.raw_material_id) } : {}),
           ...(src?.pack_material_id != null ? { pack_material_id: Number(src.pack_material_id) } : {}),
         };
@@ -2469,7 +4274,9 @@ const Procurement: React.FC = () => {
     }));
     void invalidatePurchaseOrdersQueries();
     await updateProcurementRequestApi(requestId, { status: 'PO Draft' });
-    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
       requests: current.requests.map((r) => (r.id === requestId ? { ...r, status: 'PO Draft' as RequestStatus } : r)),
     }));
@@ -2559,6 +4366,223 @@ const Procurement: React.FC = () => {
     addToast('success', `${target.dpoNumber} approved`);
   };
 
+  const openDeleteDraftPOConfirm = (draft: DraftPO): void => {
+    const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
+      addToast('error', 'This draft PO is not saved on the server yet. Refresh the page and try again.');
+      return;
+    }
+
+    const serverPo = purchaseOrders.find(
+      (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId
+    );
+    if (serverPo && String(serverPo.status ?? '').trim().toLowerCase() === 'released') {
+      addToast('warning', 'Released purchase orders cannot be deleted here.');
+      return;
+    }
+
+    setDraftPoDeleteConfirmTarget(draft);
+  };
+
+  const confirmDeleteDraftPO = (): void => {
+    const draft = draftPoDeleteConfirmTarget;
+    if (!draft) return;
+    void deleteDraftPO(draft);
+  };
+
+  const openDeleteRequestConfirm = (req: ProcurementRequest): void => {
+    if (requestStatusShowsIssuedPOs(req.status)) {
+      addToast('warning', 'Released or completed requests cannot be deleted.');
+      return;
+    }
+    const hasReleasedPo = purchaseOrders.some((po) => {
+      const linkedRequestId = (po.formData as { requestId?: string } | undefined)?.requestId;
+      return linkedRequestId === req.id && isIssuedLikePoStatus(po.status);
+    });
+    if (hasReleasedPo) {
+      addToast('warning', 'This request has a released purchase order and cannot be deleted.');
+      return;
+    }
+    setRequestDeleteConfirmTarget(req);
+  };
+
+  const confirmDeleteRequest = (): void => {
+    const req = requestDeleteConfirmTarget;
+    if (!req) return;
+    void deleteProcurementRequestFlow(req);
+  };
+
+  const deleteProcurementRequestFlow = async (req: ProcurementRequest): Promise<void> => {
+    if (requestStatusShowsIssuedPOs(req.status)) {
+      addToast('warning', 'Released or completed requests cannot be deleted.');
+      return;
+    }
+
+    setDeletingRequestId(req.id);
+    try {
+      const linkedDrafts = draftPOs.filter((d) => d.requestId === req.id);
+      for (const draft of linkedDrafts) {
+        const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+        if (!backendPoId || !/^\d+$/.test(backendPoId)) continue;
+        const serverPo = purchaseOrders.find(
+          (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId,
+        );
+        if (serverPo && isIssuedLikePoStatus(serverPo.status)) {
+          addToast('warning', 'This request has a released purchase order and cannot be deleted.');
+          return;
+        }
+        const delPo = await deletePurchaseOrder(backendPoId);
+        if (!delPo.success) {
+          addToast(
+            'error',
+            typeof delPo.error === 'string' ? delPo.error : 'Failed to delete linked draft PO',
+          );
+          return;
+        }
+      }
+
+      const del = await deleteProcurementRequestApi(req.id);
+      if (!del.success) {
+        addToast(
+          'error',
+          typeof del.error === 'string' ? del.error : 'Failed to delete procurement request',
+        );
+        return;
+      }
+
+      updateProcurementState((current) => ({
+        ...current,
+        requests: current.requests.filter((r) => r.id !== req.id),
+        draftPOs: current.draftPOs.filter((d) => d.requestId !== req.id),
+      }));
+
+      if (selectedRequest?.id === req.id) setSelectedRequest(null);
+      if (editRequestTarget?.id === req.id) setEditRequestTarget(null);
+      if (releaseToPlannedTarget?.request.id === req.id) setReleaseToPlannedTarget(null);
+
+      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      void invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+      addToast(
+        'success',
+        linkedDrafts.length > 0
+          ? `Request ${req.code} and linked draft PO(s) deleted. Quantities return to Planning.`
+          : `Request ${req.code} deleted.`,
+      );
+      setRequestDeleteConfirmTarget(null);
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
+  const deleteDraftPO = async (draft: DraftPO): Promise<void> => {
+    const backendPoId = String(draft.backendPoId ?? '').replace(/^PO-/, '').trim();
+    if (!backendPoId || !/^\d+$/.test(backendPoId)) {
+      addToast('error', 'This draft PO is not saved on the server yet. Refresh the page and try again.');
+      return;
+    }
+
+    const serverPo = purchaseOrders.find(
+      (p) => String(p.id ?? '').replace(/^PO-/, '').trim() === backendPoId
+    );
+    if (serverPo && String(serverPo.status ?? '').trim().toLowerCase() === 'released') {
+      addToast('warning', 'Released purchase orders cannot be deleted here.');
+      return;
+    }
+
+    setDeletingDraftPoId(draft.id);
+    try {
+      const backendRequestId = resolveBackendProcurementRequestId(draft);
+      const prRow = backendRequestId
+        ? backendPrArray.find((p) => String(p.id) === backendRequestId)
+        : undefined;
+      let linkedPrRemoved = false;
+
+      if (prRow) {
+        const hasOtherDraft = requestHasOtherDraftPurchaseOrder(
+          backendRequestId,
+          purchaseOrders,
+          backendPoId
+        );
+        const hasQuote = quotes.some((q) => q.requestId === backendRequestId);
+        const plan = planDraftPoDeleteProcurementCleanup(
+          draft,
+          prRow,
+          hasOtherDraft,
+          hasQuote
+        );
+
+        if (plan.kind === 'delete-parent') {
+          const delPr = await deleteProcurementRequestApi(backendRequestId);
+          if (!delPr.success) {
+            addToast(
+              'error',
+              typeof delPr.error === 'string'
+                ? delPr.error
+                : 'Could not remove the linked procurement request. Draft PO was not deleted.'
+            );
+            return;
+          }
+          linkedPrRemoved = true;
+        } else {
+          const prUpd = await updateProcurementRequestApi(backendRequestId, {
+            items: plan.items,
+            status: plan.status,
+          });
+          if (!prUpd.success) {
+            addToast(
+              'error',
+              typeof prUpd.error === 'string'
+                ? prUpd.error
+                : 'Could not update the linked procurement request. Draft PO was not deleted.'
+            );
+            return;
+          }
+        }
+      }
+
+      const delPo = await deletePurchaseOrder(backendPoId);
+      if (!delPo.success) {
+        addToast('error', typeof delPo.error === 'string' ? delPo.error : 'Failed to delete draft PO');
+        void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        return;
+      }
+
+      updateProcurementState((current) => ({
+        draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
+        requests:
+          linkedPrRemoved && backendRequestId
+            ? current.requests.filter((r) => r.id !== backendRequestId)
+            : current.requests,
+      }));
+
+      if (selectedDraftPO?.id === draft.id) setSelectedDraftPO(null);
+      if (editDraftPOTarget?.id === draft.id) setEditDraftPOTarget(null);
+      if (releasePOTarget?.id === draft.id) closeReleasePOModal();
+
+      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      void invalidatePurchaseOrdersQueries();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+      addToast(
+        'success',
+        linkedPrRemoved
+          ? `Draft PO ${draft.dpoNumber} deleted; linked procurement request removed — qty available on Planning → Items Involved.`
+          : `Draft PO ${draft.dpoNumber} deleted; procurement request updated.`
+      );
+      setDraftPoDeleteConfirmTarget(null);
+    } finally {
+      setDeletingDraftPoId(null);
+    }
+  };
+
   const resolveBackendProcurementRequestId = (draft: DraftPO): string => {
     // Backend PATCH /api/v1/procurement/:id expects the numeric procurement_requests.id.
     const direct = draft.requestId ?? '';
@@ -2579,17 +4603,17 @@ const Procurement: React.FC = () => {
     return '';
   };
 
-  const releaseDraftPOToVendor = async (draftPoId: string) => {
+  const releaseDraftPOToVendor = async (draftPoId: string): Promise<boolean> => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
       addToast('warning', 'Draft PO not found');
-      return;
+      return false;
     }
 
     if (target.status !== 'Approved') {
       addToast('warning', `${target.dpoNumber} must be approved before release`);
-      return;
+      return false;
     }
 
     const backendRequestId = resolveBackendProcurementRequestId(target);
@@ -2608,7 +4632,7 @@ const Procurement: React.FC = () => {
       // In that case, we can still release the underlying purchase order and show it in "Issued POs".
       addToast('warning', `${target.dpoNumber} released (no backend procurement request link; created from Planning).`);
       applyRouteState('Procurement', 'Issued POs');
-      return;
+      return true;
     }
 
     if (DEBUG_PROC_RELEASE) {
@@ -2617,10 +4641,12 @@ const Procurement: React.FC = () => {
         status: 'PO Released',
       });
     }
-    // Split draft POs (…-S1 / …-S2): do not PATCH the full PR item list — vendor-facing lines come from the PO only.
-    const isSplitDraft = /-S[12]$/.test(target.dpoNumber);
-    await updateRequestStatus(backendRequestId, 'PO Released', isSplitDraft ? { skipItems: true } : undefined);
+    // Always skip items: PO lines are already persisted on the purchase order; re-sending PR lines can fail MOQ validation
+    // and leave procurement_requests.status stuck while the UI still showed release success.
+    const ok = await updateRequestStatus(backendRequestId, 'PO Released', { skipItems: true, silentToast: true });
+    if (!ok) return false;
     applyRouteState('Procurement', 'Issued POs');
+    return true;
   };
 
   const openReleasePOModal = (draftPoId: string) => {
@@ -2636,15 +4662,75 @@ const Procurement: React.FC = () => {
       return;
     }
 
+    const linkedReq = requests.find((r) => r.id === target.requestId);
+    if (linkedReq && isStockCheckPendingForRequest(linkedReq)) {
+      addToast('warning', 'Stock check is pending. PO release is locked until warehouse completes it.');
+      return;
+    }
+
     setReleasePOTarget(target);
     setReleaseMethod('Email + Portal');
     setReleaseNotes('');
+    setReleasePaymentTransactionNo('');
+    setReleasePaymentMode('');
+    setReleasePaymentDate(new Date().toISOString().split('T')[0]);
   };
 
   const closeReleasePOModal = () => {
+    if (releasingPO) return;
     setReleasePOTarget(null);
     setReleaseMethod('Email + Portal');
     setReleaseNotes('');
+    setReleasePaymentTransactionNo('');
+    setReleasePaymentMode('');
+    setReleasePaymentDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const validateReleasePaymentFields = (required: boolean): string | null => {
+    if (!required) return null;
+    const txn = releasePaymentTransactionNo.trim();
+    if (!txn) return 'Transaction number is required.';
+    if (!releasePaymentMode) return 'Mode of payment is required.';
+    if (!releasePaymentDate) return 'Payment date is required.';
+    return null;
+  };
+
+  const buildReleasePaymentTrackingPayload = () => {
+    const txn = releasePaymentTransactionNo.trim();
+    if (!txn && !releasePaymentMode && !releasePaymentDate) return {};
+    const note = `Payment: ${txn} via ${releasePaymentMode} on ${releasePaymentDate}`;
+    return {
+      paymentTransactionNo: txn,
+      paymentMode: releasePaymentMode || null,
+      paymentTransactionDate: releasePaymentDate || null,
+      advancePaidAt: releasePaymentDate || new Date().toISOString().split('T')[0],
+      advancePaidNote: note,
+    };
+  };
+
+  const validateDraftPoQtyAgainstMoqRemainder = (
+    dpoNumber: string,
+    draftLines: DraftPOLineItem[],
+    assignedPrLines: Array<BackendPRItem | undefined>,
+  ): string | null => {
+    for (let i = 0; i < draftLines.length; i += 1) {
+      const ln = draftLines[i];
+      const prLine = assignedPrLines[i];
+      const qty = Number(String(ln.qty ?? '').replace(/[^\d.]/g, '')) || 0;
+      const orig = Number(prLine?.quantity_requested ?? 0) || 0;
+      const moq = Number(prLine?.moq_min ?? 0) || 0;
+
+      if (moq > 0 && qty > 0 && qty < moq) {
+        const u = String(prLine?.unit ?? 'KG');
+        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${formatQtyWithPrimaryUnit(qty, u, 'RM')} is below vendor MOQ ${formatQtyWithPrimaryUnit(moq, u, 'RM')}.`;
+      }
+      if (orig > 0 && qty > orig) {
+        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${qty} exceeds open request qty ${orig}.`;
+      }
+      // Intentionally no check for (orig - qty) < MOQ: small remainders return to the linked PR / new remainder
+      // request; MOQ is enforced on procurement request update and Items List, not on this split math.
+    }
+    return null;
   };
 
   const recordRequiredPaymentReceivedForPo = async (backendPoIdRaw: string | number | null | undefined) => {
@@ -2653,13 +4739,14 @@ const Procurement: React.FC = () => {
       addToast('error', 'No server purchase order id on this draft. Refresh or re-save the draft PO.');
       return;
     }
+    const paymentErr = validateReleasePaymentFields(true);
+    if (paymentErr) {
+      addToast('warning', paymentErr);
+      return;
+    }
     setRecordingAdvancePayment(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await updatePoTracking(backendPoId, {
-        advancePaidAt: today,
-        advancePaidNote: 'Required payment received (manual temp mark — treasury transaction pending)',
-      });
+      const res = await updatePoTracking(backendPoId, buildReleasePaymentTrackingPayload());
       if (!res.success) {
         addToast('error', typeof res.error === 'string' ? res.error : 'Failed to mark payment received');
         return;
@@ -2668,6 +4755,7 @@ const Procurement: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', 'release-draft', backendPoId] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      await queryClient.invalidateQueries({ queryKey: ['treasury-purchase-orders'] });
       void refetchReleaseDraftTracking();
     } finally {
       setRecordingAdvancePayment(false);
@@ -2679,11 +4767,19 @@ const Procurement: React.FC = () => {
   };
 
   const submitReleasePO = async () => {
-    if (!releasePOTarget) {
+    if (!releasePOTarget || releasingPO) {
       return;
     }
 
     const draft = releasePOTarget;
+    const paymentErr = validateReleasePaymentFields(draftPaymentTermsRequireAdvance(draft.paymentTerms));
+    if (paymentErr) {
+      addToast('warning', paymentErr);
+      return;
+    }
+
+    setReleasingPO(true);
+    try {
     if (draftPaymentTermsRequireAdvance(draft.paymentTerms)) {
       const bid = draft.backendPoId ? String(draft.backendPoId).replace(/^PO-/, '') : '';
       if (!bid || !/^\d+$/.test(bid)) {
@@ -2712,12 +4808,24 @@ const Procurement: React.FC = () => {
     }
 
     // Update PO table: set status to Released and ensure request link is stored
+    if (import.meta.env.DEV && !draft.backendPoId) {
+      console.warn(
+        '[EI po-qty debug] No draft.backendPoId — skipping PUT purchase-orders (items never hit DB; warehouse PO Qty will not change from this release).',
+      );
+    }
     if (draft.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(draft);
-      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || draft.requestId)) as
-        | { items?: BackendPRItem[] }
-        | undefined;
-      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+        backendRequestId,
+        draftRequestId: draft.requestId,
+        requestCode: draft.requestCode,
+      });
+      const assignedPrLines = assignPrItemToDraftLines(draft.lineItems, prItemsForLines);
+      const releaseQtyErr = validateDraftPoQtyAgainstMoqRemainder(draft.dpoNumber, draft.lineItems, assignedPrLines);
+      if (releaseQtyErr) {
+        addToast('warning', releaseQtyErr);
+        return;
+      }
       const poItemsPayload = draftLineItemsToPurchaseOrderItems(draft.lineItems, prItemsForLines);
       if (DEBUG_PROC_RELEASE) {
         console.log('[PROC-RELEASE] updatePurchaseOrder formData request linkage', {
@@ -2727,6 +4835,25 @@ const Procurement: React.FC = () => {
           draft_requestCode: draft.requestCode,
           resolved_backendRequestId: backendRequestId,
         });
+      }
+      if (import.meta.env.DEV) {
+        const pl = poItemsPayload as Record<string, unknown>[];
+        console.log('[EI po-qty debug] release → PUT purchase-orders payload', {
+          backendPoId: draft.backendPoId,
+          prItemsForLinesCount: prItemsForLines.length,
+          payloadLineCount: pl.length,
+          lines: pl.map((l) => ({
+            quantity: l.quantity,
+            raw_material_id: l.raw_material_id,
+            pack_material_id: l.pack_material_id,
+            itemCode: l.itemCode,
+          })),
+        });
+        if (pl.length > 0 && pl.every((l) => l.raw_material_id == null && l.pack_material_id == null)) {
+          console.warn(
+            '[EI po-qty debug] WARNING: no raw_material_id / pack_material_id on any line — warehouse PO Qty sums only lines with these FKs. Check PR link / assignPrItemToDraftLines.',
+          );
+        }
       }
       const updateResult = await updatePurchaseOrder(draft.backendPoId, {
         status: 'Released',
@@ -2745,19 +4872,59 @@ const Procurement: React.FC = () => {
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update purchase order'));
         return;
       }
+      if (import.meta.env.DEV && updateResult.data?.items) {
+        console.log('[EI po-qty debug] release ← PUT purchase-orders response items', updateResult.data.items);
+      }
+      const backendPoIdNormalized = String(draft.backendPoId).replace(/^PO-/, '').trim();
+      const poReleasedAt = new Date().toISOString().slice(0, 10);
+      const releaseNote = [
+        releaseMethod ? `Released via ${releaseMethod}` : '',
+        releaseNotes?.trim() || '',
+      ]
+        .filter(Boolean)
+        .join(' | ') || 'PO released from Procurement';
+      const trackingResult = await updatePoTracking(backendPoIdNormalized, {
+        poReleasedAt,
+        poReleasedNote: releaseNote,
+        ...(draftPaymentTermsRequireAdvance(draft.paymentTerms)
+          ? buildReleasePaymentTrackingPayload()
+          : {}),
+      });
+      if (!trackingResult.success) {
+        const err = trackingResult.error;
+        addToast('error', typeof err === 'string' ? err : (err?.message ?? 'PO released, but tracking timeline update failed'));
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoIdNormalized] });
+      await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      await queryClient.invalidateQueries({ queryKey: ['treasury-purchase-orders'] });
+      // PO lines + Released status are persisted — warehouse inventory PO Qty column reads from purchase_orders
+      if (import.meta.env.DEV) {
+        console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (after PO Released + items saved)');
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     }
 
     // If payment terms are set, route to Treasury for advance approval
     if (draft.paymentTerms?.trim()) {
+      const needsAdvanceTxn = draftPaymentTermsRequireAdvance(draft.paymentTerms);
       globalDispatch({
         type: 'ADD_PO',
         payload: {
           stage: 'treasury',
           po: {
             id: draft.dpoNumber,
+            backendPoId: draft.backendPoId,
             vendor: draft.vendor,
             paymentTerms: draft.paymentTerms,
             grandTotal: draft.grandTotal,
+            ...(needsAdvanceTxn
+              ? {
+                  paymentTransactionNo: releasePaymentTransactionNo.trim(),
+                  paymentMode: releasePaymentMode,
+                  paymentTransactionDate: releasePaymentDate,
+                }
+              : {}),
             lines: draft.lineItems.map((l) => ({
               itemId: l.itemCode,
               itemName: l.item,
@@ -2770,12 +4937,24 @@ const Procurement: React.FC = () => {
       });
     }
 
-    await releaseDraftPOToVendor(draft.id);
+    const releasePrOk = await releaseDraftPOToVendor(draft.id);
+    if (!releasePrOk) {
+      addToast(
+        'error',
+        'Release could not update the linked procurement request. Refresh the page; if the PO shows as released, status may still sync from the server.',
+      );
+      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      return;
+    }
     updateProcurementState((current) => ({
       draftPOs: current.draftPOs.filter((d) => d.id !== draft.id),
     }));
 
     void invalidatePurchaseOrdersQueries();
+    if (import.meta.env.DEV) {
+      console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (end of submitReleasePO)');
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     if (draft.paymentTerms?.trim()) {
       addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
     } else {
@@ -2787,6 +4966,9 @@ const Procurement: React.FC = () => {
     }
 
     closeReleasePOModal();
+    } finally {
+      setReleasingPO(false);
+    }
   };
 
   const splitDraftPO = (draftPoId: string) => {
@@ -2866,14 +5048,47 @@ const Procurement: React.FC = () => {
 
     if (splitPOTarget.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(splitPOTarget);
-      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === String(backendRequestId || splitPOTarget.requestId)) as
-        | { items?: BackendPRItem[] }
-        | undefined;
-      const prItemsForLines = Array.isArray(prRow?.items) ? prRow.items : [];
+      const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+        backendRequestId,
+        draftRequestId: splitPOTarget.requestId,
+        requestCode: splitPOTarget.requestCode,
+      });
       const fullAssigned = assignPrItemToDraftLines(splitPOTarget.lineItems, prItemsForLines);
       const assignedOne = uniqueIndexes.map((idx) => fullAssigned[idx]);
       const remainingLineIndices = splitPOTarget.lineItems.map((_, i) => i).filter((i) => !uniqueIndexes.includes(i));
       const assignedTwo = remainingLineIndices.map((i) => fullAssigned[i]);
+
+      // Strict MOQ check for split flows: every resulting split line qty must satisfy MOQ.
+      const enforceSplitMoq = (
+        lines: DraftPOLineItem[],
+        assigned: Array<BackendPRItem | null | undefined>,
+        splitLabel: string
+      ): string | null => {
+        for (let i = 0; i < lines.length; i += 1) {
+          const ln = lines[i];
+          const pr = assigned[i];
+          const moq = Number(pr?.moq_min ?? 0) || 0;
+          if (moq <= 0) continue;
+          const qty = Number(String(ln.qty ?? '').replace(/[^\d.]/g, '')) || 0;
+          if (qty > 0 && qty < moq) {
+            const u = String(pr?.unit ?? 'KG');
+            return `${splitLabel}: ${ln.item || ln.itemCode || 'line'} qty ${formatQtyWithPrimaryUnit(qty, u, 'RM')} is below MOQ ${formatQtyWithPrimaryUnit(moq, u, 'RM')}. Adjust split quantities/items.`;
+          }
+        }
+        return null;
+      };
+
+      const splitOneMoqErr = enforceSplitMoq(selectedLineItems, assignedOne, 'Split PO 1');
+      if (splitOneMoqErr) {
+        addToast('warning', splitOneMoqErr);
+        return;
+      }
+      const splitTwoMoqErr = enforceSplitMoq(remainingLineItems, assignedTwo, 'Split PO 2');
+      if (splitTwoMoqErr) {
+        addToast('warning', splitTwoMoqErr);
+        return;
+      }
+
       const itemsOne = draftLineItemsToPurchaseOrderItems(selectedLineItems, prItemsForLines, assignedOne);
       const itemsTwo = draftLineItemsToPurchaseOrderItems(remainingLineItems, prItemsForLines, assignedTwo);
 
@@ -2999,6 +5214,23 @@ const Procurement: React.FC = () => {
     closeSplitPOModal();
   };
 
+  const closeRecordQuoteModal = () => {
+    if (recordQuoteSaving) return;
+    setShowRecordQuoteModal(false);
+    setRecordQuoteForm({
+      vendorId: '',
+      quoteDate: '',
+      validTill: '',
+      leadTimeDays: '',
+      notes: '',
+      procurementRequestId: '',
+      planningQuotationAskId: '',
+    });
+    setRecordQuoteLines([]);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+  };
+
   const addNewQuote = () => {
     if (!vendors.length) {
       addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
@@ -3012,66 +5244,345 @@ const Procurement: React.FC = () => {
       validTill: '',
       leadTimeDays: '',
       notes: '',
+      procurementRequestId: '',
+      planningQuotationAskId: '',
     });
     setRecordQuoteLines([]);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
     setShowRecordQuoteModal(true);
   };
 
-  const openNewRequestModal = () => {
-    setShowNewRequestModal(true);
-  };
-
-  const closeNewRequestModal = () => {
-    setShowNewRequestModal(false);
-    // Reset form
-    setNewRequestForm({
-      category: '',
-      type: 'RM',
-      source: 'Planning Team',
-      priority: 'High',
-      requestDate: '27-02-2026',
-      requiredDate: '',
-      itemName: '',
-      reqQty: '',
-      uom: '',
-      moq: '',
-      plannedPrice: '',
-      packSize: '',
+  const openRecordQuoteFromPlanningAsk = (ask: PlanningQuotationAsk) => {
+    if (!vendors.length) {
+      addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
+      return;
+    }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const lineType: 'RM' | 'PM' = ask.itemType === 'PM' ? 'PM' : 'RM';
+    const qty = Number(ask.quantityRequested) || 0;
+    const vendorHint = String(ask.vendorHint ?? '').trim();
+    const matchedVendor =
+      vendorHint.length > 0
+        ? vendors.find((v) => v.name.trim().toLowerCase() === vendorHint.toLowerCase())
+        : undefined;
+    const lines = [
+      {
+        index: 0,
+        itemId: String(ask.itemCode ?? '').trim(),
+        name: String(ask.itemName ?? '').trim(),
+        uom:
+          lineType === 'PM'
+            ? String(ask.unit ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                ask.rawMaterialId != null ? Number(ask.rawMaterialId) : null,
+                String(ask.itemCode ?? ''),
+                String(ask.unit ?? '')
+              ),
+        orderQty: String(qty > 0 ? qty : ''),
+        pricePerUnit: '',
+        totalValue: 0,
+        raw_material_id: ask.rawMaterialId != null ? Number(ask.rawMaterialId) : null,
+        pack_material_id: ask.packMaterialId != null ? Number(ask.packMaterialId) : null,
+        itemType: lineType,
+      },
+    ];
+    setRecordQuoteForm({
+      vendorId: matchedVendor?.id ?? vendors[0].id,
+      quoteDate: todayStr,
+      validTill: '',
       leadTimeDays: '',
-      preferredVendor: '',
-      notes: '',
-      requireStockCheck: 'No'
+      notes: ask.notes
+        ? String(ask.notes)
+        : `Vendor quotation for Planning · ${ask.itemName ?? 'Material'} (${ask.itemCode ?? '—'})`,
+      procurementRequestId: '',
+      planningQuotationAskId: String(ask.id),
     });
+    setRecordQuoteLines(lines);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+    setShowRecordQuoteModal(true);
   };
 
-  const submitNewRequest = () => {
-    if (!newRequestForm.itemName.trim()) {
-      addToast('error', 'Item name is required');
+  const openRecordQuoteFromRequest = (req: ProcurementRequest) => {
+    if (!vendors.length) {
+      addToast('warning', 'Add at least one vendor in Vendor-Client before recording a quote');
       return;
     }
-    if (!newRequestForm.requiredDate) {
-      addToast('error', 'Required date is required');
+    const details = req.itemDetails ?? [];
+    if (!details.length) {
+      addToast('error', 'This request has no line items to quote.');
       return;
     }
-
-    const newCode = `REQ-${String(requests.length + 101).padStart(3, '0')}`;
-
-    const newRequest: ProcurementRequest = {
-      id: `req-${Date.now()}`,
-      code: newCode,
-      type: newRequestForm.type,
-      items: [newRequestForm.itemName],
-      status: 'New',
-      priority: newRequestForm.priority,
-      dueDate: newRequestForm.requiredDate.split('-').reverse().join('-'),
-    };
-
-    updateProcurementState((current) => ({
-      requests: [newRequest, ...current.requests],
-    }));
-    addToast('success', `${newCode} created successfully`);
-    closeNewRequestModal();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const lines = details.map((d, i) => {
+      const lineType: 'RM' | 'PM' = d.type === 'PM' ? 'PM' : 'RM';
+      const qty = Number(d.reqQty ?? 0) || 0;
+      const price = Number(d.plannedPrice ?? 0) || 0;
+      return {
+        index: i,
+        itemId: String(d.itemCode ?? '').trim(),
+        name: String(d.itemName ?? '').trim(),
+        uom:
+          lineType === 'PM'
+            ? String(d.unit ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                String(d.itemCode ?? ''),
+                String(d.unit ?? '')
+              ),
+        orderQty: String(qty > 0 ? qty : ''),
+        pricePerUnit: price > 0 ? String(price) : '',
+        totalValue: qty * price,
+        raw_material_id: d.raw_material_id != null ? Number(d.raw_material_id) : null,
+        pack_material_id: d.pack_material_id != null ? Number(d.pack_material_id) : null,
+        itemType: lineType,
+      };
+    });
+    setRecordQuoteForm({
+      vendorId: vendors[0].id,
+      quoteDate: todayStr,
+      validTill: '',
+      leadTimeDays: '',
+      notes: isPlanningQuotationRequest(req)
+        ? `Vendor quotation for Planning request ${req.code}`
+        : `Quotation for ${req.code}`,
+      procurementRequestId: req.id,
+      planningQuotationAskId: '',
+    });
+    setRecordQuoteLines(lines);
+    setRecordQuoteLineSearch({});
+    setRecordQuoteSaving(false);
+    setShowRecordQuoteModal(true);
   };
+
+  const openReleaseToDraftPoForRequest = useCallback(
+    (req: ProcurementRequest) => {
+      if (isStockCheckPendingForRequest(req)) {
+        addToast('warning', 'Stock check is pending. Wait for warehouse response before release actions.');
+        return;
+      }
+      if (req.itemDetails && req.itemDetails.length > 0) {
+        const item = req.itemDetails[0];
+        const relItem: ReleaseToPlannedItem = {
+          itemName: item.itemName,
+          itemCode: item.itemCode,
+          idx: 0,
+          qty: item.reqQty,
+          unit: item.unit,
+          plannedPrice: item.plannedPrice,
+          moq: item.moq,
+          reqQty: item.reqQty,
+          raw_material_id: item.raw_material_id,
+          pack_material_id: item.pack_material_id,
+          itemType: item.type === 'PM' ? 'PM' : 'RM',
+        };
+        setReleaseToPlannedTarget({ request: req, item: relItem });
+        const reqType0: RequestType =
+          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
+        const itemSource0 = reqType0 === 'PM' ? itemsListPm : itemsListRm;
+        const matchedItem0 = itemSource0.find((row) => {
+          const rm0 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
+          const pm0 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
+          const rowRm0 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+          const rowPm0 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+          if (Number.isFinite(rm0) && rm0 > 0 && Number.isFinite(rowRm0) && rowRm0 > 0) return rowRm0 === rm0;
+          if (Number.isFinite(pm0) && pm0 > 0 && Number.isFinite(rowPm0) && rowPm0 > 0) return rowPm0 === pm0;
+          const c0 = String(relItem.itemCode ?? '').trim().toLowerCase();
+          const n0 = String(relItem.itemName ?? '').trim().toLowerCase();
+          const rc0 = String(row.code ?? '').trim().toLowerCase();
+          const rn0 = String(row.name ?? '').trim().toLowerCase();
+          if (c0 && rc0 && c0 === rc0) return true;
+          if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
+          return false;
+        });
+        const itemsListSlab0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
+          (rate.tiers ?? []).map((tier) => ({
+            vendor: String(rate.vendor_name ?? '').trim(),
+            moq: Number(tier.moq_min ?? 0) || 0,
+            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
+            leadDays: Number(rate.lead_time_days ?? 0) || 0,
+            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
+          }))
+        ).find((s) => s.vendor);
+        const reqQuotesForItem = quotes.filter(
+          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const first = reqQuotesForItem[0];
+        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
+        setReleaseToPlannedForm({
+          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          moqDisplay: item.moq
+            ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)`
+            : '',
+          qty: String(item.reqQty ?? 0),
+          unitPrice: String(itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
+          paymentTermsType: pt0.type,
+          advancePercent: String(
+            pt0.advancePercent || (paymentTermsTypeRequiresAdvancePercent(pt0.type) ? 50 : 0)
+          ),
+          leadTimeDays: itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? item.leadTimeDays ?? 0,
+        });
+        setReleaseToPlannedNotes('');
+        setReleaseToPlannedLineEdits(
+          (req.itemDetails ?? []).map((d) => {
+            const totalReqQty = Number(d.reqQty ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: d.itemName ?? '',
+              itemCode: d.itemCode,
+              totalReqQty,
+              raw_material_id: d.raw_material_id,
+              pack_material_id: d.pack_material_id,
+              itemType: d.type === 'PM' ? 'PM' : 'RM',
+            });
+            return {
+              itemName: d.itemName ?? '',
+              itemCode: d.itemCode ?? '',
+              type: d.type === 'PM' ? 'PM' : 'RM',
+              originalQty: oq,
+              qty: oq,
+              unit:
+                d.type === 'PM'
+                  ? String(d.unit ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      d.raw_material_id != null ? Number(d.raw_material_id) : null,
+                      String(d.itemCode ?? ''),
+                      String(d.unit ?? '')
+                    ),
+              moq: Number(d.moq ?? 0) || 0,
+              unitPrice: Number(d.plannedPrice ?? 0) || 0,
+              leadDays: Number(d.leadTimeDays ?? 0) || 0,
+              ...(d.raw_material_id != null ? { raw_material_id: Number(d.raw_material_id) } : {}),
+              ...(d.pack_material_id != null ? { pack_material_id: Number(d.pack_material_id) } : {}),
+            };
+          })
+        );
+      } else if (req.items && req.items.length > 0) {
+        const itemName = req.items[0];
+        const qty = req.quantities?.[0] ?? 0;
+        const price = req.plannedPrices?.[0] ?? 0;
+        const spec = req.specifications?.[0];
+        const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
+          | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
+          | undefined;
+        const line0 = prRow?.items?.[0];
+        const line0Type: 'RM' | 'PM' = line0?.type === 'PM' ? 'PM' : 'RM';
+        const unit =
+          line0Type === 'PM'
+            ? String(req.units?.[0] ?? 'PCS')
+            : resolveRmPrimaryUnit(
+                line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                String(line0?.code ?? itemName ?? ''),
+                String(req.units?.[0] ?? '')
+              );
+        const relItem: ReleaseToPlannedItem = {
+          itemName,
+          itemCode: line0?.code,
+          idx: 0,
+          qty,
+          unit,
+          spec,
+          plannedPrice: price,
+          raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+          pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+          itemType: line0Type,
+        };
+        setReleaseToPlannedTarget({ request: req, item: relItem });
+        const reqType1: RequestType =
+          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
+        const itemSource1 = reqType1 === 'PM' ? itemsListPm : itemsListRm;
+        const matchedItem1 = itemSource1.find((row) => {
+          const rm1 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
+          const pm1 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
+          const rowRm1 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
+          const rowPm1 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
+          if (Number.isFinite(rm1) && rm1 > 0 && Number.isFinite(rowRm1) && rowRm1 > 0) return rowRm1 === rm1;
+          if (Number.isFinite(pm1) && pm1 > 0 && Number.isFinite(rowPm1) && rowPm1 > 0) return rowPm1 === pm1;
+          const c1 = String(relItem.itemCode ?? '').trim().toLowerCase();
+          const n1 = String(relItem.itemName ?? '').trim().toLowerCase();
+          const rc1 = String(row.code ?? '').trim().toLowerCase();
+          const rn1 = String(row.name ?? '').trim().toLowerCase();
+          if (c1 && rc1 && c1 === rc1) return true;
+          if (n1 && rn1 && (n1 === rn1 || n1.includes(rn1) || rn1.includes(n1))) return true;
+          return false;
+        });
+        const itemsListSlab1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
+          (rate.tiers ?? []).map((tier) => ({
+            vendor: String(rate.vendor_name ?? '').trim(),
+            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
+            leadDays: Number(rate.lead_time_days ?? 0) || 0,
+            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
+          }))
+        ).find((s) => s.vendor);
+        const reqQuotesForItem = quotes.filter(
+          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+        );
+        const first = reqQuotesForItem[0];
+        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
+        const pt1 = parsePaymentTermsString(itemsListSlab1?.terms ?? first?.terms ?? 'As per contract');
+        setReleaseToPlannedForm({
+          vendor: itemsListSlab1?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          moqDisplay: '',
+          qty: String(qty ?? 0),
+          unitPrice: String(itemsListSlab1?.unitPrice ?? firstLine?.pricePerUnit ?? price ?? 0),
+          paymentTermsType: pt1.type,
+          advancePercent: String(
+            pt1.advancePercent || (paymentTermsTypeRequiresAdvancePercent(pt1.type) ? 50 : 0)
+          ),
+          leadTimeDays: itemsListSlab1?.leadDays ?? first?.leadTimeDays ?? 0,
+        });
+        setReleaseToPlannedNotes('');
+        setReleaseToPlannedLineEdits(
+          (req.items ?? []).map((nm, i) => {
+            const totalReqQty = Number((req.quantities ?? [])[i] ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: String(nm ?? ''),
+              itemCode: String(line0?.code ?? ''),
+              totalReqQty,
+              raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
+              pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
+              itemType: relItem.itemType,
+            });
+            return {
+              itemName: String(nm ?? ''),
+              itemCode: String(line0?.code ?? ''),
+              type: relItem.itemType === 'PM' ? 'PM' : 'RM',
+              originalQty: oq,
+              qty: oq,
+              unit:
+                relItem.itemType === 'PM'
+                  ? String((req.units ?? [])[i] ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      line0?.raw_material_id != null ? Number(line0.raw_material_id) : null,
+                      String(line0?.code ?? nm ?? ''),
+                      String((req.units ?? [])[i] ?? '')
+                    ),
+              moq: 0,
+              unitPrice: Number((req.plannedPrices ?? [])[i] ?? 0) || 0,
+              leadDays: 0,
+              ...(line0?.raw_material_id != null ? { raw_material_id: Number(line0.raw_material_id) } : {}),
+              ...(line0?.pack_material_id != null ? { pack_material_id: Number(line0.pack_material_id) } : {}),
+            };
+          })
+        );
+      } else {
+        addToast('warning', 'No items on this request.');
+      }
+    },
+    [
+      addToast,
+      backendPrArray,
+      itemsListPm,
+      itemsListRm,
+      quotes,
+      resolveOpenQtyForReleaseItem,
+    ]
+  );
 
   const deleteQuote = async (quoteId: string) => {
     const raw = String(quoteId ?? '').trim();
@@ -3093,10 +5604,15 @@ const Procurement: React.FC = () => {
       return;
     }
     await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
     addToast('success', `Quotation ${quoteId} deleted`);
   };
 
-  const updateRequestStatus = async (requestId: string, status: RequestStatus, opts?: { skipItems?: boolean }) => {
+  const updateRequestStatus = async (
+    requestId: string,
+    status: RequestStatus,
+    opts?: { skipItems?: boolean; silentToast?: boolean }
+  ): Promise<boolean> => {
     const payload = opts?.skipItems
       ? { status }
       : {
@@ -3125,13 +5641,22 @@ const Procurement: React.FC = () => {
         });
       }
       addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
-      return;
+      return false;
     }
-    queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+    void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    if (status === 'PO Released' || status === 'Delivery Pending') {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      void queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+    }
+    lastDraftPOsFromApiKeyRef.current = '';
     updateProcurementState((current) => ({
       requests: current.requests.map((req) => (req.id === requestId ? { ...req, status } : req)),
     }));
-    addToast('success', `Request status updated to ${status}`);
+    if (!opts?.silentToast) {
+      addToast('success', `Request status updated to ${status}`);
+    }
+    return true;
   };
 
   const updateRequestPriority = (requestId: string, priority: 'High' | 'Medium' | 'Low') => {
@@ -3154,7 +5679,7 @@ const Procurement: React.FC = () => {
         prev.map((line, i) => {
           if (i !== idx) return line;
           const next: typeof line = { ...line, [field]: value };
-          const qtyNum = parseFloat(String(next.orderQty).replace(/[^\d.]/g, '')) || 0;
+          const qtyNum = parseMoqInput(next.orderQty) ?? 0;
           const priceNum = parseFloat(String(next.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
           next.totalValue = parseFloat((qtyNum * priceNum).toFixed(2));
           return next;
@@ -3216,105 +5741,163 @@ const Procurement: React.FC = () => {
     }
   };
 
+  const handleRecordQuoteLineSearchChange = (idx: number, lineIndex: number, value: string) => {
+    setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: value }));
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      handleRecordQuoteLineSelectItem(idx, '');
+      return;
+    }
+    const matched = resolveRecordQuoteLineOption(value);
+    if (matched) {
+      handleRecordQuoteLineSelectItem(idx, matched.key);
+      setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: matched.label }));
+      return;
+    }
+    setRecordQuoteLines((prev) =>
+      prev.map((line, i) =>
+        i !== idx
+          ? line
+          : { ...line, itemType: undefined, raw_material_id: null, pack_material_id: null, itemId: '', name: '', uom: 'KG' }
+      )
+    );
+  };
+
+  const handleRecordQuoteLineItemBlur = (idx: number, lineIndex: number, raw: string) => {
+    const matched = resolveRecordQuoteLineOption(raw);
+    if (matched) {
+      handleRecordQuoteLineSelectItem(idx, matched.key);
+      setRecordQuoteLineSearch((prev) => ({ ...prev, [lineIndex]: matched.label }));
+    }
+  };
+
+  const saveQuotedLinePrice = useCallback(
+    async (quote: VendorQuote, line: QuoteLine, lineIndex: number) => {
+      const draft = editingQuoteLine;
+      if (!draft || draft.quoteId !== quote.id || draft.lineIndex !== lineIndex) return;
+      const nextPrice = Number(draft.nextPrice);
+      if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
+        addToast('warning', 'Enter a valid line price.');
+        return;
+      }
+      if (Math.abs(nextPrice - (Number(line.pricePerUnit) || 0)) < 1e-9) {
+        setEditingQuoteLine(null);
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const nextItems = quote.lines.map((l, idx) => {
+        const qtyNum = parseFloat(String(l.qty ?? '').replace(/[^\d.]/g, '')) || 0;
+        const price = idx === lineIndex ? nextPrice : Number(l.pricePerUnit) || 0;
+        const existingHistory = Array.isArray(l.priceHistory) ? l.priceHistory : [];
+        const nextHistory =
+          idx === lineIndex
+            ? [
+                ...existingHistory,
+                {
+                  oldPrice: Number(l.pricePerUnit) || 0,
+                  newPrice: nextPrice,
+                  changedAt: nowIso,
+                  reason: 'Updated from quotation line edit',
+                },
+              ]
+            : existingHistory;
+        return {
+          itemId: l.itemId ?? '',
+          name: l.item ?? '',
+          orderQty: qtyNum,
+          uom: l.unit ?? (String(l.qty ?? '').replace(/^[\d.\s]+/, '').trim() || 'KG'),
+          pricePerUnit: price,
+          totalValue: qtyNum * price,
+          leadTimeDays: l.leadTimeDays ?? null,
+          raw_material_id: l.raw_material_id ?? null,
+          pack_material_id: l.pack_material_id ?? null,
+          priceHistory: nextHistory,
+        };
+      });
+      setSavingQuoteLine(true);
+      try {
+        const quoteIdNum = Number(quote.id);
+        if (!Number.isFinite(quoteIdNum) || quoteIdNum <= 0) {
+          addToast('error', 'Only saved quotations can be edited.');
+          return;
+        }
+        const res = await updateProcurementQuotationApi(quoteIdNum, { items: nextItems });
+        if (!res.success) {
+          addToast('error', res.error || 'Failed to update quotation line.');
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+        addToast('success', 'Quotation price updated.');
+        setEditingQuoteLine(null);
+      } finally {
+        setSavingQuoteLine(false);
+      }
+    },
+    [addToast, editingQuoteLine, queryClient]
+  );
+
+  const showProcurementGlobalLoader =
+    procurementQueriesFetching ||
+    isProcurementDataLoading ||
+    savingQuoteLine ||
+    stockCheckSaving ||
+    editItemsListLineSaving ||
+    recordingAdvancePayment;
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-yellow-50 text-slate-900">
-      <div className="border-b border-blue-200 bg-linear-to-r from-white via-blue-50/70 to-white">
-        <div className="px-5 md:px-8 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <img src={logoFull} alt="Esthetic Insights" className="h-8 object-contain" />
-            <p className="text-xs text-slate-500">Operations Hub</p>
-            <div className="hidden md:flex items-center gap-2 ml-4">
-              {(['Procurement', 'Vendors', 'Reports'] as MainTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => applyRouteState(tab, sideSection)}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${mainTab === tab
-                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                    : 'bg-white text-slate-600 border-slate-300 hover:text-slate-900'
-                    }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2 py-1 rounded-full border border-rose-300 bg-rose-50 text-rose-700">{quoteStats.urgent} Urgent</span>
-            <span className="px-2 py-1 rounded-full border border-yellow-300 bg-yellow-50 text-yellow-700">{quoteStats.pendingAction} Pending Action</span>
-            <span className="hidden sm:inline px-2 py-1 rounded-full border border-cyan-300 bg-cyan-50 text-cyan-700">Esthetic Insights CDMO</span>
-            <span className="hidden md:inline px-2 py-1 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700">Live · {liveSyncTime}</span>
-          </div>
-        </div>
-      </div>
-
-      {mainTab !== 'Procurement' ? (
-        <div className="px-5 md:px-8 py-8 space-y-4">
-          {mainTab === 'Vendors' && (
-            <ProcurementVendors
-              vendors={vendors}
-              purchaseOrders={purchaseOrders}
-              selectedVendor={selectedVendor}
-              setSelectedVendor={setSelectedVendor}
-              applyRouteState={applyRouteState}
-              sideSection={sideSection}
-            />
-          )}
-
-          {mainTab === 'Reports' && (
-            <ProcurementReports
-              requests={requests}
-              quotes={quotes}
-              quoteStats={quoteStats}
-              applyRouteState={applyRouteState}
-              sideSection={sideSection}
-              requestTypeClass={requestTypeClass}
-              priorityClass={priorityClass}
-              statusBg={statusBg}
-            />
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr]">
-          <aside className="border-r border-blue-200 bg-blue-50/50 px-4 py-4">
-            <p className="text-[11px] tracking-[0.2em] text-slate-400 mb-3">PROCUREMENT</p>
-            <div className="space-y-1 mb-6">
-              {(['Overview', 'Requests', 'Quotations', 'Draft POs', 'Issued POs'] as SideSection[]).map((section) => (
-                <button
-                  key={section}
-                  onClick={() => applyRouteState('Procurement', section)}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
-                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                    : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <span>{section}</span>
-                  <span className="text-xs text-slate-500">{sideCounts[section]}</span>
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[11px] tracking-[0.2em] text-slate-400 mb-3">OPERATIONS</p>
-            <div className="space-y-1">
-              {(['GRN Monitor', 'Item Tracker'] as SideSection[]).map((section) => (
-                <button
-                  key={section}
-                  onClick={() => {
-                    applyRouteState('Procurement', section);
-                    addToast('info', `${section} synced with procurement data`);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${sideSection === section
-                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-300'
-                    : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                  <span>{section}</span>
-                  <span className="text-xs text-cyan-700">{sideCounts[section]}</span>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <main className="px-5 md:px-7 py-5 space-y-4">
+    <div className="min-h-screen bg-[#F7F7F9] text-gray-900">
+      <input
+        ref={poExcelInputRef}
+        type="file"
+        accept=".xlsx,.xlsm"
+        className="hidden"
+        onChange={handlePoExcelChange}
+        aria-hidden
+      />
+      <ProcurementDashboardShell
+        mainTab={mainTab}
+        onMainTabChange={(tab) => applyRouteState(tab, sideSection)}
+        sideSection={sideSection}
+        onSideSectionChange={(section) => {
+          applyRouteState('Procurement', section);
+          if (section === 'GRN Monitor') {
+            addToast('info', `${section} synced with procurement data`);
+          }
+        }}
+        sideCounts={sideCounts}
+        quoteStats={quoteStats}
+        liveSyncTime={liveSyncTime}
+        importingPoExcel={importingPoExcel}
+        onImportPoExcel={() => poExcelInputRef.current?.click()}
+        showGlobalLoader={showProcurementGlobalLoader}
+        secondaryContent={
+          <>
+            {mainTab === 'Vendors' && (
+              <ProcurementVendors
+                vendors={vendors}
+                purchaseOrders={purchaseOrders}
+                selectedVendor={selectedVendor}
+                setSelectedVendor={setSelectedVendor}
+                applyRouteState={applyRouteState}
+                sideSection={sideSection}
+              />
+            )}
+            {mainTab === 'Reports' && (
+              <ProcurementReports
+                requests={requests}
+                quotes={quotes}
+                quoteStats={quoteStats}
+                applyRouteState={applyRouteState}
+                sideSection={sideSection}
+                requestTypeClass={requestTypeClass}
+                priorityClass={priorityClass}
+                statusBg={statusBg}
+              />
+            )}
+          </>
+        }
+        procurementContent={
+          <>
             {sideSection !== 'Overview' && (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
@@ -3322,7 +5905,7 @@ const Procurement: React.FC = () => {
                   { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
                   { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
                 ].map((stat) => (
-                  <div key={stat.label} className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                  <div key={stat.label} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
                     <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
                     <p className={`mt-2 text-3xl font-bold font-archivo ${stat.color}`}>{stat.value}</p>
                   </div>
@@ -3388,7 +5971,7 @@ const Procurement: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 px-1 pt-2 border-t border-slate-100 mt-2">
-                  Record vendor quotes and pricing here for reference in Planning and PR. Draft POs are created from the PR / Draft POs flow, not from individual quote cards.
+                  Planning quotation asks appear here (no procurement request). Record vendor rates on Items List; planners create PRs manually from Release to Planning.
                 </p>
               </div>
             )}
@@ -3396,11 +5979,10 @@ const Procurement: React.FC = () => {
             <div className="space-y-4">
               {sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
-                const daysUntil = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
-                // Once PR → PO is issued and released to vendor, exclude from Overview (Actions Required)
-                const activeRequests = requests.filter(r => r.status !== 'PO Released' && r.status !== 'Delivery Pending');
-                const rmRequests = requests.filter(r => r.type === 'RM');
-                const pmRequests = requests.filter(r => r.type === 'PM');
+                // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
+                const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
+                const rmRequests = procurementRequestsList.filter(r => r.type === 'RM');
+                const pmRequests = procurementRequestsList.filter(r => r.type === 'PM');
                 const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
                 const poStatusColor: Record<string, string> = {
                   Shipped: 'bg-blue-100 text-blue-700',
@@ -3420,7 +6002,7 @@ const Procurement: React.FC = () => {
                     {/* KPI strip */}
                     <div className="flex flex-wrap gap-3">
                       {[
-                        { label: 'NEW REQUESTS', value: requests.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
+                        { label: 'NEW REQUESTS', value: procurementRequestsList.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
                         { label: 'RM — RAW MATERIALS', value: rmRequests.length, sub: `${rmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-cyan-600', badge: 'RM' },
                         { label: 'PM — PACKAGING MATERIALS', value: pmRequests.length, sub: `${pmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-violet-600', badge: 'PM' },
                         { label: 'ACTIVE POS', value: requests.filter(r => r.status === 'PO Draft' || r.status === 'PO Released').length, sub: 'In pipeline', color: 'text-emerald-600' },
@@ -3428,7 +6010,7 @@ const Procurement: React.FC = () => {
                         { label: 'STOCK CHECKS ACTIVE', value: requests.filter(r => r.priority !== 'Low').length, sub: null, color: 'text-yellow-600' },
                         { label: 'PO VALUE (ACTIVE)', value: `₹${activePOValue.toLocaleString('en-IN')}`, sub: null, color: 'text-cyan-600' },
                       ].map(kpi => (
-                        <div key={kpi.label} className="flex-1 min-w-32 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+                        <div key={kpi.label} className="flex-1 min-w-32 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
                           <div className="flex items-center gap-2 mb-1">
                             {kpi.badge && (
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${kpi.badge === 'RM' ? 'bg-cyan-100 text-cyan-700' : 'bg-violet-100 text-violet-700'}`}>{kpi.badge}</span>
@@ -3443,13 +6025,15 @@ const Procurement: React.FC = () => {
 
                     {/* Actions Required + PO Pipeline */}
                     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-                      <div className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-yellow-50 to-white">
-                          <h3 className="font-bold text-slate-900">Actions Required</h3>
+                      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+                          <h3 className="font-bold text-gray-900">Actions Required</h3>
                         </div>
                         <div className="divide-y divide-slate-100">
                           {activeRequests.map(req => {
-                            const days = daysUntil(req.dueDate);
+                            const days = computeRequestDaysUntilDue(req, TODAY);
+                            const daysDisplay =
+                              days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`;
                             const urgency = days <= 3 ? 100 : days <= 10 ? 80 : days <= 20 ? 55 : 30;
                             return (
                               <div
@@ -3468,7 +6052,7 @@ const Procurement: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
-                                    <span className="text-xs text-slate-500 font-mono">{days}d</span>
+                                    <span className="text-xs text-slate-500 font-mono">{daysDisplay}</span>
                                   </div>
                                 </div>
                                 <p className="text-sm font-bold text-slate-900 mb-0.5">
@@ -3535,7 +6119,7 @@ const Procurement: React.FC = () => {
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
                                   </td>
                                   <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{req.dueDate}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
                                   <td className="px-4 py-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
                                   </td>
@@ -3568,7 +6152,7 @@ const Procurement: React.FC = () => {
                                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
                                   </td>
                                   <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{req.dueDate}</td>
+                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
                                   <td className="px-4 py-2">
                                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
                                   </td>
@@ -3585,99 +6169,6 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'Requests' && (
                 <div className="space-y-4">
-                  {/* Requests from Planning (backend) — PRs raised from Planning page */}
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
-                      <h3 className="text-base font-bold text-slate-900">Requests from Planning (backend)</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">PRs raised via Planning &gt; Raise Procurement Request. Data from API.</p>
-                    </div>
-                    <div className="p-4 overflow-x-auto">
-                      {isProcurementDataLoading ? (
-                        <p className="text-sm text-slate-500 py-4">Loading procurement data…</p>
-                      ) : backendPrs.length === 0 ? (
-                        <p className="text-sm text-slate-500 py-4">No procurement requests from Planning yet. Raise a PR from Planning &gt; PRs Extracted to see them here.</p>
-                      ) : (
-                        <table className="w-full text-sm border-collapse min-w-[960px]">
-                          <thead>
-                            <tr className="border-b border-slate-200 text-left">
-                              <th className="py-2 pr-3 font-semibold text-slate-700">ID</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">PI / SO</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Customer</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Product</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Batch</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Vendor</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Priority</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Status</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Required by</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">RM/PM lines</th>
-                              <th className="py-2 pr-3 font-semibold text-slate-700">Requested by</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {backendPrs.map((pr) => {
-                              const lines = Array.isArray(pr.items) ? pr.items : [];
-                              const lineSummary = lines
-                                .map((ln: BackendPRItem) => {
-                                  const t =
-                                    ln?.type === 'PM' || (ln?.pack_material_id != null && Number(ln.pack_material_id) > 0)
-                                      ? 'PM'
-                                      : 'RM';
-                                  const label = (ln?.name && String(ln.name).trim()) || (ln?.code && String(ln.code).trim()) || t;
-                                  const qty = Number(ln?.quantity_requested) || 0;
-                                  const u = String(ln?.unit || (t === 'PM' ? 'PCS' : 'KG'));
-                                  return `${label} (${t}) ${qty} ${u}`;
-                                })
-                                .join(' · ');
-                              return (
-                                <tr key={pr.id} className="border-b border-slate-100 hover:bg-slate-50 align-top">
-                                  <td className="py-2 pr-3 text-slate-900 font-medium whitespace-nowrap">{pr.id}</td>
-                                  <td className="py-2 pr-3 text-slate-700">
-                                    <div className="font-medium">PI #{pr.planningExtractedId}</div>
-                                    <div className="text-xs text-slate-500 font-mono mt-0.5">
-                                      {pr.planningSoNumber != null && String(pr.planningSoNumber).trim()
-                                        ? `SO ${pr.planningSoNumber}`
-                                        : '—'}
-                                    </div>
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-600 max-w-[140px] truncate" title={pr.planningCustomerName ?? ''}>
-                                    {pr.planningCustomerName != null && String(pr.planningCustomerName).trim()
-                                      ? pr.planningCustomerName
-                                      : '—'}
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-700 max-w-[180px]">
-                                    <div className="truncate font-medium" title={pr.planningProductName ?? ''}>
-                                      {pr.planningProductName != null && String(pr.planningProductName).trim()
-                                        ? pr.planningProductName
-                                        : '—'}
-                                    </div>
-                                    {pr.planningProductCode != null && String(pr.planningProductCode).trim() ? (
-                                      <div className="text-xs text-slate-500 font-mono truncate">{pr.planningProductCode}</div>
-                                    ) : null}
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-700 whitespace-nowrap">
-                                    {pr.planningBatchId != null ? `#${pr.planningBatchId}` : '—'}
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-700 max-w-[140px] truncate" title={pr.preferredVendor ?? ''}>
-                                    {pr.preferredVendor != null && String(pr.preferredVendor).trim() ? pr.preferredVendor : '—'}
-                                  </td>
-                                  <td className="py-2 pr-3 whitespace-nowrap">{pr.priority}</td>
-                                  <td className="py-2 pr-3 whitespace-nowrap">{pr.status}</td>
-                                  <td className="py-2 pr-3 text-slate-600 whitespace-nowrap">{pr.requiredByDate ?? '—'}</td>
-                                  <td className="py-2 pr-3 text-slate-600 text-xs max-w-[280px]">
-                                    <span className="line-clamp-2" title={lineSummary}>
-                                      {lines.length === 0 ? '—' : lineSummary}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 pr-3 text-slate-500 text-xs">{pr.requestedBy ?? '—'}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-
                   {/* Stats KPI Bar */}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">
@@ -3687,7 +6178,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Requests</p>
-                      <p className="text-2xl font-bold text-slate-900">{requests.length}</p>
+                      <p className="text-2xl font-bold text-slate-900">{procurementRequestsList.length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-cyan-200 p-4 shadow-sm">
@@ -3697,7 +6188,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">RM Requests</p>
-                      <p className="text-2xl font-bold text-cyan-600">{requests.filter(r => r.type === 'RM').length}</p>
+                      <p className="text-2xl font-bold text-cyan-600">{procurementRequestsList.filter(r => r.type === 'RM').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-violet-200 p-4 shadow-sm">
@@ -3707,7 +6198,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PM Requests</p>
-                      <p className="text-2xl font-bold text-violet-600">{requests.filter(r => r.type === 'PM').length}</p>
+                      <p className="text-2xl font-bold text-violet-600">{procurementRequestsList.filter(r => r.type === 'PM').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-red-200 p-4 shadow-sm">
@@ -3717,7 +6208,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">New / Unactioned</p>
-                      <p className="text-2xl font-bold text-red-600">{requests.filter(r => r.status === 'New').length}</p>
+                      <p className="text-2xl font-bold text-red-600">{procurementRequestsList.filter(r => r.status === 'New').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-yellow-200 p-4 shadow-sm">
@@ -3727,7 +6218,7 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Draft PO Stage</p>
-                      <p className="text-2xl font-bold text-yellow-600">{requests.filter(r => r.status === 'PO Draft').length}</p>
+                      <p className="text-2xl font-bold text-yellow-600">{procurementRequestsList.filter(r => r.status === 'PO Draft').length}</p>
                     </div>
 
                     <div className="bg-white rounded-xl border border-emerald-200 p-4 shadow-sm">
@@ -3737,44 +6228,98 @@ const Procurement: React.FC = () => {
                         </div>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">PO Released</p>
-                      <p className="text-2xl font-bold text-emerald-600">{requests.filter(r => r.status === 'PO Released').length}</p>
+                      <p className="text-2xl font-bold text-emerald-600">{procurementRequestsList.filter(r => r.status === 'PO Released').length}</p>
                     </div>
                   </div>
 
                   {/* Header with Tabs and Actions */}
                   <div className="bg-white rounded-xl border border-blue-200 shadow-sm overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-200">
+                    <div className="px-5 py-4 border-b border-slate-200 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900 mb-1">Procurement Requests</h2>
-                          <p className="text-xs text-slate-500">Manage and track all procurement requests</p>
+                          <p className="text-xs text-slate-500">
+                            {requestTab === 'Week + Vendor'
+                              ? 'Consolidated view by chosen vendor and ISO week (expected date)'
+                              : requestListView === 'pr'
+                                ? 'One card per PR — all lines release to a single draft PO'
+                                : 'One card per item line — same PR may appear multiple times'}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-slate-500">Category:</span>
+                          {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
+                            <button
+                              key={category}
+                              type="button"
+                              onClick={() => setCategoryFilter(category)}
+                              className={`px-2 py-1 rounded border text-xs ${categoryFilter === category
+                                ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                : 'bg-white text-slate-700 border-slate-300'
+                                }`}
+                            >
+                              {category}
+                            </button>
+                          ))}
                           <input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search request #, SO, product, vendor, RM/PM"
-                            className="w-64 px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            className="w-64 min-w-[12rem] px-3 py-2 rounded-lg bg-slate-50 border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
-                          <button
-                            onClick={openNewRequestModal}
-                            className="px-4 py-2 rounded-lg bg-amber-400 text-slate-900 font-bold text-sm hover:bg-amber-500 shadow-md transition-all"
-                          >
-                            + New Request
-                          </button>
                         </div>
                       </div>
+
+                      {requestTab !== 'Week + Vendor' ? (
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                            List view
+                          </span>
+                          <div
+                            className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5"
+                            role="group"
+                            aria-label="Procurement request list view"
+                          >
+                            {(
+                              [
+                                { id: 'pr' as const, label: 'PR / PO wise' },
+                                { id: 'item' as const, label: 'Item wise' },
+                              ] as const
+                            ).map((mode) => (
+                              <button
+                                key={mode.id}
+                                type="button"
+                                onClick={() => setRequestListView(mode.id)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                  requestListView === mode.id
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'text-slate-600 hover:bg-white'
+                                }`}
+                              >
+                                {mode.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* Tabs */}
                     <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
                       <div className="flex items-center gap-2 overflow-x-auto">
-                        {(['All', 'Active', 'New', 'Quoted', 'PO Draft', 'PO Released'] as const).map((tabStatus) => {
-                          const actionableCount = requests.filter((r) => r.status === 'New' || r.status === 'Quoted').length;
+                        {(['New', 'Active', 'All', 'Quoted', 'PO Draft', 'PO Released'] as const).map((tabStatus) => {
                           const count =
-                            tabStatus === 'All' || tabStatus === 'Active'
-                              ? actionableCount
-                              : requests.filter((r) => r.status === tabStatus).length;
+                            tabStatus === 'All'
+                              ? procurementRequestTabCounts.all
+                              : tabStatus === 'Active'
+                                ? procurementRequestTabCounts.active
+                                : tabStatus === 'New'
+                                  ? procurementRequestTabCounts.new
+                                  : tabStatus === 'Quoted'
+                                    ? procurementRequestTabCounts.quoted
+                                    : tabStatus === 'PO Draft'
+                                      ? procurementRequestTabCounts.poDraft
+                                      : procurementRequestTabCounts.poReleased;
 
                           const isActive =
                             tabStatus === 'All'
@@ -3786,6 +6331,7 @@ const Procurement: React.FC = () => {
                           return (
                             <button
                               key={tabStatus}
+                              type="button"
                               onClick={() => {
                                 if (tabStatus === 'All') setRequestTab('All');
                                 else if (tabStatus === 'Active') setRequestTab('Active');
@@ -3800,16 +6346,42 @@ const Procurement: React.FC = () => {
                             </button>
                           );
                         })}
+                        <button
+                          type="button"
+                          onClick={() => setRequestTab('Week + Vendor')}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+                            requestTab === 'Week + Vendor'
+                              ? 'bg-indigo-600 text-white shadow-md'
+                              : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          Week + Vendor ({weekVendorTabLineCount})
+                        </button>
                       </div>
                     </div>
 
                     {/* Request Cards */}
                     <div className="p-5 space-y-4 bg-slate-50">
-                      {(() => {
-                        const filteredRequests = requests.filter(req => {
+                      {requestTab === 'Week + Vendor' ? (
+                        <WeekVendorConsolidationView
+                          embedded
+                          requests={procurementRequestsMatchingSearchAndCategory}
+                          categoryFilter={categoryFilter}
+                          searchQuery={searchQuery}
+                          statusBg={statusBg}
+                          requestTypeClass={requestTypeClass}
+                          onOpenRequest={(requestId) => {
+                            const req = requestsFromApi.find((r) => r.id === requestId);
+                            if (req) setSelectedRequest(req);
+                          }}
+                          onReleaseConsolidated={handleReleaseWeekVendorConsolidated}
+                          releasingBucketKey={releasingWeekVendorBucketKey}
+                        />
+                      ) : (() => {
+                        const filteredRequests = procurementRequestsList.filter(req => {
                           if (categoryFilter !== 'All' && req.type !== categoryFilter) return false;
                           if (requestTab === 'Active') {
-                            if (req.status === 'PO Released') return false;
+                            if (!requestStatusIsPreDraftPipeline(req.status)) return false;
                           } else if (requestTab !== 'All') {
                             if (req.status !== requestTab) return false;
                           }
@@ -3844,26 +6416,148 @@ const Procurement: React.FC = () => {
                           );
                         }
 
-                        return filteredRequests.map((req) => {
-                          const dueDateRaw = String(req.dueDate ?? '').trim();
-                          const dueDate = dueDateRaw ? new Date(dueDateRaw) : null;
+                        const requestRowsForTable = filteredRequests.map((req) => {
+                          const linkedDraft = draftPOs.find((d) => d.requestId === req.id);
+                          return {
+                            request: req,
+                            date: req.createdDate || req.dueDate || '',
+                            purchaseOrderNo: linkedDraft?.dpoNumber || '—',
+                            referenceNo: req.code,
+                            vendorName: req.preferredVendor || linkedDraft?.vendor || '—',
+                            status: req.status,
+                            amount:
+                              (req.itemDetails ?? []).reduce(
+                                (sum, d) => sum + Number(d.estValue ?? 0),
+                                0
+                              ) || 0,
+                            deliveryDate: req.dueDate || linkedDraft?.expectedDelivery || '—',
+                          };
+                        });
+
+                        const itemLines = buildProcurementRequestItemLines(filteredRequests);
+                        const requestsById = new Map(filteredRequests.map((r) => [r.id, r]));
+                        const linesByRequestId = new Map<string, typeof itemLines>();
+                        for (const line of itemLines) {
+                          const bucket = linesByRequestId.get(line.requestId) ?? [];
+                          bucket.push(line);
+                          linesByRequestId.set(line.requestId, bucket);
+                        }
+
+                        if (itemLines.length === 0) {
+                          return (
+                            <div className="text-center py-12">
+                              <p className="text-slate-500 text-sm">No request lines match the current filters.</p>
+                            </div>
+                          );
+                        }
+
+                        if (requestListView === 'pr') {
+                          return (
+                            <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200 bg-slate-50">
+                                      <th className="px-3 py-2">Date</th>
+                                      <th className="px-3 py-2">Vendor Name</th>
+                                      <th className="px-3 py-2">Purchase Order#</th>
+                                      <th className="px-3 py-2">Reference#</th>
+                                      <th className="px-3 py-2">Status</th>
+                                      <th className="px-3 py-2 text-right">Amount</th>
+                                      <th className="px-3 py-2">Delivery Date</th>
+                                      <th className="px-3 py-2 text-right">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {requestRowsForTable.map((row) => (
+                                      <tr
+                                        key={row.request.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setSelectedRequest(row.request)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            setSelectedRequest(row.request);
+                                          }
+                                        }}
+                                        className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
+                                      >
+                                        <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.date || '—'}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700">{row.vendorName}</td>
+                                        <td className="px-3 py-2 text-xs font-mono text-slate-700">{row.purchaseOrderNo}</td>
+                                        <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{row.referenceNo}</td>
+                                        <td className="px-3 py-2 text-xs">
+                                          <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusBg[row.status] ?? 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                            {row.status}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{row.amount.toLocaleString('en-IN')}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{row.deliveryDate || '—'}</td>
+                                        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+                                          <button
+                                            type="button"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setEditRequestTarget(row.request);
+                                            }}
+                                            className="px-2 py-1 rounded border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50"
+                                          >
+                                            Edit
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={deletingRequestId === row.request.id}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              openDeleteRequestConfirm(row.request);
+                                            }}
+                                            className="ml-1 px-2 py-1 rounded border border-red-300 text-red-700 font-semibold hover:bg-red-50 disabled:opacity-50"
+                                          >
+                                            {deletingRequestId === row.request.id ? 'Deleting…' : 'Delete'}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100 bg-slate-50">
+                                Click any row to open full request details.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return itemLines.map((line) => {
+                          const req = requestsById.get(line.requestId);
+                          if (!req) return null;
                           const today = new Date();
-                          const daysLeft =
-                            dueDate && Number.isFinite(dueDate.getTime())
-                              ? Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-                              : null;
-                          const dueDateDisplay =
-                            dueDate && Number.isFinite(dueDate.getTime())
-                              ? dueDate.toLocaleDateString('en-IN')
-                              : '—';
-                          const firstQuoteForReq = quotes.find((q) => q.requestId === req.id);
-                          const prefVendorDisplay =
-                            req.preferredVendor?.trim() ||
-                            firstQuoteForReq?.vendor?.trim() ||
-                            '—';
+                          const daysLeft = computeRequestDaysUntilDue(req, today);
+                          const itemExpectedDisplay = formatDateWithIsoWeek(
+                            line.expectedDate || line.dueDate
+                          );
+                          const prefVendorDisplay = line.preferredVendor?.trim() || null;
+                          const lineType = line.type === 'PM' ? 'PM' : line.type === 'FG' ? 'FG' : 'RM';
+                          const unitLabel =
+                            line.unit ||
+                            (lineType === 'PM'
+                              ? 'PCS'
+                              : resolveRmPrimaryUnit(
+                                  line.raw_material_id != null ? Number(line.raw_material_id) : null,
+                                  line.itemCode,
+                                  ''
+                                ));
+                          const stockCheckGap = getStockCheckGapForItem(
+                            line.stockCheckStatus,
+                            line.stockCheckNotes,
+                            line.itemCode,
+                            line.itemName
+                          );
+                          const gapLineKey = line.lineKey;
 
                           return (
-                            <div key={req.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                            <div key={line.lineKey} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                               {/* Card Header */}
                               <div className="px-5 py-3 bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-slate-200 space-y-2">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -3871,9 +6565,9 @@ const Procurement: React.FC = () => {
                                     <span className="px-3 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
                                       {req.code}
                                     </span>
-                                    {req.batchId != null && req.batchId !== '' && (
+                                    {line.batchId != null && (
                                       <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200" title="Batch that raised this PR">
-                                        Batch #{req.batchId}
+                                        Batch #{line.batchId}
                                       </span>
                                     )}
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${req.type === 'RM'
@@ -3885,15 +6579,36 @@ const Procurement: React.FC = () => {
                                     <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${priorityClass[req.priority]}`}>
                                       {req.priority}
                                     </span>
-                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusClass[req.status]}`}>
+                                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${statusBg[req.status] ?? 'bg-slate-100 text-slate-600'}`}>
                                       {req.status}
                                     </span>
+                                    {isPlanningQuotationRequest(req) && (
+                                      <span
+                                        className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                                        title="Planning could not release — vendor rates needed on Items List"
+                                      >
+                                        Needs quotation
+                                      </span>
+                                    )}
+                                    {req.stockCheckStatus ? (
+                                      <span
+                                        className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
+                                          isStockCheckPendingForRequest(req)
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : String(req.stockCheckStatus).trim().toLowerCase() === 'completed'
+                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                              : 'bg-sky-50 text-sky-700 border-sky-200'
+                                        }`}
+                                      >
+                                        Stock Check: {req.stockCheckStatus}
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <div className="flex items-center gap-4 text-xs text-slate-600">
-                                    <span>Req. {dueDateDisplay}</span>
-                                    <span className={`font-bold ${daysLeft == null ? 'text-slate-500' : daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
+                                    <span>Expected {itemExpectedDisplay}</span>
+                                    <span className={`font-bold ${daysLeft <= 3 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-emerald-600'
                                       }`}>
-                                      {daysLeft == null ? '—' : `${daysLeft}d left`}
+                                      {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d left`}
                                     </span>
                                   </div>
                                 </div>
@@ -3922,95 +6637,144 @@ const Procurement: React.FC = () => {
                                 ) : null}
                               </div>
 
-                              {/* Card Body - Item Details Grid */}
+                              {/* Card Body - single item line */}
                               <div className="p-5">
-                                {req.items.map((item, itemIdx) => {
-                                  const detail = req.itemDetails?.[itemIdx];
-                                  const reqQtyNum = Number(detail?.reqQty ?? 0) || 0;
-                                  const lineType = detail?.type === 'PM' ? 'PM' : detail?.type === 'FG' ? 'FG' : 'RM';
-                                  const unitLabel = detail?.unit || (lineType === 'PM' ? 'PCS' : 'KG');
-                                  const plannedPrice = Number(detail?.plannedPrice ?? 0) || 0;
-                                  const estValue = reqQtyNum * plannedPrice;
-                                  const leadDays = Number(detail?.leadTimeDays ?? 0) || 0;
-                                  return (
-                                    <div key={itemIdx} className="mb-4 last:mb-0">
-                                      <div className="flex items-start justify-between mb-3 gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                                            <span
-                                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                lineType === 'PM'
-                                                  ? 'bg-violet-100 text-violet-800 border border-violet-200'
-                                                  : lineType === 'FG'
-                                                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                                                    : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
-                                              }`}
-                                            >
-                                              {lineType}
-                                            </span>
-                                            <h4 className="font-bold text-slate-900 text-sm">{item}</h4>
-                                          </div>
-                                          <p className="text-xs text-slate-500 font-mono truncate">{detail?.itemCode || '—'}</p>
-                                        </div>
-                                      </div>
-
-                                      {/* Details Grid */}
-                                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
-                                          <p className="font-semibold text-slate-900">{reqQtyNum.toLocaleString('en-IN')} {unitLabel}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                          <p className="font-semibold text-slate-900">{detail?.moq || '—'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
-                                          <p className="font-semibold text-slate-900">{detail?.packSize || '—'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Planned ₹/unit</p>
-                                          <p className="font-semibold text-emerald-600">₹{plannedPrice.toLocaleString('en-IN')}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
-                                          <p className="font-semibold text-amber-600">₹{estValue.toLocaleString('en-IN')}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">GRI</p>
-                                          <p className="font-semibold text-slate-900">—</p>
-                                        </div>
-                                      </div>
-
-                                      {/* Additional Info Row */}
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3">
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Open PO</p>
-                                          <p className="font-semibold text-blue-600">{req.status === 'PO Released' ? '1' : '0'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">In-Transit</p>
-                                          <p className="font-semibold text-cyan-600">0</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                          <p className="font-semibold text-slate-900">{leadDays > 0 ? `${leadDays}d` : '—'}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
-                                          <p className="font-semibold text-indigo-600 truncate" title={prefVendorDisplay}>
-                                            {prefVendorDisplay}
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      {/* Divider between items */}
-                                      {itemIdx < req.items.length - 1 && (
-                                        <div className="border-t border-slate-200 mt-4"></div>
-                                      )}
+                                <div className="flex items-start justify-between mb-3 gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                      <span
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                          lineType === 'PM'
+                                            ? 'bg-violet-100 text-violet-800 border border-violet-200'
+                                            : lineType === 'FG'
+                                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                              : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                        }`}
+                                      >
+                                        {lineType}
+                                      </span>
+                                      <h4 className="font-bold text-slate-900 text-sm">{line.itemName}</h4>
                                     </div>
-                                  );
-                                })}
+                                    <p className="text-xs text-slate-500 font-mono truncate">{line.itemCode || '—'}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.reqQty.toLocaleString('en-IN')} {unitLabel}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.moq
+                                        ? formatQtyWithPrimaryUnit(line.moq, unitLabel, lineType)
+                                        : '—'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
+                                    <p className="font-semibold text-slate-900">{line.packSize || '—'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Planned ₹/unit</p>
+                                    <p className="font-semibold text-emerald-600">
+                                      ₹{line.plannedPrice.toLocaleString('en-IN')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
+                                    <p className="font-semibold text-amber-600">
+                                      ₹{line.estValue.toLocaleString('en-IN')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
+                                    <p className="font-semibold text-slate-900">{itemExpectedDisplay}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3">
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Open PO</p>
+                                    <p className="font-semibold text-blue-600">{req.status === 'PO Released' ? '1' : '0'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">In-Transit</p>
+                                    <p className="font-semibold text-cyan-600">0</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
+                                    <p className="font-semibold text-slate-900">
+                                      {line.leadTimeDays != null && Number.isFinite(line.leadTimeDays)
+                                        ? `${line.leadTimeDays}d`
+                                        : '—'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Pref. Vendor</p>
+                                    <p
+                                      className={`font-semibold truncate ${
+                                        prefVendorDisplay ? 'text-indigo-600' : 'text-slate-400 italic'
+                                      }`}
+                                      title={prefVendorDisplay ?? undefined}
+                                    >
+                                      {prefVendorDisplay ?? 'Not chosen — use Week + Vendor after assigning'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {stockCheckGap ? (
+                                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-xs text-amber-900">
+                                      <span className="font-semibold uppercase tracking-wide text-[10px] text-amber-800">
+                                        Stock check gap
+                                      </span>
+                                      <p className="mt-0.5 font-bold tabular-nums">
+                                        +{stockCheckGap.gapQty.toLocaleString('en-IN')} {unitLabel}
+                                        {stockCheckGap.consumptionQty != null ? (
+                                          <span className="font-normal text-amber-800 ml-2">
+                                            (consumption {stockCheckGap.consumptionQty.toLocaleString('en-IN')}{' '}
+                                            {unitLabel} since request)
+                                          </span>
+                                        ) : null}
+                                      </p>
+                                    </div>
+                                    {stockCheckGap.gapApproved ? (
+                                      <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        Gap approved
+                                      </span>
+                                    ) : stockCheckGap.canApprove ? (
+                                      <button
+                                        type="button"
+                                        disabled={approvingGapLineKey === gapLineKey}
+                                        onClick={async () => {
+                                          const auditLine = buildInventoryAuditLines([req]).find(
+                                            (l) =>
+                                              l.requestId === req.id &&
+                                              l.itemCode === line.itemCode &&
+                                              l.itemName === line.itemName
+                                          );
+                                          if (!auditLine) {
+                                            addToast('error', 'Could not resolve audit line for gap approval.');
+                                            return;
+                                          }
+                                          setApprovingGapLineKey(gapLineKey);
+                                          try {
+                                            await handleApproveInventoryAuditGap(auditLine);
+                                          } finally {
+                                            setApprovingGapLineKey(null);
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg border border-amber-400 bg-white text-amber-900 text-[11px] font-semibold hover:bg-amber-100 disabled:opacity-60"
+                                      >
+                                        {approvingGapLineKey === gapLineKey ? 'Approving…' : 'Approve gap'}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
 
                                 {/* Notes + planning context */}
                                 <div className="mt-4 space-y-2">
@@ -4053,10 +6817,65 @@ const Procurement: React.FC = () => {
                                   >
                                     View
                                   </button>
+                                  {isPlanningQuotationRequest(req) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openRecordQuoteFromRequest(req)}
+                                      className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 transition-all"
+                                      title="Add vendor rates for Planning — saves to Items List"
+                                    >
+                                      Add quotation
+                                    </button>
+                                  )}
                                   <button
-                                    onClick={() => {
-                                      setSelectedStockCheckRequest(req);
-                                      setSelectedStockCheckItemName(req.itemDetails?.[0]?.itemName ?? req.items[0] ?? null);
+                                    onClick={async () => {
+                                      if (isStockCheckOneTimeCompleted(req)) {
+                                        addToast(
+                                          'warning',
+                                          'Stock check already completed successfully with warehouse qty data. New stock check cannot be raised again for this request.',
+                                        );
+                                        openStockCheckModal(req);
+                                        return;
+                                      }
+                                      const currentStockStatus = String(req.stockCheckStatus ?? '').trim().toLowerCase();
+                                      const isPendingStockCheckRequest =
+                                        currentStockStatus === 'pending' ||
+                                        currentStockStatus === 'requested' ||
+                                        currentStockStatus === 'in progress';
+                                      if (isPendingStockCheckRequest) {
+                                        addToast(
+                                          'warning',
+                                          'Stock check request is already pending for this request. Complete the current check before raising a new one.',
+                                        );
+                                        openStockCheckModal(req);
+                                        return;
+                                      }
+                                      {
+                                        const res = await updateProcurementRequestApi(req.id, {
+                                          stockCheckAssignedTo: req.stockCheckAssignedTo || null,
+                                          stockCheckStatus: 'Pending',
+                                          stockCheckNotes:
+                                            req.stockCheckNotes && String(req.stockCheckNotes).trim()
+                                              ? req.stockCheckNotes
+                                              : JSON.stringify({
+                                                  version: 1,
+                                                  requestedAt: new Date().toISOString(),
+                                                  requestedBy: req.requestedBy ?? 'Procurement Team',
+                                                }),
+                                        });
+                                        if (!res.success) {
+                                          addToast(
+                                            'error',
+                                            typeof res.error === 'string'
+                                              ? res.error
+                                              : (res.error as { message?: string } | null)?.message ?? 'Failed to send stock check request',
+                                          );
+                                          return;
+                                        }
+                                        await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                                        addToast('success', 'Stock check request sent to Warehouse.');
+                                      }
+                                      openStockCheckModal(req);
                                     }}
                                     className="px-3 py-1.5 rounded-lg border border-cyan-400 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition-all"
                                   >
@@ -4071,167 +6890,7 @@ const Procurement: React.FC = () => {
                                     Priority
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      if (req.itemDetails && req.itemDetails.length > 0) {
-                                        const item = req.itemDetails[0];
-                                        const relItem: ReleaseToPlannedItem = {
-                                          itemName: item.itemName,
-                                          itemCode: item.itemCode,
-                                          idx: 0,
-                                          qty: item.reqQty,
-                                          unit: item.unit,
-                                          plannedPrice: item.plannedPrice,
-                                          moq: item.moq,
-                                          reqQty: item.reqQty,
-                                          raw_material_id: item.raw_material_id,
-                                          pack_material_id: item.pack_material_id,
-                                          itemType: item.type === 'PM' ? 'PM' : 'RM',
-                                        };
-                                        setReleaseToPlannedTarget({ request: req, item: relItem });
-                                        const reqType0: RequestType =
-                                          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
-                                        const itemSource0 = reqType0 === 'PM' ? itemsListPm : itemsListRm;
-                                        const matchedItem0 = itemSource0.find((row) => {
-                                          const rm0 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
-                                          const pm0 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
-                                          const rowRm0 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
-                                          const rowPm0 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
-                                          if (Number.isFinite(rm0) && rm0 > 0 && Number.isFinite(rowRm0) && rowRm0 > 0) return rowRm0 === rm0;
-                                          if (Number.isFinite(pm0) && pm0 > 0 && Number.isFinite(rowPm0) && rowPm0 > 0) return rowPm0 === pm0;
-                                          const c0 = String(relItem.itemCode ?? '').trim().toLowerCase();
-                                          const n0 = String(relItem.itemName ?? '').trim().toLowerCase();
-                                          const rc0 = String(row.code ?? '').trim().toLowerCase();
-                                          const rn0 = String(row.name ?? '').trim().toLowerCase();
-                                          if (c0 && rc0 && c0 === rc0) return true;
-                                          if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
-                                          return false;
-                                        });
-                                        const itemsListSlab0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
-                                          (rate.tiers ?? []).map((tier) => ({
-                                            vendor: String(rate.vendor_name ?? '').trim(),
-                                            moq: Number(tier.moq_min ?? 0) || 0,
-                                            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
-                                            leadDays: Number(rate.lead_time_days ?? 0) || 0,
-                                            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
-                                          }))
-                                        ).find((s) => s.vendor);
-                                        const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
-                                        );
-                                        const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
-                                        const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
-                                        setReleaseToPlannedForm({
-                                          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
-                                          moqDisplay: item.moq ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)` : '',
-                                          qty: String(item.reqQty ?? 0),
-                                          unitPrice: String(itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? item.plannedPrice ?? 0),
-                                          paymentTermsType: pt0.type,
-                                          advancePercent: String(
-                                            pt0.advancePercent ||
-                                            (paymentTermsTypeRequiresAdvancePercent(pt0.type) ? 50 : 0)
-                                          ),
-                                          leadTimeDays: itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? item.leadTimeDays ?? 0,
-                                        });
-                                        setReleaseToPlannedNotes('');
-                                        setReleaseToPlannedLineEdits(
-                                          (req.itemDetails ?? []).map((d) => ({
-                                            itemName: d.itemName ?? '',
-                                            itemCode: d.itemCode ?? '',
-                                            type: d.type === 'PM' ? 'PM' : 'RM',
-                                            qty: Number(d.reqQty ?? 0) || 0,
-                                            unit: String(d.unit ?? (d.type === 'PM' ? 'PCS' : 'KG')),
-                                            moq: Number(d.moq ?? 0) || 0,
-                                            unitPrice: Number(d.plannedPrice ?? 0) || 0,
-                                            leadDays: Number(d.leadTimeDays ?? 0) || 0,
-                                            ...(d.raw_material_id != null ? { raw_material_id: Number(d.raw_material_id) } : {}),
-                                            ...(d.pack_material_id != null ? { pack_material_id: Number(d.pack_material_id) } : {}),
-                                          }))
-                                        );
-                                      } else if (req.items && req.items.length > 0) {
-                                        const itemName = req.items[0];
-                                        const qty = req.quantities?.[0] ?? 0;
-                                        const price = req.plannedPrices?.[0] ?? 0;
-                                        const unit = req.units?.[0] ?? 'KG';
-                                        const spec = req.specifications?.[0];
-                                        const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
-                                          | { items?: { raw_material_id?: number; pack_material_id?: number; type?: string; code?: string }[] }
-                                          | undefined;
-                                        const line0 = prRow?.items?.[0];
-                                        const relItem: ReleaseToPlannedItem = {
-                                          itemName,
-                                          itemCode: line0?.code,
-                                          idx: 0,
-                                          qty,
-                                          unit,
-                                          spec,
-                                          plannedPrice: price,
-                                          raw_material_id: line0?.raw_material_id != null ? Number(line0.raw_material_id) : undefined,
-                                          pack_material_id: line0?.pack_material_id != null ? Number(line0.pack_material_id) : undefined,
-                                          itemType: line0?.type === 'PM' ? 'PM' : 'RM',
-                                        };
-                                        setReleaseToPlannedTarget({ request: req, item: relItem });
-                                        const reqType1: RequestType =
-                                          relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
-                                        const itemSource1 = reqType1 === 'PM' ? itemsListPm : itemsListRm;
-                                        const matchedItem1 = itemSource1.find((row) => {
-                                          const rm1 = relItem.raw_material_id != null ? Number(relItem.raw_material_id) : NaN;
-                                          const pm1 = relItem.pack_material_id != null ? Number(relItem.pack_material_id) : NaN;
-                                          const rowRm1 = row.raw_material_id != null ? Number(row.raw_material_id) : NaN;
-                                          const rowPm1 = row.pack_material_id != null ? Number(row.pack_material_id) : NaN;
-                                          if (Number.isFinite(rm1) && rm1 > 0 && Number.isFinite(rowRm1) && rowRm1 > 0) return rowRm1 === rm1;
-                                          if (Number.isFinite(pm1) && pm1 > 0 && Number.isFinite(rowPm1) && rowPm1 > 0) return rowPm1 === pm1;
-                                          const c1 = String(relItem.itemCode ?? '').trim().toLowerCase();
-                                          const n1 = String(relItem.itemName ?? '').trim().toLowerCase();
-                                          const rc1 = String(row.code ?? '').trim().toLowerCase();
-                                          const rn1 = String(row.name ?? '').trim().toLowerCase();
-                                          if (c1 && rc1 && c1 === rc1) return true;
-                                          if (n1 && rn1 && (n1 === rn1 || n1.includes(rn1) || rn1.includes(n1))) return true;
-                                          return false;
-                                        });
-                                        const itemsListSlab1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
-                                          (rate.tiers ?? []).map((tier) => ({
-                                            vendor: String(rate.vendor_name ?? '').trim(),
-                                            unitPrice: Number(tier.price_per_unit ?? 0) || 0,
-                                            leadDays: Number(rate.lead_time_days ?? 0) || 0,
-                                            terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
-                                          }))
-                                        ).find((s) => s.vendor);
-                                        const reqQuotesForItem = quotes.filter(
-                                          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
-                                        );
-                                        const first = reqQuotesForItem[0];
-                                        const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
-                                        const pt1 = parsePaymentTermsString(itemsListSlab1?.terms ?? first?.terms ?? 'As per contract');
-                                        setReleaseToPlannedForm({
-                                          vendor: itemsListSlab1?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
-                                          moqDisplay: '',
-                                          qty: String(qty ?? 0),
-                                          unitPrice: String(itemsListSlab1?.unitPrice ?? firstLine?.pricePerUnit ?? price ?? 0),
-                                          paymentTermsType: pt1.type,
-                                          advancePercent: String(
-                                            pt1.advancePercent ||
-                                            (paymentTermsTypeRequiresAdvancePercent(pt1.type) ? 50 : 0)
-                                          ),
-                                          leadTimeDays: itemsListSlab1?.leadDays ?? first?.leadTimeDays ?? 0,
-                                        });
-                                        setReleaseToPlannedNotes('');
-                                        setReleaseToPlannedLineEdits((req.items ?? []).map((nm, i) => ({
-                                          itemName: String(nm ?? ''),
-                                          itemCode: String(line0?.code ?? ''),
-                                          type: relItem.itemType === 'PM' ? 'PM' : 'RM',
-                                          qty: Number((req.quantities ?? [])[i] ?? 0) || 0,
-                                          unit: String((req.units ?? [])[i] ?? 'KG'),
-                                          moq: 0,
-                                          unitPrice: Number((req.plannedPrices ?? [])[i] ?? 0) || 0,
-                                          leadDays: 0,
-                                          ...(line0?.raw_material_id != null ? { raw_material_id: Number(line0.raw_material_id) } : {}),
-                                          ...(line0?.pack_material_id != null ? { pack_material_id: Number(line0.pack_material_id) } : {}),
-                                        })));
-                                      } else {
-                                        addToast('warning', 'No items on this request.');
-                                      }
-                                    }}
+                                    onClick={() => openReleaseToDraftPoForRequest(req)}
                                     className="px-3 py-1.5 rounded-lg border border-amber-400 text-amber-800 text-xs font-semibold hover:bg-amber-50 transition-all"
                                   >
                                     Release to Draft PO
@@ -4249,6 +6908,10 @@ const Procurement: React.FC = () => {
                                     return (
                                       <button
                                         onClick={() => {
+                                          if (isStockCheckPendingForRequest(req)) {
+                                            addToast('warning', 'Stock check is pending. PO release is locked until warehouse completes it.');
+                                            return;
+                                          }
                                           if (linkedDraft?.backendPoId) {
                                             openReleasePOModal(linkedDraft.id);
                                           } else {
@@ -4278,13 +6941,251 @@ const Procurement: React.FC = () => {
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       Loading procurement data…
                     </div>
-                  ) : quotesForQuotationsSection.length === 0 ? (
+                  ) : (
+                    <>
+                  {filteredPlanningQuotationAsks.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 px-1">
+                        Awaiting vendor quote from Planning ({filteredPlanningQuotationAsks.length})
+                      </p>
+                      {filteredPlanningQuotationAsks.map((ask) => (
+                        <article
+                          key={`planning-quote-ask-${ask.id}`}
+                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
+                        >
+                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
+                                    Planning
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[ask.itemType === 'PM' ? 'PM' : 'RM']}`}
+                                  >
+                                    {ask.itemType}
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    Awaiting quote
+                                  </span>
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">
+                                  {ask.itemName ?? 'Material line'}
+                                </h3>
+                                <p className="text-xs text-slate-600 mt-1">
+                                  Add vendor / MOQ on Items List — no procurement request is created
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openRecordQuoteFromPlanningAsk(ask)}
+                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
+                              >
+                                Record Quote
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4">
+                            <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
+                            <p className="font-semibold text-slate-900 text-sm">
+                              {Number(ask.quantityRequested ?? 0).toLocaleString('en-IN')}{' '}
+                              {ask.unit ||
+                                (ask.itemType === 'PM'
+                                  ? 'PCS'
+                                  : resolveRmPrimaryUnit(
+                                      ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
+                                      ask.itemCode,
+                                      ask.unit
+                                    ))}
+                            </p>
+                            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{ask.itemCode || '—'}</p>
+                            {ask.vendorHint ? (
+                              <p className="text-xs text-slate-700 mt-2">
+                                <span className="font-semibold">Vendor hint:</span> {ask.vendorHint}
+                                {ask.moqHint != null && ask.moqHint > 0 ? (
+                                  <>
+                                    {' '}
+                                    · <span className="font-semibold">MOQ:</span>{' '}
+                                    {formatQtyWithPrimaryUnit(
+                                      ask.moqHint,
+                                      ask.unit ||
+                                        (ask.itemType === 'PM'
+                                          ? 'PCS'
+                                          : resolveRmPrimaryUnit(
+                                              ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
+                                              ask.itemCode,
+                                              ''
+                                            )),
+                                      ask.itemType === 'PM' ? 'PM' : 'RM'
+                                    )}
+                                  </>
+                                ) : null}
+                              </p>
+                            ) : null}
+                            {(ask.planningSoNumber || ask.planningProductName) && (
+                              <p className="text-xs text-slate-600 mt-2">
+                                {ask.planningSoNumber ? (
+                                  <>
+                                    <span className="font-semibold">SO</span> {ask.planningSoNumber}
+                                    {ask.planningCustomerName ? ` · ${ask.planningCustomerName}` : ''}
+                                  </>
+                                ) : null}
+                                {ask.planningProductName ? (
+                                  <span className={ask.planningSoNumber ? ' ml-2' : ''}>
+                                    <span className="font-semibold">Product</span> {ask.planningProductName}
+                                  </span>
+                                ) : null}
+                              </p>
+                            )}
+                            {ask.notes ? (
+                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
+                                {ask.notes}
+                              </p>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {filteredPlanningQuotationRequestsAwaitingQuote.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 px-1">
+                        Legacy planning quotation PRs ({filteredPlanningQuotationRequestsAwaitingQuote.length})
+                      </p>
+                      {filteredPlanningQuotationRequestsAwaitingQuote.map((req) => (
+                        <article
+                          key={`planning-quote-pending-${req.id}`}
+                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
+                        >
+                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
+                                    Planning
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
+                                    {req.code}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[req.type]}`}
+                                  >
+                                    {req.type}
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                    Awaiting quote
+                                  </span>
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">
+                                  {req.items[0] ?? 'Material line'}
+                                </h3>
+                                <p className="text-xs text-slate-600 mt-1">
+                                  Record vendor rates — same flow as <span className="font-semibold">+ Record Quote</span>
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openRecordQuoteFromRequest(req)}
+                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
+                              >
+                                Record Quote
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-5 py-4">
+                            {(req.itemDetails ?? []).map((detail, idx) => (
+                              <div key={idx} className="mb-3 last:mb-0">
+                                <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
+                                <p className="font-semibold text-slate-900 text-sm">
+                                  {Number(detail.reqQty ?? 0).toLocaleString('en-IN')}{' '}
+                                  {detail.unit ||
+                                    (req.type === 'PM'
+                                      ? 'PCS'
+                                      : resolveRmPrimaryUnit(
+                                          detail.raw_material_id != null ? Number(detail.raw_material_id) : null,
+                                          detail.itemCode,
+                                          ''
+                                        ))}
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{detail.itemCode || '—'}</p>
+                              </div>
+                            ))}
+                            {(req.planningSoNumber || req.planningProductName) && (
+                              <p className="text-xs text-slate-600 mt-2">
+                                {req.planningSoNumber ? (
+                                  <>
+                                    <span className="font-semibold">SO</span> {req.planningSoNumber}
+                                    {req.planningCustomerName ? ` · ${req.planningCustomerName}` : ''}
+                                  </>
+                                ) : null}
+                                {req.planningProductName ? (
+                                  <span className={req.planningSoNumber ? ' ml-2' : ''}>
+                                    <span className="font-semibold">Product</span> {req.planningProductName}
+                                  </span>
+                                ) : null}
+                              </p>
+                            )}
+                            {req.notes ? (
+                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
+                                {req.notes}
+                              </p>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  {quotesForQuotationsSection.length === 0 &&
+                  filteredPlanningQuotationAsks.length === 0 &&
+                  filteredPlanningQuotationRequestsAwaitingQuote.length === 0 ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
                       No quotes match current filters.
                     </div>
                   ) : (
-                    quotesForQuotationsSection.map((quote) => {
+                    <>
+                  {quotesForQuotationsSection.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide">
+                          Recorded quotes & price list
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {quotesForQuotationsSection.length} quote
+                          {quotesForQuotationsSection.length === 1 ? '' : 's'} match filters
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                        <span>Per page</span>
+                        <select
+                          value={quotationsPageSize}
+                          onChange={(e) => {
+                            setQuotationsPageSize(Number(e.target.value));
+                            setQuotationsPage(1);
+                          }}
+                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                        >
+                          {QUOTATIONS_PAGE_SIZE_OPTIONS.map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {pagedQuotesForQuotationsSection.map((quote) => {
                       const isExpanded = expandedQuoteId === quote.id;
+                      const linesExpanded = expandedQuoteLineLists[quote.id] ?? false;
+                      const lineCount = quote.lines.length;
+                      const hasManyLines = lineCount > QUOTATION_VENDOR_LINES_PREVIEW;
+                      const hiddenLineCount = hasManyLines ? lineCount - QUOTATION_VENDOR_LINES_PREVIEW : 0;
+                      const visibleLineEntries = (
+                        hasManyLines && !linesExpanded
+                          ? quote.lines
+                              .map((line, idx) => ({ line, idx }))
+                              .slice(0, QUOTATION_VENDOR_LINES_PREVIEW)
+                          : quote.lines.map((line, idx) => ({ line, idx }))
+                      );
 
                       return (
                         <article key={quote.id} className="rounded-xl border border-cyan-300 bg-white shadow-md overflow-hidden">
@@ -4306,14 +7207,22 @@ const Procurement: React.FC = () => {
                                   )}
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-1">{quote.vendor}</h3>
-                                <div className="flex items-center gap-3 text-xs text-slate-600">
+                                <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
                                   <span className="font-mono bg-slate-100 px-2 py-0.5 rounded">
                                     For {quote.requestCode}
                                   </span>
                                   <span>·</span>
                                   <span>{quote.requestType === 'RM' ? 'Raw Material' : 'Packaging Material'}</span>
                                   <span>·</span>
-                                  <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
+                                  <span>
+                                    {lineCount} item{lineCount === 1 ? '' : 's'}
+                                  </span>
+                                  {quote.quotedOn ? (
+                                    <>
+                                      <span>·</span>
+                                      <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
@@ -4331,20 +7240,57 @@ const Procurement: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {quote.lines.map((line, idx) => (
-                                  <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                {visibleLineEntries.map(({ line, idx }) => (
+                                  <tr key={`${quote.id}-line-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-between gap-3">
-                                        <span className="font-semibold text-slate-900">{line.item}</span>
-                                        {quote.id.startsWith('IL-') && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openEditItemsListTier(quote, line)}
-                                            className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
-                                          >
-                                            Edit
-                                          </button>
-                                        )}
+                                        <div className="min-w-0">
+                                          <span className="font-semibold text-slate-900">{line.item}</span>
+                                          {(() => {
+                                            const hist = Array.isArray(line.priceHistory) ? line.priceHistory : [];
+                                            const latest = hist.length > 0 ? hist[hist.length - 1] : null;
+                                            if (!latest) return null;
+                                            const oldP = Number(latest.oldPrice);
+                                            const newP = Number(latest.newPrice);
+                                            if (!Number.isFinite(oldP) || !Number.isFinite(newP) || Math.abs(oldP - newP) < 1e-9) return null;
+                                            return (
+                                              <p className="text-[10px] text-amber-700 mt-0.5">
+                                                Previous: ₹{oldP.toLocaleString('en-IN')} {'->'} Now: ₹{newP.toLocaleString('en-IN')}
+                                              </p>
+                                            );
+                                          })()}
+                                          {!!line.priceHistory?.length && (
+                                            <p className="text-[10px] text-slate-500 mt-0.5">
+                                              {line.priceHistory.length} price change{line.priceHistory.length !== 1 ? 's' : ''}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {!quote.id.startsWith('IL-') && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditingQuoteLine({
+                                                  quoteId: quote.id,
+                                                  lineIndex: idx,
+                                                  nextPrice: String(Number(line.pricePerUnit ?? 0) || ''),
+                                                })
+                                              }
+                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                            >
+                                              Edit Price
+                                            </button>
+                                          )}
+                                          {quote.id.startsWith('IL-') && (
+                                            <button
+                                              type="button"
+                                              onClick={() => openEditItemsListTier(quote, line)}
+                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                            >
+                                              Edit
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     </td>
                                     <td className="px-4 py-3">
@@ -4353,7 +7299,31 @@ const Procurement: React.FC = () => {
                                       </span>
                                     </td>
                                     <td className="px-4 py-3 text-right text-slate-700">
-                                      ₹{line.pricePerUnit.toLocaleString('en-IN')}
+                                      {editingQuoteLine?.quoteId === quote.id && editingQuoteLine?.lineIndex === idx ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <input
+                                            value={editingQuoteLine.nextPrice}
+                                            onChange={(e) =>
+                                              setEditingQuoteLine((prev) => (prev ? { ...prev, nextPrice: e.target.value } : prev))
+                                            }
+                                            type="number"
+                                            min={0}
+                                            step="0.01"
+                                            className="w-28 rounded-md border border-slate-300 px-2 py-1 text-xs text-right"
+                                            disabled={savingQuoteLine}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => void saveQuotedLinePrice(quote, line, idx)}
+                                            className="px-2 py-1 rounded-md bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700 disabled:opacity-60"
+                                            disabled={savingQuoteLine}
+                                          >
+                                            Save
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>₹{line.pricePerUnit.toLocaleString('en-IN')}</>
+                                      )}
                                     </td>
                                     <td className={`px-4 py-3 text-right font-bold ${line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
                                       }`}>
@@ -4364,6 +7334,24 @@ const Procurement: React.FC = () => {
                               </tbody>
                             </table>
                           </div>
+                          {hasManyLines ? (
+                            <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/90 flex justify-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedQuoteLineLists((prev) => ({
+                                    ...prev,
+                                    [quote.id]: !linesExpanded,
+                                  }))
+                                }
+                                className="px-3 py-1.5 rounded-md border border-cyan-300 bg-white text-cyan-800 text-xs font-semibold hover:bg-cyan-50 transition-colors"
+                              >
+                                {linesExpanded
+                                  ? 'Show fewer items'
+                                  : `View ${hiddenLineCount} more item${hiddenLineCount === 1 ? '' : 's'}`}
+                              </button>
+                            </div>
+                          ) : null}
 
                           {/* Footer Info */}
                           <div className="px-5 py-3 bg-slate-50 border-t border-slate-200">
@@ -4419,6 +7407,33 @@ const Procurement: React.FC = () => {
                                     Download
                                   </button>
                                 </div>
+                                {quote.lines.some((l) => Array.isArray(l.priceHistory) && l.priceHistory.length > 0) && (
+                                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                                    <div className="text-xs font-semibold text-slate-600 mb-2">Price change history</div>
+                                    <div className="space-y-2">
+                                      {quote.lines.map((line, lineIdx) => {
+                                        const history = Array.isArray(line.priceHistory) ? [...line.priceHistory].reverse() : [];
+                                        if (!history.length) return null;
+                                        return (
+                                          <div key={`${quote.id}-h-${lineIdx}`} className="rounded-md border border-slate-100 p-2">
+                                            <p className="text-xs font-semibold text-slate-700">{line.item}</p>
+                                            <div className="mt-1 space-y-1">
+                                              {history.map((h, hIdx) => (
+                                                <p key={`${quote.id}-${lineIdx}-${hIdx}`} className="text-[11px] text-slate-600">
+                                                  ₹{Number(h.oldPrice || 0).toLocaleString('en-IN')} → ₹
+                                                  {Number(h.newPrice || 0).toLocaleString('en-IN')}
+                                                  {' · '}
+                                                  {h.changedAt ? new Date(h.changedAt).toLocaleString('en-IN') : '—'}
+                                                  {h.changedBy ? ` · ${h.changedBy}` : ''}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
@@ -4444,7 +7459,22 @@ const Procurement: React.FC = () => {
                           </div>
                         </article>
                       );
-                    })
+                    })}
+                  {quotesForQuotationsSection.length > 0 && quotationsTotalPages > 1 && (
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <Pagination
+                        currentPage={quotationsSafePage}
+                        totalPages={quotationsTotalPages}
+                        onPageChange={setQuotationsPage}
+                        totalItems={quotesForQuotationsSection.length}
+                        itemsPerPage={quotationsPageSize}
+                        variant="compact"
+                      />
+                    </div>
+                  )}
+                    </>
+                  )}
+                    </>
                   )}
                 </div>
               )}
@@ -4539,7 +7569,66 @@ const Procurement: React.FC = () => {
                             : 'No draft POs match the current filters.'}
                       </div>
                     ) : (
-                      filteredDraftPOs.map((dpo) => (
+                      <>
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200 bg-slate-50">
+                                  <th className="px-3 py-2">Date</th>
+                                  <th className="px-3 py-2">Vendor Name</th>
+                                  <th className="px-3 py-2">Purchase Order#</th>
+                                  <th className="px-3 py-2">Reference#</th>
+                                  <th className="px-3 py-2">Vendor Name</th>
+                                  <th className="px-3 py-2">Status</th>
+                                  <th className="px-3 py-2 text-right">Amount</th>
+                                  <th className="px-3 py-2">Delivery Date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredDraftPOs.map((dpo) => {
+                                  const linkedReq = procurementRequestsList.find((r) => r.id === dpo.requestId);
+                                  return (
+                                    <tr
+                                      key={`draft-row-${dpo.id}`}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => setSelectedDraftPO(dpo)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                          event.preventDefault();
+                                          setSelectedDraftPO(dpo);
+                                        }
+                                      }}
+                                      className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
+                                    >
+                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.createdDate || '—'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700">{linkedReq?.planningCustomerName || linkedReq?.source || dpo.deliveryAddress || '—'}</td>
+                                      <td className="px-3 py-2 text-xs font-mono text-slate-700">{dpo.dpoNumber}</td>
+                                      <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{dpo.requestCode || '—'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700">{dpo.vendor}</td>
+                                      <td className="px-3 py-2 text-xs">
+                                        <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
+                                          dpo.status === 'Approved'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                        }`}>
+                                          {dpo.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{dpo.grandTotal.toLocaleString('en-IN')}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.expectedDelivery || '—'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100 bg-slate-50">
+                            Click any row to open full draft PO details.
+                          </p>
+                        </div>
+                        {filteredDraftPOs.map((dpo) => (
                         <article key={dpo.backendPoId != null ? `po-${dpo.backendPoId}` : `dpo-${dpo.id}`} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           {/* Header */}
                           <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
@@ -4626,6 +7715,15 @@ const Procurement: React.FC = () => {
                           {/* Actions */}
                           <div className="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
                             <button
+                              type="button"
+                              disabled={deletingDraftPoId === dpo.id}
+                              onClick={() => openDeleteDraftPOConfirm(dpo)}
+                              className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                            >
+                              {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete'}
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSelectedDraftPO(dpo)}
                               className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
                             >
@@ -4665,7 +7763,8 @@ const Procurement: React.FC = () => {
                             )}
                           </div>
                         </article>
-                      ))
+                      ))}
+                      </>
                     )}
                   </div>
                 </>
@@ -4674,7 +7773,7 @@ const Procurement: React.FC = () => {
               {/* Items List tier edit modal (Quotations view writes to Items List) */}
               {editItemsListLineTarget && (
                 <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center px-4">
-                  <div className="w-full max-w-lg rounded-xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+                  <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-200 overflow-hidden">
                     <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
                       <div>
                         <h3 className="text-base font-bold text-slate-900">Edit vendor tier (Items List)</h3>
@@ -4712,33 +7811,98 @@ const Procurement: React.FC = () => {
                             onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMax: e.target.value }))}
                             type="number"
                             min={0}
+                            step="any"
+                            inputMode="decimal"
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                             disabled={editItemsListLineSaving}
                           />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Price / unit (₹)</label>
-                          <input
-                            value={editItemsListLineForm.pricePerUnit}
-                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                            disabled={editItemsListLineSaving}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms</label>
-                          <input
-                            value={editItemsListLineForm.paymentTerms}
-                            onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, paymentTerms: e.target.value }))}
-                            type="text"
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                            disabled={editItemsListLineSaving}
-                          />
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Price / unit (₹)</label>
+                        <input
+                          value={editItemsListLineForm.pricePerUnit}
+                          onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          disabled={editItemsListLineSaving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                          Payment terms
+                        </label>
+                        <p className="text-[11px] text-slate-500 mb-2">
+                          Same three-way split as Items List and vendor masters (advance, pre-shipment, post-shipment, credit days).
+                        </p>
+                        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+                          <table className="w-full max-w-xl text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 text-left text-slate-600">
+                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Advance %</th>
+                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Pre-ship %</th>
+                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Post-ship %</th>
+                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Credit days</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={editItemsListLineForm.advancePct}
+                                    onChange={(e) =>
+                                      setEditItemsListLineForm((f) => ({ ...f, advancePct: e.target.value }))
+                                    }
+                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    disabled={editItemsListLineSaving}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={editItemsListLineForm.preShipmentPct}
+                                    onChange={(e) =>
+                                      setEditItemsListLineForm((f) => ({ ...f, preShipmentPct: e.target.value }))
+                                    }
+                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    disabled={editItemsListLineSaving}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={editItemsListLineForm.postShipmentPct}
+                                    onChange={(e) =>
+                                      setEditItemsListLineForm((f) => ({ ...f, postShipmentPct: e.target.value }))
+                                    }
+                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    disabled={editItemsListLineSaving}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={editItemsListLineForm.creditDays}
+                                    onChange={(e) =>
+                                      setEditItemsListLineForm((f) => ({ ...f, creditDays: e.target.value }))
+                                    }
+                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    disabled={editItemsListLineSaving}
+                                  />
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                       <div className="flex items-center justify-end gap-2 pt-2">
@@ -4767,406 +7931,53 @@ const Procurement: React.FC = () => {
                 </div>
               )}
 
-              {sideSection === 'Issued POs' && (() => {
-                const normPoKeyLocal = (n: string) =>
-                  String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
-                const totalPos = issuedPORecords.length;
-                const rmPos = issuedPORecords.filter(record => record.request.type === 'RM').length;
-                const pmPos = issuedPORecords.filter(record => record.request.type === 'PM').length;
-                const advancePending = issuedPORecords.filter(record => record.status === 'Released').length;
-                const inTransitCount = issuedPORecords.filter(record => record.status === 'In Transit').length;
-                const grnComplete = completedGrns.length;
+              {sideSection === 'Issued POs' && (
+                <IssuedPOsView
+                  kpis={issuedPoOverviewKpis}
+                  records={filteredIssuedPORecords}
+                  grnList={grnListFromApi ?? []}
+                  categoryFilter={categoryFilter}
+                  onCategoryFilterChange={setCategoryFilter}
+                  issuedVendorFilter={issuedVendorFilter}
+                  onIssuedVendorFilterChange={setIssuedVendorFilter}
+                  vendorOptions={Array.from(new Set(issuedPORecords.map((r) => r.vendor))).sort((a, b) =>
+                    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+                  )}
+                  issuedStatusFilter={issuedStatusFilter}
+                  onIssuedStatusFilterChange={setIssuedStatusFilter}
+                  issuedSearch={issuedSearch}
+                  onIssuedSearchChange={setIssuedSearch}
+                  issuedPoPipelineStageKey={issuedPoPipelineStageKey}
+                  onIssuedPoPipelineStageKeyChange={setIssuedPoPipelineStageKey}
+                  onClearFilters={() => {
+                    setIssuedSearch('');
+                    setCategoryFilter('All');
+                    setIssuedVendorFilter('All Vendors');
+                    setIssuedStatusFilter('All');
+                    setIssuedPoPipelineStageKey(null);
+                  }}
+                  getTimelineCompletedIndex={(record) => {
+                    const backendPoId = record.backendPoId ? String(record.backendPoId) : '';
+                    const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
+                    const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
+                    const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+                    return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
+                  }}
+                  releasedPoTrackingByBackendId={releasedPoTrackingByBackendId}
+                  resolveBackendPoId={resolveIssuedPoBackendId}
+                  hasPoTrackingTimestamp={hasPoTrackingTimestamp}
+                  onOpenDetail={openIssuedPODetail}
+                  onMarkVendorConfirmed={markIssuedPOVendorConfirmed}
+                  onMarkShipped={markIssuedPOShipped}
+                  onReceiveGrn={receiveIssuedPOGRN}
+                  onOpenGrnMonitor={() => applyRouteState('Procurement', 'GRN Monitor')}
+                />
+              )}
 
-                const itemisedRows = filteredIssuedPORecords.flatMap((record, recordIndex) =>
-                  record.lineItems.map((line, lineIndex) => ({
-                    key: `${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-r${recordIndex}-li${lineIndex}-${line.itemCode}`,
-                    record,
-                    line,
-                  })),
-                );
-
-                const timelineStages = [
-                  'PO Released',
-                  'Advance Paid',
-                  'Vendor Confirmed',
-                  'Shipped',
-                  'Delivered',
-                  'Under GRN',
-                  'GRN Complete',
-                ] as const;
-
-                const getTimelineCompletedIndexForRecord = (record: any) => {
-                  const backendPoId = record?.backendPoId ? String(record.backendPoId) : '';
-                  const ov = backendPoId ? unlinkedPoTimelineOverrides[backendPoId] : undefined;
-                  const tracking = backendPoId ? releasedPoTrackingByBackendId?.[backendPoId] : undefined;
-                  const grnDone = grnCompletePoNormSet.has(normPoKeyLocal(record.poNumber));
-                  return issuedPoCardTimelineCompletedIndex(record.status, tracking, ov, grnDone);
-                };
-
-                return (
-                  <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                    {/* Top summary strip */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 px-4 py-3 flex flex-col justify-between">
-                        <p className="text-[10px] tracking-[0.18em] text-cyan-700 uppercase">Total POs</p>
-                        <p className="mt-1 text-2xl font-bold">{totalPos}</p>
-                      </div>
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-emerald-700 uppercase">RM POs</p>
-                        <p className="mt-1 text-2xl font-bold">{rmPos}</p>
-                      </div>
-                      <div className="rounded-lg border border-violet-200 bg-violet-50 text-violet-900 px-4 py-3">
-                        <p className="text-[10px] tracking-[0.18em] text-violet-700 uppercase">PM POs</p>
-                        <p className="mt-1 text-2xl font-bold">{pmPos}</p>
-                      </div>
-                      <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">Advance Pending</p>
-                        <p className="mt-1 text-2xl font-bold">{advancePending}</p>
-                      </div>
-                      <div className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sky-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">In Transit</p>
-                        <p className="mt-1 text-2xl font-bold">{inTransitCount}</p>
-                      </div>
-                      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
-                        <p className="text-[10px] tracking-[0.18em] uppercase">GRN Complete</p>
-                        <p className="mt-1 text-2xl font-bold">{grnComplete}</p>
-                      </div>
-                    </div>
-
-                    {/* Filters */}
-                    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-800">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-slate-500">Category:</span>
-                        <button
-                          onClick={() => setCategoryFilter('All')}
-                          className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === 'All'
-                            ? 'border-amber-400 text-amber-800 bg-amber-50'
-                            : 'border-slate-300 text-slate-600 bg-white'
-                            }`}
-                        >
-                          All
-                        </button>
-                        {(['RM', 'PM'] as RequestType[]).map(type => (
-                          <button
-                            key={type}
-                            onClick={() => setCategoryFilter(type)}
-                            className={`px-2 py-1 rounded-full border text-xs ${categoryFilter === type
-                              ? 'border-emerald-400 text-emerald-800 bg-emerald-50'
-                              : 'border-slate-300 text-slate-600 bg-white'
-                              }`}
-                          >
-                            {type}
-                          </button>
-                        ))}
-
-                        <span className="ml-3 text-slate-500">Vendor:</span>
-                        <select
-                          value={issuedVendorFilter}
-                          onChange={(event) => setIssuedVendorFilter(event.target.value)}
-                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                        >
-                          <option value="All Vendors">All Vendors</option>
-                          {Array.from(new Set(issuedPORecords.map(record => record.vendor))).map(vendor => (
-                            <option key={vendor} value={vendor}>{vendor}</option>
-                          ))}
-                        </select>
-
-                        <span className="ml-3 text-slate-500">Status:</span>
-                        <select
-                          value={issuedStatusFilter}
-                          onChange={(event) => setIssuedStatusFilter(event.target.value as 'All' | 'Released' | 'In Transit' | 'At Risk')}
-                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                        >
-                          <option value="All">All Status</option>
-                          <option value="Released">Released</option>
-                          <option value="In Transit">In Transit</option>
-                          <option value="At Risk">At Risk</option>
-                        </select>
-                      </div>
-
-                      <input
-                        value={issuedSearch}
-                        onChange={(event) => setIssuedSearch(event.target.value)}
-                        placeholder="Search PO no, vendor, item..."
-                        className="w-64 max-w-full px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-800 placeholder:text-slate-400"
-                      />
-                    </div>
-
-                    {/* Itemised View table */}
-                    <div className="rounded-lg border border-blue-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-blue-100 flex items-center justify-between bg-slate-50">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sky-500 text-lg">▣</span>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Itemised View</p>
-                            <p className="text-[11px] text-slate-500">All line items across issued purchase orders</p>
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Total Value{' '}
-                          <span className="font-semibold text-amber-700">
-                            ₹{filteredIssuedPORecords.reduce((sum, po) => sum + po.grandTotal, 0).toLocaleString('en-IN')}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Item</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">PO Number</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-left">Order Qty</th>
-                              <th className="px-4 py-2 text-right">Price/Unit</th>
-                              <th className="px-4 py-2 text-right">Line Value</th>
-                              <th className="px-4 py-2 text-left">Payment Terms</th>
-                              <th className="px-4 py-2 text-left">PO Status</th>
-                              <th className="px-4 py-2 text-left">LR No</th>
-                              <th className="px-4 py-2 text-left">Exp. Delivery</th>
-                              <th className="px-4 py-2 text-left">Adv. Paid</th>
-                              <th className="px-4 py-2 text-left">GRN Ref</th>
-                              <th className="px-4 py-2 text-right">Track</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {itemisedRows.map(({ key, record, line }) => (
-                              <tr
-                                key={key}
-                                className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
-                                onClick={() => openIssuedPODetail(record)}
-                              >
-                                <td className="px-4 py-2 align-top">
-                                  <div className="flex flex-col">
-                                    <span className="text-[12px] font-semibold text-slate-900">{line.item}</span>
-                                    <span className="text-[10px] text-slate-500">{line.itemCode}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.request.type === 'RM'
-                                    ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
-                                    : 'bg-violet-50 text-violet-700 border border-violet-200'
-                                    }`}>
-                                    {record.request.type}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top font-mono text-[11px] text-sky-700">{record.poNumber}</td>
-                                <td className="px-4 py-2 align-top text-[11px]">{record.vendor}</td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">
-                                    <span className="text-slate-700">{line.qty}</span>
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top text-right text-[11px] text-slate-900">
-                                  ₹{line.pricePerUnit.toLocaleString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-right text-[11px] font-semibold text-amber-700">
-                                  ₹{line.lineTotal.toLocaleString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-600 max-w-56">
-                                  <PaymentTermsDisplay compact value={record.paymentTerms} />
-                                </td>
-                                <td className="px-4 py-2 align-top">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${record.status === 'In Transit'
-                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
-                                    : record.status === 'At Risk'
-                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    }`}>
-                                    {record.status}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-400">—</td>
-                                <td className="px-4 py-2 align-top text-[11px] text-rose-600">
-                                  {new Date(record.request.dueDate).toLocaleDateString('en-IN')}
-                                </td>
-                                <td className="px-4 py-2 align-top text-[11px] text-slate-400">—</td>
-                                <td className="px-4 py-2 align-top text-[11px] text-emerald-600">—</td>
-                                <td className="px-4 py-2 align-top text-right">
-                                  <button
-                                    onClick={() => openIssuedPODetail(record)}
-                                    className="px-3 py-1 rounded-full border border-slate-300 bg-white text-[10px] text-slate-800 hover:bg-slate-50"
-                                  >
-                                    Track
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {itemisedRows.length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={14}>
-                                  No issued purchase orders match current filters.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Tracking cards under the itemised view */}
-                    <div className="space-y-3">
-                      {filteredIssuedPORecords.map((record, cardIndex) => {
-                        const completedIndex = getTimelineCompletedIndexForRecord(record);
-
-                        return (
-                          <div
-                            key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-card-${cardIndex}`}
-                            className="rounded-lg border border-blue-200 bg-white px-4 py-4 text-xs text-slate-800 shadow-sm"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-300 font-mono text-[10px] text-sky-700">
-                                    {record.poNumber}
-                                  </span>
-                                  <span className="px-1.5 py-0.5 rounded-full border border-slate-300 text-[10px] text-slate-600">
-                                    {record.request.type}
-                                  </span>
-                                </div>
-                                <p className="text-sm font-semibold text-slate-900">{record.vendor}</p>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  {record.requestCode} · {record.lineItems.map(line => line.item).join(', ')}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm font-bold text-amber-700">
-                                  ₹{record.grandTotal.toLocaleString('en-IN')}
-                                </p>
-                                <p
-                                  className={`text-[11px] mt-1 ${record.etaDays <= 1 ? 'text-rose-600' : 'text-slate-500'
-                                    }`}
-                                >
-                                  {record.etaDays >= 0 ? `ETA ${record.etaDays} days` : 'Overdue'}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Timeline */}
-                            <div className="mt-3">
-                              <div className="flex items-center justify-between mb-1.5 relative">
-                                <div className="absolute left-8 right-8 top-1/2 h-px bg-slate-200" />
-                                {timelineStages.map((stage, index) => {
-                                  const done = index <= completedIndex;
-                                  return (
-                                    <div
-                                      key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-${stage}`}
-                                      className="relative flex flex-col items-center flex-1"
-                                    >
-                                      <div
-                                        className={`z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-semibold shadow-sm ${done
-                                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                                          : 'bg-white border-sky-200 text-sky-400'
-                                          }`}
-                                      >
-                                        {index + 1}
-                                      </div>
-                                      <p
-                                        className={`mt-2 text-[10px] tracking-[0.18em] uppercase ${done ? 'text-sky-700' : 'text-sky-400'
-                                          }`}
-                                      >
-                                        {stage}
-                                      </p>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Shipment tracking + actions */}
-                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
-                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
-                                <p className="mb-1 font-semibold">Items Ordered</p>
-                                {record.lineItems.map((line, index) => (
-                                  <div
-                                    key={`${record.backendPoId ?? 'nobid'}-${normPoKeyLocal(record.poNumber)}-c${cardIndex}-li-${line.itemCode}-${index}`}
-                                    className="flex items-center justify-between gap-2 py-1 border-t border-slate-800 first:border-t-0"
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="text-[11px] text-slate-900">{line.item}</span>
-                                      <span className="text-[10px] text-slate-500">{line.itemCode}</span>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[10px] text-slate-700">{line.qty}</p>
-                                      <p className="text-[10px] text-amber-700">
-                                        ₹{line.lineTotal.toLocaleString('en-IN')}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-800">
-                                <p className="mb-1 font-semibold">Shipment Tracking</p>
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500">Courier</span>
-                                    <span className="text-slate-800">Logistics Partner</span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500">ETA</span>
-                                    <span className="text-slate-800">{new Date(record.request.dueDate).toLocaleDateString('en-IN')}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500">Status</span>
-                                    <span className="text-slate-800">{record.status}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <button
-                                onClick={() => openIssuedPODetail(record)}
-                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-800 text-[11px] font-semibold hover:bg-slate-50"
-                              >
-                                Full Timeline
-                              </button>
-                              <button
-                                onClick={() => markIssuedPOInTransit(record)}
-                                disabled={record.status === 'In Transit'}
-                                className={`px-3 py-1.5 rounded border text-[11px] font-semibold ${record.status === 'In Transit' ? 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed' : 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
-                              >
-                                Mark In Transit
-                              </button>
-                              <button
-                                onClick={() => receiveIssuedPOGRN(record)}
-                                className="px-3 py-1.5 rounded border border-emerald-400 text-emerald-700 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100"
-                              >
-                                Mark Delivered at WH
-                              </button>
-                              <button
-                                onClick={() => applyRouteState('Procurement', 'GRN Monitor')}
-                                className="px-3 py-1.5 rounded border border-slate-300 text-slate-700 text-[11px] font-semibold bg-white hover:bg-slate-50"
-                              >
-                                Open GRN Monitor
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
 
               {sideSection === 'GRN Monitor' && (() => {
                 const grnList: GRNRecordFromApi[] = grnListFromApi ?? [];
-                const filteredGrnLines = grnList.filter((grn) => {
-                  if (grnCategoryFilter !== 'All' && grn.type !== grnCategoryFilter) return false;
-                  if (grnVendorFilter !== 'All Vendors' && grn.vendor !== grnVendorFilter) return false;
-                  const statusNorm = (grn.status || '') === 'GRN Complete' ? 'Completed' : (grn.status || '') === 'Under GRN' ? 'Under GRN' : 'Pending GRN';
-                  if (grnStatusFilter !== 'All' && statusNorm !== grnStatusFilter) return false;
-                  if (!grnSearch.trim()) return true;
-                  const q = grnSearch.toLowerCase();
-                  return (
-                    (grn.grnNo ?? '').toLowerCase().includes(q) ||
-                    (grn.poNo ?? '').toLowerCase().includes(q) ||
-                    (grn.vendor ?? '').toLowerCase().includes(q) ||
-                    (grn.lineItems ?? []).some((l) => (l.item ?? '').toLowerCase().includes(q) || (l.itemCode ?? '').toLowerCase().includes(q))
-                  );
-                });
+                const filteredGrnLines = filteredGrnMonitorLines;
                 const totalGrns = grnList.length;
                 const rmGrns = grnList.filter((g) => g.type === 'RM').length;
                 const pmGrns = grnList.filter((g) => g.type === 'PM').length;
@@ -5275,38 +8086,158 @@ const Procurement: React.FC = () => {
                       />
                     </div>
 
-                    {/* GRN list from warehouse (read-only) */}
-                    <p className="text-[11px] text-slate-500 mb-2">Data from warehouse GRN table. Read-only.</p>
+                    {/* Single GRN list: pending, under GRN, and completed */}
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      All GRNs from warehouse (pending, under GRN, and completed). Use the filters above or click column headers to sort. Click a row for full details.
+                    </p>
                     <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                      <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50">
                         <div className="flex items-center gap-2">
                           <span className="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>
                           <div>
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN list (warehouse)</p>
-                            <p className="text-[11px] text-slate-500">Read-only progress from backend</p>
+                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN register</p>
+                            <p className="text-[11px] text-slate-500">
+                              {filteredGrnLines.length} GRN{filteredGrnLines.length === 1 ? '' : 's'} match filters
+                              {grnList.length !== filteredGrnLines.length ? ` (${grnList.length} total)` : ''}
+                              {' · '}
+                              {grnComplete} completed · {underGrn} under GRN · {pendingGrn} pending
+                            </p>
                           </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                          <span>Rows per page</span>
+                          <select
+                            value={grnMonitorPageSize}
+                            onChange={(e) => {
+                              setGrnMonitorPageSize(Number(e.target.value));
+                              setGrnMonitorPage(1);
+                            }}
+                            className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
+                          >
+                            {GRN_MONITOR_PAGE_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-full text-[11px] text-slate-900">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">GRN No.</th>
-                              <th className="px-4 py-2 text-left">PO No.</th>
-                              <th className="px-4 py-2 text-left">Vendor</th>
-                              <th className="px-4 py-2 text-center">Type</th>
-                              <th className="px-4 py-2 text-center">Items</th>
-                              <th className="px-4 py-2 text-center">PO Value</th>
-                              <th className="px-4 py-2 text-left">Received Date</th>
-                              <th className="px-4 py-2 text-left">Assigned To</th>
-                              <th className="px-4 py-2 text-center">QC Status</th>
-                              <th className="px-4 py-2 text-center">Status</th>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <SortableTableTh
+                                label="GRN No."
+                                column="grnNo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="PO No."
+                                column="poNo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Vendor"
+                                column="vendor"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Type"
+                                column="type"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Item name(s)"
+                                column="items"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase min-w-[180px]"
+                              />
+                              <SortableTableTh
+                                label="PO Value"
+                                column="poValue"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Received Date"
+                                column="receivedDate"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Assigned To"
+                                column="assignedTo"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="QC Status"
+                                column="qcStatus"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
+                              <SortableTableTh
+                                label="Status"
+                                column="status"
+                                sortColumn={grnSortColumn}
+                                sortDirection={grnSortDirection}
+                                onSort={toggleGrnMonitorSort}
+                                align="center"
+                                accent="teal"
+                                thClassName="text-[10px] tracking-[0.18em] uppercase"
+                              />
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredGrnLines.map((grn) => (
-                              <tr key={grn.id} className="border-b border-slate-100 hover:bg-blue-50/60">
+                            {pagedGrnMonitorLines.map((grn) => (
+                              <tr
+                                key={grn.id}
+                                role="button"
+                                tabIndex={0}
+                                className="border-b border-slate-100 hover:bg-blue-50/60 cursor-pointer"
+                                onClick={() => void openGrnMonitorDetail(grn)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    void openGrnMonitorDetail(grn);
+                                  }
+                                }}
+                              >
                                 <td className="px-4 py-2 align-middle font-mono text-emerald-700">{grn.grnNo}</td>
                                 <td className="px-4 py-2 align-middle font-mono text-slate-700">{grn.poNo}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{grn.vendor}</td>
@@ -5315,14 +8246,32 @@ const Procurement: React.FC = () => {
                                     {grn.type}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2 align-middle text-center">{grn.items ?? 0}</td>
+                                <td className="px-4 py-2 align-middle text-left max-w-[240px]">
+                                  <div className="text-[11px] text-slate-800 font-medium leading-snug">
+                                    {grnLineItemsNameSummary(grn.lineItems)}
+                                  </div>
+                                  {(grn.lineItems?.length ?? grn.items ?? 0) > 0 && (
+                                    <div className="text-[10px] text-slate-500 mt-0.5">
+                                      {grn.lineItems?.length ?? grn.items ?? 0} line
+                                      {(grn.lineItems?.length ?? grn.items ?? 0) === 1 ? '' : 's'}
+                                    </div>
+                                  )}
+                                </td>
                                 <td className="px-4 py-2 align-middle text-center">₹{(grn.poValue ?? 0).toLocaleString('en-IN')}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{(grn.receivedDate && grn.receivedDate !== '') ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
                                 <td className="px-4 py-2 align-middle text-[11px]">{grn.assignedTo || '—'}</td>
                                 <td className="px-4 py-2 align-middle text-center text-[11px]">{grn.qcStatus ?? '—'}</td>
                                 <td className="px-4 py-2 align-middle text-center">
-                                  <span className="inline-flex items-center justify-center px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold min-w-24">
-                                    {grn.status ?? 'Pending'}
+                                  <span
+                                    className={`inline-flex items-center justify-center px-3 py-0.5 rounded-full text-[10px] font-semibold min-w-24 border ${
+                                      (grn.status || '') === 'GRN Complete'
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                        : (grn.status || '') === 'Under GRN'
+                                          ? 'bg-sky-50 border-sky-200 text-sky-800'
+                                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                                    }`}
+                                  >
+                                    {grnMonitorStatusLabel(grn)}
                                   </span>
                                 </td>
                               </tr>
@@ -5337,442 +8286,42 @@ const Procurement: React.FC = () => {
                           </tbody>
                         </table>
                       </div>
+                      {filteredGrnLines.length > 0 && grnMonitorTotalPages > 1 && (
+                        <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+                          <Pagination
+                            currentPage={grnMonitorSafePage}
+                            totalPages={grnMonitorTotalPages}
+                            onPageChange={setGrnMonitorPage}
+                            totalItems={filteredGrnLines.length}
+                            itemsPerPage={grnMonitorPageSize}
+                            variant="compact"
+                          />
+                        </div>
+                      )}
                     </div>
-
-                    {/* Line items by GRN (read-only) */}
-                    {filteredGrnLines.some((g) => (g.lineItems?.length ?? 0) > 0) && (
-                      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                          <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">GRN line items (read-only)</p>
-                        </div>
-                        <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                          <table className="w-full min-w-full text-[11px] text-slate-900">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                                <th className="px-4 py-2 text-left">GRN No.</th>
-                                <th className="px-4 py-2 text-left">Item</th>
-                                <th className="px-4 py-2 text-center">PO Qty</th>
-                                <th className="px-4 py-2 text-center">Rcvd</th>
-                                <th className="px-4 py-2 text-center">QC</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredGrnLines.flatMap((grn) => (grn.lineItems ?? []).map((li, idx) => (
-                                <tr key={`${grn.id}-${idx}`} className="border-b border-slate-100">
-                                  <td className="px-4 py-1.5 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                  <td className="px-4 py-1.5">{li.item ?? li.itemCode ?? '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.poQty ?? '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.rcvdQty ?? '—'}</td>
-                                  <td className="px-4 py-1.5 text-center">{li.qcStatus ?? '—'}</td>
-                                </tr>
-                              )))}
-                              {filteredGrnLines.flatMap((g) => g.lineItems ?? []).length === 0 && (
-                                <tr>
-                                  <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={5}>
-                                    No GRN line items.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Completed GRNs (read-only from warehouse API) */}
-                    {(() => {
-                      const completedFromApi = filteredGrnLines.filter((g) => (g.status || '') === 'GRN Complete');
-                      return (
-                        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden mt-4">
-                          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                            <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Completed GRNs</p>
-                            <p className="text-[11px] text-slate-500">Showing {completedFromApi.length} completed GRN{completedFromApi.length === 1 ? '' : 's'} (read-only)</p>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full min-w-full text-[11px] text-slate-900">
-                              <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                                  <th className="px-4 py-2 text-left">GRN No.</th>
-                                  <th className="px-4 py-2 text-left">PO No.</th>
-                                  <th className="px-4 py-2 text-left">Type</th>
-                                  <th className="px-4 py-2 text-left">Vendor</th>
-                                  <th className="px-4 py-2 text-left">Items</th>
-                                  <th className="px-4 py-2 text-left">Received Date</th>
-                                  <th className="px-4 py-2 text-left">Assigned To</th>
-                                  <th className="px-4 py-2 text-left">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {completedFromApi.map((grn) => (
-                                  <tr key={grn.id} className="border-b border-slate-100 hover:bg-emerald-50/40">
-                                    <td className="px-4 py-2 font-mono text-[10px] text-emerald-700">{grn.grnNo}</td>
-                                    <td className="px-4 py-2 font-mono text-[10px] text-sky-700">{grn.poNo ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{grn.type ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{grn.vendor ?? '—'}</td>
-                                    <td className="px-4 py-2 text-[11px]">{(grn.lineItems ?? []).map((li) => li.item ?? li.itemCode ?? '—').filter(Boolean).join(', ') || '—'}</td>
-                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}</td>
-                                    <td className="px-4 py-2 text-[11px] text-slate-700">{grn.assignedTo ?? '—'}</td>
-                                    <td className="px-4 py-2">
-                                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">Completed</span>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {completedFromApi.length === 0 && (
-                                  <tr>
-                                    <td className="px-4 py-6 text-center text-[11px] text-slate-500" colSpan={8}>
-                                      No completed GRNs yet.
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 );
               })()}
 
-              {sideSection === 'Item Tracker' && (
-                <div className="rounded-xl border border-blue-200 bg-white p-4 md:p-5 shadow-sm space-y-4">
-                  {/* Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-base md:text-lg font-bold text-slate-900">Item Tracker — All Items Across All Stages</h2>
-                      <p className="text-xs md:text-sm text-slate-600 mt-1">
-                        Live view of every raw material and packaging item across requests, quotes, POs and deliveries.
-                      </p>
-                    </div>
-                    <div className="text-[11px] md:text-xs text-slate-500 flex items-center gap-2">
-                      <span className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold">
-                        {filteredItemTrackerRows.length} items shown
-                      </span>
-                      <span className="hidden sm:inline text-slate-400">Synced with procurement data</span>
-                    </div>
-                  </div>
-
-                  {/* Filters row */}
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 md:px-4 py-3 flex flex-wrap items-center gap-3 md:gap-4 text-[11px] md:text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Category:</span>
-                      <button
-                        type="button"
-                        onClick={() => setItemTrackerCategory('All')}
-                        className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === 'All'
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                          }`}
-                      >
-                        All
-                      </button>
-                      {(['RM', 'PM'] as RequestType[]).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setItemTrackerCategory(type)}
-                          className={`px-2 py-1 rounded-full border text-[11px] md:text-xs ${itemTrackerCategory === type
-                            ? type === 'RM'
-                              ? 'border-cyan-500 bg-cyan-50 text-cyan-800'
-                              : 'border-violet-500 bg-violet-50 text-violet-800'
-                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                            }`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Vendor:</span>
-                      <select
-                        value={itemTrackerVendor}
-                        onChange={(e) => setItemTrackerVendor(e.target.value)}
-                        className="min-w-35 md:min-w-45 bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
-                      >
-                        <option value="All Vendors">All Vendors</option>
-                        {itemTrackerVendors.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-600">Status:</span>
-                      <select
-                        value={itemTrackerStatus}
-                        onChange={(e) => setItemTrackerStatus(e.target.value as 'All Statuses' | RequestStatus)}
-                        className="bg-white border border-slate-300 rounded-md px-2 py-1 text-[11px] md:text-xs text-slate-800"
-                      >
-                        <option value="All Statuses">All Statuses</option>
-                        <option value="New">New</option>
-                        <option value="Quoted">Quoted</option>
-                        <option value="PO Draft">PO Draft</option>
-                        <option value="PO Released">PO Released</option>
-                        <option value="Delivery Pending">Delivery Pending</option>
-                      </select>
-                    </div>
-
-                    <div className="ml-auto flex-1 min-w-40 max-w-xs">
-                      <input
-                        value={itemTrackerSearch}
-                        onChange={(e) => setItemTrackerSearch(e.target.value)}
-                        placeholder="Search item name, code, PO"
-                        className="w-full px-3 py-1.5 rounded-md bg-white border border-slate-300 text-[11px] md:text-xs text-slate-800 placeholder:text-slate-400"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Items table */}
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                    <table className="min-w-full text-[11px] md:text-xs text-slate-900">
-                      <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr className="text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                          <th className="px-3 md:px-4 py-2 text-left">Item</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Type</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Request</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Priority</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Req Qty</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Planned ₹</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Request Status</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Preferred Vendor</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Quoted Vendor</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Actual ₹</th>
-                          <th className="px-3 md:px-4 py-2 text-left">PO Number</th>
-                          <th className="px-3 md:px-4 py-2 text-left">PO Status</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Order Qty</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Adv Paid</th>
-                          <th className="px-3 md:px-4 py-2 text-left">LR No</th>
-                          <th className="px-3 md:px-4 py-2 text-left">Exp. Delivery</th>
-                          <th className="px-3 md:px-4 py-2 text-left">GRN Ref</th>
-                          <th className="px-3 md:px-4 py-2 text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredItemTrackerRows.map((row) => {
-                          const priorityClassName =
-                            row.priority === 'High'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : row.priority === 'Medium'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-slate-50 text-slate-600 border-slate-200';
-
-                          const typePillClass =
-                            row.type === 'RM'
-                              ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
-                              : 'bg-violet-50 text-violet-700 border-violet-200';
-
-                          const statusPillClass = statusBg[row.requestStatus];
-
-                          let actionLabel: string | null = null;
-                          if (row.requestStatus === 'New') actionLabel = 'Quote';
-                          else if (row.requestStatus === 'Quoted') actionLabel = 'Draft';
-                          else if (row.requestStatus === 'PO Draft') actionLabel = 'Release';
-                          else if (requestStatusShowsIssuedPOs(row.requestStatus)) actionLabel = 'PO';
-
-                          const handleActionClick = () => {
-                            if (!actionLabel) return;
-
-                            if (row.requestStatus === 'New') {
-                              setCategoryFilter('All');
-                              setVendorFilter('All Vendors');
-                              setStatusFilter('All Statuses');
-                              setRequestStatusFilter('All Statuses');
-                              setSearchQuery(row.itemName);
-                              applyRouteState('Procurement', 'Quotations');
-                              return;
-                            }
-
-                            if (row.requestStatus === 'Quoted') {
-                              if (row.quoteId) {
-                                createDraftPO(row.quoteId);
-                              } else {
-                                addToast('warning', 'No quote found for this item');
-                              }
-                              return;
-                            }
-
-                            if (row.requestStatus === 'PO Draft') {
-                              if (row.draftPoId) {
-                                approveDraftPO(row.draftPoId);
-                                openReleasePOModal(row.draftPoId);
-                              } else {
-                                addToast('warning', 'No draft PO linked to this item');
-                              }
-                              return;
-                            }
-
-                            if (requestStatusShowsIssuedPOs(row.requestStatus)) {
-                              if (row.poId) {
-                                const po = purchaseOrders.find((p) => p.id === row.poId);
-                                if (po) {
-                                  setSelectedPO(po);
-                                } else {
-                                  addToast('warning', 'Purchase order not found');
-                                }
-                              } else {
-                                applyRouteState('Procurement', 'Issued POs');
-                              }
-                            }
-                          };
-
-                          return (
-                            <tr key={row.key} className="border-b border-slate-100 hover:bg-blue-50/40">
-                              <td className="px-3 md:px-4 py-2 align-middle">
-                                <div className="flex flex-col">
-                                  <span className="text-[11px] md:text-xs font-semibold text-slate-900">{row.itemName}</span>
-                                  <span className="text-[10px] text-slate-500 font-mono">{row.itemCode}</span>
-                                </div>
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${typePillClass}`}>
-                                  {row.type === 'RM' ? 'RM' : 'PM'}
-                                </span>
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-slate-50 text-[10px] font-mono text-slate-700">
-                                  {row.requestCode}
-                                </span>
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${priorityClassName}`}>
-                                  {row.priority}
-                                </span>
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                {row.reqQty.toLocaleString('en-IN')} {row.unit}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                ₹{row.plannedPrice.toLocaleString('en-IN')}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusPillClass}`}>
-                                  {row.requestStatus}
-                                </span>
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                {row.preferredVendor ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                {row.quotedVendor ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-emerald-700">
-                                {row.actualPrice != null ? `₹${row.actualPrice.toLocaleString('en-IN')}` : '—'}
-                                {row.actualVsPlanned && (
-                                  <span className="block text-[9px] text-emerald-600">{row.actualVsPlanned}</span>
-                                )}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
-                                {row.poNumber ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px]">
-                                {row.poStatus ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                {row.orderQty ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center text-[11px] text-slate-800">
-                                {row.advPaid ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800 font-mono">
-                                {row.lrNo ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                {row.expDelivery ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-[11px] text-slate-800">
-                                {row.grnRef ?? '—'}
-                              </td>
-                              <td className="px-3 md:px-4 py-2 align-middle text-center">
-                                {actionLabel && (
-                                  <button
-                                    type="button"
-                                    onClick={handleActionClick}
-                                    className="px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold shadow-sm"
-                                  >
-                                    {actionLabel}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {filteredItemTrackerRows.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={18}
-                              className="px-4 py-6 text-center text-[11px] text-slate-500"
-                            >
-                              No items match the current filters.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Warehouse item progress (read-only from warehouse API) */}
-                  <div className="mt-6 rounded-xl border border-slate-200 bg-white overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-800 tracking-[0.18em] uppercase">Warehouse item progress</p>
-                      <span className="text-[11px] text-slate-500">Read-only · from warehouse inventory</span>
-                    </div>
-                    {warehouseInventoryLoading ? (
-                      <div className="px-4 py-8 text-center text-slate-500 text-sm">Loading…</div>
-                    ) : (
-                      <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
-                        <table className="w-full min-w-full text-[11px] text-slate-900">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-[10px] tracking-[0.18em] uppercase text-slate-500">
-                              <th className="px-4 py-2 text-left">Code</th>
-                              <th className="px-4 py-2 text-left">Name</th>
-                              <th className="px-4 py-2 text-left">Type</th>
-                              <th className="px-4 py-2 text-left">Zone</th>
-                              <th className="px-4 py-2 text-left">Rack</th>
-                              <th className="px-4 py-2 text-right">Stock in hand</th>
-                              <th className="px-4 py-2 text-right">In transit</th>
-                              <th className="px-4 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(warehouseInventoryData?.rows ?? []).map((row) => (
-                              <tr key={row.id} className="border-b border-slate-100">
-                                <td className="px-4 py-2 font-mono text-[10px] text-slate-800">{row.code}</td>
-                                <td className="px-4 py-2">{row.name}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : row.type === 'PM' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>{row.type}</span>
-                                </td>
-                                <td className="px-4 py-2 text-slate-700">{row.zone ?? '—'}</td>
-                                <td className="px-4 py-2 text-slate-700">{row.rack ?? '—'}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.stockInHand} {row.whUnit ?? ''}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.inTransit ?? 0}</td>
-                                <td className="px-4 py-2">
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${row.status === 'In Stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    row.status === 'Low Stock' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                      row.status === 'Critical' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                                        'bg-red-50 text-red-700 border-red-200'
-                                    }`}>{row.status}</span>
-                                </td>
-                              </tr>
-                            ))}
-                            {(warehouseInventoryData?.rows ?? []).length === 0 && (
-                              <tr>
-                                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>No warehouse inventory data.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {sideSection === 'Inventory Audit' && (
+                <InventoryAuditView
+                  requests={procurementRequestsList}
+                  requestTypeClass={requestTypeClass}
+                  onOpenRequest={(requestId) => {
+                    const req = requestsFromApi.find((r) => r.id === requestId);
+                    if (req) {
+                      applyRouteState('Procurement', 'Requests');
+                      setSelectedRequest(req);
+                    }
+                  }}
+                  onApproveGap={handleApproveInventoryAuditGap}
+                />
               )}
+
             </div>
-          </main>
-        </div>
-      )}
+          </>
+        }
+      />
 
       {/* ── PO Detail Side Panel ── */}
       {selectedPO && (() => {
@@ -5787,26 +8336,20 @@ const Procurement: React.FC = () => {
           'GRN Complete': 'bg-emerald-100 text-emerald-700 border-emerald-200',
         };
 
-        const TRACKING_STAGES: { label: string; atKey: keyof PoTrackingRecord; noteKey: keyof PoTrackingRecord; useRef?: boolean }[] = [
-          { label: 'PO Released', atKey: 'poReleasedAt', noteKey: 'poReleasedNote' },
-          { label: 'Advance Paid', atKey: 'advancePaidAt', noteKey: 'advancePaidNote' },
-          { label: 'Vendor Confirmed', atKey: 'vendorConfirmedAt', noteKey: 'vendorConfirmedNote' },
-          { label: 'Shipped', atKey: 'shippedAt', noteKey: 'shippedNote' },
-          { label: 'Order Tracking', atKey: 'poReleasedAt', noteKey: 'poReleasedNote', useRef: true },
-          { label: 'Delivered', atKey: 'deliveredAt', noteKey: 'deliveredNote' },
-          { label: 'Under GRN', atKey: 'underGrnAt', noteKey: 'underGrnNote' },
-          { label: 'GRN Complete', atKey: 'grnCompleteAt', noteKey: 'grnCompleteNote' },
-        ];
         const data = poTrackingData ?? poTrackingForm;
-        const timelineFromApi = po.backendPoId && data
-          ? TRACKING_STAGES.map((s) => {
-            const atVal = s.useRef ? data.orderTrackingRef : data[s.atKey];
-            const noteVal = data[s.noteKey];
-            const done = !!atVal;
-            return { stage: s.label, done, timestamp: typeof atVal === 'string' ? atVal : null, note: !s.useRef ? (noteVal ?? null) : null };
-          })
-          : null;
-        const timelineSteps = timelineFromApi ?? (po.timeline ?? []);
+        const backendIdNorm = po.backendPoId ? String(po.backendPoId).replace(/^PO-/, '') : '';
+        const ovModal = backendIdNorm ? unlinkedPoTimelineOverrides[backendIdNorm] : undefined;
+        const grnDoneModal = po.poNumber ? grnCompletePoNormSet.has(normPoNumberKeyForTimeline(po.poNumber)) : false;
+        /** Same 7-stage rules as Issued PO cards (no separate "Order Tracking" row — LR/ref stays in Update status). */
+        const timelineSteps: POTimelineStep[] = po.backendPoId
+          ? buildIssuedPoTimelineSteps(
+              po.status,
+              (data as PoTrackingRecord) || undefined,
+              ovModal,
+              grnDoneModal,
+              po.date,
+            )
+          : [];
 
         const handleSaveTracking = async () => {
           if (!po.backendPoId) return;
@@ -5947,7 +8490,14 @@ const Procurement: React.FC = () => {
                           </div>
                           <div className="pb-1">
                             <p className={`text-sm font-bold ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>{step.stage}</p>
-                            {step.timestamp && <p className="text-[11px] text-slate-500 mt-0.5">{step.timestamp}</p>}
+                            {step.timestamp && (
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {(() => {
+                                  const d = new Date(String(step.timestamp));
+                                  return Number.isNaN(d.getTime()) ? String(step.timestamp) : d.toLocaleString('en-IN');
+                                })()}
+                              </p>
+                            )}
                             {step.note && <p className="text-xs text-slate-600 mt-1 leading-relaxed">{step.note}</p>}
                           </div>
                         </div>
@@ -5960,6 +8510,40 @@ const Procurement: React.FC = () => {
                 {po.backendPoId && (
                   <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3">
                     <p className="text-[10px] tracking-[0.14em] text-slate-600 uppercase font-semibold mb-2">Update status</p>
+                    {(() => {
+                      const modalTr = (data ?? poTrackingForm) as PoTrackingRecord | undefined;
+                      const modalHasVendor = hasPoTrackingTimestamp(modalTr?.vendorConfirmedAt);
+                      const modalHasShipped =
+                        hasPoTrackingTimestamp(modalTr?.shippedAt) || Boolean(ovModal?.shipped);
+                      const issuedRecordForActions = {
+                        backendPoId: po.backendPoId,
+                        poNumber: po.poNumber,
+                        requestCode: po.requestCode,
+                        request: po.requestId ? { id: po.requestId } : undefined,
+                      };
+                      return (
+                        <div className="flex flex-wrap gap-2 pb-1">
+                          {!modalHasVendor && (
+                            <button
+                              type="button"
+                              onClick={() => markIssuedPOVendorConfirmed(issuedRecordForActions)}
+                              className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700"
+                            >
+                              Mark Vendor Confirmed
+                            </button>
+                          )}
+                          {modalHasVendor && !modalHasShipped && (
+                            <button
+                              type="button"
+                              onClick={() => markIssuedPOShipped(issuedRecordForActions)}
+                              className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600"
+                            >
+                              Mark In Transit
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {[
                       { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
                       { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },
@@ -6027,6 +8611,15 @@ const Procurement: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ── GRN Monitor detail (warehouse API) ── */}
+      {selectedGrnMonitor && (
+        <GrnMonitorDetailPanel
+          grn={selectedGrnMonitor}
+          loading={grnMonitorDetailLoading}
+          onClose={() => setSelectedGrnMonitor(null)}
+        />
+      )}
 
       {/* ── GRN Detail Side Panel ── */}
       {selectedGrn && (() => {
@@ -6305,6 +8898,15 @@ const Procurement: React.FC = () => {
               {/* Footer */}
               <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
                 <button
+                  type="button"
+                  disabled={deletingDraftPoId === dpo.id}
+                  onClick={() => openDeleteDraftPOConfirm(dpo)}
+                  className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                >
+                  {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete draft PO'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setEditDraftPOTarget(dpo)}
                   className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
                 >
@@ -6463,23 +9065,43 @@ const Procurement: React.FC = () => {
 
       {/* ── Release PO Modal ── */}
       {releasePOTarget && (() => (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeReleasePOModal}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+          onClick={() => {
+            if (!releasingPO) closeReleasePOModal();
+          }}
+        >
           <div
-            className="relative w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+            className="relative my-auto flex max-h-[calc(100svh-2rem)] w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+            {releasingPO ? (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Loader2 className="h-9 w-9 text-emerald-600 animate-spin" aria-hidden />
+                <p className="mt-2 text-sm font-semibold text-slate-800">Releasing PO…</p>
+                <p className="mt-1 text-[11px] text-slate-500">Please wait for the server response</p>
+              </div>
+            ) : null}
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
               <h3 className="text-lg font-bold text-slate-900">Release PO — {releasePOTarget.dpoNumber}</h3>
               <button
+                type="button"
                 onClick={closeReleasePOModal}
-                className="w-7 h-7 rounded-md border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition"
+                disabled={releasingPO}
+                className="h-7 w-7 shrink-0 rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-3 bg-white">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-4 [scrollbar-gutter:stable]">
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
                 You are about to release a PO to <span className="font-bold">{releasePOTarget.vendor}</span> for <span className="font-bold">₹{releasePOTarget.grandTotal.toLocaleString('en-IN')}</span>.
               </div>
@@ -6488,6 +9110,50 @@ const Procurement: React.FC = () => {
                 <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment terms</label>
                 <PaymentTermsDisplay value={releasePOTarget.paymentTerms} />
               </div>
+
+              {releaseDraftRequiresAdvance && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                  <p className="text-xs font-semibold text-slate-800">Payment transaction</p>
+                  <p className="text-[11px] text-slate-600">
+                    Required for advance payment terms. Record how the advance was paid — shown in Treasury with the PO.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Transaction no.</label>
+                      <input
+                        value={releasePaymentTransactionNo}
+                        onChange={(e) => setReleasePaymentTransactionNo(e.target.value)}
+                        placeholder="e.g. UTR / cheque no."
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Mode of payment</label>
+                      <select
+                        value={releasePaymentMode}
+                        onChange={(e) => setReleasePaymentMode(e.target.value as ReleasePaymentMode | '')}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      >
+                        <option value="">Select mode</option>
+                        {RELEASE_PAYMENT_MODES.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment date</label>
+                      <input
+                        type="date"
+                        value={releasePaymentDate}
+                        onChange={(e) => setReleasePaymentDate(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {releaseDraftRequiresAdvance && (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
@@ -6499,13 +9165,23 @@ const Procurement: React.FC = () => {
                   ) : releaseDraftTrackingLoading ? (
                     <p className="text-amber-800">Checking PO tracking…</p>
                   ) : advanceRecordedForReleaseDraft ? (
-                    <p className="text-emerald-800 font-medium">
-                      Advance recorded
-                      {releaseDraftTracking?.advancePaidAt
-                        ? ` (${new Date(releaseDraftTracking.advancePaidAt).toLocaleDateString('en-IN')})`
-                        : ''}
-                      . You may release the PO.
-                    </p>
+                    <div className="text-emerald-800 font-medium space-y-1">
+                      <p>
+                        Advance recorded
+                        {releaseDraftTracking?.advancePaidAt
+                          ? ` (${new Date(releaseDraftTracking.advancePaidAt).toLocaleDateString('en-IN')})`
+                          : ''}
+                        . You may release the PO.
+                      </p>
+                      {releaseDraftTracking?.paymentTransactionNo && (
+                        <p className="text-xs text-emerald-900">
+                          Txn {releaseDraftTracking.paymentTransactionNo} · {releaseDraftTracking.paymentMode} ·{' '}
+                          {releaseDraftTracking.paymentTransactionDate
+                            ? new Date(releaseDraftTracking.paymentTransactionDate).toLocaleDateString('en-IN')
+                            : '—'}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <>
                       <p className="text-amber-900">
@@ -6559,40 +9235,57 @@ const Procurement: React.FC = () => {
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                 />
               </div>
+              </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                <p className="font-semibold mb-1">Items in this PO:</p>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  {releasePOTarget.lineItems.map((line, index) => (
-                    <li key={`${line.itemCode}-${index}`}>
-                      {line.item}: {line.qty} @ ₹{line.pricePerUnit}
-                    </li>
-                  ))}
-                </ul>
+              <div className="flex min-h-0 shrink-0 flex-col px-5 pb-4 pt-2">
+                <div className="flex max-h-[min(22rem,42svh)] min-h-[6.5rem] flex-col overflow-hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <p className="mb-1 shrink-0 font-semibold">Items in this PO ({releasePOTarget.lineItems.length})</p>
+                  <ul
+                    className="min-h-0 flex-1 list-disc space-y-0.5 overflow-y-scroll overscroll-y-contain pl-4 pr-2 [scrollbar-gutter:stable]"
+                    aria-label="Line items in this purchase order"
+                  >
+                    {releasePOTarget.lineItems.map((line, index) => (
+                      <li key={`${line.itemCode}-${index}`} className="break-words py-0.5">
+                        {line.item}: {line.qty} @ ₹{line.pricePerUnit}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
 
-            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
               <button
-                onClick={submitReleasePO}
+                type="button"
+                onClick={() => void submitReleasePO()}
                 disabled={
-                  releaseDraftRequiresAdvance &&
-                  (!releaseDraftBackendPoIdNormalized ||
-                    !advanceRecordedForReleaseDraft ||
-                    releaseDraftTrackingLoading)
+                  releasingPO ||
+                  (releaseDraftRequiresAdvance &&
+                    (!releaseDraftBackendPoIdNormalized ||
+                      !advanceRecordedForReleaseDraft ||
+                      releaseDraftTrackingLoading))
                 }
                 title={
                   releaseDraftRequiresAdvance && !advanceRecordedForReleaseDraft && releaseDraftBackendPoIdNormalized
                     ? 'Record advance payment before releasing'
                     : undefined
                 }
-                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-w-[7.5rem]"
               >
-                Release PO
+                {releasingPO ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Releasing…
+                  </>
+                ) : (
+                  'Release PO'
+                )}
               </button>
               <button
+                type="button"
                 onClick={closeReleasePOModal}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                disabled={releasingPO}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -6660,7 +9353,8 @@ const Procurement: React.FC = () => {
         const requestQuotedVendors = Array.from(
           new Set(requestItemQuotes.map((q) => q.vendor).filter((v) => v.trim().length > 0))
         ).sort((a, b) => a.localeCompare(b));
-        const canReleasePO = req.status === 'PO Draft';
+        const stockCheckPending = isStockCheckPendingForRequest(req);
+        const canReleasePO = req.status === 'PO Draft' && !stockCheckPending;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedRequest(null)}>
@@ -6703,6 +9397,28 @@ const Procurement: React.FC = () => {
                     }`}>{req.status}</span>
                   <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-violet-50 text-violet-700 border-violet-200'
                     }`}>{req.type}</span>
+                  {req.stockCheckStatus ? (
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
+                        isStockCheckPendingForRequest(req)
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : String(req.stockCheckStatus).trim().toLowerCase() === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-sky-50 text-sky-700 border-sky-200'
+                      }`}
+                    >
+                      Stock Check: {req.stockCheckStatus}
+                    </span>
+                  ) : null}
+                  {parseStockCheckOutcome(req.stockCheckNotes) === 'not_ok' ? (
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                      Warehouse: Not OK
+                    </span>
+                  ) : parseStockCheckOutcome(req.stockCheckNotes) === 'all_ok' ? (
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      Warehouse: All OK
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
@@ -6712,7 +9428,7 @@ const Procurement: React.FC = () => {
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Request Date</span>
                     <span className="text-slate-900 font-medium">
-                      {req.createdDate ? new Date(req.createdDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' }) : '—'}
+                      {formatDateEnInSafe(req.createdDate)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
@@ -6722,8 +9438,13 @@ const Procurement: React.FC = () => {
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Required Date</span>
                     <span className="text-amber-600 font-bold">
-                      {new Date(req.dueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' })}
+                      {formatDateWithIsoWeek(req.dueDate)}
                     </span>
+                    {!req.dueDate?.trim() && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Not set — use <strong>Edit Request</strong> below to add a required date.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-slate-200">
                     <span className="text-slate-600">Source</span>
@@ -6759,6 +9480,13 @@ const Procurement: React.FC = () => {
                           const row = raw.find((r) => lineMatches(r.itemName ?? r.name ?? ''));
                           return { vendor: po.vendorName ?? '', poNumber: po.poNumber ?? '', rate: row?.rate ?? row?.price ?? 0 };
                         });
+                        const modalStockCheckGap = getStockCheckGapForItem(
+                          req.stockCheckStatus,
+                          req.stockCheckNotes,
+                          item.itemCode,
+                          item.itemName
+                        );
+                        const modalGapLineKey = `${req.id}|${item.itemCode}|modal`;
                         return (
                           <div key={item.itemCode} className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
                             {/* Item Header */}
@@ -6778,7 +9506,15 @@ const Procurement: React.FC = () => {
                                 </div>
                                 <div>
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                  <p className="text-slate-900 font-bold">{item.moq}</p>
+                                  <p className="text-slate-900 font-bold">
+                                    {item.moq
+                                      ? formatQtyWithPrimaryUnit(
+                                          item.moq,
+                                          item.unit,
+                                          item.type === 'PM' ? 'PM' : 'RM'
+                                        )
+                                      : '—'}
+                                  </p>
                                 </div>
                                 <div>
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
@@ -6794,9 +9530,68 @@ const Procurement: React.FC = () => {
                                 </div>
                                 <div>
                                   <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                  <p className="text-slate-900 font-bold">{item.leadTimeDays}d</p>
+                                  <p className="text-slate-900 font-bold">
+                                    {item.leadTimeDays != null && Number.isFinite(item.leadTimeDays) ? `${item.leadTimeDays}d` : '—'}
+                                  </p>
                                 </div>
+                                <div>
+                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
+                                  <p className="text-slate-900 font-bold">
+                                    {formatDateWithIsoWeek(item.expectedDate || req.dueDate)}
+                                  </p>
+                                </div>
+                                {modalStockCheckGap ? (
+                                  <div className="col-span-2">
+                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Stock check gap</p>
+                                    <p className="text-amber-700 font-bold tabular-nums">
+                                      +{modalStockCheckGap.gapQty.toLocaleString('en-IN')} {item.unit}
+                                    </p>
+                                  </div>
+                                ) : null}
                               </div>
+
+                              {modalStockCheckGap ? (
+                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs text-amber-900">
+                                    Warehouse reported a shortfall after stock check. Approve to add gap qty to this
+                                    request{modalStockCheckGap.consumptionQty != null
+                                      ? ` (consumption ${modalStockCheckGap.consumptionQty.toLocaleString('en-IN')} ${item.unit} in audit window)`
+                                      : ''}{' '}
+                                    and set inventory to the physical count.
+                                  </p>
+                                  {modalStockCheckGap.gapApproved ? (
+                                    <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      Gap approved
+                                    </span>
+                                  ) : modalStockCheckGap.canApprove ? (
+                                    <button
+                                      type="button"
+                                      disabled={approvingGapLineKey === modalGapLineKey}
+                                      onClick={async () => {
+                                        const auditLine = buildInventoryAuditLines([req]).find(
+                                          (l) =>
+                                            l.requestId === req.id &&
+                                            l.itemCode === item.itemCode &&
+                                            l.itemName === item.itemName
+                                        );
+                                        if (!auditLine) {
+                                          addToast('error', 'Could not resolve audit line for gap approval.');
+                                          return;
+                                        }
+                                        setApprovingGapLineKey(modalGapLineKey);
+                                        try {
+                                          await handleApproveInventoryAuditGap(auditLine);
+                                        } finally {
+                                          setApprovingGapLineKey(null);
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg border border-amber-400 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-60"
+                                    >
+                                      {approvingGapLineKey === modalGapLineKey ? 'Approving…' : 'Approve gap'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
 
                               {/* Vendor history for this RM */}
                               {(quoteHistory.length > 0 || poHistory.length > 0) && (
@@ -6924,19 +9719,29 @@ const Procurement: React.FC = () => {
                     <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Summary</h3>
                     <div className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
                       {(() => {
+                        const stockCheckCompleted =
+                          String(req.stockCheckStatus ?? '').trim().toLowerCase() === 'completed';
+                        if (!stockCheckCompleted) {
+                          return [
+                            { label: 'Stock In Hand', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'Open PO Qty', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'In Transit', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'Open Orders', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                          ];
+                        }
                         const summary = requestStockSummaryByRequestId.get(req.id)
                           ?? req.stockSummary
                           ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
                         return [
-                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600' },
-                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900' },
-                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900' },
-                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900' },
+                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600', isPending: false },
+                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900', isPending: false },
+                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900', isPending: false },
+                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900', isPending: false },
                         ];
                       })().map((row, idx) => (
                         <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-slate-200' : ''}`}>
                           <span className="text-slate-600 text-sm">{row.label}</span>
-                          <span className={`font-bold text-lg ${row.color}`}>{row.value}</span>
+                          <span className={`font-bold ${row.isPending ? 'text-sm' : 'text-lg'} ${row.color}`}>{row.value}</span>
                         </div>
                       ))}
                     </div>
@@ -7117,20 +9922,64 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex items-center justify-between gap-3">
-                <button
-                  onClick={() => {
-                    setEditRequestTarget(req);
-                  }}
-                  className="px-4 py-2 rounded-lg border border-blue-300 text-slate-700 text-sm font-semibold hover:bg-blue-50 transition"
-                >
-                  Edit Request
-                </button>
-
+              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditRequestTarget(req);
+                    }}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingRequestId === req.id}
+                    onClick={() => openDeleteRequestConfirm(req)}
+                    className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                  >
+                    {deletingRequestId === req.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openStockCheckModal(req)}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                  >
+                    Stock Check
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateRequestPriority(
+                        req.id,
+                        req.priority === 'High' ? 'Medium' : req.priority === 'Medium' ? 'Low' : 'High'
+                      );
+                    }}
+                    className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
+                  >
+                    Priority
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openReleaseToDraftPoForRequest(req)}
+                    className="px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition"
+                  >
+                    Release to Draft PO
+                  </button>
+
                   {reqQuotes.length > 0 && selectedQuoteIdInPrView && (
                     <button
                       onClick={async () => {
+                        if (stockCheckPending) {
+                          addToast('warning', 'Stock check is pending. Draft/PO actions are locked until warehouse sends stock status.');
+                          return;
+                        }
                         const selectedQuote = quotes.find((q) => q.id === selectedQuoteIdInPrView);
                         const backendPr = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as { items?: BackendPRItem[] } | undefined;
                         const items = Array.isArray(backendPr?.items) ? backendPr.items : [];
@@ -7153,7 +10002,7 @@ const Procurement: React.FC = () => {
                       }}
                       className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
                     >
-                      Create Draft PO
+                      Create Draft PO (Quick)
                     </button>
                   )}
 
@@ -7199,6 +10048,34 @@ const Procurement: React.FC = () => {
           >
             <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
             <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Required date</label>
+                  <input
+                    type="date"
+                    value={editRequestForm.requiredByDate}
+                    onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    When material is needed by Planning / production. Also sets Items List tier valid-till for the preferred vendor.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
+                  <select
+                    value={editRequestForm.priority}
+                    onChange={(e) =>
+                      setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+              </div>
               {/* <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor</label>
                 <select
@@ -7267,19 +10144,22 @@ const Procurement: React.FC = () => {
               {/* Line items: editable quantities and unit */}
               {editRequestForm.items.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — quantities & unit</label>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty, unit & planned price</label>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden overflow-x-auto">
+                    <table className="w-full text-sm min-w-[36rem]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Type</th>
                           <th className="px-3 py-2 text-right font-semibold text-slate-700">Qty to request</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Unit</th>
+                          <th className="px-3 py-2 text-right font-semibold text-slate-700">Price (₹/unit)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {editRequestForm.items.map((item, idx) => (
+                        {editRequestForm.items.map((item, idx) => {
+                          const plannedPrice = resolvePlannedUnitPrice(item);
+                          return (
                           <tr key={idx} className="border-b border-slate-100 last:border-0">
                             <td className="px-3 py-2">
                               <span className="font-medium text-slate-900">{item.name ?? item.code ?? '—'}</span>
@@ -7306,8 +10186,20 @@ const Procurement: React.FC = () => {
                                 ))}
                               </select>
                             </td>
+                            <td className="px-3 py-2 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                placeholder="0"
+                                value={plannedPrice > 0 ? plannedPrice : ''}
+                                onChange={(e) => updateEditRequestItemPrice(idx, e.target.value)}
+                                className="w-28 px-2 py-1.5 rounded border border-slate-300 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                              />
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -7450,9 +10342,81 @@ const Procurement: React.FC = () => {
                     addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request'));
                     return;
                   }
-                  queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  const savedId = editRequestTarget.id;
+                  const savedCode = editRequestTarget.code;
+                  if (res.data) {
+                    const updated = mapBackendPrToRequest(res.data);
+                    setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+                    setSelectedRequest((prev) => (prev && prev.id === updated.id ? updated : prev));
+                  } else {
+                    const savedDue = normalizeDateOnlyString(editRequestForm.requiredByDate) || '';
+                    const patchRequest = (r: ProcurementRequest): ProcurementRequest =>
+                      r.id === savedId
+                        ? { ...r, dueDate: savedDue, priority: editRequestForm.priority }
+                        : r;
+                    setRequests((prev) => prev.map(patchRequest));
+                    setSelectedRequest((prev) => (prev && prev.id === savedId ? patchRequest(prev) : prev));
+                  }
+                  const prItemsForSync = Array.isArray(editRequestForm.items) ? editRequestForm.items : [];
+                  const vendorForSync =
+                    editRequestForm.preferredVendor?.trim() ||
+                    editRequestTarget.preferredVendor?.trim() ||
+                    '';
+                  const syncResult = await applyEditRequestSideEffects({
+                    requestId: savedId,
+                    prItems: prItemsForSync,
+                    preferredVendor: vendorForSync,
+                    validTill: normalizeDateOnlyString(editRequestForm.requiredByDate) || null,
+                    draftPOs,
+                    itemsListRm: itemsListRm ?? [],
+                    itemsListPm: itemsListPm ?? [],
+                    vendors: (vendorClientList ?? [])
+                      .filter((v) => v.type === 'vendor')
+                      .map((v) => ({ id: v.id, name: v.name })),
+                  });
+
+                  if (syncResult.draftPosUpdated > 0) {
+                    setDraftPOs((prev) =>
+                      prev.map((d) => {
+                        if (String(d.requestId) !== String(savedId)) return d;
+                        const { lines } = applyDraftPoLinePrices(d, prItemsForSync);
+                        const subtotal = lines.reduce((s, l) => s + (l.lineTotal - l.gstAmount), 0);
+                        const gstTotal = lines.reduce((s, l) => s + l.gstAmount, 0);
+                        return {
+                          ...d,
+                          lineItems: lines,
+                          subtotal: parseFloat(subtotal.toFixed(2)),
+                          gstTotal: parseFloat(gstTotal.toFixed(2)),
+                          grandTotal: parseFloat((subtotal + gstTotal).toFixed(2)),
+                        };
+                      })
+                    );
+                  }
+
+                  await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                  await queryClient.invalidateQueries({
+                    predicate: (q) =>
+                      Array.isArray(q.queryKey) &&
+                      typeof q.queryKey[0] === 'string' &&
+                      q.queryKey[0].startsWith('items-list'),
+                  });
                   setEditRequestTarget(null);
-                  addToast('success', `Request ${editRequestTarget.code} updated`);
+                  const syncParts: string[] = [];
+                  if (syncResult.draftPosUpdated > 0) {
+                    syncParts.push(`${syncResult.draftPosUpdated} draft PO(s)`);
+                  }
+                  if (syncResult.itemsListTiersUpdated > 0) {
+                    syncParts.push(`${syncResult.itemsListTiersUpdated} price list tier(s)`);
+                  }
+                  let successMsg = `Request ${savedCode} updated`;
+                  if (syncParts.length > 0) {
+                    successMsg += ` — also updated ${syncParts.join(' and ')}`;
+                  }
+                  addToast('success', successMsg);
+                  if (syncResult.warnings.length > 0) {
+                    addToast('warning', syncResult.warnings.slice(0, 2).join(' '));
+                  }
                 }}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
               >
@@ -7502,24 +10466,46 @@ const Procurement: React.FC = () => {
         const vendorSlabsFromQuotes = reqQuotesForItem.flatMap((q) => {
           const line = q.lines.find((l) => quoteLineMatchesReleaseTarget(l, item));
           if (!line) return [];
-          const moqFromQty = typeof line.qty === 'string' ? parseInt(line.qty, 10) : line.qty;
+          const moqFromQty =
+            typeof line.qty === 'string' ? parseMoqInput(line.qty) ?? line.qty : line.qty;
           return [{ vendor: q.vendor, moq: Number.isNaN(moqFromQty) ? item.moq ?? '—' : moqFromQty, unitPrice: line.pricePerUnit, leadDays: q.leadTimeDays, terms: q.terms }];
         });
         const vendorSlabs = vendorSlabsFromItemsList.length > 0 ? vendorSlabsFromItemsList : vendorSlabsFromQuotes;
-        const lineItemsForModal = releaseToPlannedLineEdits.length > 0
+        const lineItemsForModal: ReleaseLineEditRow[] = releaseToPlannedLineEdits.length > 0
           ? releaseToPlannedLineEdits
-          : [{
-            itemName: itemName ?? '',
-            itemCode: itemCode ?? '',
-            type: req.type,
-            qty: Number(item.reqQty ?? item.qty ?? 0) || 0,
-            unit: String(item.unit ?? (req.type === 'PM' ? 'PCS' : 'KG')),
-            moq: Number(item.moq ?? 0) || 0,
-            unitPrice: Number(item.plannedPrice ?? 0) || 0,
-            leadDays: Number(releaseToPlannedForm.leadTimeDays ?? 0) || 0,
-            ...(item.raw_material_id != null ? { raw_material_id: Number(item.raw_material_id) } : {}),
-            ...(item.pack_material_id != null ? { pack_material_id: Number(item.pack_material_id) } : {}),
-          }];
+          : (() => {
+            const totalReqQty = Number(item.reqQty ?? item.qty ?? 0) || 0;
+            const oq = resolveOpenQtyForReleaseItem({
+              requestId: req.id,
+              reqType: req.type,
+              itemName: itemName ?? '',
+              itemCode: itemCode ?? '',
+              totalReqQty,
+              raw_material_id: item.raw_material_id,
+              pack_material_id: item.pack_material_id,
+              itemType: reqTypeModal,
+            });
+            return [{
+              itemName: itemName ?? '',
+              itemCode: itemCode ?? '',
+              type: req.type,
+              originalQty: oq,
+              qty: oq,
+              unit:
+                req.type === 'PM'
+                  ? String(item.unit ?? 'PCS')
+                  : resolveRmPrimaryUnit(
+                      item.raw_material_id != null ? Number(item.raw_material_id) : null,
+                      item.itemCode,
+                      String(item.unit ?? '')
+                    ),
+              moq: Number(item.moq ?? 0) || 0,
+              unitPrice: Number(item.plannedPrice ?? 0) || 0,
+              leadDays: Number(releaseToPlannedForm.leadTimeDays ?? 0) || 0,
+              ...(item.raw_material_id != null ? { raw_material_id: Number(item.raw_material_id) } : {}),
+              ...(item.pack_material_id != null ? { pack_material_id: Number(item.pack_material_id) } : {}),
+            }];
+          })();
         const releaseModalSubtotal = lineItemsForModal.reduce(
           (sum, ln) => sum + (Number(ln.qty) || 0) * (Number(ln.unitPrice) || 0),
           0
@@ -7625,7 +10611,9 @@ const Procurement: React.FC = () => {
               <div className="flex-1 overflow-auto p-3 sm:p-5 space-y-5">
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm w-full">
                   <h3 className="font-bold text-slate-900 text-sm mb-1">PO lines</h3>
-                  <p className="text-xs text-slate-500 mb-3">Quantities and rates from the request; adjust pricing via vendor and MOQ slab below.</p>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Set <span className="font-semibold text-slate-700">release qty</span> per line (≤ open request). What you do not put on this draft stays open on the procurement request. Adjust pricing via vendor and MOQ slab below.
+                  </p>
                   <div className="border-t border-slate-200 my-3" />
                   <div className="overflow-x-auto w-full">
                     <table className="w-full text-xs">
@@ -7651,7 +10639,26 @@ const Procurement: React.FC = () => {
                               {ln.moq != null && Number(ln.moq) > 0 ? Number(ln.moq).toLocaleString('en-IN') : '—'}
                             </td>
                             <td className="py-2 text-right text-slate-900 font-medium whitespace-nowrap align-top tabular-nums">
-                              {Number(ln.qty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                max={ln.originalQty}
+                                value={ln.qty === 0 ? '' : ln.qty}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const n = raw === '' ? 0 : parseFloat(raw);
+                                  const next = Number.isFinite(n) ? Math.min(ln.originalQty, Math.max(0, n)) : 0;
+                                  setReleaseToPlannedLineEdits((prev) => {
+                                    const base = prev.length > 0 ? prev : [...lineItemsForModal];
+                                    return base.map((row, ri) => (ri === i ? { ...row, qty: next } : row));
+                                  });
+                                }}
+                                className="w-24 rounded border border-slate-300 px-1.5 py-1 text-right text-xs tabular-nums"
+                              />
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                max {Number(ln.originalQty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              </div>
                             </td>
                             <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.unit}</td>
                             <td className="py-2 text-right text-slate-900 whitespace-nowrap align-top tabular-nums">
@@ -7705,33 +10712,36 @@ const Procurement: React.FC = () => {
                             const vendorName = e.target.value;
                             setReleaseToPlannedForm((f) => ({ ...f, vendor: vendorName }));
                             if (!vendorName) return;
-                            setReleaseToPlannedLineEdits((prev) => prev.map((ln) => {
-                              const source = ln.type === 'PM' ? itemsListPm : itemsListRm;
-                              const row = source.find((r) => {
-                                const c0 = String(ln.itemCode ?? '').trim().toLowerCase();
-                                const n0 = String(ln.itemName ?? '').trim().toLowerCase();
-                                const rc0 = String(r.code ?? '').trim().toLowerCase();
-                                const rn0 = String(r.name ?? '').trim().toLowerCase();
-                                const rmA = ln.raw_material_id != null ? Number(ln.raw_material_id) : NaN;
-                                const pmA = ln.pack_material_id != null ? Number(ln.pack_material_id) : NaN;
-                                const rmB = r.raw_material_id != null ? Number(r.raw_material_id) : NaN;
-                                const pmB = r.pack_material_id != null ? Number(r.pack_material_id) : NaN;
-                                if (Number.isFinite(rmA) && rmA > 0 && Number.isFinite(rmB) && rmB > 0) return rmA === rmB;
-                                if (Number.isFinite(pmA) && pmA > 0 && Number.isFinite(pmB) && pmB > 0) return pmA === pmB;
-                                if (c0 && rc0 && c0 === rc0) return true;
-                                if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
-                                return false;
+                            setReleaseToPlannedLineEdits((prev) => {
+                              const base = prev.length > 0 ? prev : [...lineItemsForModal];
+                              return base.map((ln) => {
+                                const source = ln.type === 'PM' ? itemsListPm : itemsListRm;
+                                const row = source.find((r) => {
+                                  const c0 = String(ln.itemCode ?? '').trim().toLowerCase();
+                                  const n0 = String(ln.itemName ?? '').trim().toLowerCase();
+                                  const rc0 = String(r.code ?? '').trim().toLowerCase();
+                                  const rn0 = String(r.name ?? '').trim().toLowerCase();
+                                  const rmA = ln.raw_material_id != null ? Number(ln.raw_material_id) : NaN;
+                                  const pmA = ln.pack_material_id != null ? Number(ln.pack_material_id) : NaN;
+                                  const rmB = r.raw_material_id != null ? Number(r.raw_material_id) : NaN;
+                                  const pmB = r.pack_material_id != null ? Number(r.pack_material_id) : NaN;
+                                  if (Number.isFinite(rmA) && rmA > 0 && Number.isFinite(rmB) && rmB > 0) return rmA === rmB;
+                                  if (Number.isFinite(pmA) && pmA > 0 && Number.isFinite(pmB) && pmB > 0) return pmA === pmB;
+                                  if (c0 && rc0 && c0 === rc0) return true;
+                                  if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
+                                  return false;
+                                });
+                                const vr = (row?.vendorRates ?? []).find((x) => String(x.vendor_name ?? '').trim().toLowerCase() === vendorName.trim().toLowerCase());
+                                if (!vr) return ln;
+                                const tier0 = (vr.tiers ?? [])[0];
+                                return {
+                                  ...ln,
+                                  moq: Number(tier0?.moq_min ?? ln.moq) || ln.moq,
+                                  unitPrice: Number(tier0?.price_per_unit ?? ln.unitPrice) || ln.unitPrice,
+                                  leadDays: Number(vr.lead_time_days ?? ln.leadDays) || ln.leadDays,
+                                };
                               });
-                              const vr = (row?.vendorRates ?? []).find((x) => String(x.vendor_name ?? '').trim().toLowerCase() === vendorName.trim().toLowerCase());
-                              if (!vr) return ln;
-                              const tier0 = (vr.tiers ?? [])[0];
-                              return {
-                                ...ln,
-                                moq: Number(tier0?.moq_min ?? ln.moq) || ln.moq,
-                                unitPrice: Number(tier0?.price_per_unit ?? ln.unitPrice) || ln.unitPrice,
-                                leadDays: Number(vr.lead_time_days ?? ln.leadDays) || ln.leadDays,
-                              };
-                            }));
+                            });
                           }}
                           className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                         >
@@ -7764,14 +10774,16 @@ const Procurement: React.FC = () => {
                               }
                               if (slab) {
                                 next.leadTimeDays = slab.leadDays;
-                                setReleaseToPlannedLineEdits((prev) =>
-                                  prev.map((ln) => ({
+                                setReleaseToPlannedLineEdits((prev) => {
+                                  const base = prev.length > 0 ? prev : [...lineItemsForModal];
+                                  const moqNum = Number(slab.moq);
+                                  return base.map((ln) => ({
                                     ...ln,
-                                    moq: slab.moq,
+                                    moq: Number.isFinite(moqNum) ? moqNum : ln.moq,
                                     unitPrice: slab.unitPrice,
                                     leadDays: slab.leadDays,
-                                  }))
-                                );
+                                  }));
+                                });
                               }
                               return next;
                             });
@@ -7882,6 +10894,26 @@ const Procurement: React.FC = () => {
                         return;
                       }
 
+                      for (const ln of linesForCreate) {
+                        const q = Number(ln.qty) || 0;
+                        if (q > ln.originalQty) {
+                          addToast(
+                            'warning',
+                            `Release qty for ${ln.itemName || 'line'} cannot exceed open request (${ln.originalQty}).`,
+                          );
+                          return;
+                        }
+                        const moq = Number(ln.moq) || 0;
+                        const remaining = Math.max(0, (Number(ln.originalQty) || 0) - q);
+                        if (moq > 0 && remaining > 0 && remaining < moq) {
+                          addToast(
+                            'warning',
+                            `Leftover qty for ${ln.itemName || 'line'} is ${remaining}, below MOQ ${moq}. Increase release qty to full, or keep remaining >= MOQ.`,
+                          );
+                          return;
+                        }
+                      }
+
                       const advErr = validateAdvancePercentForType(
                         releaseToPlannedForm.paymentTermsType,
                         Number(releaseToPlannedForm.advancePercent)
@@ -7958,6 +10990,7 @@ const Procurement: React.FC = () => {
                           quantity: String(ln.qty),
                           rate: String(ln.unitPrice),
                           tax: '18',
+                          lead_time_days: Number(ln.leadDays ?? 0) || 0,
                           ...(ln.raw_material_id != null ? { raw_material_id: Number(ln.raw_material_id) } : {}),
                           ...(ln.pack_material_id != null ? { pack_material_id: Number(ln.pack_material_id) } : {}),
                         })),
@@ -8003,9 +11036,70 @@ const Procurement: React.FC = () => {
                         backendPoId: backendId,
                       };
 
-                      await updateRequestStatus(req.id, 'PO Draft', {
-                        skipItems: true,
+                      const prRow = backendPrArray.find((p: { id: string }) => String(p.id) === req.id) as
+                        | {
+                            items?: BackendPRItem[];
+                            planningExtractedId?: number;
+                            planningBatchId?: number | null;
+                            priority?: string;
+                            requiredByDate?: string | null;
+                            notes?: string | null;
+                            preferredVendor?: string | null;
+                          }
+                        | undefined;
+
+                      const backendItemsForSplit = Array.isArray(prRow?.items) ? prRow!.items : [];
+                      const { releasedItems, remainingItems } = splitBackendPrItemsAfterPartialRelease(
+                        backendItemsForSplit,
+                        lineItemsForModal,
+                        linesForCreate
+                      );
+
+                      const prUpd = await updateProcurementRequestApi(req.id, {
+                        status: 'PO Draft',
+                        items: releasedItems,
                       });
+                      if (!prUpd.success) {
+                        addToast(
+                          'error',
+                          typeof prUpd.error === 'string'
+                            ? prUpd.error
+                            : 'Draft PO was created but updating the procurement request failed. Adjust the request manually.',
+                        );
+                        void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                        void invalidatePurchaseOrdersQueries();
+                        return;
+                      }
+
+                      let remainingCreatedCode: string | null = null;
+                      if (remainingItems.length > 0) {
+                        // Create a NEW procurement request row for the remainder so future PO drafts are linked to the correct requestId.
+                        if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+                          addToast('error', 'Cannot split PR remainder: missing planningExtractedId on backend PR.');
+                        } else {
+                          const remainingRes = await createProcurementRequestApi({
+                            planningExtractedId: prRow.planningExtractedId,
+                            planningBatchId: prRow.planningBatchId ?? null,
+                            priority: prRow.priority ?? 'Medium',
+                            requiredByDate: prRow.requiredByDate ?? null,
+                            notes: prRow.notes ?? null,
+                            preferredVendor: prRow.preferredVendor ?? null,
+                            items: remainingItems,
+                          });
+
+                          if (!remainingRes.success || !remainingRes.data) {
+                            addToast(
+                              'error',
+                              typeof remainingRes.error === 'string'
+                                ? remainingRes.error
+                                : 'Failed to create remaining procurement request for PR remainder.',
+                            );
+                          } else {
+                            remainingCreatedCode = remainingRes.data.code ?? null;
+                          }
+                        }
+                      }
+                      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
 
                       updateProcurementState((current) => ({
                         draftPOs: [newDraftPO, ...current.draftPOs],
@@ -8014,7 +11108,13 @@ const Procurement: React.FC = () => {
                       void invalidatePurchaseOrdersQueries();
                       addToast(
                         'success',
-                        `Draft PO ${newDpoId} created for ${req.code}`
+                        `Draft PO ${newDpoId} created for ${req.code}${
+                          remainingItems.length > 0
+                            ? remainingCreatedCode
+                              ? `; remainder split into ${remainingCreatedCode}`
+                              : '; remainder split into a new PR'
+                            : ''
+                        }`
                       );
                       setReleaseToPlannedNotes('');
                       setReleaseToPlannedTarget(null);
@@ -8089,53 +11189,66 @@ const Procurement: React.FC = () => {
                 />
               </div>
               <div>
-                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items</span>
-                <div className="space-y-2">
-                  {editDraftPOForm.lineItems.map((line, idx) => (
-                    <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2 text-sm">
-                      <span className="font-medium text-slate-800 min-w-[120px] truncate">{line.item}</span>
-                      <span className="text-xs text-slate-500 min-w-[70px]">
-                        Lead: {line.leadTimeDays != null ? `${line.leadTimeDays}d` : '—'}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Qty"
-                        value={line.qty}
-                        onChange={(e) => {
-                          const qtyStr = e.target.value;
-                          const qty = parseFloat(String(qtyStr).replace(/[^\d.]/g, '')) || 0;
-                          const price = editDraftPOForm.lineItems[idx].pricePerUnit ?? 0;
-                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
-                          const subtotal = qty * price;
-                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
-                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                          const next = editDraftPOForm.lineItems.map((l, i) =>
-                            i === idx ? { ...l, qty: qtyStr, gstAmount, lineTotal } : l
-                          ) as DraftPOLineItem[];
-                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
-                        }}
-                        className="w-20 rounded border border-slate-300 px-2 py-1"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Price"
-                        value={line.pricePerUnit}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value) || 0;
-                          const qty = parseFloat(String(editDraftPOForm.lineItems[idx].qty).replace(/[^\d.]/g, '')) || 0;
-                          const gstPct = editDraftPOForm.lineItems[idx].gstPercent ?? 18;
-                          const subtotal = qty * v;
-                          const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
-                          const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-                          const next = editDraftPOForm.lineItems.map((l, i) =>
-                            i === idx ? { ...l, pricePerUnit: v, gstAmount, lineTotal } : l
-                          ) as DraftPOLineItem[];
-                          setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
-                        }}
-                        className="w-24 rounded border border-slate-300 px-2 py-1"
-                      />
-                    </div>
-                  ))}
+                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty &amp; price/unit</span>
+                <div className="rounded-lg border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-[11px] tracking-wide text-slate-500 border-b border-slate-200">
+                        <th className="px-2 py-2 font-semibold">Item</th>
+                        <th className="px-2 py-2 font-semibold text-right w-24">Qty</th>
+                        <th className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
+                        <th className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editDraftPOForm.lineItems.map((line, idx) => (
+                        <tr key={idx} className="border-b border-slate-100 last:border-0">
+                          <td className="px-2 py-2 align-top">
+                            <p className="font-medium text-slate-800 leading-snug">{line.item}</p>
+                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                            {line.leadTimeDays != null ? (
+                              <p className="text-[10px] text-slate-500 mt-0.5">Lead {line.leadTimeDays}d · GST {line.gstPercent ?? 18}%</p>
+                            ) : null}
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Qty"
+                              value={line.qty}
+                              onChange={(e) => {
+                                const next = editDraftPOForm.lineItems.map((l, i) =>
+                                  i === idx ? recalcDraftPoLineItem(l, { qty: e.target.value }) : l,
+                                );
+                                setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : ''}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/,/g, '').trim();
+                                const price = raw === '' ? 0 : parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+                                const next = editDraftPOForm.lineItems.map((l, i) =>
+                                  i === idx ? recalcDraftPoLineItem(l, { pricePerUnit: price }) : l,
+                                );
+                                setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                              }}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-right align-top tabular-nums text-slate-800 font-medium whitespace-nowrap">
+                            ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -8151,18 +11264,31 @@ const Procurement: React.FC = () => {
                   if (!editDraftPOTarget) return;
                   const d = editDraftPOTarget;
                   const form = editDraftPOForm;
+                  const backendRequestId = resolveBackendProcurementRequestId(d);
+                  const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+                    backendRequestId,
+                    draftRequestId: d.requestId,
+                    requestCode: d.requestCode,
+                  });
+                  const assignedPrLines = assignPrItemToDraftLines(form.lineItems, prItemsForLines);
+                  const editQtyErr = validateDraftPoQtyAgainstMoqRemainder(d.dpoNumber, form.lineItems, assignedPrLines);
+                  if (editQtyErr) {
+                    addToast('warning', editQtyErr);
+                    return;
+                  }
+                  const qtyEdited = form.lineItems.some((l, idx) => {
+                    const next = parseQuantityRequested(l.qty);
+                    const prev = parseQuantityRequested(d.lineItems[idx]?.qty);
+                    return next !== prev;
+                  });
+
                   if (d.backendPoId) {
+                    const poItems = draftLineItemsToPurchaseOrderItems(form.lineItems, prItemsForLines, assignedPrLines);
                     const payload = {
                       vendorName: form.vendor,
                       paymentTerms: form.paymentTerms || undefined,
                       expectedShipmentDate: form.expectedDelivery || undefined,
-                      items: form.lineItems.map((l) => ({
-                        itemName: l.item,
-                        itemCode: l.itemCode,
-                        quantity: l.qty,
-                        rate: String(l.pricePerUnit),
-                        tax: String(l.gstPercent ?? 18),
-                      })),
+                      items: poItems,
                     };
                     const res = await updatePurchaseOrder(d.backendPoId, payload);
                     if (!res.success) {
@@ -8170,6 +11296,76 @@ const Procurement: React.FC = () => {
                       return;
                     }
                   }
+
+                  const prRow = backendRequestId
+                    ? (backendPrArray.find((p) => String(p.id) === backendRequestId) as
+                        | {
+                            items?: BackendPRItem[];
+                            planningExtractedId?: number;
+                            planningBatchId?: number | null;
+                            priority?: string;
+                            requiredByDate?: string | null;
+                            notes?: string | null;
+                            preferredVendor?: string | null;
+                          }
+                        | undefined)
+                    : undefined;
+                  const backendItemsForSync = Array.isArray(prRow?.items) ? prRow!.items : [];
+                  if (backendRequestId && backendItemsForSync.length > 0 && qtyEdited) {
+                    const { updatedItems, remainderItems } = syncProcurementItemsAfterDraftPoLineQtyEdit(
+                      backendItemsForSync,
+                      d.lineItems,
+                      form.lineItems
+                    );
+                    const prUpd = await updateProcurementRequestApi(backendRequestId, { items: updatedItems });
+                    if (!prUpd.success) {
+                      addToast(
+                        'error',
+                        typeof prUpd.error === 'string'
+                          ? prUpd.error
+                          : 'Draft PO saved but updating the linked procurement request failed. Fix the request manually.',
+                      );
+                      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                    } else {
+                      let remainderCreatedLabel: string | null = null;
+                      if (remainderItems.length > 0) {
+                        if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+                          addToast(
+                            'warning',
+                            'Linked request was updated; could not create a remainder request (missing planning link). Add the backlog lines manually.',
+                          );
+                        } else {
+                          const remainderNotes = `Remainder from ${d.requestCode || d.dpoNumber}: draft PO line qty reduced (${d.dpoNumber}).`;
+                          const remainingRes = await createProcurementRequestApi({
+                            planningExtractedId: prRow.planningExtractedId,
+                            planningBatchId: prRow.planningBatchId ?? null,
+                            priority: prRow.priority ?? 'Medium',
+                            requiredByDate: prRow.requiredByDate ?? null,
+                            notes: [prRow.notes, remainderNotes].filter(Boolean).join('\n\n') || remainderNotes,
+                            preferredVendor: prRow.preferredVendor ?? null,
+                            items: remainderItems,
+                          });
+                          if (!remainingRes.success || !remainingRes.data) {
+                            addToast(
+                              'error',
+                              typeof remainingRes.error === 'string'
+                                ? remainingRes.error
+                                : 'Linked request updated but creating the remainder procurement request failed.',
+                            );
+                          } else if (remainingRes.data.id != null) {
+                            remainderCreatedLabel = `PR-REQ-${String(remainingRes.data.id).padStart(3, '0')}`;
+                          }
+                        }
+                      }
+                      void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      if (remainderItems.length > 0 && remainderCreatedLabel) {
+                        addToast('success', `Procurement synced; remainder tracked as ${remainderCreatedLabel}.`);
+                      } else if (remainderItems.length > 0) {
+                        addToast('success', 'Procurement synced; remainder request created.');
+                      }
+                    }
+                  }
+
                   setDraftPOs((prev) =>
                     prev.map((po) =>
                       po.id === d.id
@@ -8200,7 +11396,7 @@ const Procurement: React.FC = () => {
         </div>
       )}
 
-      {/* ── Stock Check Modal (inventory from warehouse-inventory API) ── */}
+      {/* ── Stock Check Modal (request-id scoped stock-check result) ── */}
       {selectedStockCheckRequest && (() => {
         const req = selectedStockCheckRequest;
         const updatesForRequest = stockCheckUpdates[req.id] ?? {};
@@ -8226,52 +11422,60 @@ const Procurement: React.FC = () => {
               ? 'bg-sky-50 text-sky-700 border-sky-300'
               : 'bg-amber-50 text-amber-700 border-amber-300';
 
-        const whRows = warehouseInventoryData?.rows ?? [];
-        const whByCode = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
-        const whByName = new Map<string, { zone: string; rack: string; stockInHand: number; whUnit: string; status?: string }>();
-        whRows.forEach((row) => {
-          const code = (row.code ?? '').trim();
-          const name = (row.name ?? '').trim();
-          if (code) whByCode.set(code.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
-          if (name) whByName.set(name.toLowerCase(), { zone: row.zone ?? '—', rack: row.rack ?? '—', stockInHand: row.stockInHand ?? 0, whUnit: row.whUnit ?? '', status: row.status });
-        });
-
-        const resolveWh = (itemCode: string, itemName: string) =>
-          whByCode.get((itemCode ?? '').trim().toLowerCase()) ??
-          whByName.get((itemName ?? '').trim().toLowerCase()) ??
-          null;
+        const notesOutcome = parseStockCheckOutcome(req.stockCheckNotes);
+        const notesLines = parseStockCheckNotesLines(req.stockCheckNotes);
+        const notesByCode = new Map<string, (typeof notesLines)[number]>();
+        const notesByName = new Map<string, (typeof notesLines)[number]>();
+        for (const ln of notesLines) {
+          const c = String(ln?.itemCode ?? '').trim().toLowerCase();
+          const n = String(ln?.itemName ?? '').trim().toLowerCase();
+          if (c) notesByCode.set(c, ln);
+          if (n) notesByName.set(n, ln);
+        }
 
         const stockItems = req.itemDetails && req.itemDetails.length > 0
-          ? req.itemDetails.map((item, _idx) => {
-            const wh = resolveWh(item.itemCode, item.itemName);
+          ? req.itemDetails.map((item) => {
+            const note =
+              notesByCode.get(String(item.itemCode ?? '').trim().toLowerCase()) ??
+              notesByName.get(String(item.itemName ?? '').trim().toLowerCase()) ??
+              null;
             const override = item.itemCode ? updatesForRequest[item.itemCode] : undefined;
+            const qtyFromNote = note
+              ? Number(note.updatedStockQty ?? note.physicalQty ?? 0)
+              : null;
             return {
               itemName: item.itemName,
               itemCode: item.itemCode,
               requestedQty: item.reqQty,
-              systemQty: wh ? wh.stockInHand : null,
-              whUnit: wh?.whUnit ?? '',
-              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
-              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
-              batchCode: override?.batchNo ?? (wh ? null : '—'),
-              fromWarehouse: !!wh,
+              systemQty: qtyFromNote,
+              whUnit: item.unit ?? '',
+              physicalQty: override?.physicalQty ?? qtyFromNote,
+              zoneRack: override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—',
+              batchCode: override?.batchNo ?? (note?.batchNo ?? '—'),
+              fromWarehouse: qtyFromNote != null,
             };
           })
           : req.items.map((itemName, idx) => {
             const itemCode = `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`;
-            const wh = resolveWh(itemCode, itemName);
+            const note =
+              notesByCode.get(itemCode.trim().toLowerCase()) ??
+              notesByName.get(itemName.trim().toLowerCase()) ??
+              null;
             const override = updatesForRequest[itemCode];
             const reqQty = req.quantities?.[idx] ?? 0;
+            const qtyFromNote = note
+              ? Number(note.updatedStockQty ?? note.physicalQty ?? 0)
+              : null;
             return {
               itemName,
               itemCode,
               requestedQty: reqQty,
-              systemQty: wh ? wh.stockInHand : null,
-              whUnit: wh?.whUnit ?? '',
-              physicalQty: override?.physicalQty ?? (wh ? wh.stockInHand : null),
-              zoneRack: wh ? `${wh.zone} · ${wh.rack}` : (override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—'),
-              batchCode: override?.batchNo ?? (wh ? null : '—'),
-              fromWarehouse: !!wh,
+              systemQty: qtyFromNote,
+              whUnit: req.units?.[idx] ?? '',
+              physicalQty: override?.physicalQty ?? qtyFromNote,
+              zoneRack: override ? `${override.zone ?? '—'} · ${override.rack ?? '—'}` : '—',
+              batchCode: override?.batchNo ?? (note?.batchNo ?? '—'),
+              fromWarehouse: qtyFromNote != null,
             };
           });
         const displayStockItems = selectedStockCheckItemName
@@ -8303,16 +11507,18 @@ const Procurement: React.FC = () => {
                       Stock Check {selectedStockCheckItemName ? `· ${selectedStockCheckItemName}` : ''}
                     </h2>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSelectedStockCheckRequest(null);
-                      setSelectedStockCheckItemName(null);
-                    }}
-                    className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
-                    aria-label="Close"
-                  >
-                    ×
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedStockCheckRequest(null);
+                        setSelectedStockCheckItemName(null);
+                      }}
+                      className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -8338,13 +11544,8 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
 
-                {warehouseInventoryLoading ? (
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500 text-sm">
-                    Loading warehouse inventory…
-                  </div>
-                ) : (
-                  <>
-                    {renderedItems.map((item, idx) => (
+                <>
+                  {renderedItems.map((item, idx) => (
                       <div
                         key={`${item.itemCode}-${idx}`}
                         className="rounded-lg border border-slate-200 bg-white overflow-hidden"
@@ -8389,11 +11590,11 @@ const Procurement: React.FC = () => {
                       </div>
                     ))}
 
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                      Stock in hand is read from warehouse inventory. Match is by item code or name.
-                    </div>
-                  </>
-                )}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    Request-scoped view: stock/check values are shown for this PR request only.
+                    {notesOutcome == null ? ' Waiting for warehouse completion.' : ` Outcome: ${notesOutcome === 'all_ok' ? 'All OK' : 'Not OK'}.`}
+                  </div>
+                </>
               </div>
 
               <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
@@ -8442,299 +11643,53 @@ const Procurement: React.FC = () => {
         );
       })()}
 
-      {/* New Request Modal */}
-      {showNewRequestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-            {/* Header */}
-            <div className="bg-linear-to-r from-cyan-500 via-blue-500 to-cyan-600 px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h2 className="text-xl font-bold text-white tracking-tight">New Procurement Request</h2>
-              <button
-                onClick={closeNewRequestModal}
-                className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-1.5 transition-all hover:rotate-90 duration-300"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Form Body - Scrollable */}
-            <div className="overflow-y-auto flex-1 p-6 bg-linear-to-b from-slate-50 to-white">
-              <div className="space-y-5">
-                {/* Row 1: Category, Type */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Category *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. UV FILTER, SURFACTANT"
-                      value={newRequestForm.category}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, category: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Type
-                    </label>
-                    <select
-                      value={newRequestForm.type}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, type: e.target.value as RequestType })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="RM">RM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 2: Source, Priority */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Source
-                    </label>
-                    <select
-                      value={newRequestForm.source}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, source: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="Planning Team">Planning Team</option>
-                      <option value="Production Team">Production Team</option>
-                      <option value="Quality Team">Quality Team</option>
-                      <option value="R&D Team">R&D Team</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Priority
-                    </label>
-                    <select
-                      value={newRequestForm.priority}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, priority: e.target.value as 'High' | 'Medium' | 'Low' })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                    >
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 3: Request Date, Required Date */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Request Date *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="dd-mm-yyyy"
-                      value={newRequestForm.requestDate}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requestDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Required Date *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="dd-mm-yyyy"
-                      value={newRequestForm.requiredDate}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, requiredDate: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 4: Item Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Item Name *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Homosalate"
-                    value={newRequestForm.itemName}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, itemName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                  />
-                </div>
-
-                {/* Row 5: Req Qty, UOM, MOQ */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Req Qty *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="100"
-                      value={newRequestForm.reqQty}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, reqQty: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      UOM
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="KG or pcs"
-                      value={newRequestForm.uom}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, uom: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      MOQ
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="25"
-                      value={newRequestForm.moq}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, moq: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 6: Planned Price, Pack Size, Lead Time */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Planned Price
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="₹20"
-                      value={newRequestForm.plannedPrice}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, plannedPrice: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Pack Size
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="25 KG drum"
-                      value={newRequestForm.packSize}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, packSize: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      Lead Time (Days)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="21"
-                      value={newRequestForm.leadTimeDays}
-                      onChange={(e) => setNewRequestForm({ ...newRequestForm, leadTimeDays: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Row 7: Preferred Vendor */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Preferred Vendor
-                  </label>
-                  <select
-                    value={newRequestForm.preferredVendor}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, preferredVendor: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all appearance-none cursor-pointer"
-                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`, backgroundPosition: 'right 0.5rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.5em 1.5em' }}
-                  >
-                    <option value="">— None —</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.name}>
-                        {vendor.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Row 8: Notes */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                    Notes
-                  </label>
-                  <textarea
-                    placeholder="Additional notes or context"
-                    rows={3}
-                    value={newRequestForm.notes}
-                    onChange={(e) => setNewRequestForm({ ...newRequestForm, notes: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-700 placeholder-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all resize-none"
-                  />
-                </div>
-
-                {/* Hidden: Require Stock Check - Not in reference image */}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-white px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3 rounded-b-xl">
-              <div className="text-xs text-slate-500">
-                Fields marked with <span className="text-red-500">*</span> are required
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={closeNewRequestModal}
-                  className="px-5 py-2.5 rounded-lg border-2 border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-400 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={submitNewRequest}
-                  className="px-6 py-2.5 rounded-lg bg-slate-700 text-white font-bold text-sm hover:bg-slate-800 shadow-lg hover:shadow-xl transition-all"
-                >
-                  Create Request
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showRecordQuoteModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-xl p-6 space-y-4">
-            <div className="flex items-center justify-between gap-4">
+        <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6">
+          <div className="my-auto flex w-full max-w-5xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Record Vendor Quotation</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {recordQuoteForm.planningQuotationAskId
+                    ? 'Record quote for Planning ask'
+                    : recordQuoteForm.procurementRequestId
+                      ? 'Add quotation for request'
+                      : 'Record Vendor Quotation'}
+                </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).
+                  {recordQuoteForm.planningQuotationAskId
+                    ? 'Saves vendor rates to Items List only. No procurement request is created; Planning adds a PR manually after rates exist.'
+                    : recordQuoteForm.procurementRequestId
+                      ? 'Enter vendor and unit prices for each line. Rates are saved to Items List so Planning can release procurement with those vendors.'
+                      : 'Add vendor, items and prices. A quotation is independent of PRs; it gets linked to a PR when you create a Draft PO from it. Per-item vendor history is shown in each PR popup (Requests).'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowRecordQuoteModal(false)}
-                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                disabled={recordQuoteSaving}
+                onClick={closeRecordQuoteModal}
+                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Close
               </button>
             </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {(rawMaterialsListForQuoteError || packMaterialsListForQuoteError) && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <p className="font-semibold">Could not load RM/PM master lists</p>
+                <p className="mt-1 text-amber-900/90">
+                  Your role must allow reading Raw Materials and Pack Materials (or Sales / Purchase / Order Management). Ask an admin to add the right module to your role, then reopen this modal.
+                </p>
+              </div>
+            )}
 
             <div>
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2 flex items-center justify-between">
                 <span>Quote lines</span>
                 <button
                   type="button"
+                  disabled={recordQuoteSaving}
                   onClick={() => {
                     const nextIndex = recordQuoteLines.length > 0 ? Math.max(...recordQuoteLines.map((l) => l.index)) + 1 : 0;
                     setRecordQuoteLines((prev) => [
@@ -8752,8 +11707,9 @@ const Procurement: React.FC = () => {
                         itemType: undefined,
                       },
                     ]);
+                    setRecordQuoteLineSearch((prev) => ({ ...prev, [nextIndex]: '' }));
                   }}
-                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200"
+                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-100"
                 >
                   + Add line
                 </button>
@@ -8761,11 +11717,11 @@ const Procurement: React.FC = () => {
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="bg-slate-50 px-4 py-2 flex text-[11px] font-semibold text-slate-600">
                   <div className="flex-1 min-w-[200px]">ITEM (RM/PM from masters)</div>
-                  <div className="w-24 text-right">QTY</div>
+                  <div className="w-24 text-right">MOQ</div>
                   <div className="w-28 text-right">PRICE / UNIT</div>
                   <div className="w-16" />
                 </div>
-                <div className="max-h-64 overflow-auto divide-y divide-slate-100">
+                <div className="max-h-[min(20rem,42vh)] overflow-auto divide-y divide-slate-100">
                   {recordQuoteLines.map((line, idx) => {
                     const lineItemValue =
                       line.raw_material_id != null
@@ -8773,30 +11729,26 @@ const Procurement: React.FC = () => {
                         : line.pack_material_id != null
                           ? `pm-${line.pack_material_id}`
                           : '';
+                    const selectedOption = lineItemValue ? quoteLineOptionByKey.get(lineItemValue) : undefined;
+                    const inputValue = recordQuoteLineSearch[line.index] ?? selectedOption?.label ?? '';
+                    const datalistOptions = filterQuoteLineOptionsForDatalist(inputValue);
                     return (
                       <div key={line.index} className="px-4 py-2 flex items-center text-xs gap-2">
                         <div className="flex-1 min-w-0">
-                          <select
-                            value={lineItemValue}
-                            onChange={(e) => handleRecordQuoteLineSelectItem(idx, e.target.value)}
-                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white"
-                          >
-                            <option value="">— Select RM or PM —</option>
-                            <optgroup label="Raw materials">
-                              {(rawMaterialsListForQuote as RawMaterialRecord[]).map((r) => (
-                                <option key={`rm-${r.id}`} value={`rm-${r.id}`}>
-                                  {r.code} — {r.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Pack materials">
-                              {(packMaterialsListForQuote as PackMaterialRecord[]).map((p) => (
-                                <option key={`pm-${p.id}`} value={`pm-${p.id}`}>
-                                  {p.code} — {p.description || p.code}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
+                          <input
+                            list={`quote-line-item-options-${line.index}`}
+                            value={inputValue}
+                            onChange={(e) => handleRecordQuoteLineSearchChange(idx, line.index, e.target.value)}
+                            onBlur={(e) => handleRecordQuoteLineItemBlur(idx, line.index, e.target.value)}
+                            placeholder="Type code, INCI, name, SKU, or rm-12 / pm-34"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white disabled:bg-slate-50 disabled:text-slate-500"
+                          />
+                          <datalist id={`quote-line-item-options-${line.index}`}>
+                            {datalistOptions.map((opt) => (
+                              <option key={opt.key} value={opt.label} />
+                            ))}
+                          </datalist>
                           {line.name && (
                             <p className="text-[10px] text-slate-500 mt-0.5 truncate">
                               {line.itemId && `${line.itemId} · `}{line.name} ({line.uom})
@@ -8805,10 +11757,15 @@ const Procurement: React.FC = () => {
                         </div>
                         <div className="w-24 text-right pl-1">
                           <input
-                            type="text"
+                            type="number"
+                            min={0}
+                            step="any"
+                            inputMode="decimal"
+                            placeholder="0.5"
                             value={line.orderQty}
                             onChange={handleRecordQuoteLineChange(idx, 'orderQty')}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
                           />
                         </div>
                         <div className="w-28 text-right pl-1">
@@ -8816,14 +11773,23 @@ const Procurement: React.FC = () => {
                             type="text"
                             value={line.pricePerUnit}
                             onChange={handleRecordQuoteLineChange(idx, 'pricePerUnit')}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right"
+                            disabled={recordQuoteSaving}
+                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
                           />
                         </div>
                         <div className="w-16 shrink-0">
                           <button
                             type="button"
-                            onClick={() => setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx))}
-                            className="text-slate-400 hover:text-red-600 text-sm"
+                            disabled={recordQuoteSaving}
+                            onClick={() => {
+                              setRecordQuoteLines((prev) => prev.filter((_, i) => i !== idx));
+                              setRecordQuoteLineSearch((prev) => {
+                                const next = { ...prev };
+                                delete next[line.index];
+                                return next;
+                              });
+                            }}
+                            className="text-slate-400 hover:text-red-600 text-sm disabled:opacity-40 disabled:pointer-events-none"
                             title="Remove line"
                           >
                             ×
@@ -8848,7 +11814,8 @@ const Procurement: React.FC = () => {
                 onChange={(e) => {
                   setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }));
                 }}
-                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                disabled={recordQuoteSaving}
+                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
               >
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -8866,7 +11833,8 @@ const Procurement: React.FC = () => {
                   type="date"
                   value={recordQuoteForm.quoteDate}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, quoteDate: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
               <div>
@@ -8875,7 +11843,8 @@ const Procurement: React.FC = () => {
                   type="date"
                   value={recordQuoteForm.validTill}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, validTill: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
               <div>
@@ -8885,7 +11854,8 @@ const Procurement: React.FC = () => {
                   min={0}
                   value={recordQuoteForm.leadTimeDays}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, leadTimeDays: e.target.value }))}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                  disabled={recordQuoteSaving}
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 />
               </div>
             </div>
@@ -8905,26 +11875,31 @@ const Procurement: React.FC = () => {
               <textarea
                 value={recordQuoteForm.notes}
                 onChange={(e) => setRecordQuoteForm((f) => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                disabled={recordQuoteSaving}
+                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
                 rows={2}
               />
             </div>
+            </div>
 
-            <div className="flex justify-between items-center pt-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
               <p className="text-[11px] text-slate-500">
                 New quotes are saved with default status for internal tracking.
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowRecordQuoteModal(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white"
+                  disabled={recordQuoteSaving}
+                  onClick={closeRecordQuoteModal}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={recordQuoteSaving}
                   onClick={async () => {
+                    if (recordQuoteSaving) return;
                     const vendorId = parseInt(recordQuoteForm.vendorId, 10);
                     if (!vendorId || Number.isNaN(vendorId)) {
                       addToast('error', 'Select a vendor');
@@ -8939,9 +11914,72 @@ const Procurement: React.FC = () => {
                       addToast('error', 'Select an item (RM or PM) from the dropdown for each line.');
                       return;
                     }
+                    const invalidPrice = recordQuoteLines.some((l) => {
+                      const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                      return price <= 0;
+                    });
+                    if (invalidPrice) {
+                      addToast('error', 'Enter a price per unit greater than zero for each line.');
+                      return;
+                    }
 
+                    setRecordQuoteSaving(true);
+                    try {
                     const selectedVendorProc = vendors.find((x) => String(x.id) === String(recordQuoteForm.vendorId));
                     const composedPaymentTerms = selectedVendorProc?.paymentTerms?.trim() || 'As per contract';
+
+                    const linkedPrId = String(recordQuoteForm.procurementRequestId ?? '').trim();
+                    if (linkedPrId) {
+                      const quotationItems = recordQuoteLines.map((l) => {
+                        const qty = parseMoqInput(l.orderQty) ?? 0;
+                        const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
+                        return {
+                          raw_material_id: l.raw_material_id ?? undefined,
+                          pack_material_id: l.pack_material_id ?? undefined,
+                          itemId: l.itemId || l.name,
+                          name: l.name,
+                          orderQty: qty,
+                          pricePerUnit: price,
+                          uom: l.uom || 'KG',
+                          totalValue: qty * price,
+                        };
+                      });
+                      const createRes = await createProcurementQuotation({
+                        procurementRequestId: parseInt(linkedPrId, 10),
+                        vendorId,
+                        quoteDate: recordQuoteForm.quoteDate || null,
+                        validTill: recordQuoteForm.validTill || null,
+                        leadTimeDays: recordQuoteForm.leadTimeDays
+                          ? Number(recordQuoteForm.leadTimeDays)
+                          : null,
+                        paymentTerms: composedPaymentTerms,
+                        notes: recordQuoteForm.notes || null,
+                        status: 'pending',
+                        items: quotationItems,
+                      });
+                      if (!createRes.success || !createRes.data) {
+                        addToast(
+                          'error',
+                          typeof createRes.error === 'string' ? createRes.error : 'Failed to save quotation'
+                        );
+                        return;
+                      }
+                      await queryClient.invalidateQueries({
+                        predicate: (q) =>
+                          Array.isArray(q.queryKey) &&
+                          typeof q.queryKey[0] === 'string' &&
+                          q.queryKey[0].startsWith('items-list'),
+                        refetchType: 'all',
+                      });
+                      await queryClient.invalidateQueries({ queryKey: ['procurement-quotations'] });
+                      await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      addToast(
+                        'success',
+                        'Quotation saved to Items List. Planning can now pick this vendor when releasing procurement.'
+                      );
+                      closeRecordQuoteModal();
+                      return;
+                    }
 
                     // Save into Items List (single source of truth for vendor pricing).
                     const loadPage = async (type: 'RM' | 'PM') => {
@@ -8995,7 +12033,7 @@ const Procurement: React.FC = () => {
                     };
 
                     for (const l of recordQuoteLines) {
-                      const qty = parseFloat(String(l.orderQty).replace(/[^\d.]/g, '')) || 0;
+                      const qty = parseMoqInput(l.orderQty) ?? 0;
                       const price = parseFloat(String(l.pricePerUnit).replace(/[^\d.]/g, '')) || 0;
                       if (qty <= 0 || price <= 0) continue;
 
@@ -9034,7 +12072,8 @@ const Procurement: React.FC = () => {
                       }
 
                       // Create tier row for this MOQ (or update if same MOQ already exists).
-                      const existingTier = (existingRate?.tiers ?? []).find((t) => Number(t.moq_min) === Number(qty)) ?? null;
+                      const existingTier =
+                        (existingRate?.tiers ?? []).find((t) => moqValuesEqual(t.moq_min, qty)) ?? null;
                       if (existingTier) {
                         await updateItemListTier(String(itemsListId), rateId, existingTier.id, {
                           price_per_unit: price,
@@ -9056,14 +12095,43 @@ const Procurement: React.FC = () => {
                       }
                     }
 
-                    await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'RM'] });
-                    await queryClient.invalidateQueries({ queryKey: ['items-list-page', 'PM'] });
-                    addToast('success', 'Saved vendor price list (Items List).');
-                    setShowRecordQuoteModal(false);
+                    await queryClient.invalidateQueries({
+                      predicate: (q) =>
+                        Array.isArray(q.queryKey) &&
+                        typeof q.queryKey[0] === 'string' &&
+                        q.queryKey[0].startsWith('items-list'),
+                      refetchType: 'all',
+                    });
+                    const askId = parseInt(String(recordQuoteForm.planningQuotationAskId ?? ''), 10);
+                    if (Number.isFinite(askId) && askId > 0) {
+                      await updatePlanningQuotationAsk(askId, { status: 'fulfilled' });
+                      await queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+                    }
+                    addToast(
+                      'success',
+                      askId > 0
+                        ? 'Saved to Items List. Planning quotation ask marked fulfilled — planner can create a PR manually when ready.'
+                        : 'Saved vendor price list (Items List).'
+                    );
+                    closeRecordQuoteModal();
+                    } finally {
+                      setRecordQuoteSaving(false);
+                    }
                   }}
-                  className="px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-yellow-500"
                 >
-                  Save Quote
+                  {recordQuoteSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Saving…
+                    </>
+                  ) : (
+                    recordQuoteForm.planningQuotationAskId
+                      ? 'Save to Items List'
+                      : recordQuoteForm.procurementRequestId
+                        ? 'Save quotation'
+                        : 'Save Quote'
+                  )}
                 </button>
               </div>
             </div>
@@ -9245,11 +12313,16 @@ const Procurement: React.FC = () => {
                             onClick={async () => {
                               if (!selectedQuote || !backendPr || !selectedItem || !selectedLine) return;
 
+                              const lineLeadDays = resolveDraftLineLeadTimeDays({
+                                prLine: selectedItem,
+                                quoteLineLead: selectedLine?.leadTimeDays,
+                                itemsListLead: undefined,
+                                quoteHeaderLead: selectedQuote.leadTimeDays,
+                              });
+
                               const today = new Date();
                               const expectedDelivery = new Date(today);
-                              expectedDelivery.setDate(
-                                expectedDelivery.getDate() + (selectedQuote.leadTimeDays || 0)
-                              );
+                              expectedDelivery.setDate(expectedDelivery.getDate() + lineLeadDays);
                               const createdDateStr = today.toISOString().split('T')[0];
                               const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
 
@@ -9261,6 +12334,7 @@ const Procurement: React.FC = () => {
                                 itemCode: (selectedItem.code && String(selectedItem.code).trim()) || fallbackItemCode,
                                 type: selectedQuote.requestType,
                                 qty: String(qtyNeeded),
+                                leadTimeDays: lineLeadDays,
                                 pricePerUnit,
                                 gstPercent,
                                 gstAmount,
@@ -9301,6 +12375,7 @@ const Procurement: React.FC = () => {
                                     quantity: lineItem.qty,
                                     rate: String(lineItem.pricePerUnit),
                                     tax: String(lineItem.gstPercent || 18),
+                                    lead_time_days: lineLeadDays,
                                     ...(selectedItem.raw_material_id != null
                                       ? { raw_material_id: Number(selectedItem.raw_material_id) }
                                       : {}),
@@ -9386,6 +12461,55 @@ const Procurement: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={draftPoDeleteConfirmTarget !== null}
+        onClose={() => {
+          if (deletingDraftPoId) return;
+          setDraftPoDeleteConfirmTarget(null);
+        }}
+        onConfirm={confirmDeleteDraftPO}
+        title="Delete draft PO?"
+        message={
+          draftPoDeleteConfirmTarget ? (
+            <>
+              Delete draft PO{' '}
+              <span className="font-semibold">{draftPoDeleteConfirmTarget.dpoNumber}</span>? The draft PO
+              and its linked procurement request will be removed. Quantities return to Planning so you
+              can use Release to Planning again. Other remainder requests from a partial release are kept.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deletingDraftPoId === draftPoDeleteConfirmTarget?.id}
+      />
+      <ConfirmDialog
+        isOpen={requestDeleteConfirmTarget !== null}
+        onClose={() => {
+          if (deletingRequestId) return;
+          setRequestDeleteConfirmTarget(null);
+        }}
+        onConfirm={confirmDeleteRequest}
+        title="Delete procurement request?"
+        message={
+          requestDeleteConfirmTarget ? (
+            <>
+              Delete request{' '}
+              <span className="font-semibold">{requestDeleteConfirmTarget.code}</span>? Linked draft
+              PO(s) will also be removed. Quantities return to Planning.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deletingRequestId === requestDeleteConfirmTarget?.id}
+      />
     </div>
   );
 };

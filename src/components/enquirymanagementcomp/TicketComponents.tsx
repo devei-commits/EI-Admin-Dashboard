@@ -72,13 +72,20 @@ const categoryLabels: Record<TicketCategory, string> = {
  'technical-support': 'Technical',
  'quotation-request': 'Quotation',
  'partnership': 'Partnership',
+ 'refund': 'Refund',
+ 'pis-issue': 'PIS',
  'other': 'Other',
 };
 
-export const CategoryBadge: React.FC<{ category: TicketCategory }> = ({ category }) => {
+export const CategoryBadge: React.FC<{ category: TicketCategory | string }> = ({ category }) => {
+ const label =
+  categoryLabels[category as TicketCategory] ||
+  String(category || 'other')
+   .replace(/-/g, ' ')
+   .replace(/\b\w/g, (c) => c.toUpperCase());
  return (
   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-   {categoryLabels[category]}
+   {label}
   </span>
  );
 };
@@ -354,9 +361,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
  const statusOptions: TicketStatus[] = ['new', 'open', 'in-progress', 'pending-customer', 'pending-internal', 'resolved', 'closed'];
  const priorityOptions: TicketPriority[] = ['low', 'medium', 'high', 'urgent'];
  const categoryOptions: TicketCategory[] = [
-  'general-inquiry', 'product-inquiry', 'order-issue', 'payment-issue', 
-  'delivery-issue', 'complaint', 'feedback', 'technical-support', 
-  'quotation-request', 'partnership', 'other'
+  'general-inquiry', 'product-inquiry', 'order-issue', 'payment-issue',
+  'delivery-issue', 'complaint', 'feedback', 'technical-support',
+  'quotation-request', 'partnership', 'refund', 'pis-issue', 'other'
  ];
 
  const activeFilterCount = Object.values(filters).filter(v => {
@@ -581,10 +588,15 @@ export const TicketRow: React.FC<TicketRowProps> = ({
    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
     {/* Left: Ticket Info */}
     <div className="flex-1 min-w-0">
-     <div className="flex items-center gap-2 mb-2">
+     <div className="flex items-center gap-2 mb-2 flex-wrap">
       <span className="font-mono text-sm font-semibold text-gray-600">
        #{ticket.ticketNumber}
       </span>
+      {ticket.ticketScope === 'internal' && (
+       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-800 border border-violet-200">
+        Cross-team
+       </span>
+      )}
       <StatusBadge status={ticket.status} size="sm" />
       <PriorityBadge priority={ticket.priority} size="sm" />
       {ticket.isOverdue && (
@@ -594,12 +606,35 @@ export const TicketRow: React.FC<TicketRowProps> = ({
       )}
      </div>
      <h4 className="font-medium text-gray-900 truncate">{ticket.subject}</h4>
+     {ticket.collaboration && ticket.ticketScope === 'internal' && (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+       {ticket.collaboration.issueAreas?.includes('pis') && (
+        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-900">
+         PIS
+        </span>
+       )}
+       {ticket.collaboration.taggedTeams?.slice(0, 4).map((t) => (
+        <span
+         key={t.id}
+         className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200"
+        >
+         {t.name || t.id}
+        </span>
+       ))}
+       {ticket.collaboration.taggedMembers && ticket.collaboration.taggedMembers.length > 0 && (
+        <span className="text-xs text-gray-500">
+         @{ticket.collaboration.taggedMembers.length} colleague
+         {ticket.collaboration.taggedMembers.length > 1 ? 's' : ''}
+        </span>
+       )}
+      </div>
+     )}
      <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
       <span className="flex items-center gap-1">
        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
        </svg>
-       {ticket.customer.name}
+       {ticket.customer?.name || '—'}
       </span>
       <span className="flex items-center gap-1">
        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Role, RoleUser } from './ViewRoles';
-import PermissionMatrix from './PermissionMatrix';
+import DepartmentPermissionMatrix from './DepartmentPermissionMatrix';
 import { UnifiedButton, inputClassName, selectClassName, textareaClassName } from '../ui';
 import {
  ModulePermission,
@@ -11,6 +11,7 @@ import {
 } from './types/permissions.types';
 import { parseApiPermissions, flattenPermissionsToGranted } from './types/permissionKeys';
 import { getRoleById, updateRole as updateRoleApi } from '../../services/role.service';
+import ClonePermissionsFromUser from './ClonePermissionsFromUser';
 
 interface EditRoleFullPageProps {
  role: Role;
@@ -65,6 +66,17 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
      setPermissions(mods);
      setGlobalSettings(gs);
     }
+    if (Array.isArray(r.assignedUsers)) {
+     setRoleUsers(
+      r.assignedUsers.map((u) => ({
+       id: String(u.user_id),
+       email: u.email || '',
+       password: '',
+       name: u.name || u.email || `User ${u.user_id}`,
+       addedAt: u.assigned_at ? String(u.assigned_at).slice(0, 10) : '',
+      }))
+     );
+    }
    })
    .catch(() => { if (!cancelled) setPermissions(JSON.parse(JSON.stringify(DEFAULT_MODULE_PERMISSIONS))); })
    .finally(() => { if (!cancelled) setPermissionsLoading(false); });
@@ -72,35 +84,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
  }, [role.id, role.roleLevel]);
  
  // Users assigned to this role (loaded from parent/localStorage or fallback to mock data)
- const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => {
-  if (users && users.length > 0) {
-   return users;
-  }
-  // Default sample users when none are stored yet
-  return [
-   {
-    id: 'USR001',
-    email: 'john.doe@eisthetic.com',
-    password: 'SecurePass123!',
-    name: 'John Doe',
-    addedAt: '2024-01-15',
-   },
-   {
-    id: 'USR002',
-    email: 'jane.smith@eisthetic.com',
-    password: 'JaneSecure456@',
-    name: 'Jane Smith',
-    addedAt: '2024-01-20',
-   },
-   {
-    id: 'USR003',
-    email: 'mike.wilson@eisthetic.com',
-    password: 'MikePass789#',
-    name: 'Mike Wilson',
-    addedAt: '2024-02-01',
-   },
-  ];
- });
+ const [roleUsers, setRoleUsers] = useState<RoleUser[]>(() => (users && users.length > 0 ? users : []));
 
  const roleLevels = ['admin', 'manager', 'staff', 'client'];
  const statusOptions: ('active' | 'inactive')[] = ['active', 'inactive'];
@@ -438,17 +422,16 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
 
          <div>
           <label className="block text-xs sm:text-sm font-medium text-gray-600 mb-1.5 sm:mb-2">Role Name</label>
-          <select
+          <input
+           type="text"
            name="roleName"
            value={editedRole.roleName}
            onChange={handleInputChange}
-           className={selectClassName}
-          >
-           <option value="">Select Role Name</option>
-           {getAvailableRoles().map((roleName) => (
-            <option key={roleName} value={roleName}>{roleName}</option>
-           ))}
-          </select>
+           className={inputClassName}
+           placeholder="Custom role display name"
+           required
+           maxLength={120}
+          />
          </div>
 
          <div>
@@ -517,15 +500,76 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
            Configure access to each module<span className="hidden sm:inline">, sub-module, and column</span> for this role.
           </p>
          </div>
-         <div className="p-2 sm:p-4">
-          <PermissionMatrix
-           permissions={permissions}
-           globalSettings={globalSettings}
-           onPermissionChange={setPermissions}
-           onGlobalSettingChange={setGlobalSettings}
-           readOnly={false}
-          />
+         <div className="p-2 sm:p-4 space-y-6">
+         <ClonePermissionsFromUser
+          onApply={(modules, gs) => {
+           setPermissions(modules);
+           setGlobalSettings(gs);
+          }}
+         />
+         <DepartmentPermissionMatrix
+          departments={[editedRole.roleName]}
+          permissionsByDept={{ [editedRole.roleName]: permissions }}
+          onDeptPermissionsChange={(_dept, next) => setPermissions(next)}
+          readOnly={false}
+          showDepartmentColumn={false}
+         />
+
+         {/* Global Settings (single-role edit) */}
+         <div className="p-4 border border-gray-100 rounded-lg bg-white">
+          <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
+           Global Settings
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+           {(
+            [
+             ['accessToAllModules', 'Access to All Modules'],
+             ['allowLogin', 'Allow Login'],
+             ['allowMultipleSessions', 'Allow Multiple Sessions'],
+             ['canChangePassword', 'Can Change Password'],
+             ['enableAuditLog', 'Enable Audit Log'],
+             ['canExportData', 'Can Export Data'],
+             ['canImportData', 'Can Import Data'],
+             ['canAccessReports', 'Can Access Reports'],
+             ['canAccessSettings', 'Can Access Settings'],
+            ] as Array<[keyof GlobalSettings, string]>
+           ).map(([key, label]) => (
+            <label
+             key={String(key)}
+             className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+            >
+             <input
+              type="checkbox"
+              checked={Boolean(globalSettings[key])}
+              onChange={() =>
+               setGlobalSettings((prev) => ({ ...prev, [key]: !prev[key] } as GlobalSettings))
+              }
+              className="w-4 h-4 rounded border-gray-300"
+             />
+             <span className="text-sm text-gray-700">{label}</span>
+            </label>
+           ))}
+          </div>
+          <div className="mt-3">
+           <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+            Session Timeout (minutes)
+           </label>
+           <input
+            type="number"
+            min={5}
+            max={480}
+            value={globalSettings.sessionTimeout}
+            onChange={(e) =>
+             setGlobalSettings((prev) => ({
+              ...prev,
+              sessionTimeout: parseInt(e.target.value, 10) || 30,
+             }))
+            }
+            className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+           />
+          </div>
          </div>
+        </div>
         </div>
        )}
 

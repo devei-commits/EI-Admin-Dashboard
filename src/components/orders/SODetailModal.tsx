@@ -20,6 +20,7 @@ import {
   formatDaysLeft,
   calculateOrderValue,
 } from '../../utils/orderFulfillmentUtils';
+import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 
 const KPI = ({
   label,
@@ -41,6 +42,9 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
   onClose,
   saleOrder,
   onAction,
+  onEditSO,
+  editDisabled = false,
+  editDisabledReason,
 }) => {
   const [planningAvailability, setPlanningAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
@@ -112,6 +116,15 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
       size="xl"
       footer={
         <>
+          {onEditSO && !editDisabled && (
+            <Button
+              variant="ghost"
+              onClick={() => onEditSO(saleOrder.soNo)}
+              title="Edit sale order"
+            >
+              Edit SO
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
@@ -140,7 +153,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             <span className={daysLeftFormatted.color}>{daysLeftFormatted.text}</span>
           </KPI>
           <KPI label="Total Value">{formatCurrency(totalValue)}</KPI>
-          <KPI label="Payment">{saleOrder.paymentTerms}</KPI>
+          <KPI label="Payment">{formatStagedPaymentTermsSummary(saleOrder.paymentTerms)}</KPI>
           <KPI label="Priority">
             {saleOrder.priority === 'high' ? (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
@@ -253,7 +266,7 @@ function ItemWithBatches({
   const readyQty = item.batchSplits.reduce(
     (sum, sp) =>
       ['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(sp.ffStatus)
-        ? sum + (sp.fgQty || 0)
+        ? sum + (Number(sp.fgOutput ?? sp.fgQty) || 0)
         : sum,
     0
   );
@@ -409,9 +422,9 @@ function BatchRow({
       </td>
       <td className="py-2 px-3 font-mono">{formatNumber(split.plannedQty)}</td>
       <td className="py-2 px-3 font-mono font-bold">
-        {split.fgQty != null && split.fgQty > 0 ? (
+        {(split.fgOutput ?? split.fgQty) != null && Number(split.fgOutput ?? split.fgQty) > 0 ? (
           <span className="text-emerald-600 dark:text-emerald-400">
-            {formatNumber(split.fgQty)}
+            {formatNumber(Number(split.fgOutput ?? split.fgQty))}
           </span>
         ) : (
           <span className="text-gray-400 dark:text-gray-500">—</span>

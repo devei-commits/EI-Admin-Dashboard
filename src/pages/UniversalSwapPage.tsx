@@ -10,6 +10,7 @@ import {
 } from '../services/planningExtracted.service';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
+import { formatQtyExact } from '../utils/formatQty';
 
 /** Ordered product row for left panel (from planning extracted). */
 type OrderedProductRow = {
@@ -415,11 +416,11 @@ const UniversalSwapPage = () => {
                         {item.category}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.unit === 'pcs' ? Math.round(item.reqQty) : item.reqQty.toFixed(2)} {item.unit}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.reqQty, item.unit === 'pcs' ? 'pcs' : 'kg')} {item.unit}</td>
                     <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-500">{item.groupQty || '—'}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.stockOnHand.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{item.reservedQty.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums font-medium text-gray-900">{item.netStock.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.stockOnHand, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.reservedQty, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums font-medium text-gray-900">{formatQtyExact(item.netStock, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
                     <td className="px-3 py-3 text-center text-sm">
                       <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
                         item.status === 'short' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20' : 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20'

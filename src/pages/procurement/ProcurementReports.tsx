@@ -9,6 +9,7 @@ import type {
   MainTab,
   SideSection,
 } from '../../types/procurement.types';
+import { formatDateEnInSafe } from './procurementDataMappers';
 
 export type QuoteStatsShape = {
   totalQuotes: number;
@@ -158,7 +159,7 @@ const ProcurementReports: React.FC<ProcurementReportsProps> = ({
                   <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                     <td className="px-6 py-3 font-mono font-bold text-slate-900">{req.code}</td>
                     <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${requestTypeClass[req.type]}`}>{req.type}</span></td>
-                    <td className="px-6 py-3 text-slate-700">{new Date(req.dueDate).toLocaleDateString('en-IN')}</td>
+                    <td className="px-6 py-3 text-slate-700">{formatDateEnInSafe(req.dueDate)}</td>
                     <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${priorityClass[req.priority]}`}>{req.priority}</span></td>
                     <td className="px-6 py-3"><span className={`px-2 py-0.5 rounded text-xs font-semibold ${statusBg[req.status]}`}>{req.status}</span></td>
                     <td className="px-6 py-3 text-slate-700">{relatedQuotes.length} quotes</td>

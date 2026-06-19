@@ -30,7 +30,7 @@ const WarehouseLocations = () => {
       return res.data;
     },
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
   const inventoryData: InventoryItem[] = inventoryResult?.rows ?? [];
   const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);

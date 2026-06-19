@@ -1,20 +1,32 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, MapPin, Grid3x3 } from 'lucide-react';
 import {
-  fetchWarehouseInventory,
   fetchAllWarehouseLocationHistory,
-  fetchRackLocations,
+  fetchStockByLocation,
+  type StockByLocationPayload,
   fetchUsageStats,
+  importInventorySummaryExcel,
+  importMainWarehouseSihExcel,
+  importMl1SihExcel,
+  importMl2SihExcel,
+  type WarehouseSihExcelImportResponse,
+  inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
+import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
+import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
-import type {
-  WarehouseLocationHistoryEntry,
-  RackLocationEntry,
-  InTransitBreakdownItem,
-  UsageStatsRow,
+import {
+  warehouseInventoryAvailable,
+  type WarehouseLocationHistoryEntry,
+  type InTransitBreakdownItem,
+  type UsageStatsRow,
+  type WarehouseInventoryRow,
 } from '../../services/warehouseInventory.service';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
+import StockByLocationPanel from '../../components/StockByLocationPanel';
+import { formatQtyExact } from '../../utils/formatQty';
 
 export interface InventoryItem {
   id: string;
@@ -29,15 +41,21 @@ export interface InventoryItem {
   ml1Stock: number;
   ml2Stock: number;
   stockInHand: number;
+  /** Usable = stockInHand − reserved (computed from API or locally) */
+  available?: number;
   reserved: number;
   inTransit: number;
+  underGrn?: number;
   /** In-transit lines from pending GRNs: vendor, PO id, expected date */
   inTransitBreakdown?: InTransitBreakdownItem[];
   /** Total quantity from purchase orders (vendor) */
   poQuantity?: number;
   reorderPt: number;
   avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  /** Display status (threshold + qc_status); may be a custom qc value */
+  status: string;
+  /** Stored qc_status on warehouse_inventory */
+  qcStatus?: string;
   /** Item group names/codes this item belongs to (from masters) */
   itemGroupNames?: string[];
   itemGroupCodes?: string[];
@@ -52,6 +70,126 @@ export interface InventoryItem {
   qualityGrade?: string;
 }
 
+type InventorySortColumn =
+  | 'code'
+  | 'name'
+  | 'type'
+  | 'itemGroups'
+  | 'whStock'
+  | 'ml1Stock'
+  | 'ml2Stock'
+  | 'plannedQty'
+  | 'poQuantity'
+  | 'inTransit'
+  | 'underGrn'
+  | 'stockInHand'
+  | 'reserved'
+  | 'reorderPt'
+  | 'avgMo'
+  | 'status';
+
+type InventorySortDirection = 'asc' | 'desc';
+
+type PlanningTotalsMap = Map<string, { plannedQty: number; totalRequired: number; unit: string }>;
+
+function plannedOpenQtyForItem(item: InventoryItem, planningTotalsByKey: PlanningTotalsMap): number {
+  const planKey =
+    (item.type === 'RM' || item.type === 'PM') && item.sourceId != null && item.sourceId > 0
+      ? `${item.type}-${item.sourceId}`
+      : null;
+  const plan = planKey ? planningTotalsByKey.get(planKey) : undefined;
+  if (!plan) return 0;
+  return Math.max(
+    0,
+    Number(plan.plannedQty || 0) -
+      (Number(item.poQuantity || 0) + Number(item.inTransit || 0) + Number(item.underGrn || 0))
+  );
+}
+
+function sortValueForInventoryItem(
+  item: InventoryItem,
+  column: InventorySortColumn,
+  planningTotalsByKey: PlanningTotalsMap
+): string | number {
+  switch (column) {
+    case 'code':
+      return item.code.toLowerCase();
+    case 'name':
+      return item.name.toLowerCase();
+    case 'type':
+      return item.type;
+    case 'itemGroups':
+      return (item.itemGroupNames?.join(', ') || '').toLowerCase();
+    case 'whStock':
+      return item.whStock;
+    case 'ml1Stock':
+      return item.ml1Stock;
+    case 'ml2Stock':
+      return item.ml2Stock;
+    case 'plannedQty':
+      return plannedOpenQtyForItem(item, planningTotalsByKey);
+    case 'poQuantity':
+      return Number(item.poQuantity) || 0;
+    case 'inTransit':
+      return item.inTransit;
+    case 'underGrn':
+      return Number(item.underGrn) || 0;
+    case 'stockInHand':
+      return item.stockInHand;
+    case 'reserved':
+      return item.reserved;
+    case 'reorderPt':
+      return item.reorderPt;
+    case 'avgMo':
+      return item.avgMo;
+    case 'status':
+      return item.status.toLowerCase();
+    default:
+      return '';
+  }
+}
+
+function SortableInventoryTh({
+  label,
+  column,
+  sortColumn,
+  sortDirection,
+  onSort,
+  title,
+}: {
+  label: string;
+  column: InventorySortColumn;
+  sortColumn: InventorySortColumn | null;
+  sortDirection: InventorySortDirection;
+  onSort: (col: InventorySortColumn) => void;
+  title?: string;
+}): JSX.Element {
+  const active = sortColumn === column;
+  return (
+    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        title={title}
+        aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+          active ? 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+        }`}
+      >
+        {label}
+        <span
+          className={`text-[10px] not-italic leading-none transition-opacity duration-150 ${
+            active ? 'opacity-100 text-cyan-600' : 'opacity-0 group-hover:opacity-70 text-gray-500'
+          }`}
+          aria-hidden
+        >
+          {active ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 interface Location {
   id: string;
   name: string;
@@ -61,7 +199,7 @@ interface Location {
   temperature: string;
   maxCapacity: string;
   icon: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface Rack {
@@ -72,7 +210,7 @@ interface Rack {
   levels: number;
   slotsPerLevel: number;
   condition: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 // Mock data based on the image
@@ -830,53 +968,38 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   );
 };
 
-/** Cell that shows stock value; hover or click shows where in warehouse (location/racks) */
+/** Cell that shows stock value; click opens where in warehouse (location/racks) */
 function StockLocationCell({
   item,
   type,
   value,
   className,
   onShowLocations,
-  onHoverLeave,
 }: {
   item: InventoryItem;
   type: 'wh' | 'ml1' | 'ml2';
   value: string;
   className: string;
   onShowLocations: (item: InventoryItem, type: 'wh' | 'ml1' | 'ml2') => void;
-  onHoverLeave?: () => void;
 }) {
   const canShow = item.warehouseInventoryId != null;
-  const hoverOpenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleMouseEnter = () => {
-    if (!canShow) return;
-    hoverOpenRef.current = setTimeout(() => onShowLocations(item, type), 400);
-  };
-  const handleMouseLeave = () => {
-    if (hoverOpenRef.current) {
-      clearTimeout(hoverOpenRef.current);
-      hoverOpenRef.current = null;
-    }
-    onHoverLeave?.();
-  };
 
   return (
     <button
       type="button"
       className={className}
-      title={canShow ? 'Hover or click to see location / racks' : undefined}
+      title={
+        canShow
+          ? type === 'wh'
+            ? 'Click to see WH stock distribution by zone and rack'
+            : 'Click to see manufacturing stock by location'
+          : undefined
+      }
       disabled={!canShow}
       onClick={(e) => {
         e.stopPropagation();
-        if (hoverOpenRef.current) {
-          clearTimeout(hoverOpenRef.current);
-          hoverOpenRef.current = null;
-        }
         if (canShow) onShowLocations(item, type);
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <span className="font-semibold text-sm">{value}</span>
     </button>
@@ -884,31 +1007,7 @@ function StockLocationCell({
 }
 
 /** Map API row to InventoryItem for table/sidebar */
-function rowToInventoryItem(row: {
-  id: string;
-  code: string;
-  name: string;
-  subtitle: string;
-  type: 'RM' | 'PM' | 'FG/PR';
-  sourceId: number;
-  itemGroupNames: string[];
-  itemGroupCodes: string[];
-  zone: string;
-  rack: string;
-  whStock: number;
-  whUnit: string;
-  ml1Stock: number;
-  ml2Stock: number;
-  stockInHand: number;
-  reserved: number;
-  inTransit: number;
-  inTransitBreakdown?: InTransitBreakdownItem[];
-  poQuantity?: number;
-  reorderPt: number;
-  avgMo: number;
-  status: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
-  warehouseInventoryId?: number;
-}): InventoryItem {
+function rowToInventoryItem(row: WarehouseInventoryRow): InventoryItem {
   return {
     id: row.id,
     code: row.code,
@@ -923,13 +1022,21 @@ function rowToInventoryItem(row: {
     ml1Stock: row.ml1Stock,
     ml2Stock: row.ml2Stock,
     stockInHand: row.stockInHand,
+    available:
+      row.available != null && Number.isFinite(Number(row.available))
+        ? Math.max(0, Number(row.available))
+        : warehouseInventoryAvailable(row.stockInHand, row.reserved),
     reserved: row.reserved,
     inTransit: row.inTransit,
+    underGrn: Number(row.underGrn) || 0,
     inTransitBreakdown: row.inTransitBreakdown,
     poQuantity: row.poQuantity,
     reorderPt: row.reorderPt,
     avgMo: row.avgMo,
     status: row.status,
+    qcStatus: row.qcStatus,
+    batchNumber: row.batchNumber ?? undefined,
+    expiryDate: row.expiryDate ?? undefined,
     itemGroupNames: row.itemGroupNames,
     itemGroupCodes: row.itemGroupCodes,
     warehouseInventoryId: row.warehouseInventoryId,
@@ -938,18 +1045,44 @@ function rowToInventoryItem(row: {
 
 const WarehouseInventory = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const {
+    data: whQueryData,
+    isLoading: whLoading,
+    isError: whIsError,
+    error: whQueryError,
+    refetch: refetchWarehouseInventory,
+  } = useWarehouseInventory();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
   const [viewMode, setViewMode] = useState<'current' | 'history' | 'usage'>('current');
   const [itemGroupFilter, setItemGroupFilter] = useState<string>('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<InventorySortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<InventorySortDirection>('asc');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRackModalOpen, setIsRackModalOpen] = useState(false);
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([]);
-  const [itemGroups, setItemGroups] = useState<{ id: string; code: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const inventoryData = useMemo(
+    () => (whQueryData?.rows ?? []).map(rowToInventoryItem),
+    [whQueryData?.rows]
+  );
+  const itemGroups = useMemo(
+    () =>
+      (whQueryData?.itemGroups ?? []).map((g) => ({
+        id: g.id,
+        code: g.code,
+        name: g.name || g.code,
+      })),
+    [whQueryData?.itemGroups]
+  );
+  const loading = whLoading;
+  const error =
+    whIsError && whQueryError instanceof Error
+      ? whQueryError.message
+      : whIsError
+        ? 'Failed to load inventory'
+        : null;
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [racks, setRacks] = useState<Rack[]>([]);
@@ -963,106 +1096,125 @@ const WarehouseInventory = () => {
     item: InventoryItem;
     type: 'wh' | 'ml1' | 'ml2';
   } | null>(null);
-  const [rackLocations, setRackLocations] = useState<RackLocationEntry[]>([]);
-  const [rackLocationsLoading, setRackLocationsLoading] = useState(false);
+  const [stockByLocation, setStockByLocation] = useState<StockByLocationPayload | null>(null);
+  const [stockByLocationLoading, setStockByLocationLoading] = useState(false);
+  const [openSidebarInEditMode, setOpenSidebarInEditMode] = useState(false);
   /** Planning Items Involved totals keyed as RM-{id} / PM-{id} (matches warehouse sourceId). */
-  const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { totalRequired: number; unit: string }>>(
+  const [planningTotalsByKey, setPlanningTotalsByKey] = useState<Map<string, { plannedQty: number; totalRequired: number; unit: string }>>(
     () => new Map()
   );
-  const hoverCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inventorySummaryFileRef = useRef<HTMLInputElement>(null);
+  const mainWarehouseSihFileRef = useRef<HTMLInputElement>(null);
+  const ml1SihFileRef = useRef<HTMLInputElement>(null);
+  const ml2SihFileRef = useRef<HTMLInputElement>(null);
+  const [importingInventoryExcel, setImportingInventoryExcel] = useState(false);
+  const [importingSihBucket, setImportingSihBucket] = useState<'warehouse' | 'ml1' | 'ml2' | null>(null);
 
-  const scheduleLocationPopoverClose = () => {
-    if (hoverCloseTimeoutRef.current) clearTimeout(hoverCloseTimeoutRef.current);
-    hoverCloseTimeoutRef.current = setTimeout(() => setLocationPopover(null), 200);
+  const formatSihImportResult = (label: string, res: WarehouseSihExcelImportResponse) => {
+    const s = res.summary;
+    return [
+      `${label}: processed ${res.rows_total ?? 0} row(s) from "${res.sheet_name ?? 'sheet'}".`,
+      `RM: ${s?.rm_updated ?? 0}, PM: ${s?.pm_updated ?? 0}, PR: ${s?.pr_updated ?? 0} updated`,
+      s?.created ? `(${s.created} new warehouse rows)` : '',
+      `Skipped: ${s?.skipped ?? 0}, Errors: ${s?.errors ?? 0}`,
+    ]
+      .filter(Boolean)
+      .join(' ');
   };
-  const cancelLocationPopoverClose = () => {
-    if (hoverCloseTimeoutRef.current) {
-      clearTimeout(hoverCloseTimeoutRef.current);
-      hoverCloseTimeoutRef.current = null;
+
+  const handleInventorySummaryExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingInventoryExcel(true);
+    try {
+      const res = await importInventorySummaryExcel(file, { details: true });
+      alert(formatSihImportResult('Zoho Inventory Summary', res));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      refetchWarehouseInventory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Inventory Excel import failed';
+      alert(message);
+    } finally {
+      setImportingInventoryExcel(false);
     }
   };
 
-  // Fetch rack locations when user opens WH/ML1/ML2 location popover
+  const handleSihBucketExcelChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    bucket: 'warehouse' | 'ml1' | 'ml2',
+    importer: (file: File, options?: { details?: boolean }) => Promise<WarehouseSihExcelImportResponse>,
+    label: string
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingSihBucket(bucket);
+    try {
+      const res = await importer(file, { details: true });
+      alert(formatSihImportResult(label, res));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      refetchWarehouseInventory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `${label} import failed`;
+      alert(message);
+    } finally {
+      setImportingSihBucket(null);
+    }
+  };
   useEffect(() => {
     if (!locationPopover || locationPopover.item.warehouseInventoryId == null) {
-      setRackLocations([]);
-      setRackLocationsLoading(false);
+      setStockByLocation(null);
+      setStockByLocationLoading(false);
       return;
     }
     let cancelled = false;
-    setRackLocationsLoading(true);
-    setRackLocations([]);
-    fetchRackLocations(locationPopover.item.warehouseInventoryId)
+    setStockByLocationLoading(true);
+    setStockByLocation(null);
+    fetchStockByLocation(locationPopover.item.warehouseInventoryId)
       .then((res) => {
         if (cancelled) return;
-        if (res.success && res.data) setRackLocations(res.data.locations || []);
+        if (res.success && res.data) setStockByLocation(res.data);
       })
       .finally(() => {
-        if (!cancelled) setRackLocationsLoading(false);
+        if (!cancelled) setStockByLocationLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [locationPopover?.item?.id, locationPopover?.item?.warehouseInventoryId]);
 
-  const loadWarehouseInventory = useCallback((silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setError(null);
+  useEffect(() => {
+    if (typeof console !== 'undefined' && console.log && inventoryData.length > 0) {
+      console.log('[Warehouse Inventory] Loaded', { count: inventoryData.length, sample: inventoryData[0] });
     }
-    return fetchWarehouseInventory()
-      .then((res) => {
-        if (res.success && res.data) {
-          const items = res.data.rows.map(rowToInventoryItem);
-          setInventoryData(items);
-          setItemGroups(
-            (res.data.itemGroups || []).map((g) => ({ id: g.id, code: g.code, name: g.name || g.code }))
-          );
-          if (typeof console !== 'undefined' && console.log) {
-            console.log('[Warehouse Inventory] Loaded', { count: items.length, sample: items[0], silent });
-          }
-        } else if (!silent) {
-          setError(res.error || 'Failed to load inventory');
-        }
-      })
-      .catch((err) => {
-        if (!silent) setError(err?.message || 'Failed to load inventory');
-      })
-      .finally(() => {
-        if (!silent) setLoading(false);
-      });
-  }, []);
+  }, [inventoryData]);
 
+  // After BMR dispensing / MTR / GRN / procurement PO release on another tab, refresh when user returns.
   useEffect(() => {
-    loadWarehouseInventory(false);
-  }, [loadWarehouseInventory]);
-
-  // After BMR dispensing / MTR / GRN on another page or tab, refresh MU (ML1/ML2) without a full reload.
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        loadWarehouseInventory(true);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [loadWarehouseInventory]);
+    // Intentionally disabled: this can trigger repeated refetches of
+    // `/api/v1/warehouse-inventory` which in turn recomputes warehouse reserved.
+    // Use explicit refresh actions instead of automatic visibility polling.
+    return undefined;
+  }, [refetchWarehouseInventory]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchItemsInvolved()
+    fetchItemsInvolved({ includeZeroRequired: true })
       .then((rows) => {
         if (cancelled) return;
-        const m = new Map<string, { totalRequired: number; unit: string }>();
+        const m = new Map<string, { plannedQty: number; totalRequired: number; unit: string }>();
         for (const r of rows) {
           if (r.type === 'RM' && r.raw_material_id != null) {
             m.set(`RM-${Number(r.raw_material_id)}`, {
+              plannedQty: Number(r.plannedQty) || 0,
               totalRequired: Number(r.totalRequired) || 0,
               unit: String(r.unit || 'KG'),
             });
           }
           if (r.type === 'PM' && r.pack_material_id != null) {
             m.set(`PM-${Number(r.pack_material_id)}`, {
+              plannedQty: Number(r.plannedQty) || 0,
               totalRequired: Number(r.totalRequired) || 0,
               unit: String(r.unit || 'PCS'),
             });
@@ -1093,7 +1245,7 @@ const WarehouseInventory = () => {
         if (res.success && res.data) {
           setHistoryRows(res.data.history || []);
         } else {
-          setHistoryError(res.error || 'Failed to load inventory history');
+          setHistoryError(String(res.error || 'Failed to load inventory history'));
         }
       })
       .catch((err) => {
@@ -1129,10 +1281,8 @@ const WarehouseInventory = () => {
   }, [viewMode]);
 
   const handleItemUpdatedFromSidebar = (updated: InventoryItem) => {
-    setInventoryData(prev =>
-      prev.map(item => (item.id === updated.id ? { ...item, ...updated } : item))
-    );
     setSelectedItem(updated);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
   };
 
   const addLocation = (locationData: Omit<Location, 'id' | 'createdAt'>) => {
@@ -1189,16 +1339,43 @@ const WarehouseInventory = () => {
     return items;
   }, [searchQuery, activeFilter, itemGroupFilter, inventoryData]);
 
-  useEffect(() => {
-    // Keep pagination consistent with filters/search.
-    setCurrentPage(1);
-  }, [searchQuery, activeFilter, itemGroupFilter, pageSize]);
+  const sortedItems = useMemo(() => {
+    if (!sortColumn) return filteredItems;
+    const rows = [...filteredItems];
+    rows.sort((a, b) => {
+      const av = sortValueForInventoryItem(a, sortColumn, planningTotalsByKey);
+      const bv = sortValueForInventoryItem(b, sortColumn, planningTotalsByKey);
+      let cmp: number;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        cmp = av - bv;
+      } else {
+        cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      }
+      if (cmp === 0) cmp = a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [filteredItems, sortColumn, sortDirection, planningTotalsByKey]);
 
-  const totalFiltered = filteredItems.length;
+  const toggleInventorySort = (column: InventorySortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
+
+  useEffect(() => {
+    // Keep pagination consistent with filters/search/sort.
+    setCurrentPage(1);
+  }, [searchQuery, activeFilter, itemGroupFilter, pageSize, sortColumn, sortDirection]);
+
+  const totalFiltered = sortedItems.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
-  const pagedItems = filteredItems.slice(startIndex, startIndex + pageSize);
+  const pagedItems = sortedItems.slice(startIndex, startIndex + pageSize);
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -1239,6 +1416,8 @@ const WarehouseInventory = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((row) => {
+        const adjustText =
+          row.actionType === 'INVENTORY_ADJUST' ? inventoryAdjustChangeLines(row.changesJson).join(' ') : '';
         const fields = [
           row.code || '',
           row.name || '',
@@ -1247,6 +1426,8 @@ const WarehouseInventory = () => {
           row.fromRack || '',
           row.toZone || '',
           row.toRack || '',
+          row.note || '',
+          adjustText,
         ]
           .join(' ')
           .toLowerCase();
@@ -1330,10 +1511,81 @@ const WarehouseInventory = () => {
         <div className="p-6">
           {/* View mode + filter tabs */}
           <div className="mb-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">
                 {viewMode === 'current' ? 'Inventory' : viewMode === 'history' ? 'Inventory History' : 'Usage'}
               </h1>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+              {viewMode === 'current' && (
+                <>
+                  <input
+                    ref={inventorySummaryFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={handleInventorySummaryExcelChange}
+                  />
+                  <input
+                    ref={mainWarehouseSihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleSihBucketExcelChange(e, 'warehouse', importMainWarehouseSihExcel, 'Main warehouse SIH')
+                    }
+                  />
+                  <input
+                    ref={ml1SihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) => handleSihBucketExcelChange(e, 'ml1', importMl1SihExcel, 'ML1 SIH')}
+                  />
+                  <input
+                    ref={ml2SihFileRef}
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    className="hidden"
+                    onChange={(e) => handleSihBucketExcelChange(e, 'ml2', importMl2SihExcel, 'ML2 SIH')}
+                  />
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => inventorySummaryFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                    title="Zoho Inventory Summary export"
+                  >
+                    {importingInventoryExcel ? 'Importing…' : 'Zoho stock Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => mainWarehouseSihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+                    title="Main warehouse workbook — Sheet3 with sku, item_name, SIH"
+                  >
+                    {importingSihBucket === 'warehouse' ? 'Importing…' : 'Upload WH SIH'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => ml1SihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                    title="ML1 workbook — STOCK IN HAND sheet: sku, item_name, PHYSICAL QTY"
+                  >
+                    {importingSihBucket === 'ml1' ? 'Importing…' : 'Upload ML1 SIH'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={importingInventoryExcel || importingSihBucket != null}
+                    onClick={() => ml2SihFileRef.current?.click()}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                    title="ML2 workbook — Sheet3 with sku, item_name, SIH"
+                  >
+                    {importingSihBucket === 'ml2' ? 'Importing…' : 'Upload ML2 SIH'}
+                  </button>
+                </>
+              )}
               <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
                 <button
                   type="button"
@@ -1365,6 +1617,7 @@ const WarehouseInventory = () => {
                 >
                   Usage
                 </button>
+              </div>
               </div>
             </div>
 
@@ -1443,18 +1696,20 @@ const WarehouseInventory = () => {
                 />
               </div>
               <button
-                onClick={() => setIsLocationModalOpen(true)}
+                onClick={() => navigate('/facility-management')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                title="Manage areas/zones in Facility Management"
               >
                 <MapPin className="w-4 h-4" />
-                Location
+                Manage Areas
               </button>
               <button
-                onClick={() => setIsRackModalOpen(true)}
+                onClick={() => navigate('/facility-management')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                title="Manage racks in Facility Management"
               >
                 <Grid3x3 className="w-4 h-4" />
-                Rack
+                Manage Racks
               </button>
             </div>
           )}
@@ -1531,7 +1786,12 @@ const WarehouseInventory = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredHistoryRows.map((row) => (
+                    {filteredHistoryRows.map((row) => {
+                      const adjustLines =
+                        row.actionType === 'INVENTORY_ADJUST'
+                          ? inventoryAdjustChangeLines(row.changesJson)
+                          : [];
+                      return (
                       <tr key={row.id}>
                         <td className="px-4 py-3">
                           <div className="text-sm font-semibold text-gray-900">
@@ -1553,17 +1813,38 @@ const WarehouseInventory = () => {
                           <div className="text-xs text-gray-500">{row.toRack || '—'}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
-                          {row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
-                            ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
-                            : (row.actionType || 'Move')}
+                          {row.actionType === 'INVENTORY_ADJUST'
+                            ? 'Inventory adjust'
+                            : row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
+                              ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
+                              : (row.actionType || 'Move')}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {(row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') && (
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-md">
+                          {row.actionType === 'INVENTORY_ADJUST' ? (
+                            <div className="space-y-1">
+                              {adjustLines.length > 0 ? (
+                                <ul className="list-disc list-inside text-xs text-gray-600">
+                                  {adjustLines.map((line, i) => (
+                                    <li key={i}>{line}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                              {row.note ? (
+                                <div className="text-xs text-gray-700">
+                                  <span className="font-medium">Note:</span> {row.note}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') ? (
                             <span className="text-amber-700 font-medium">
-                              +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'} {row.batchNo ? `· ${row.batchNo}` : ''}
+                              +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'}{' '}
+                              {row.batchNo ? `· ${row.batchNo}` : ''}
                             </span>
+                          ) : (
+                            '—'
                           )}
-                          {row.actionType !== 'BMR_RESERVED' && row.actionType !== 'BPR_RESERVED' && '—'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {row.qtyDelta != null ? row.qtyDelta : '—'}
@@ -1572,7 +1853,8 @@ const WarehouseInventory = () => {
                           {new Date(row.movedAt).toLocaleString()}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1627,55 +1909,29 @@ const WarehouseInventory = () => {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Code
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Item Name
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Item groups
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        WH Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ML1 Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        ML2 Stock
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        <span className="block">Total req</span>
-                        <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">Planning · RM kg</span>
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Stock in Hand
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Reserved
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        In Transit
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        PO Qty
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Reorder PT
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Avg/MO
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        QC / Status
-                      </th>
-                      {/* <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Planning
-                      </th> */}
+                      <SortableInventoryTh label="Code" column="code" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Item Name" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Type" column="type" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Item groups" column="itemGroups" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="WH Stock" column="whStock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="ML1 Stock" column="ml1Stock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="ML2 Stock" column="ml2Stock" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Planned qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="PO Qty" column="poQuantity" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="In Transit" column="inTransit" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Under GRN" column="underGrn" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh
+                        label="Stock in Hand"
+                        column="stockInHand"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={toggleInventorySort}
+                        title="Usable stock (physical WH+ML1+ML2 minus reserved for production/planning)"
+                      />
+                      <SortableInventoryTh label="Reserved" column="reserved" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Reorder PT" column="reorderPt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="Avg/MO" column="avgMo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
+                      <SortableInventoryTh label="QC / Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -1685,8 +1941,20 @@ const WarehouseInventory = () => {
                           ? `${item.type}-${item.sourceId}`
                           : null;
                       const plan = planKey ? planningTotalsByKey.get(planKey) : undefined;
+                      // Show planning-stage open qty (remaining), not full qty duplicated across later stages.
+                      const plannedOpenQty = plan
+                        ? Math.max(
+                            0,
+                            Number(plan.plannedQty || 0) -
+                              (Number(item.poQuantity || 0) + Number(item.inTransit || 0) + Number(item.underGrn || 0))
+                          )
+                        : 0;
+                      const availableQty =
+                        item.available ?? warehouseInventoryAvailable(item.stockInHand, item.reserved);
                       const canReleaseToPlanning =
-                        plan != null && (item.type === 'RM' || item.type === 'PM') && plan.totalRequired < item.stockInHand;
+                        plan != null &&
+                        (item.type === 'RM' || item.type === 'PM') &&
+                        plan.totalRequired < availableQty;
 
                       return (
                         <tr
@@ -1712,9 +1980,8 @@ const WarehouseInventory = () => {
                               item={item}
                               type="wh"
                               value={`${item.whStock} ${item.whUnit}`}
-                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer hover:ring-2 hover:ring-teal-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1722,9 +1989,8 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml1"
                               value={String(item.ml1Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer hover:ring-2 hover:ring-blue-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1732,33 +1998,29 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml2"
                               value={String(item.ml2Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer hover:ring-2 hover:ring-indigo-300"
+                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
-                              onHoverLeave={scheduleLocationPopoverClose}
                             />
                           </td>
                           <td className="px-4 py-3">
                             {plan ? (
                               item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Number(plan.totalRequired).toLocaleString(undefined, { maximumFractionDigits: 3 })} kg
+                                  {formatQtyExact(plannedOpenQty, 'kg')} kg
                                 </div>
                               ) : (
                                 <div className="text-sm font-semibold text-gray-900">
-                                  {Math.round(plan.totalRequired).toLocaleString()}{' '}
+                                  {Math.round(plannedOpenQty).toLocaleString()}{' '}
                                   <span className="text-xs font-normal text-gray-500">pcs (planning)</span>
                                 </div>
                               )
                             ) : (
-                              <span className="text-sm text-gray-400">—</span>
+                              <span className="text-sm text-gray-400">0</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-bold text-emerald-700">{item.stockInHand} {item.whUnit}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
-                              <span className="font-semibold text-sm">{item.reserved}</span>
+                            <div className="text-sm text-gray-600" title="PO-stage remaining after quantities moved to Under GRN.">
+                              {item.poQuantity != null ? item.poQuantity : '—'}
                             </div>
                           </td>
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1767,6 +2029,7 @@ const WarehouseInventory = () => {
                                 type="button"
                                 onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
                                 className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+                                title="In Transit stage only (Under GRN shown separately)."
                               >
                                 {item.inTransit} {item.whUnit}
                                 {(item.inTransitBreakdown?.length ?? 0) > 0 && (
@@ -1801,7 +2064,31 @@ const WarehouseInventory = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">{item.poQuantity != null ? item.poQuantity : '—'}</div>
+                            <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full border border-violet-200">
+                              <span className="font-semibold text-sm">{Number(item.underGrn || 0)} {item.whUnit}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div
+                              className="text-sm font-bold text-emerald-700"
+                              title={
+                                item.reserved > 0
+                                  ? `Physical total ${item.stockInHand} ${item.whUnit}; ${item.reserved} ${item.whUnit} reserved`
+                                  : `Physical stock ${item.stockInHand} ${item.whUnit}`
+                              }
+                            >
+                              {availableQty} {item.whUnit}
+                            </div>
+                            {item.reserved > 0 ? (
+                              <div className="text-[10px] text-gray-500 mt-0.5">
+                                Total {item.stockInHand} {item.whUnit}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                              <span className="font-semibold text-sm">{item.reserved}</span>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-sm text-gray-600">{item.reorderPt}</div>
@@ -1843,7 +2130,7 @@ const WarehouseInventory = () => {
               </div>
 
               {/* Empty State */}
-              {filteredItems.length === 0 && (
+              {sortedItems.length === 0 && (
                 <div className="py-16 text-center">
                   <div className="text-gray-400 text-5xl mb-4"></div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
@@ -1855,7 +2142,7 @@ const WarehouseInventory = () => {
             </div>
 
             {/* Footer Info */}
-            {filteredItems.length > 0 && (
+            {sortedItems.length > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between text-sm text-gray-600">
                   <div>
@@ -1914,7 +2201,7 @@ const WarehouseInventory = () => {
         )}
       </div>
 
-      {/* Location / Rack popover (WH stock & MUs) — opens on hover or click */}
+      {/* Location / Rack popover (WH stock & MUs) — opens on click */}
       {locationPopover && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/30"
@@ -1922,43 +2209,73 @@ const WarehouseInventory = () => {
           role="presentation"
         >
           <div
-            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-sm w-full mx-4 overflow-hidden"
+            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-xl w-full mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
-            onMouseEnter={cancelLocationPopoverClose}
-            onMouseLeave={scheduleLocationPopoverClose}
             role="dialog"
-            aria-label="Where in warehouse — location and racks"
+            aria-label={
+              locationPopover.type === 'wh'
+                ? 'Warehouse stock distribution by zone and rack'
+                : 'Manufacturing stock by location'
+            }
           >
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900">
-                Where in warehouse — {locationPopover.item.code}
-              </h3>
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {locationPopover.type === 'wh'
+                    ? `WH stock distribution — ${locationPopover.item.code}`
+                    : locationPopover.type === 'ml1'
+                      ? `ML1 stock — ${locationPopover.item.code}`
+                      : `ML2 stock — ${locationPopover.item.code}`}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">{locationPopover.item.name}</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setLocationPopover(null)}
-                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50"
+                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 shrink-0"
               >
                 <span className="sr-only">Close</span>×
               </button>
             </div>
-            <div className="p-4 max-h-64 overflow-y-auto">
-              {rackLocationsLoading ? (
-                <p className="text-sm text-slate-500">Loading locations &amp; racks…</p>
-              ) : rackLocations.length === 0 ? (
-                <p className="text-sm text-slate-500">No location/rack assignments for this item.</p>
+            <div className="p-4 max-h-[min(28rem,70vh)] overflow-y-auto">
+              {locationPopover.type === 'wh' ? (
+                <StockByLocationPanel
+                  data={stockByLocation}
+                  loading={stockByLocationLoading}
+                  viewMode="distribution"
+                  warehouseOnly
+                />
               ) : (
-                <ul className="space-y-2">
-                  {rackLocations.map((loc, idx) => (
-                    <li key={idx} className="text-sm flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span className="font-medium text-slate-800">{loc.locationName}</span>
-                      <span className="text-slate-500">→</span>
-                      <span className="text-cyan-700 font-mono">{loc.rackCode}</span>
-                    </li>
-                  ))}
-                </ul>
+                <StockByLocationPanel
+                  data={stockByLocation}
+                  loading={stockByLocationLoading}
+                  viewMode="distribution"
+                  manufacturingOnly
+                />
               )}
             </div>
+            {locationPopover.type === 'wh' && locationPopover.item.warehouseInventoryId != null && (
+              <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setLocationPopover(null)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-300 rounded-md hover:bg-white"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenSidebarInEditMode(true);
+                    setSelectedItem(locationPopover.item);
+                    setLocationPopover(null);
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700"
+                >
+                  Adjust stock…
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1975,7 +2292,11 @@ const WarehouseInventory = () => {
           <div onClick={(e) => e.stopPropagation()}>
             <WarehouseInventorySidebar
               item={selectedItem}
-              onClose={() => setSelectedItem(null)}
+              initialEditMode={openSidebarInEditMode}
+              onClose={() => {
+                setSelectedItem(null);
+                setOpenSidebarInEditMode(false);
+              }}
               onItemUpdated={handleItemUpdatedFromSidebar}
               variant="modal"
             />

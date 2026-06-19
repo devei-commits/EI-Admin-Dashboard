@@ -237,9 +237,9 @@ const WarehouseInventory: React.FC = () => {
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">WH STOCK</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML1 STOCK</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML2 STOCK</th>
+                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN TRANSIT</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN HAND</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">RESERVED</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">TRANSIT</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">REORDER</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">AVG/MO</th>
                 <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">STATUS</th>
@@ -297,6 +297,11 @@ const WarehouseInventory: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-2 py-2 text-center">
+                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded font-semibold text-xs border border-indigo-200 inline-block">
+                      {item.inTransit}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2 text-center">
                     <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded font-semibold text-xs border border-emerald-200 inline-block whitespace-nowrap">
                       {item.stockInHand}
                     </span>
@@ -304,11 +309,6 @@ const WarehouseInventory: React.FC = () => {
                   <td className="px-2 py-2 text-center">
                     <span className="px-2 py-1 bg-orange-50 text-orange-700 rounded font-semibold text-xs border border-orange-200 inline-block whitespace-nowrap">
                       {item.reserved}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded font-semibold text-xs border border-indigo-200 inline-block">
-                      {item.inTransit}
                     </span>
                   </td>
                   <td className="px-2 py-2 text-center text-gray-600 font-medium text-xs">{item.reorderPt}</td>

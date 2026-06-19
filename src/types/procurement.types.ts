@@ -3,7 +3,14 @@ export type RequestPriority = 'High' | 'Medium' | 'Low';
 export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending' | 'Under GRN';
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
 export type MainTab = 'Procurement' | 'Vendors' | 'Reports';
-export type SideSection = 'Overview' | 'Requests' | 'Quotations' | 'Draft POs' | 'Issued POs' | 'GRN Monitor' | 'Item Tracker';
+export type SideSection =
+  | 'Overview'
+  | 'Requests'
+  | 'Quotations'
+  | 'Draft POs'
+  | 'Issued POs'
+  | 'GRN Monitor'
+  | 'Inventory Audit';
 
 export type ItemDetail = {
   itemCode: string;
@@ -13,7 +20,10 @@ export type ItemDetail = {
   moq: string;
   packSize: string;
   plannedPrice: number;
-  leadTimeDays: number;
+  /** Set when known (incl. 0). Omitted when not resolved from API/notes/vendor list. */
+  leadTimeDays?: number;
+  /** Expected delivery / required-by date (YYYY-MM-DD) from Planning or PR header. */
+  expectedDate?: string;
   estValue: number;
   raw_material_id?: number;
   pack_material_id?: number;
@@ -74,6 +84,13 @@ export type QuoteLine = {
   vsPlanned: string;
   /** Line-level lead (days) when API provides it */
   leadTimeDays?: number;
+  priceHistory?: {
+    oldPrice: number;
+    newPrice: number;
+    changedAt: string;
+    changedBy?: string | null;
+    reason?: string | null;
+  }[];
   raw_material_id?: number;
   pack_material_id?: number;
 };
@@ -85,6 +102,9 @@ export type VendorQuote = {
   requestType: RequestType;
   vendor: string;
   status: QuoteStatus;
+  /** ISO / date-only from API — used to sort newest quotations first */
+  createdAt?: string;
+  updatedAt?: string;
   quotedOn: string;
   leadTimeDays: number;
   terms: string;
@@ -126,6 +146,8 @@ export type DraftPOLineItem = {
   /** From persisted PO line — used for stable PR↔PO matching when splitting */
   raw_material_id?: number;
   pack_material_id?: number;
+  /** UOM sent on purchase_orders.items for warehouse kg conversion (e.g. KG, G, PCS) */
+  unit?: string;
 };
 
 export type DraftPO = {
@@ -219,35 +241,6 @@ export type StockCheckLineData = {
   batchNo: string;
   packagingCondition: PackagingCondition;
   remarks?: string;
-};
-
-export type ItemTrackerRow = {
-  key: string;
-  requestId: string;
-  requestCode: string;
-  type: RequestType;
-  priority: RequestPriority;
-  requestStatus: RequestStatus;
-  itemName: string;
-  itemCode: string;
-  reqQty: number;
-  unit: string;
-  plannedPrice: number;
-  plannedValue: number;
-  preferredVendor: string | null;
-  quotedVendor: string | null;
-  actualPrice: number | null;
-  actualVsPlanned: string | null;
-  poNumber: string | null;
-  poStatus: string | null;
-  orderQty: string | null;
-  advPaid: string | null;
-  lrNo: string | null;
-  expDelivery: string | null;
-  grnRef: string | null;
-  quoteId: string | null;
-  draftPoId: string | null;
-  poId: string | null;
 };
 
 /** Context for "Release to Planned" modal: one item from a procurement request */

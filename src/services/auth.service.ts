@@ -48,6 +48,13 @@ interface LoginResponse {
  otp?: unknown;
 }
 
+/** Password OK but JWT only after OTP verify — FE shows code temporarily (dev). */
+export interface LoginOtpPending {
+ needsOtp: true;
+ userid: number;
+ otp: string;
+}
+
 /** Backend /me response (staff gets roleId, roleName, roleLevel, department, allowedModules) */
 interface MeResponse {
  userid: number;
@@ -70,18 +77,83 @@ interface MeResponse {
 // ==================== Authentication Operations ====================
 
 /**
- * Login with email and password. Backend returns token directly for staff (skip OTP).
+ * Login with email and password. Staff get a token; others get OTP pending payload.
  */
 export async function login(
  credentials: LoginCredentials
-): Promise<ServiceResult<AuthResponse>> {
+): Promise<ServiceResult<AuthResponse | LoginOtpPending>> {
  try {
   const res = await api.post<LoginResponse>('/api/v1/users/login', {
    email: credentials.username,
    password: credentials.password,
   }, { skipAuth: true });
-  if (!res.token) {
-   return { data: null, error: 'Login requires OTP verification.' as any, success: false };
+
+  if (res.token) {
+   setAuthToken(res.token);
+   const meResult = await getCurrentUser();
+   if (!meResult.success || !meResult.data) {
+    clearAuthToken();
+    return { data: null, error: (meResult.error || 'Failed to load user') as any, success: false };
+   }
+   return {
+    data: {
+     user: meResult.data,
+     token: res.token,
+     refreshToken: '',
+     expiresIn: 7 * 24 * 60 * 60,
+    },
+    error: null,
+    success: true,
+   };
+  }
+
+  if (res.success && res.userid != null && res.otp && typeof res.otp === 'object' && res.otp !== null) {
+   const payload = res.otp as { status?: string; otp?: string | number; error?: string };
+   if (typeof payload.error === 'string' && payload.error.trim()) {
+    return { data: null, error: payload.error as any, success: false };
+   }
+   if (payload.status === 'OTP_SENT') {
+    const code = payload.otp != null ? String(payload.otp).trim() : '';
+    return {
+     success: true,
+     data: { needsOtp: true, userid: res.userid, otp: code },
+     error: null,
+    };
+   }
+  }
+
+  return {
+   data: null,
+   error: 'Login requires OTP verification.' as any,
+   success: false,
+  };
+ } catch (err: unknown) {
+  const message = err && typeof err === 'object' && 'body' in err
+   ? (err as { body?: { error?: string } }).body?.error
+   : err instanceof Error ? err.message : 'Login failed';
+  return { data: null, error: message as any, success: false };
+ }
+}
+
+/**
+ * After password login returned OTP_SENT: exchange OTP for JWT (POST /api/v1/otp/verifyotp).
+ */
+export async function verifyOtpLogin(
+ userid: number,
+ otp: string
+): Promise<ServiceResult<AuthResponse>> {
+ const trimmed = otp.trim();
+ if (!trimmed) {
+  return { data: null, error: 'Enter the OTP.' as any, success: false };
+ }
+ try {
+  const res = await api.post<{ token?: string }>(
+   '/api/v1/otp/verifyotp',
+   { userid, otp: trimmed },
+   { skipAuth: true }
+  );
+  if (!res?.token) {
+   return { data: null, error: 'Verification failed.' as any, success: false };
   }
   setAuthToken(res.token);
   const meResult = await getCurrentUser();
@@ -102,7 +174,7 @@ export async function login(
  } catch (err: unknown) {
   const message = err && typeof err === 'object' && 'body' in err
    ? (err as { body?: { error?: string } }).body?.error
-   : err instanceof Error ? err.message : 'Login failed';
+   : err instanceof Error ? err.message : 'OTP verification failed';
   return { data: null, error: message as any, success: false };
  }
 }

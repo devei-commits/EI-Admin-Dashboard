@@ -29,6 +29,13 @@ export interface BackendRoleDetail {
  status: string;
  created_at: string;
  updated_at: string;
+ assignedUsers?: Array<{
+  user_id: number;
+  email: string;
+  name: string;
+  status: string;
+  assigned_at: string;
+ }>;
  permissions?: {
   granted: string[];
   globalSettings?: GlobalSettings;
@@ -52,6 +59,11 @@ export interface CreateRolePayload {
 
 export async function listRoles(): Promise<BackendRoleListItem[]> {
  return api.get<BackendRoleListItem[]>('/api/v1/roles');
+}
+
+/** Roles for User Management (internal team only — excludes customer/doctor). */
+export async function listStaffRoles(): Promise<BackendRoleListItem[]> {
+ return api.get<BackendRoleListItem[]>('/api/v1/roles?staffOnly=true');
 }
 
 export async function getRoleById(roleId: string | number): Promise<BackendRoleDetail> {

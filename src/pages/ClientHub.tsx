@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import eiLogo from '../assets/logo/eilogofull.svg';
+import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import {
   Users, AlertCircle, Clock, Package, FlaskConical, Calendar,
   TrendingUp, Search, X, ChevronDown, Plus, Phone, Mail,
@@ -1144,8 +1145,9 @@ const ClientHub = () => {
     <div className="flex h-full min-h-screen bg-gray-50">
       {/* ── INNER SIDEBAR ── */}
       <aside className="w-52 shrink-0 bg-white border-r border-gray-100 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-center p-3 border-b border-gray-100">
-          <img src={eiLogo} alt="Eisthetic" className="h-6 w-auto" />
+        <div className="flex items-center gap-2 p-3 border-b border-gray-100">
+          <AdminMainMenuButton />
+          <img src={eiLogo} alt="Eisthetic" className="h-6 w-auto mx-auto" />
         </div>
 
         <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">

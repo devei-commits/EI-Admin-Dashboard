@@ -37,7 +37,7 @@ export function WaitingForRole({ onLogout }: WaitingForRoleProps) {
   checkRoleStatus();
 
   // Poll every 3 seconds for real-time updates
-  const interval = setInterval(checkRoleStatus, 3000);
+  // Polling disabled intentionally to reduce background traffic.
 
   // Listen for localStorage changes (cross-tab sync)
   const handleStorageChange = (e: StorageEvent) => {
@@ -48,7 +48,6 @@ export function WaitingForRole({ onLogout }: WaitingForRoleProps) {
   window.addEventListener('storage', handleStorageChange);
 
   return () => {
-   clearInterval(interval);
    window.removeEventListener('storage', handleStorageChange);
   };
  }, [currentUser, systemUsers, setCurrentRole]);

@@ -45,10 +45,22 @@ export type PaymentTerms = string;
 // ═══════════════════════════════════════════════════════════
 
 export interface BatchSplit {
+  productionBatchId?: number | null;
   bmrNo: string;
   bprNo: string;
   plannedQty: number;
   fgQty: number;
+  /** Production statuses (when split is linked to a production batch). */
+  bmrStatus?: string | null;
+  bprStatus?: string | null;
+  /** Production yield numbers from the linked batch. */
+  bulkYield?: number | null;
+  fillYield?: number | null;
+  fgYield?: number | null;
+  /** Fulfillment timeline completion helpers. */
+  fgOutput?: number;
+  remainingQty?: number;
+  completionPercent?: number;
   fgLocation: string | null;
   ffStatus: FFStatus;
   pickedQty: number;
@@ -128,7 +140,8 @@ export interface KPIData {
 }
 
 export interface PipelineStage {
-  key: SOStatus;
+  /** SO status keys on Fulfillment; procurement Issued POs uses `issued-0` … `issued-6`. */
+  key: SOStatus | string;
   label: string;
   icon: React.ReactNode;
   count: number;
@@ -148,6 +161,12 @@ export type TrackingStep = {
   details?: string;
 };
 
+export interface BatchTimelineStep {
+  key: 'planned' | 'in_production' | 'fg_ready' | 'picking' | 'invoiced' | 'shipped' | 'delivered';
+  label: string;
+  status: 'done' | 'active' | 'pending';
+}
+
 // ═══════════════════════════════════════════════════════════
 // MODAL PROPS
 // ═══════════════════════════════════════════════════════════
@@ -158,6 +177,9 @@ export interface SODetailModalProps {
   saleOrder: SaleOrder | null;
   /** action, soNo, and optionally the batch split (for per-batch Pick/Invoice/Ship/Track) */
   onAction: (action: string, soNo: string, split?: BatchSplit) => void;
+  onEditSO?: (soNo: string) => void;
+  editDisabled?: boolean;
+  editDisabledReason?: string;
 }
 
 export interface PickModalProps {
@@ -174,7 +196,8 @@ export interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   saleOrder: SaleOrder | null;
-  onGenerateInvoice: (invoiceData: InvoiceData) => void;
+  /** Called after the server creates the invoice (and Zoho when enabled). Used to refresh lists. */
+  onGenerateInvoice: (invoiceData: InvoiceData) => void | Promise<void>;
   /** When set, only these BPR splits are invoiced (single-batch invoice). */
   selectedBprNos?: string[];
 }

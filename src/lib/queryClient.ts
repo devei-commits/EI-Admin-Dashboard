@@ -14,9 +14,15 @@ export const queryClient = new QueryClient({
     return failureCount < 3;
    },
    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-   refetchOnWindowFocus: true,
-   refetchOnReconnect: true,
-   refetchOnMount: true,
+   // Disable focus/reconnect refetches (they previously caused repeated GETs of
+   // `/api/v1/warehouse-inventory` during dev). Keep refetchOnMount = 'always' so
+   // that whenever a screen remounts (e.g. switching to Warehouse → Inventory or
+   // Planning → Items Involved after a GRN Complete), the cached row is replaced
+   // with fresh data. The backend's cacheInvalidationMiddleware already drops the
+   // Redis namespace; this just makes the SPA pick that up.
+   refetchOnWindowFocus: false,
+   refetchOnReconnect: false,
+   refetchOnMount: 'always',
    throwOnError: false, // Prevent queries from throwing errors up to React
   },
   mutations: {

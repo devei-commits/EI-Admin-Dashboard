@@ -7,6 +7,9 @@ export interface BOMRmLine {
   inci_name?: string;
   rm_code?: string;
   raw_material_id?: number;
+  /** Item group reference when formula line is a group (not a fixed RM). */
+  item_group_id?: number;
+  item_group_name?: string;
   pct_w_w?: number;
   pct?: number;
   uom?: string;
@@ -47,6 +50,8 @@ export interface BOMRecord {
   createdAt: string;
   updatedAt?: string;
   productId?: number | null;
+  /** Finished-product bulk SG from PR Specs (vs water); used as BOM default SG at Planning confirmation. */
+  specBulk?: string | null;
   rmLines?: BOMRmLine[] | null;
   pmLines?: BOMPmLine[] | null;
 }
@@ -86,10 +91,10 @@ export async function fetchBOMById(id: string): Promise<ServiceResult<BOMRecord>
   }
 }
 
-export async function fetchNextBomCode(prefix: string): Promise<string> {
-  const p = encodeURIComponent(prefix.trim());
-  const res = await api.get<{ nextCode: string }>(`/api/v1/bom/next-code?prefix=${p}`);
-  return res?.nextCode ?? `${prefix}-00001`;
+/** Next PR/BOM code: numeric only (e.g. 00001), global sequence for boms.bom_code. */
+export async function fetchNextBomCode(): Promise<string> {
+  const res = await api.get<{ nextCode: string }>('/api/v1/bom/next-code');
+  return res?.nextCode ?? '00001';
 }
 
 export interface CreateBOMPayload {

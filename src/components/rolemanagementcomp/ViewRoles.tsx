@@ -1,8 +1,41 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RoleDetailPopup from './RoleDetailPopup.tsx';
 import EditRoleFullPage from './EditRoleFullPage.tsx';
 import { UnifiedButton, UnifiedBadge, ConfirmDialog, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
 import { listRoles, deleteRole as deleteRoleApi } from '../../services/role.service';
+import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
+
+type RoleSortColumn =
+  | 'roleName'
+  | 'roleLevel'
+  | 'roleStatus'
+  | 'permissionsSet'
+  | 'createdAt'
+  | 'updatedAt';
+
+function parseRoleDate(value: string): number {
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function sortValueForRole(role: Role, column: RoleSortColumn): string | number {
+  switch (column) {
+    case 'roleName':
+      return role.roleName.toLowerCase();
+    case 'roleLevel':
+      return role.roleLevel.toLowerCase();
+    case 'roleStatus':
+      return role.roleStatus;
+    case 'permissionsSet':
+      return role.permissionsSet ? 1 : 0;
+    case 'createdAt':
+      return parseRoleDate(role.roleCreatedAt);
+    case 'updatedAt':
+      return parseRoleDate(role.roleUpdatedAt);
+    default:
+      return '';
+  }
+}
 
 export interface Role {
  id: string;
@@ -209,7 +242,36 @@ const ViewRoles: React.FC = () => {
  const [deleteRoleId, setDeleteRoleId] = useState<string | null>(null);
  const [roles, setRoles] = useState<Role[]>([]);
  const [rolesLoading, setRolesLoading] = useState(true);
+ const [sortColumn, setSortColumn] = useState<RoleSortColumn | null>(null);
+ const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
  const [roleUsersMap, setRoleUsersMap] = useState<RoleUsersMap>(() => loadRoleUsersMapFromStorage());
+
+ const sortedRoles = useMemo(() => {
+  if (!sortColumn) return roles;
+  const rows = [...roles];
+  rows.sort((a, b) => {
+   const av = sortValueForRole(a, sortColumn);
+   const bv = sortValueForRole(b, sortColumn);
+   let cmp: number;
+   if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+   } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+   }
+   if (cmp === 0) cmp = a.roleName.localeCompare(b.roleName, undefined, { numeric: true, sensitivity: 'base' });
+   return sortDirection === 'asc' ? cmp : -cmp;
+  });
+  return rows;
+ }, [roles, sortColumn, sortDirection]);
+
+ const toggleRoleSort = (column: RoleSortColumn) => {
+  if (sortColumn === column) {
+   setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+   return;
+  }
+  setSortColumn(column);
+  setSortDirection('asc');
+ };
 
  const loadRoles = useCallback(async () => {
   setRolesLoading(true);
@@ -298,7 +360,7 @@ const ViewRoles: React.FC = () => {
    
    {/* Mobile Card View */}
    <div className="md:hidden space-y-4">
-    {roles.map((role) => (
+    {sortedRoles.map((role) => (
      <div key={role.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
       <div className="flex justify-between items-start mb-4">
        <span className="font-semibold text-gray-800 leading-relaxed">{role.roleName}</span>
@@ -336,32 +398,20 @@ const ViewRoles: React.FC = () => {
    <div className="hidden md:block overflow-x-auto">
     <table className="w-full">
      <thead>
-      <tr className="border-b-2 border-gray-200">
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Role Name
-       </th>
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Role Level
-       </th>
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Role Status
-       </th>
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Permissions Set
-       </th>
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Created At
-       </th>
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
-        Updated At
-       </th>
+      <tr className="border-b-2 border-gray-200 bg-gray-50">
+       <SortableTableTh label="Role Name" column="roleName" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
+       <SortableTableTh label="Role Level" column="roleLevel" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
+       <SortableTableTh label="Role Status" column="roleStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
+       <SortableTableTh label="Permissions Set" column="permissionsSet" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
+       <SortableTableTh label="Created At" column="createdAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
+       <SortableTableTh label="Updated At" column="updatedAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
         Actions
        </th>
       </tr>
      </thead>
      <tbody className="divide-y divide-gray-100">
-      {roles.map((role) => (
+      {sortedRoles.map((role) => (
        <tr key={role.id} className="hover:bg-gray-50/50 transition-colors">
         <td className="px-5 py-4 font-medium text-gray-800 leading-relaxed">
          {role.roleName}

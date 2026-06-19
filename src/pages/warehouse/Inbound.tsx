@@ -1,14 +1,25 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
-import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { GrnQcInspectionPanel } from '../../components/warehouse/GrnQcInspectionPanel';
+import {
+  deriveGrnQcStatusFromSpecs,
+  grnQcCompletionBlockers,
+  type GrnQcSpecsStored,
+} from '../../lib/grnQcSpecs';
+import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
+import {
+  fetchFacilityAreas,
+  ensureCustomZoneAndRack,
+  type FacilityAreaDTO,
+  type ZoneDTO,
+} from '../../services/facilityAreas.service';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
 type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending';
-
-const QC_STATUS_OPTIONS: Array<Extract<QCStatus, 'Passed' | 'Rejected'>> = ['Passed', 'Rejected'];
 
 /** Map legacy API qc_status to QCStatus */
 function normalizeQcStatus(s: string | undefined): QCStatus {
@@ -18,23 +29,17 @@ function normalizeQcStatus(s: string | undefined): QCStatus {
   if (v === 'Quality checked') return 'Under test';
   return 'Under test';
 }
+
+/** Display-only GRN formatter: remove legacy "PO" token from GRN number. */
+function displayGrnNo(grnNo: string | null | undefined): string {
+  const raw = String(grnNo ?? '').trim();
+  if (!raw) return '—';
+  return raw.replace(/^GRN-PO-/i, 'GRN-');
+}
 type WorkflowStep = 'PO Received' | 'Qty Check' | 'QC Inspection' | 'Label Generation' | 'Dispatch Ready';
 
 const WORKFLOW_STEPS_REQUIRED: WorkflowStep[] = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
 
-/** Compare boxes × units to received qty without float drift; supports large integer quantities. */
-function boxesTimesUnitsEqualsRcvd(noOfBoxes: number, unitsPerBox: number, rcvdQty: number): boolean {
-  if (!Number.isFinite(rcvdQty) || rcvdQty < 0) return false;
-  const boxes = Math.max(1, Math.trunc(noOfBoxes) || 1);
-  const units = Math.max(0, Math.trunc(unitsPerBox) || 0);
-  try {
-    return BigInt(boxes) * BigInt(units) === BigInt(Math.trunc(rcvdQty));
-  } catch {
-    return boxes * units === rcvdQty;
-  }
-}
-
-/** Uniform cartons, or full cartons + optional partial last box: (n−1)×u + last = rcvd. */
 /** Item code from the first saved/generated QR (GRN stores one label set at a time). */
 function parseItemCodeFromGeneratedLabels(labels: GeneratedLabel[] | null | undefined): string | null {
   if (!labels?.length) return null;
@@ -47,51 +52,29 @@ function parseItemCodeFromGeneratedLabels(labels: GeneratedLabel[] | null | unde
   }
 }
 
-function labelPackagingMatchesRcvd(
+const GRN_QTY_EPSILON = 0.0001;
+
+function parseGrnQty(raw: string | number | null | undefined): number {
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function grnQtysEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) <= GRN_QTY_EPSILON;
+}
+
+function validateUnitsPerBoxList(
   rcvdQty: number,
-  numBoxes: number,
-  unitsPerBox: number,
-  lastBoxUnitsStr: string
+  unitsList: number[]
 ): { ok: true } | { ok: false; message: string } {
-  const n = Math.max(1, Math.trunc(numBoxes) || 1);
-  const u = Math.max(0, Math.trunc(unitsPerBox) || 0);
-  const lastTrim = lastBoxUnitsStr.trim();
-  if (!lastTrim) {
-    if (!boxesTimesUnitsEqualsRcvd(n, u, rcvdQty)) {
-      const prod =
-        typeof BigInt !== 'undefined'
-          ? String(BigInt(n) * BigInt(u))
-          : String(n * u);
-      return {
-        ok: false,
-        message: `No of boxes × Units/box (${n} × ${u} = ${prod}) must equal received quantity (${rcvdQty}). Or use “Last box (remainder)” for a partial final carton.`,
-      };
-    }
-    return { ok: true };
-  }
-  if (u < 1) {
-    return { ok: false, message: 'Set units per full box (e.g. 20) before entering remainder in last box.' };
-  }
-  const last = Math.trunc(Number(lastTrim)) || 0;
-  if (last < 1 || last > u) {
-    return { ok: false, message: `Last box units must be between 1 and ${u} (nominal full carton).` };
-  }
-  try {
-    const total = BigInt(n - 1) * BigInt(u) + BigInt(last);
-    const rcvd = BigInt(Math.trunc(rcvdQty));
-    if (total !== rcvd) {
-      return {
-        ok: false,
-        message: `(${n - 1} full × ${u}) + ${last} (last) = ${total.toString()} must equal received quantity (${rcvdQty}).`,
-      };
-    }
-  } catch {
-    if ((n - 1) * u + last !== rcvdQty) {
-      return {
-        ok: false,
-        message: `(${n - 1} full × ${u}) + ${last} (last) must equal received quantity (${rcvdQty}).`,
-      };
-    }
+  const total = unitsList.reduce((s, n) => s + (Number(n) || 0), 0);
+  const remaining = rcvdQty - total;
+  if (!grnQtysEqual(remaining, 0)) {
+    const remainingRounded = Math.round(remaining * 1000) / 1000;
+    return {
+      ok: false,
+      message: `Sum of Units/box must equal received quantity. Remaining: ${remainingRounded > 0 ? remainingRounded : 0}, over by: ${remainingRounded < 0 ? -remainingRounded : 0}.`,
+    };
   }
   return { ok: true };
 }
@@ -122,11 +105,11 @@ interface GRNRecord {
   type: GRNType;
   items: number;
   poValue: number;
-  expectedDate: string;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: QCStatus;
   qcBy: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: GRNStatus;
   invoiceNo?: string;
   invoiceAmount?: number;
@@ -137,10 +120,64 @@ interface GRNRecord {
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+}
+
+type InboundSortColumn =
+  | 'grnNo'
+  | 'item'
+  | 'rcvdQty'
+  | 'remaining'
+  | 'type'
+  | 'received'
+  | 'assignedTo'
+  | 'qc'
+  | 'status';
+
+interface InboundTableRow {
+  rowId: string;
+  grn: GRNRecord;
+  lineItem: LineItem | null;
+}
+
+function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
+  let cmp: number;
+  if (typeof av === 'number' && typeof bv === 'number') {
+    cmp = av - bv;
+  } else {
+    cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): string | number {
+  const { grn, lineItem } = row;
+  switch (col) {
+    case 'grnNo':
+      return displayGrnNo(grn.grnNo);
+    case 'item':
+      return lineItem ? `${lineItem.item} ${lineItem.itemCode}` : '';
+    case 'rcvdQty':
+      return lineItem?.rcvdQty ?? -1;
+    case 'remaining':
+      return lineItem ? Math.max(0, lineItem.poQty - lineItem.rcvdQty) : -1;
+    case 'type':
+      return grn.type;
+    case 'received':
+      return grn.receivedDate ? new Date(grn.receivedDate).getTime() : 0;
+    case 'assignedTo':
+      return grn.assignedTo || '';
+    case 'qc':
+      return grn.qcStatus || '';
+    case 'status':
+      return grn.status || '';
+    default:
+      return '';
+  }
 }
 
 /** Simulate scanning a QR: paste payload JSON → show decoded text + suggested action */
@@ -195,10 +232,43 @@ const ScanSimulator = ({ grnNo }: { grnNo: string }) => {
   );
 };
 
+function zoneDisplayLabel(zone: ZoneDTO): string {
+  const zl = zone.zoneLabel?.trim();
+  if (zl) return zl;
+  return `${zone.code} — ${zone.name}`.trim();
+}
+
+/** Match saved GRN rack code to a rack under Facility Management (warehouse areas). */
+function matchGrnLocationToFacility(
+  locationPrefix: string | null | undefined,
+  areas: FacilityAreaDTO[]
+): { areaId: number; zoneId: number; rackId: number } | null {
+  const prefix = (locationPrefix || '').trim();
+  if (!prefix) return null;
+  for (const area of areas) {
+    for (const zone of area.zones || []) {
+      for (const rack of zone.racks || []) {
+        if (String(rack.code).trim() === prefix) {
+          return { areaId: area.id, zoneId: zone.id, rackId: rack.id };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // GRN Detail Modal Component
 const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const { data: facilityAreasRaw = [], isLoading: facilityAreasLoading } = useQuery({
+    queryKey: ['facility-areas', 'warehouse', 'grn-modal'],
+    queryFn: async () => {
+      const res = await fetchFacilityAreas('warehouse');
+      return res.success ? res.data : [];
+    },
+  });
+  const facilityAreasData = useMemo(() => facilityAreasRaw as FacilityAreaDTO[], [facilityAreasRaw]);
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
@@ -221,11 +291,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [labelError, setLabelError] = useState<string | null>(null);
   const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
   const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
-  const [unitsPerBox, setUnitsPerBox] = useState(String(grn.unitsPerBox ?? ''));
-  const [lastBoxUnitsStr, setLastBoxUnitsStr] = useState(
-    grn.lastBoxUnits != null && grn.lastBoxUnits !== undefined ? String(grn.lastBoxUnits) : ''
-  );
+  const [unitsPerBoxListStr, setUnitsPerBoxListStr] = useState<string[]>([]);
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
+  const [locationZone, setLocationZone] = useState(grn.locationZone ?? '');
+  /** Use Facility Management hierarchy vs free-text (legacy / edge cases). */
+  const [locationSource, setLocationSource] = useState<'facility' | 'custom'>('facility');
+  const [selectedAreaId, setSelectedAreaId] = useState<number | ''>('');
+  const [selectedZoneId, setSelectedZoneId] = useState<number | ''>('');
+  const [selectedRackId, setSelectedRackId] = useState<number | ''>('');
   const [grnBatchMfg, setGrnBatchMfg] = useState(grn.grnBatchMfg ?? '');
   const [expiry, setExpiry] = useState(grn.expiry ?? '');
   const [mfgBatch, setMfgBatch] = useState(grn.mfgBatch ?? '');
@@ -236,8 +309,22 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [qcBy, setQcBy] = useState(grn.qcBy || '');
   const [qcByInput, setQcByInput] = useState(grn.qcBy || '');
   const [showQcByDropdown, setShowQcByDropdown] = useState(false);
+  const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(grn.qcSpecs ?? null);
+  const [qcSpecsLoading, setQcSpecsLoading] = useState(false);
+  const [qcSpecsError, setQcSpecsError] = useState<string | null>(null);
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
+  const parsedNoOfBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
+  const parsedUnitsPerBoxList = unitsPerBoxListStr.map((v) => Math.max(0, parseGrnQty(v)));
+  const totalUnitsAllocated = parsedUnitsPerBoxList.reduce((s, n) => s + n, 0);
+  const remainingUnitsForSelectedLine = selectedLineItem
+    ? Math.max(0, Math.round((selectedLineItem.rcvdQty - totalUnitsAllocated) * 1000) / 1000)
+    : 0;
+  const overAllocatedUnits = selectedLineItem
+    ? Math.max(0, Math.round((totalUnitsAllocated - selectedLineItem.rcvdQty) * 1000) / 1000)
+    : 0;
+  const unitsFullyAllocated =
+    selectedLineItem != null && grnQtysEqual(totalUnitsAllocated, selectedLineItem.rcvdQty);
 
   /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
   const needsGenerateForSelection = Boolean(
@@ -269,6 +356,32 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     });
   }, [labels]);
 
+  useEffect(() => {
+    setUnitsPerBoxListStr((prev) => {
+      const n = Math.max(1, parseInt(noOfBoxes, 10) || 1);
+      const next = Array.from({ length: n }, (_, i) => prev[i] ?? '0');
+      return next;
+    });
+  }, [noOfBoxes]);
+
+  useEffect(() => {
+    if (!labels || labels.length === 0) return;
+    const values = [...labels]
+      .sort((a, b) => a.boxIndex - b.boxIndex)
+      .map((label) => {
+        try {
+          const p = JSON.parse(label.qrPayload || '{}') as { units_per_box?: number };
+          return String(p.units_per_box ?? 0);
+        } catch {
+          return '0';
+        }
+      });
+    if (values.length > 0) {
+      setNoOfBoxes(String(values.length));
+      setUnitsPerBoxListStr(values);
+    }
+  }, [labels]);
+
   /** Switching line item should restore that line's own generated labels. */
   useEffect(() => {
     if (!selectedLineItemId) {
@@ -291,16 +404,100 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       return;
     }
     const legacyCode = parseItemCodeFromGeneratedLabels(grn.generatedLabels ?? null);
-    if (!legacyCode) return;
-    const match = editedLineItems.find((li) => String(li.itemCode).trim().toLowerCase() === legacyCode.trim().toLowerCase());
-    if (match) setSelectedLineItemId(match.id);
+    if (legacyCode) {
+      const match = editedLineItems.find((li) => String(li.itemCode).trim().toLowerCase() === legacyCode.trim().toLowerCase());
+      if (match) {
+        setSelectedLineItemId(match.id);
+        return;
+      }
+    }
+    if (editedLineItems.length > 0) setSelectedLineItemId(editedLineItems[0].id);
   }, [grn.id, grn.generatedLabels, editedLineItems, selectedLineItemId]);
 
   useEffect(() => {
-    setQcStatus(normalizeQcStatus(grn.qcStatus));
     setQcBy(grn.qcBy || '');
     setQcByInput(grn.qcBy || '');
-  }, [grn.id, grn.qcStatus, grn.qcBy]);
+  }, [grn.id, grn.qcBy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQcSpecsLoading(true);
+    setQcSpecsError(null);
+    void fetchGRNQcReference(grn.id)
+      .then((res) => {
+        if (cancelled) return;
+        setQcSpecs(res.qcSpecs);
+        setQcStatus(normalizeQcStatus(res.derivedQcStatus || grn.qcStatus));
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setQcSpecsError(e instanceof Error ? e.message : 'Could not load QC specs');
+      })
+      .finally(() => {
+        if (!cancelled) setQcSpecsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [grn.id]);
+
+  useEffect(() => {
+    if (!qcSpecs) return;
+    setQcStatus(normalizeQcStatus(deriveGrnQcStatusFromSpecs(qcSpecs)));
+  }, [qcSpecs]);
+
+  useEffect(() => {
+    if (facilityAreasLoading) return;
+    const areas = facilityAreasData;
+    if (areas.length === 0) {
+      setLocationSource('custom');
+      setSelectedAreaId('');
+      setSelectedZoneId('');
+      setSelectedRackId('');
+      setLocationPrefix(grn.locationPrefix ?? '');
+      setLocationZone(grn.locationZone ?? '');
+      return;
+    }
+    const m = matchGrnLocationToFacility(grn.locationPrefix, areas);
+    if (m) {
+      setLocationSource('facility');
+      setSelectedAreaId(m.areaId);
+      setSelectedZoneId(m.zoneId);
+      setSelectedRackId(m.rackId);
+    } else {
+      setLocationSource('custom');
+      setSelectedAreaId('');
+      setSelectedZoneId('');
+      setSelectedRackId('');
+      setLocationPrefix(grn.locationPrefix ?? '');
+      setLocationZone(grn.locationZone ?? '');
+    }
+  }, [grn.id, grn.locationPrefix, grn.locationZone, facilityAreasData, facilityAreasLoading]);
+
+  useEffect(() => {
+    if (locationSource !== 'facility') return;
+    const area = facilityAreasData.find((a) => a.id === selectedAreaId);
+    const zone = area?.zones?.find((z) => z.id === selectedZoneId);
+    const rack = zone?.racks?.find((r) => r.id === selectedRackId);
+    if (zone) setLocationZone(zoneDisplayLabel(zone));
+    else setLocationZone('');
+    if (rack) setLocationPrefix(rack.code);
+    else setLocationPrefix('');
+  }, [locationSource, selectedAreaId, selectedZoneId, selectedRackId, facilityAreasData]);
+
+  const selectedArea = useMemo(
+    () => facilityAreasData.find((a) => a.id === selectedAreaId),
+    [facilityAreasData, selectedAreaId]
+  );
+  const zoneOptions = selectedArea?.zones ?? [];
+  const selectedZone = useMemo(
+    () => zoneOptions.find((z) => z.id === selectedZoneId),
+    [zoneOptions, selectedZoneId]
+  );
+  const rackOptionsSorted = useMemo(() => {
+    const racks = selectedZone?.racks ?? [];
+    return [...racks].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  }, [selectedZone]);
 
   const filteredQcByUsers = assignableUsers.filter(
     u => (u.displayName || '').toLowerCase().includes((qcByInput || '').toLowerCase().trim())
@@ -313,7 +510,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         const next = {
           ...item,
           [field === 'rcvdQty' ? 'rcvdQty' : 'qcStatus']:
-            field === 'rcvdQty' ? Math.trunc(Number(value)) || 0 : value,
+            field === 'rcvdQty' ? parseGrnQty(value) : value,
         };
         if (field === 'rcvdQty') {
           const rcvdQty = next.rcvdQty;
@@ -329,18 +526,37 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     setSaveError(null);
     setSaving(true);
     try {
+      let putawayPrefix = locationPrefix;
+      let putawayZone = locationZone;
+      if (locationSource === 'custom' && locationZone.trim() && locationPrefix.trim()) {
+        const ensured = await ensureCustomZoneAndRack({
+          areaType: 'warehouse',
+          zoneText: locationZone.trim(),
+          rackText: locationPrefix.trim(),
+        });
+        if (!ensured.success || !ensured.data?.rackCode) {
+          throw new Error(ensured.error || 'Could not register custom zone and rack in the main warehouse.');
+        }
+        putawayPrefix = ensured.data.rackCode;
+        putawayZone = ensured.data.zoneName || ensured.data.zoneCode || putawayZone;
+        setLocationPrefix(putawayPrefix);
+        setLocationZone(putawayZone);
+        queryClient.invalidateQueries({ queryKey: ['facility-areas'] });
+        queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
+      }
+
       const res = await updateGRN(grn.id, {
         assignedTo,
         grnDate: grnDate || undefined,
         lineItems: editedLineItems,
         noOfBoxes: noOfBoxes ? parseInt(noOfBoxes, 10) : undefined,
-        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
-        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
-        locationPrefix: locationPrefix || undefined,
+        locationPrefix: putawayPrefix || undefined,
+        locationZone: putawayZone || undefined,
+        locationSource,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
-        qcStatus: qcStatus as string,
+        qcSpecs: qcSpecs ?? undefined,
         qcBy: qcBy || undefined,
         ...payload,
       });
@@ -352,11 +568,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         type: res.type as GRNType,
         items: res.items,
         poValue: res.poValue,
-        expectedDate: res.expectedDate,
         receivedDate: res.receivedDate,
         assignedTo: res.assignedTo,
         qcStatus: normalizeQcStatus(res.qcStatus),
         qcBy: res.qcBy || '',
+        qcSpecs: res.qcSpecs ?? qcSpecs,
         status: res.status as GRNStatus,
         lineItems: res.lineItems,
         workflowSteps: (res.workflowSteps || []) as WorkflowStep[],
@@ -365,8 +581,8 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         grnDate: res.grnDate ?? undefined,
         noOfBoxes: res.noOfBoxes ?? undefined,
         unitsPerBox: res.unitsPerBox ?? undefined,
-        lastBoxUnits: res.lastBoxUnits ?? undefined,
         locationPrefix: res.locationPrefix ?? undefined,
+        locationZone: res.locationZone ?? undefined,
         grnBatchMfg: res.grnBatchMfg ?? undefined,
         expiry: res.expiry ?? undefined,
         mfgBatch: res.mfgBatch ?? undefined,
@@ -407,18 +623,29 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       setLabelError('Assign this GRN (Assigned To) before generating labels.');
       return;
     }
-    if (!selectedLineItemId || !selectedLineItem) {
-      setLabelError('Please select a product / line item before generating labels.');
+    const targetLineItem = selectedLineItem ?? editedLineItems[0] ?? null;
+    if (!locationPrefix.trim()) {
+      setLabelError(
+        locationSource === 'facility'
+          ? 'Select warehouse area, zone, and rack before generating labels.'
+          : 'Enter location prefix (rack code) before generating labels.',
+      );
+      return;
+    }
+    if (!locationZone.trim()) {
+      setLabelError(
+        locationSource === 'facility'
+          ? 'Complete zone and rack selection from Facility Management before generating labels.'
+          : 'Enter storage zone before generating labels.',
+      );
       return;
     }
     const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-    const numUnitsPerBox = parseInt(unitsPerBox, 10) || 0;
-    if (selectedLineItem != null) {
-      const pack = labelPackagingMatchesRcvd(
-        selectedLineItem.rcvdQty,
-        numBoxes,
-        numUnitsPerBox,
-        lastBoxUnitsStr
+    const boxUnitsList = Array.from({ length: numBoxes }, (_, i) => Math.max(0, parseGrnQty(unitsPerBoxListStr[i] || '0')));
+    if (targetLineItem != null) {
+      const pack = validateUnitsPerBoxList(
+        targetLineItem.rcvdQty,
+        boxUnitsList
       );
       if (!pack.ok) {
         setLabelError(pack.message);
@@ -436,23 +663,26 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       }
       const res = await generateGRNLabels(grn.id, {
         noOfBoxes: numBoxes,
-        unitsPerBox: unitsPerBox ? parseInt(unitsPerBox, 10) : undefined,
-        lastBoxUnits: lastBoxUnitsStr.trim() ? parseInt(lastBoxUnitsStr, 10) : null,
+        unitsPerBoxList: boxUnitsList,
         locationPrefix: locationPrefix || undefined,
+        locationZone: locationZone || undefined,
+        locationSource,
         grnBatchMfg: grnBatchMfg || undefined,
         expiry: expiry || undefined,
         mfgBatch: mfgBatch || undefined,
-        productName: selectedLineItem?.item || undefined,
-        itemCode: selectedLineItem?.itemCode || undefined,
+        productName: targetLineItem?.item || undefined,
+        itemCode: targetLineItem?.itemCode || undefined,
       });
       setLabels(res.labels);
       setLabelsGenerated(true);
-      const selectedCodeNorm = String(selectedLineItem?.itemCode || '').trim().toLowerCase();
-      const nextLineItems = editedLineItems.map((li) =>
-        String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
-          ? { ...li, labelGenerated: true, generatedLabels: res.labels }
-          : li
-      );
+      const selectedCodeNorm = String(targetLineItem?.itemCode || selectedLineItem?.itemCode || '').trim().toLowerCase();
+      const nextLineItems = selectedCodeNorm
+        ? editedLineItems.map((li) =>
+            String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
+              ? { ...li, labelGenerated: true, generatedLabels: res.labels }
+              : li
+          )
+        : editedLineItems;
       setEditedLineItems(nextLineItems);
       try {
         await updateGRN(grn.id, { lineItems: nextLineItems });
@@ -494,12 +724,30 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
     }
   };
 
+  const qcTestBlockers = grnQcCompletionBlockers(qcSpecs);
   const completionBlockers: string[] = [];
-  if (qcStatus !== 'Passed') completionBlockers.push('QC status must be Passed.');
+  if (qcStatus !== 'Passed') {
+    if (qcTestBlockers.length > 0) completionBlockers.push(...qcTestBlockers);
+    else completionBlockers.push('QC status must be Passed (complete all master quality tests).');
+  }
   if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
   if (!allLineItemsLabeled) {
     completionBlockers.push('QR labels must be generated for all GRN materials.');
+  }
+  if (!locationPrefix.trim()) {
+    completionBlockers.push(
+      locationSource === 'facility'
+        ? 'Select area, zone, and rack from Facility Management (or use Custom).'
+        : 'Location prefix (rack code) is required.',
+    );
+  }
+  if (!locationZone.trim()) {
+    completionBlockers.push(
+      locationSource === 'facility'
+        ? 'Zone label is required (choose zone + rack from Facility Management).'
+        : 'Storage zone is required.',
+    );
   }
   const canMarkComplete = completionBlockers.length === 0;
 
@@ -548,13 +796,13 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
 
     const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
     const zone = payload.toZone || payload.zone || '—';
-    const grnDisplay = payload.grn_no || payload.grn_id || grn.grnNo;
+    const grnDisplay = displayGrnNo(String(payload.grn_no || payload.grn_id || grn.grnNo || ''));
 
     printWin.document.write(`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>QR Label - ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</title>
+    <title>QR Label - ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(activeLabel.boxIndex)}</title>
     <style>
       body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
       .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; width: 320px; }
@@ -568,7 +816,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   </head>
   <body>
     <div class="card">
-      <div class="head">GRN ${esc(grn.grnNo)} - Box ${esc(activeLabel.boxIndex)}</div>
+      <div class="head">GRN ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(activeLabel.boxIndex)}</div>
       <div class="img-wrap"><img src="${esc(activeLabel.qrImageDataUrl)}" alt="QR Box ${esc(activeLabel.boxIndex)}" /></div>
       <p><strong>Product:</strong> ${esc(payload.product_name || '—')}</p>
       <p><strong>Item code:</strong> ${esc(payload.item_code || '—')}</p>
@@ -580,6 +828,98 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       <p><strong>Expiry:</strong> ${esc(payload.expiry || '—')}</p>
       <p><strong>Mfg batch:</strong> ${esc(payload.mfg_batch || '—')}</p>
     </div>
+    <script>
+      window.onload = function () {
+        window.print();
+        window.onafterprint = function () { window.close(); };
+      };
+    </script>
+  </body>
+</html>`);
+    printWin.document.close();
+  };
+
+  const handlePrintAllLabels = () => {
+    if (!labels || labels.length === 0) return;
+    const printWin = window.open('', '_blank', 'width=900,height=760');
+    if (!printWin) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+      return;
+    }
+    const esc = (v: unknown) =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const cardsHtml = [...labels]
+      .sort((a, b) => a.boxIndex - b.boxIndex)
+      .map((label) => {
+        let payload: {
+          product_name?: string;
+          item_code?: string;
+          grn_no?: string;
+          grn_id?: number;
+          units_per_box?: number;
+          toRack?: string | null;
+          rack?: string | null;
+          toZone?: string | null;
+          zone?: string | null;
+          location_prefix?: string;
+          grn_batch_mfg?: string;
+          expiry?: string;
+          mfg_batch?: string;
+        } = {};
+        try {
+          payload = JSON.parse(label.qrPayload || '{}');
+        } catch {
+          payload = {};
+        }
+        const rack = payload.toRack || payload.rack || payload.location_prefix || '—';
+        const zone = payload.toZone || payload.zone || '—';
+        const grnDisplay = displayGrnNo(String(payload.grn_no || payload.grn_id || grn.grnNo || ''));
+        return `
+          <article class="card">
+            <div class="head">GRN ${esc(displayGrnNo(grn.grnNo))} - Box ${esc(label.boxIndex)}</div>
+            <div class="img-wrap"><img src="${esc(label.qrImageDataUrl)}" alt="QR Box ${esc(label.boxIndex)}" /></div>
+            <p><strong>Product:</strong> ${esc(payload.product_name || '—')}</p>
+            <p><strong>Item code:</strong> ${esc(payload.item_code || '—')}</p>
+            <p><strong>GRN:</strong> ${esc(grnDisplay)}</p>
+            <p><strong>Units:</strong> ${esc(payload.units_per_box ?? '—')}</p>
+            <p><strong>Rack:</strong> ${esc(rack)}</p>
+            <p><strong>Zone:</strong> ${esc(zone)}</p>
+            <p><strong>Batch mfg:</strong> ${esc(payload.grn_batch_mfg || '—')}</p>
+            <p><strong>Expiry:</strong> ${esc(payload.expiry || '—')}</p>
+            <p><strong>Mfg batch:</strong> ${esc(payload.mfg_batch || '—')}</p>
+          </article>
+        `;
+      })
+      .join('');
+
+    printWin.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>QR Labels - ${esc(displayGrnNo(grn.grnNo))}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+      .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; break-inside: avoid; }
+      .head { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+      .img-wrap { text-align: center; margin-bottom: 8px; }
+      img { width: 170px; height: 170px; object-fit: contain; }
+      p { margin: 3px 0; font-size: 11px; }
+      strong { font-weight: 700; }
+      @media print {
+        body { padding: 0; }
+        .card { border: 1px solid #000; page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid">${cardsHtml}</div>
     <script>
       window.onload = function () {
         window.print();
@@ -623,8 +963,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">GRN — {grn.grnNo}</h2>
-            <p className="text-sm text-slate-600 mt-0.5">{grn.vendor}</p>
+            <h2 className="text-lg font-bold text-slate-900">GRN — {displayGrnNo(grn.grnNo)}</h2>
           </div>
           <button
             onClick={onClose}
@@ -657,28 +996,43 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             </span>
           </div>
 
-          {/* QC section: status + QC by (for label generation) */}
+          {/* QC section: master specs + QC by */}
           <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-700">QC status &amp; QC by</h3>
-            <p className="text-xs text-slate-600">Labels (QR) can only be generated after QC is Passed. Select QC status and the user who performed QC.</p>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <h3 className="text-sm font-semibold text-slate-700">QC inspection &amp; QC by</h3>
+            <p className="text-xs text-slate-600">
+              Tests are loaded from the RM/PM master <strong>Quality Specifications</strong>. Rows marked <strong>Mand</strong> in the master must be tested (result + Pass). Optional tests may be left pending. Labels (QR) require all mandatory tests to pass.
+            </p>
+            <GrnQcInspectionPanel
+              qcSpecs={qcSpecs}
+              loading={qcSpecsLoading}
+              error={qcSpecsError}
+              disabled={saving}
+              onChange={setQcSpecs}
+            />
+            <div className="flex flex-col sm:flex-row gap-4 pt-2 border-t border-slate-200">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">QC status</label>
-                <select
-                  value={qcStatus}
-                  onChange={(e) => setQcStatus(e.target.value as QCStatus)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  Overall QC status
+                </label>
+                <div
+                  className={`w-full px-4 py-3 border rounded-lg text-sm font-semibold ${
+                    qcStatus === 'Passed'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : qcStatus === 'Rejected'
+                        ? 'bg-rose-50 border-rose-300 text-rose-800'
+                        : 'bg-slate-50 border-slate-300 text-slate-700'
+                  }`}
                 >
-                  {qcStatus !== 'Passed' && qcStatus !== 'Rejected' && (
-                    <option value={qcStatus} disabled>{qcStatus}</option>
-                  )}
-                  {QC_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                  {qcStatus}
+                  <span className="block text-[10px] font-normal text-slate-500 mt-1">
+                    Derived from master quality tests (not manually set).
+                  </span>
+                </div>
               </div>
               <div className="flex-1 relative">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">QC by</label>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  QC by <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={qcByInput}
@@ -732,29 +1086,13 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             ))}
           </div>
 
-          {/* PO Details Section */}
+          {/* GRN Details Section */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">PO & shipment</h3>
+            <h3 className="text-sm font-semibold text-slate-700">GRN & shipment</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">GRN NO.</p>
-                <p className="text-sm font-mono font-bold text-blue-600">{grn.grnNo}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">PO NO.</p>
-                <p className="text-sm font-mono font-bold text-emerald-600">{grn.poNo}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Vendor</p>
-                <p className="text-sm font-medium text-slate-900">{grn.vendor}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">PO Value</p>
-                <p className="text-sm font-bold text-amber-700">₹{grn.poValue.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Expected Date</p>
-                <p className="text-sm font-medium text-slate-900">{new Date(grn.expectedDate).toLocaleDateString('en-IN')}</p>
+                <p className="text-sm font-mono font-bold text-blue-600">{displayGrnNo(grn.grnNo)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                 <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Received Date</p>
@@ -783,7 +1121,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  Assigned To
+                  Assigned To <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={assignedTo}
@@ -842,7 +1180,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                             type="number"
                             value={item.rcvdQty}
                             onChange={(e) => handleLineItemChange(item.id, 'rcvdQty', e.target.value)}
-                            className="w-16 px-3 py-2 border-2 border-blue-300 rounded-lg bg-white text-slate-900 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                            className="w-24 min-w-[6rem] px-2 py-2 border-2 border-blue-300 rounded-lg bg-white text-slate-900 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
                             min="0"
                           />
                         </td>
@@ -869,64 +1207,203 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
           {/* Label data & Generate QR Labels */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
-            <p className="text-xs text-slate-600">One QR per box for this GRN. Each box gets a unique QR (Box 1, Box 2, …) with product, GRN, units in that box, location, batch, and expiry. If received quantity does not divide evenly into full cartons (e.g. 49 items, 20 per carton), set <strong>Last box (remainder)</strong> so (full boxes × units/box) + last box = received qty. <strong>Generate Labels</strong> saves first, then creates QR codes.</p>
+            <p className="text-xs text-slate-600">One QR per box for this GRN. Set <strong>No of boxes</strong>, then enter <strong>Units/box</strong> for each box. The total must match received quantity. <strong>Generate Labels</strong> saves first, then creates QR codes.</p>
             {qcStatus !== 'Passed' && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                <strong>QC must be Passed</strong> before generating labels. Set QC status to &quot;Passed&quot;, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
-              </div>
-            )}
-
-            {/* Product / Line Item Selection */}
-            {editedLineItems.length > 0 && (
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Select product / line item <span className="text-red-500">*</span></label>
-                <select
-                  value={selectedLineItemId}
-                  onChange={(e) => {
-                    setSelectedLineItemId(e.target.value);
-                    setLabelError(null);
-                  }}
-                  className={`w-full px-2 py-1.5 border rounded text-sm ${!selectedLineItemId ? 'border-amber-400 bg-amber-50' : 'border-slate-300'}`}
-                >
-                  <option value="">— Select a product —</option>
-                  {editedLineItems.map((li) => (
-                    <option key={li.id} value={li.id}>{li.item} ({li.itemCode}) — PO Qty: {li.poQty}</option>
-                  ))}
-                </select>
+                <strong>QC must be Passed</strong> before generating labels. Complete all master quality tests, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
               </div>
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">No of boxes</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  No of boxes <span className="text-red-500">*</span>
+                </label>
                 <input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Units/box (full carton)</label>
-                <input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+              <div className="col-span-2 md:col-span-3">
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Units/box by box <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {Array.from({ length: parsedNoOfBoxes }).map((_, i) => (
+                    <div key={`box-units-${i}`}>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">Box {i + 1}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={unitsPerBoxListStr[i] ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setUnitsPerBoxListStr((prev) => prev.map((x, idx) => (idx === i ? v : x)));
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {selectedLineItem && (
+                  <p className={`text-xs mt-2 ${overAllocatedUnits > 0 ? 'text-red-600' : remainingUnitsForSelectedLine > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    Received: <strong>{selectedLineItem.rcvdQty}</strong> units · Assigned in boxes: <strong>{totalUnitsAllocated}</strong> · Remaining: <strong>{remainingUnitsForSelectedLine}</strong>
+                    {overAllocatedUnits > 0 ? ` · Over by ${overAllocatedUnits}` : ''}
+                    {overAllocatedUnits === 0 && !unitsFullyAllocated ? ' · Warning: fill remaining units before generating labels.' : ''}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Last box (remainder)</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={lastBoxUnitsStr}
-                  onChange={(e) => setLastBoxUnitsStr(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                  placeholder="e.g. 9 for 2×20 + 9"
-                />
-                <p className="text-[10px] text-slate-500 mt-0.5">Optional. Leave empty when every box has the same count. Must be ≤ full carton size.</p>
+
+              <div className="col-span-2 md:col-span-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-xs font-semibold text-slate-700">Put-away location <span className="text-red-500">*</span></span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="grn-location-source"
+                      className="rounded-full border-slate-300"
+                      checked={locationSource === 'facility'}
+                      onChange={() => {
+                        setLocationSource('facility');
+                        const m = matchGrnLocationToFacility(locationPrefix, facilityAreasData);
+                        if (m) {
+                          setSelectedAreaId(m.areaId);
+                          setSelectedZoneId(m.zoneId);
+                          setSelectedRackId(m.rackId);
+                        }
+                      }}
+                    />
+                    Facility Management
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="grn-location-source"
+                      className="rounded-full border-slate-300"
+                      checked={locationSource === 'custom'}
+                      onChange={() => setLocationSource('custom')}
+                    />
+                    Custom (type zone / rack)
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Warehouse areas, zones, and racks are maintained under <strong>Facility Management</strong>. Choosing them here sets the zone label and rack code on QR labels and stock put-away.
+                  Custom mode routes quantity to the <strong>default warehouse zone</strong> (not a separate custom facility).
+                </p>
+
+                {locationSource === 'facility' && facilityAreasLoading && (
+                  <p className="text-xs text-slate-500">Loading warehouse locations…</p>
+                )}
+                {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length === 0 && (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    No warehouse areas found. Create a warehouse area, zones, and racks in Facility Management, or use Custom.
+                  </p>
+                )}
+
+                {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Warehouse area <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={selectedAreaId === '' ? '' : String(selectedAreaId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedAreaId(v ? parseInt(v, 10) : '');
+                          setSelectedZoneId('');
+                          setSelectedRackId('');
+                        }}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                      >
+                        <option value="">— Select area —</option>
+                        {facilityAreasData.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} — {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Zone <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={selectedZoneId === '' ? '' : String(selectedZoneId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedZoneId(v ? parseInt(v, 10) : '');
+                          setSelectedRackId('');
+                        }}
+                        disabled={selectedAreaId === ''}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <option value="">— Select zone —</option>
+                        {zoneOptions.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.code} — {z.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        Rack (put-away code) <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={selectedRackId === '' ? '' : String(selectedRackId)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedRackId(v ? parseInt(v, 10) : '');
+                        }}
+                        disabled={selectedZoneId === ''}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      >
+                        <option value="">— Select rack —</option>
+                        {rackOptionsSorted.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.code}
+                            {r.name ? ` — ${r.name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedZoneId !== '' && rackOptionsSorted.length === 0 && (
+                        <p className="text-[10px] text-amber-700 mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {locationSource === 'custom' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Storage zone <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={locationZone}
+                        onChange={(e) => setLocationZone(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        placeholder="e.g. Zone A / RM bulk"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code) <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={locationPrefix}
+                        onChange={(e) => setLocationPrefix(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        placeholder="e.g. A1-L2-S3"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {locationSource === 'facility' && !facilityAreasLoading && locationZone && locationPrefix && (
+                  <p className="text-[10px] text-slate-600">
+                    Saved on GRN / QR: <span className="font-mono font-medium">zone</span> = {locationZone} ·{' '}
+                    <span className="font-mono font-medium">rack</span> = {locationPrefix}
+                  </p>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code)</label>
-                <input
-                  type="text"
-                  value={locationPrefix}
-                  onChange={(e) => setLocationPrefix(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                  placeholder="e.g. A1-L2-S3"
-                />
-              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
                 <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
@@ -946,7 +1423,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   <button
                     type="button"
                     onClick={() => void runGenerateLabels()}
-                    disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
+                    disabled={generatingLabels || saving || qcStatus !== 'Passed'}
                     className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
                   >
                     {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
@@ -1006,6 +1483,14 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
                   className="px-4 py-2 bg-slate-700 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
                 >
                   Print selected QR
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintAllLabels}
+                  disabled={!labels || labels.length === 0}
+                  className="px-4 py-2 bg-indigo-700 text-white rounded-lg font-medium text-sm hover:bg-indigo-800 transition-colors disabled:opacity-50"
+                >
+                  Print all QR
                 </button>
               </div>
               <p className="text-[11px] text-slate-500">
@@ -1149,11 +1634,11 @@ function mapApiToGRNRecord(r: {
   type: 'RM' | 'PM';
   items: number;
   poValue: number;
-  expectedDate: string;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: string;
   qcBy?: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: string;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
@@ -1164,6 +1649,7 @@ function mapApiToGRNRecord(r: {
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
@@ -1177,11 +1663,11 @@ function mapApiToGRNRecord(r: {
     type: r.type,
     items: r.items,
     poValue: r.poValue,
-    expectedDate: r.expectedDate,
     receivedDate: r.receivedDate,
     assignedTo: r.assignedTo,
     qcStatus: normalizeQcStatus(r.qcStatus),
     qcBy: r.qcBy ?? '',
+    qcSpecs: r.qcSpecs ?? null,
     status: r.status as GRNStatus,
     lineItems: r.lineItems,
     workflowSteps: r.workflowSteps,
@@ -1192,6 +1678,7 @@ function mapApiToGRNRecord(r: {
     unitsPerBox: r.unitsPerBox ?? undefined,
     lastBoxUnits: r.lastBoxUnits ?? undefined,
     locationPrefix: r.locationPrefix ?? undefined,
+    locationZone: r.locationZone ?? undefined,
     grnBatchMfg: r.grnBatchMfg ?? undefined,
     expiry: r.expiry ?? undefined,
     mfgBatch: r.mfgBatch ?? undefined,
@@ -1208,6 +1695,8 @@ const WarehouseInbound = () => {
   const [selectedGRN, setSelectedGRN] = useState<GRNRecord | null>(null);
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [grnDate, setGrnDate] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<InboundSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   useEffect(() => {
     fetchGRNList()
@@ -1271,14 +1760,52 @@ const WarehouseInbound = () => {
       const query = searchQuery.toLowerCase();
       return (
         grn.grnNo.toLowerCase().includes(query) ||
-        grn.poNo.toLowerCase().includes(query) ||
-        grn.vendor.toLowerCase().includes(query) ||
         grn.assignedTo.toLowerCase().includes(query)
       );
     }
 
     return true;
   });
+
+  const filteredItemRows = useMemo((): InboundTableRow[] => {
+    return filteredData.flatMap((grn) => {
+      const lineItems = Array.isArray(grn.lineItems) ? grn.lineItems : [];
+      if (lineItems.length === 0) {
+        return [{
+          rowId: `${grn.id}-empty`,
+          grn,
+          lineItem: null as LineItem | null,
+        }];
+      }
+      return lineItems.map((line) => ({
+        rowId: `${grn.id}-${line.id}`,
+        grn,
+        lineItem: line,
+      }));
+    });
+  }, [filteredData]);
+
+  const sortedItemRows = useMemo(() => {
+    if (!sortColumn) return filteredItemRows;
+    return [...filteredItemRows].sort((a, b) => {
+      const cmp = compareSortValues(
+        sortValueForInboundRow(a, sortColumn),
+        sortValueForInboundRow(b, sortColumn),
+        sortDirection
+      );
+      if (cmp !== 0) return cmp;
+      return a.rowId.localeCompare(b.rowId, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [filteredItemRows, sortColumn, sortDirection]);
+
+  const toggleInboundSort = (column: InboundSortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection('asc');
+  };
 
   const getQCStatusColor = (status: QCStatus) => {
     switch (status) {
@@ -1393,7 +1920,7 @@ const WarehouseInbound = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search GRN, PO, vendor…"
+                placeholder="Search GRN or item…"
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               />
             </div>
@@ -1403,35 +1930,93 @@ const WarehouseInbound = () => {
         {/* Data Table */}
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px]">
+            <table className="w-full min-w-[840px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-3.5 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">GRN No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">PO No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Vendor</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Items</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">PO Value</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Expected</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Received</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Assigned To</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">QC</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">Status</th>
+                  <SortableTableTh
+                    label="GRN No."
+                    column="grnNo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="Item"
+                    column="item"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="RCVD Qty"
+                    column="rcvdQty"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Remaining"
+                    column="remaining"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Type"
+                    column="type"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Received"
+                    column="received"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Assigned To"
+                    column="assignedTo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="QC"
+                    column="qc"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
+                    label="Status"
+                    column="status"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
-                ) : filteredData.length === 0 ? (
+                ) : sortedItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">No GRNs found</td>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No GRN items found</td>
                   </tr>
                 ) : (
-                  filteredData.map((grn) => (
+                  sortedItemRows.map(({ rowId, grn, lineItem }) => (
                     <tr
-                      key={grn.id}
+                      key={rowId}
                       className="hover:bg-amber-50/50 transition-colors cursor-pointer"
                       onClick={() => setSelectedGRN(grn)}
                       role="button"
@@ -1439,13 +2024,25 @@ const WarehouseInbound = () => {
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
                     >
                       <td className="px-4 py-3.5">
-                        <span className="text-sm font-mono font-medium text-blue-600">{grn.grnNo}</span>
+                        <span className="text-sm font-mono font-medium text-blue-600">{displayGrnNo(grn.grnNo)}</span>
                       </td>
                       <td className="px-4 py-4">
-                        <span className="text-sm font-mono text-emerald-600">{grn.poNo}</span>
+                        {lineItem ? (
+                          <div>
+                            <div className="text-sm font-medium text-slate-900">{lineItem.item}</div>
+                            <div className="text-xs text-slate-500 font-mono">{lineItem.itemCode}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-4">
-                        <span className="text-sm font-medium text-slate-800">{grn.vendor}</span>
+                      <td className="px-4 py-4 text-center">
+                        <span className="text-sm font-medium text-slate-700">{lineItem ? lineItem.rcvdQty : '—'}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`text-sm font-semibold ${lineItem ? (Math.max(0, lineItem.poQty - lineItem.rcvdQty) > 0 ? 'text-amber-700' : 'text-emerald-700') : 'text-slate-400'}`}>
+                          {lineItem ? Math.max(0, lineItem.poQty - lineItem.rcvdQty) : '—'}
+                        </span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${grn.type === 'RM'
@@ -1454,15 +2051,6 @@ const WarehouseInbound = () => {
                           }`}>
                           {grn.type}
                         </span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-sm font-medium text-slate-700">{grn.items}</span>
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <span className="text-sm font-semibold text-amber-700">{formatCurrency(grn.poValue)}</span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-sm text-slate-600">{formatDate(grn.expectedDate)}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         {grn.receivedDate ? (

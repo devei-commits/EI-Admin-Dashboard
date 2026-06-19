@@ -40,9 +40,9 @@ export const AUTO_POPULATE_RULES = {
 export const TEMP_FIELD_MAPPINGS = {
  packaging: {
   variant: {
-   tempFields: ['varId', 'varVolume', 'varSameMold', 'varMoq', 'varStatus'],
+   tempFields: ['varId', 'varName', 'varMoq', 'varStatus', 'varLeadTimeDays', 'varNotes'],
    arrayField: 'variants',
-   itemType: { id: '', volume: 0, sameMold: '', moq: 0, status: 'Active' }
+   itemType: { id: '', name: '', moq: 0, status: 'Active', leadTimeDays: 0, notes: '' },
   },
   vendor: {
    tempFields: ['venName', 'venLocation', 'venMoq', 'venPrice', 'venLT', 'venApproved', 'venPriceType', 'venValid', 'venSampleCost'],
@@ -145,7 +145,7 @@ export const removeFromArray = (
 export const getPrimaryFields = (masterType: 'packaging' | 'rawMaterial' | 'bom'): string[] => {
  const primaryMap = {
   packaging: ['pkgSku', 'name', 'level', 'matBody', 'matClosure'],
-  rawMaterial: ['rmSku', 'inciName', 'tradeCommercialName', 'grade', 'compliance'],
+  rawMaterial: ['rmSku', 'inciName', 'tradeCommercialName'],
   bom: ['bomCode', 'client', 'name', 'dosage', 'type']
  };
  return primaryMap[masterType] || [];
@@ -203,10 +203,21 @@ export function isValidGstPercent(raw: string | number | undefined): boolean {
  return Number.isFinite(n) && n >= 0 && n <= 100;
 }
 
+/** Supported GST rate options shown when Tax Preference is Taxable. */
+export const GST_RATE_OPTIONS = ['0', '3', '5', '12', '18', '28'] as const;
+
+/** True when the provided GST % matches one of the standard slab values. */
+export function isAllowedGstRate(raw: string | number | undefined): boolean {
+ const s = typeof raw === 'number' ? String(raw) : String(raw ?? '').trim().replace(/%/g, '');
+ if (!s) return false;
+ return (GST_RATE_OPTIONS as readonly string[]).includes(s);
+}
+
 /**
  * Validate tax classification lines for masters that use Zoho-style tax preference.
- * - rawMaterial: requires hsnCode + gst when rmTaxPreference === Taxable
- * - packaging: requires pkgHsn when pkgTaxPreference === Taxable
+ * - Both RM and PM: require `*TaxPreference` to be explicitly chosen (not blank).
+ * - rawMaterial (Taxable): requires hsnCode + gst rate.
+ * - packaging   (Taxable): requires pkgHsn + pkgGst rate.
  */
 export function validateMasterTaxDetails(
  formData: Record<string, unknown>,
@@ -214,35 +225,64 @@ export function validateMasterTaxDetails(
 ): { valid: boolean; errors: Record<string, string> } {
  const errors: Record<string, string> = {};
 
+ /** RM tax fields live on stage index 1 (Units, Tax & Procurement). */
+ const taxStepRm = 2;
+ const taxStepPm = 0;
+
  if (masterType === 'rawMaterial') {
-  if (!taxPreferenceRequiresDetails(String(formData.rmTaxPreference ?? ''))) {
+  const pref = String(formData.rmTaxPreference ?? '').trim();
+  if (!pref) {
+   errors.rmTaxPreference = formatStepFieldMessage(taxStepRm, 'Tax Preference');
+   return { valid: false, errors };
+  }
+  if (!taxPreferenceRequiresDetails(pref)) {
    return { valid: true, errors: {} };
   }
   const hsn = String(formData.hsnCode ?? '').trim();
   if (!hsn) {
-   errors.hsnCode = 'HSN code is required when Tax Preference is Taxable';
+   errors.hsnCode = formatStepFieldMessage(
+    taxStepRm,
+    'HSN/SAC',
+    'is required when Tax Preference is Taxable'
+   );
   } else if (!isValidHsnOrSacCode(hsn)) {
-   errors.hsnCode = 'Enter a valid HSN code (4–12 digits)';
+   errors.hsnCode = formatStepFieldMessage(taxStepRm, 'HSN/SAC', 'must be 4–12 digits');
   }
   const gstRaw = formData.gst;
   const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
   if (!gstStr) {
-   errors.gst = 'GST % is required when Tax Preference is Taxable';
-  } else if (!isValidGstPercent(gstStr)) {
-   errors.gst = 'GST % must be a number from 0 to 100';
+   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'is required when Tax Preference is Taxable');
+  } else if (!isAllowedGstRate(gstStr)) {
+   errors.gst = formatStepFieldMessage(taxStepRm, 'GST %', 'must be one of 0 / 3 / 5 / 12 / 18 / 28');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }
 
  if (masterType === 'packaging') {
-  if (!taxPreferenceRequiresDetails(String(formData.pkgTaxPreference ?? ''))) {
+  const pref = String(formData.pkgTaxPreference ?? '').trim();
+  if (!pref) {
+   errors.pkgTaxPreference = formatStepFieldMessage(taxStepPm, 'Tax Preference');
+   return { valid: false, errors };
+  }
+  if (!taxPreferenceRequiresDetails(pref)) {
    return { valid: true, errors: {} };
   }
   const hsn = String(formData.pkgHsn ?? '').trim();
   if (!hsn) {
-   errors.pkgHsn = 'HSN code is required when Tax Preference is Taxable';
+   errors.pkgHsn = formatStepFieldMessage(
+    taxStepPm,
+    'HSN code',
+    'is required when Tax Preference is Taxable'
+   );
   } else if (!isValidHsnOrSacCode(hsn)) {
-   errors.pkgHsn = 'Enter a valid HSN code (4–12 digits)';
+   errors.pkgHsn = formatStepFieldMessage(taxStepPm, 'HSN code', 'must be 4–12 digits');
+  }
+  const gstRaw = formData.pkgGst;
+  const gstStr = gstRaw == null ? '' : String(gstRaw).trim();
+  if (!gstStr) {
+   errors.pkgGst = formatStepFieldMessage(taxStepPm, 'GST %', 'is required when Tax Preference is Taxable');
+  } else if (!isAllowedGstRate(gstStr)) {
+   errors.pkgGst = formatStepFieldMessage(taxStepPm, 'GST %', 'must be one of 0 / 3 / 5 / 12 / 18 / 28');
   }
   return { valid: Object.keys(errors).length === 0, errors };
  }
@@ -250,19 +290,80 @@ export function validateMasterTaxDetails(
  return { valid: true, errors: {} };
 }
 
+/** 0-based stage index on the master form → same number as sidebar labels (`0) …`, `1) …`). */
+const PRIMARY_FIELD_STEP: Record<'packaging' | 'rawMaterial' | 'bom', Record<string, number>> = {
+ rawMaterial: {
+  rmSku: 0,
+  inciName: 0,
+  tradeCommercialName: 0,
+ },
+ packaging: {
+  pkgSku: 0,
+  name: 0,
+  level: 0,
+  matBody: 1,
+  matClosure: 1,
+ },
+ bom: {
+  bomCode: 0,
+  client: 0,
+  name: 0,
+  dosage: 0,
+  type: 0,
+ },
+};
+
+const PRIMARY_FIELD_LABEL: Record<'packaging' | 'rawMaterial' | 'bom', Record<string, string>> = {
+ rawMaterial: {
+  rmSku: 'SKU / RM code',
+  inciName: 'INCI Name',
+  tradeCommercialName: 'Trade/Commercial Name',
+ },
+ packaging: {
+  pkgSku: 'SKU',
+  name: 'Item Name',
+  level: 'Level',
+  matBody: 'Material',
+  matClosure: 'Material (Closure)',
+ },
+ bom: {
+  bomCode: 'BOM code',
+  client: 'Client',
+  name: 'Name',
+  dosage: 'Dosage',
+  type: 'Type',
+ },
+};
+
+/** Shown in inline errors and toasts: `Step 1 — HSN code is required` (matches sidebar index `1)`). */
+export function formatStepFieldMessage(stepIndex0: number, label: string, suffix = 'is required'): string {
+ return `Step ${stepIndex0} — ${label} ${suffix}`;
+}
+
+export type ValidatePrimaryFieldsOptions = {
+ /** Primary field ids to skip (e.g. omit `rmSku` for new RM when code is assigned on save). */
+ omitFields?: string[];
+};
+
 /**
  * Validate required primary fields
  */
 export const validatePrimaryFields = (
  formData: any,
- masterType: 'packaging' | 'rawMaterial' | 'bom'
+ masterType: 'packaging' | 'rawMaterial' | 'bom',
+ options?: ValidatePrimaryFieldsOptions
 ): { valid: boolean; errors: Record<string, string> } => {
- const primaryFields = getPrimaryFields(masterType);
+ const omit = new Set(options?.omitFields ?? []);
+ const primaryFields = getPrimaryFields(masterType).filter((f) => !omit.has(f));
  const errors: Record<string, string> = {};
+ const stepMap = PRIMARY_FIELD_STEP[masterType];
+ const labelMap = PRIMARY_FIELD_LABEL[masterType];
 
  primaryFields.forEach(field => {
   if (!formData[field]) {
-   errors[field] = `${field} is required`;
+   const step = stepMap[field] ?? 0;
+   const label = labelMap[field] ?? field;
+   errors[field] = formatStepFieldMessage(step, label);
   }
  });
 

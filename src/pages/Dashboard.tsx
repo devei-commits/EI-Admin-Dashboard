@@ -1,9 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { fetchLowThresholdAlerts } from '../services/warehouseInventory.service';
 import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
-import { useGlobalState } from '../context/GlobalStateContext';
+import { fetchDashboardOverview } from '../services/dashboard.service';
+import type {
+  DashboardOverview,
+  DashboardPendingItem,
+  DashboardRecentActivity,
+} from '../services/dashboard.service';
+import { queryKeys } from '../lib/queryClient';
 import {
   LayoutDashboard,
   Package,
@@ -18,7 +25,6 @@ import {
   Box,
   Layers,
   Building2,
-  TrendingUp,
   CheckSquare,
   Clock,
   AlertCircle,
@@ -68,50 +74,12 @@ interface ModuleCard {
   description: string;
 }
 
-interface RecentActivity {
-  id: string;
-  action: string;
-  module: string;
-  user: string;
-  time: string;
-  type: 'order' | 'user' | 'enquiry' | 'task' | 'system';
-}
-
-interface PendingItem {
-  id: string;
-  title: string;
-  module: string;
-  priority: 'high' | 'medium' | 'low';
-  dueDate?: string;
-}
-
-// ==================== MOCK DATA ====================
-
-const RECENT_ACTIVITY: RecentActivity[] = [
-  { id: '1', action: 'New order ORD-2026-0125 created', module: 'Orders', user: 'Priya Sharma', time: '5 mins ago', type: 'order' },
-  { id: '2', action: 'User Amit Patel role updated to Manager', module: 'Users', user: 'Admin', time: '15 mins ago', type: 'user' },
-  { id: '3', action: 'Enquiry #ENQ-089 resolved', module: 'Enquiries', user: 'Kavita Desai', time: '32 mins ago', type: 'enquiry' },
-  { id: '4', action: 'Task "Review BOM specs" completed', module: 'Tasks', user: 'Ravi Verma', time: '1 hour ago', type: 'task' },
-  { id: '5', action: 'GRN-2026-0045 approved', module: 'Receiving', user: 'Sunita Joshi', time: '2 hours ago', type: 'order' },
-  { id: '6', action: 'New product sample requested', module: 'Samples', user: 'Meera Nair', time: '3 hours ago', type: 'system' },
-  { id: '7', action: 'Packaging specs updated for PKG-112', module: 'Packaging', user: 'Anil Mehta', time: '4 hours ago', type: 'system' },
-];
-
-// Will be replaced by dynamic data later if needed
-const PENDING_ITEMS: PendingItem[] = [
-  { id: '1', title: 'Review order ORD-2026-0118', module: 'Orders', priority: 'high', dueDate: 'Today' },
-  { id: '2', title: 'Approve GRN for Raw Materials', module: 'Receiving', priority: 'high', dueDate: 'Today' },
-  { id: '3', title: 'Update packaging specifications', module: 'Packaging', priority: 'medium', dueDate: 'Tomorrow' },
-  { id: '4', title: 'Complete vendor evaluation', module: 'Vendors', priority: 'medium', dueDate: 'Jan 27' },
-  { id: '5', title: 'Review new development proposal', module: 'R&D', priority: 'low', dueDate: 'Jan 28' },
-];
-
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'New Order', icon: <Plus className="w-5 h-5" />, href: '/procurement', color: 'amber', description: 'Create new order' },
+  { label: 'New Sales Order', icon: <Plus className="w-5 h-5" />, href: '/fulfillment', color: 'amber', description: 'Sales orders & fulfillment' },
   { label: 'Add User', icon: <Users className="w-5 h-5" />, href: '/user-management', color: 'blue', description: 'Add team member' },
   { label: 'View Tasks', icon: <CheckSquare className="w-5 h-5" />, href: '/task-management', color: 'green', description: 'Manage tasks' },
   { label: 'Enquiries', icon: <MessageSquare className="w-5 h-5" />, href: '/enquiry-management', color: 'purple', description: 'Handle enquiries' },
-  { label: 'Order Hub', icon: <Package className="w-5 h-5" />, href: '/order-hub', color: 'orange', description: 'Track all orders' },
+  { label: 'Planning', icon: <Package className="w-5 h-5" />, href: '/planning/pis-extracted', color: 'orange', description: 'SO planning & PIs' },
   { label: 'PIS Portal', icon: <LayoutDashboard className="w-5 h-5" />, href: '/pis', color: 'rose', description: 'Product Info System' },
 ];
 
@@ -119,18 +87,58 @@ const MODULE_CARDS: ModuleCard[] = [
   {
     title: 'Order Management',
     icon: <Package className="w-6 h-6" />,
-    href: '/procurement',
+    href: '/fulfillment',
     color: 'amber',
     stats: [{ label: 'Total', value: 156 }, { label: 'Pending', value: 23 }],
-    description: 'Create and manage orders',
+    description: 'Sales orders & fulfillment',
   },
   {
     title: 'Order Hub',
     icon: <Truck className="w-6 h-6" />,
-    href: '/order-hub',
+    href: '/planning/pis-extracted',
     color: 'orange',
-    stats: [{ label: 'In Progress', value: 45 }, { label: 'Shipped', value: 89 }],
-    description: 'Track order lifecycle',
+    stats: undefined,
+    description: 'SO planning & PIs extracted',
+  },
+  {
+    title: 'Fulfillment',
+    icon: <Truck className="w-6 h-6" />,
+    href: '/fulfillment',
+    color: 'cyan',
+    stats: undefined,
+    description: 'Pick, invoice & ship sales orders',
+  },
+  {
+    title: 'Planning',
+    icon: <Layers className="w-6 h-6" />,
+    href: '/planning/pis-extracted',
+    color: 'indigo',
+    stats: undefined,
+    description: 'Demand extraction & batches',
+  },
+  {
+    title: 'Warehouse',
+    icon: <Box className="w-6 h-6" />,
+    href: '/warehouse',
+    color: 'slate',
+    stats: undefined,
+    description: 'Inbound, inventory & outbound',
+  },
+  {
+    title: 'Production',
+    icon: <Beaker className="w-6 h-6" />,
+    href: '/production',
+    color: 'violet',
+    stats: undefined,
+    description: 'BMR/BPR & manufacturing',
+  },
+  {
+    title: 'Client Hub',
+    icon: <Building2 className="w-6 h-6" />,
+    href: '/client-hub',
+    color: 'sky',
+    stats: undefined,
+    description: 'Client orders & portal',
   },
   {
     title: 'User Management',
@@ -153,7 +161,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <CheckSquare className="w-6 h-6" />,
     href: '/task-management',
     color: 'green',
-    stats: [{ label: 'Open', value: 18 }, { label: 'Completed', value: 127 }],
+    stats: undefined,
     description: 'Track team tasks',
   },
   {
@@ -161,7 +169,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <MessageSquare className="w-6 h-6" />,
     href: '/enquiry-management',
     color: 'purple',
-    stats: [{ label: 'Open', value: 12 }, { label: 'Resolved', value: 77 }],
+    stats: undefined,
     description: 'Handle customer enquiries',
   },
   {
@@ -169,7 +177,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <ClipboardList className="w-6 h-6" />,
     href: '/procurement',
     color: 'teal',
-    stats: [{ label: 'Pending', value: 8 }, { label: 'Approved', value: 156 }],
+    stats: undefined,
     description: 'Manage procurement process',
   },
   {
@@ -177,7 +185,6 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Wallet className="w-6 h-6" />,
     href: '/treasury',
     color: 'emerald',
-    stats: [{ label: 'Balance', value: '₹24.5L' }],
     description: 'Financial management',
   },
   {
@@ -185,7 +192,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Beaker className="w-6 h-6" />,
     href: '/raw-material',
     color: 'lime',
-    stats: [{ label: 'Materials', value: 89 }, { label: 'Low Stock', value: 5 }],
+    stats: undefined,
     description: 'Raw material inventory',
   },
   {
@@ -193,7 +200,6 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Layers className="w-6 h-6" />,
     href: '/bom',
     color: 'yellow',
-    stats: [{ label: 'BOMs', value: 67 }],
     description: 'Bill of Materials',
   },
   {
@@ -201,7 +207,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Box className="w-6 h-6" />,
     href: '/packaging',
     color: 'pink',
-    stats: [{ label: 'Types', value: 45 }],
+    stats: undefined,
     description: 'Packaging specifications',
   },
   {
@@ -209,7 +215,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Building2 className="w-6 h-6" />,
     href: '/vendor-client',
     color: 'slate',
-    stats: [{ label: 'Vendors', value: 34 }, { label: 'Clients', value: 56 }],
+    stats: undefined,
     description: 'Manage business partners',
   },
   {
@@ -217,7 +223,6 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Pill className="w-6 h-6" />,
     href: '/active-ingredients',
     color: 'violet',
-    stats: [{ label: 'APIs', value: 78 }],
     description: 'API database',
   },
   {
@@ -225,7 +230,6 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Stethoscope className="w-6 h-6" />,
     href: '/doctor-appointments',
     color: 'sky',
-    stats: [{ label: 'Today', value: 8 }, { label: 'Week', value: 34 }],
     description: 'Manage appointments',
   },
   {
@@ -233,7 +237,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <FlaskConical className="w-6 h-6" />,
     href: '/new-developments',
     color: 'fuchsia',
-    stats: [{ label: 'Active', value: 12 }],
+    stats: undefined,
     description: 'R&D projects',
   },
   {
@@ -241,7 +245,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <TestTubes className="w-6 h-6" />,
     href: '/product-samples',
     color: 'rose',
-    stats: [{ label: 'Pending', value: 6 }],
+    stats: undefined,
     description: 'Sample requests',
   },
   {
@@ -249,7 +253,6 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Tag className="w-6 h-6" />,
     href: '/coupon-management',
     color: 'amber',
-    stats: [{ label: 'Active', value: 15 }],
     description: 'Manage coupons',
   },
   {
@@ -273,7 +276,7 @@ const MODULE_CARDS: ModuleCard[] = [
     icon: <Mail className="w-6 h-6" />,
     href: '/contact-enquiry',
     color: 'gray',
-    stats: [{ label: 'New', value: 5 }],
+    stats: undefined,
     description: 'Contact form submissions',
   },
   {
@@ -327,7 +330,7 @@ const StatCard = ({ title, value, icon, change, changeType, color, link }: StatC
   return link ? <Link to={link}>{content}</Link> : content;
 };
 
-const getActivityIcon = (type: RecentActivity['type']) => {
+const getActivityIcon = (type: DashboardRecentActivity['type']) => {
   const icons = {
     order: <Package className="w-4 h-4" />,
     user: <Users className="w-4 h-4" />,
@@ -338,7 +341,7 @@ const getActivityIcon = (type: RecentActivity['type']) => {
   return icons[type];
 };
 
-const getActivityColor = (type: RecentActivity['type']) => {
+const getActivityColor = (type: DashboardRecentActivity['type']) => {
   const colors = {
     order: 'bg-gray-100 text-slate-800',
     user: 'bg-blue-100 text-blue-600',
@@ -349,7 +352,7 @@ const getActivityColor = (type: RecentActivity['type']) => {
   return colors[type];
 };
 
-const getPriorityColor = (priority: PendingItem['priority']) => {
+const getPriorityColor = (priority: DashboardPendingItem['priority']) => {
   const colors = {
     high: 'bg-red-100 text-red-700 border-red-200',
     medium: 'bg-gray-100 text-slate-900 border-gray-200',
@@ -359,14 +362,83 @@ const getPriorityColor = (priority: PendingItem['priority']) => {
 };
 
 // ==================== MAIN COMPONENT ====================
+function applyModuleStatsFromOverview(
+  modules: ModuleCard[],
+  overview: DashboardOverview | undefined
+): ModuleCard[] {
+  if (!overview) return modules;
+  const { stats, websiteRequests, moduleStats: ms } = overview;
+  const byTitle: Record<string, { label: string; value: number | string }[] | undefined> = {
+    'Order Management': ms.orderManagement
+      ? [{ label: 'Total', value: ms.orderManagement.total }, { label: 'Pending', value: ms.orderManagement.pending }]
+      : undefined,
+    'Order Hub': ms.orderHub
+      ? [{ label: 'In Progress', value: ms.orderHub.inProgress }, { label: 'Shipped', value: ms.orderHub.shipped }]
+      : undefined,
+    'User Management': ms.userManagement
+      ? [{ label: 'Active', value: ms.userManagement.active }, { label: 'Total', value: ms.userManagement.total }]
+      : undefined,
+    'Role Management': ms.roleManagement
+      ? [{ label: 'Roles', value: ms.roleManagement.roles }, { label: 'Permissions', value: ms.roleManagement.permissions }]
+      : undefined,
+    'Task Management': ms.taskManagement
+      ? [{ label: 'Open', value: ms.taskManagement.open }, { label: 'Closed FO', value: ms.taskManagement.completedFulfillment }]
+      : undefined,
+    'Enquiry Management': ms.enquiryManagement
+      ? [{ label: 'Open', value: ms.enquiryManagement.open }, { label: 'Resolved', value: ms.enquiryManagement.resolved }]
+      : undefined,
+    Procurement: ms.procurement
+      ? [{ label: 'Pending', value: ms.procurement.pending }, { label: 'Released PO', value: ms.procurement.released }]
+      : undefined,
+    'Raw Materials': ms.rawMaterials
+      ? [{ label: 'Materials', value: ms.rawMaterials.materials }, { label: 'Low Stock', value: ms.rawMaterials.lowStock }]
+      : undefined,
+    Packaging: ms.packaging ? [{ label: 'Types', value: ms.packaging.types }] : undefined,
+    'Vendor & Client': ms.vendorClient
+      ? [{ label: 'Vendors', value: ms.vendorClient.vendors }, { label: 'Clients', value: ms.vendorClient.clients }]
+      : undefined,
+    Catalogue: ms.catalogue ? [{ label: 'Products', value: ms.catalogue.products }] : undefined,
+    'New Developments': [{ label: 'Requests', value: websiteRequests.newDevelopmentRequests }],
+    'Product Samples': [
+      { label: 'Sample', value: websiteRequests.productSampleRequests },
+      { label: 'Tech Doc', value: websiteRequests.technicalDocRequests },
+    ],
+    'Contact Enquiry': [{ label: 'New', value: websiteRequests.contactEnquiries }],
+  };
+  return modules.map((m) => {
+    const statsForCard = byTitle[m.title];
+    if (statsForCard) return { ...m, stats: statsForCard };
+    if (m.title === 'Treasury' && stats.issuedPos != null) {
+      return { ...m, stats: [{ label: 'Released PO', value: stats.issuedPos }] };
+    }
+    return m;
+  });
+}
+
 const Dashboard = () => {
   const { user } = useAuth();
-  const { state } = useGlobalState();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [dashboardTab, setDashboardTab] = useState<'overview' | 'lowThreshold'>('overview');
   const [lowThresholdRows, setLowThresholdRows] = useState<WarehouseInventoryRow[]>([]);
   const [lowThresholdLoading, setLowThresholdLoading] = useState(false);
+
+  const {
+    data: overview,
+    isLoading: overviewLoading,
+    isFetching: overviewFetching,
+    isError: overviewError,
+    error: overviewErrorDetail,
+    refetch: refetchOverview,
+  } = useQuery({
+    queryKey: queryKeys.dashboard,
+    queryFn: fetchDashboardOverview,
+    staleTime: 60 * 1000,
+  });
+
+  const stats = overview?.stats;
+  const recentActivity = overview?.recentActivity ?? [];
+  const pendingItems = overview?.pendingItems ?? [];
 
   useEffect(() => {
     if (dashboardTab !== 'lowThreshold') return;
@@ -389,30 +461,45 @@ const Dashboard = () => {
   ];
 
   const filteredModules = useMemo(() => {
-    let modules = MODULE_CARDS;
+    let modules = applyModuleStatsFromOverview(MODULE_CARDS, overview ?? null);
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       modules = modules.filter(m => m.title.toLowerCase().includes(term) || m.description.toLowerCase().includes(term));
     }
     if (selectedCategory !== 'all') {
       const categoryMap: Record<string, string[]> = {
-        orders: ['Order Management', 'Order Hub', 'Procurement', 'Order List'],
+        orders: [
+          'Order Management',
+          'Order Hub',
+          'Fulfillment',
+          'Planning',
+          'Procurement',
+          'Warehouse',
+          'Production',
+          'Client Hub',
+        ],
         users: ['User Management', 'Role Management'],
-        inventory: ['Items Master', 'Raw Materials', 'BOM Management', 'Packaging', 'Active Ingredients'],
-        finance: ['Treasury', 'Sales & Purchase', 'Coupons', 'Discounts'],
+        inventory: ['Raw Materials', 'BOM Management', 'Packaging', 'Active Ingredients', 'Catalogue'],
+        finance: ['Treasury', 'Coupons', 'Discounts'],
         enquiries: ['Enquiry Management', 'Contact Enquiry', 'Doctor Appointments'],
       };
       const allowed = categoryMap[selectedCategory] || [];
       modules = modules.filter(m => allowed.includes(m.title));
     }
     return modules;
-  }, [searchTerm, selectedCategory]);
+  }, [searchTerm, selectedCategory, overview]);
+
+  const statValue = (n: number | undefined) => {
+    if (overviewError) return '—';
+    if (overviewLoading && n === undefined) return '—';
+    return n ?? 0;
+  };
 
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen min-w-0 max-w-full bg-background p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="bg-gray-900 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -423,20 +510,30 @@ const Dashboard = () => {
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0}</p>
+              <p className="text-3xl font-bold">{statValue(stats?.totalOrders)}</p>
               <p className="text-xs text-gray-100">Total Orders</p>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{state.items?.filter((i: any) => i.stock < 500).length || 0}</p>
+              <p className="text-3xl font-bold">{statValue(stats?.lowStockItems)}</p>
               <p className="text-xs text-gray-100">Low Stock</p>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{state.po?.issued?.length || 0}</p>
+              <p className="text-3xl font-bold">{statValue(stats?.issuedPos)}</p>
               <p className="text-xs text-gray-100">Issued POs</p>
             </div>
           </div>
         </div>
       </div>
+
+      {overviewError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Could not load dashboard data
+          {overviewErrorDetail instanceof Error ? `: ${overviewErrorDetail.message}` : ''}.{' '}
+          <button type="button" onClick={() => void refetchOverview()} className="font-medium underline">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Dashboard tabs: Overview | Low threshold alert */}
       <div className="flex gap-2 mb-4">
@@ -512,12 +609,12 @@ const Dashboard = () => {
       {/* Stats Grid — hide when Low threshold tab is active so content is focused */}
       {dashboardTab === 'overview' && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-        <StatCard title="Total Orders" value={state.orders?.customerPOs?.length + state.orders?.salesOrders?.length || 0} icon={<Package className="w-6 h-6" />} change="+12% this month" changeType="up" color="amber" link="/procurement" />
-        <StatCard title="Pending Review" value={state.orders?.customerPOs?.filter((po: any) => po.status.includes('pending')).length || 0} icon={<Clock className="w-6 h-6" />} change="urgent" changeType="down" color="orange" link="/order-hub" />
-        <StatCard title="Active Users" value={42} icon={<Users className="w-6 h-6" />} change="+3 this week" changeType="up" color="blue" link="/user-management" />
-        <StatCard title="Open Enquiries" value={89} icon={<MessageSquare className="w-6 h-6" />} change="+8% resolved" changeType="up" color="purple" link="/enquiry-management" />
-        <StatCard title="Open Tasks" value={18} icon={<CheckSquare className="w-6 h-6" />} change={`127 completed`} changeType="neutral" color="green" link="/task-management" />
-        <StatCard title="Low Stock Items" value={state.items?.filter((i: any) => i.stock < 500).length || 0} icon={<AlertCircle className="w-6 h-6" />} change="Needs attention" changeType="down" color="red" link="/raw-material" />
+        <StatCard title="Total Orders" value={statValue(stats?.totalOrders)} icon={<Package className="w-6 h-6" />} color="amber" link="/fulfillment" />
+        <StatCard title="Pending Review" value={statValue(stats?.pendingReview)} icon={<Clock className="w-6 h-6" />} color="orange" link="/procurement" />
+        <StatCard title="Active Users" value={statValue(stats?.activeUsers)} icon={<Users className="w-6 h-6" />} color="blue" link="/user-management" />
+        <StatCard title="Open Enquiries" value={statValue(stats?.openEnquiries)} icon={<MessageSquare className="w-6 h-6" />} color="purple" link="/enquiry-management" />
+        <StatCard title="Open Tasks" value={statValue(stats?.openTasks)} icon={<CheckSquare className="w-6 h-6" />} color="green" link="/task-management" />
+        <StatCard title="Low Stock Items" value={statValue(stats?.lowStockItems)} icon={<AlertCircle className="w-6 h-6" />} color="red" link="/warehouse/inventory" />
       </div>
       )}
 
@@ -527,8 +624,13 @@ const Dashboard = () => {
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             <Zap className="w-5 h-5 text-slate-700" /> Quick Actions
           </h2>
-          <button className="text-sm text-slate-800 hover:text-slate-900 font-medium flex items-center gap-1">
-            <RefreshCw className="w-4 h-4" /> Refresh
+          <button
+            type="button"
+            onClick={() => void refetchOverview()}
+            disabled={overviewFetching}
+            className="text-sm text-slate-800 hover:text-slate-900 font-medium flex items-center gap-1 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${overviewFetching ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
@@ -556,10 +658,14 @@ const Dashboard = () => {
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <Activity className="w-5 h-5 text-slate-700" /> Recent Activity
             </h2>
-            <button className="text-sm text-slate-800 hover:text-slate-900 font-medium">View All</button>
+            <button type="button" onClick={() => void refetchOverview()} className="text-sm text-slate-800 hover:text-slate-900 font-medium">Refresh</button>
           </div>
           <div className="space-y-3">
-            {RECENT_ACTIVITY.map((activity) => (
+            {overviewLoading ? (
+              <p className="text-sm text-gray-500 py-6 text-center col-span-full">Loading activity…</p>
+            ) : recentActivity.length === 0 ? (
+              <p className="text-sm text-gray-500 py-6 text-center">No recent activity.</p>
+            ) : recentActivity.map((activity) => (
               <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
                 <div className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}>
                   {getActivityIcon(activity.type)}
@@ -580,10 +686,14 @@ const Dashboard = () => {
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-slate-700" /> Pending Items
             </h2>
-            <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">{PENDING_ITEMS.length} items</span>
+            <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">{pendingItems.length} items</span>
           </div>
           <div className="space-y-3">
-            {PENDING_ITEMS.map((item) => (
+            {overviewLoading ? (
+              <p className="text-sm text-gray-500 py-6 text-center">Loading pending items…</p>
+            ) : pendingItems.length === 0 ? (
+              <p className="text-sm text-gray-500 py-6 text-center">Nothing pending right now.</p>
+            ) : pendingItems.map((item) => (
               <div key={item.id} className="p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -606,28 +716,29 @@ const Dashboard = () => {
       </div>
 
       {/* All Modules Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <LayoutDashboard className="w-5 h-5 text-slate-700" /> All Modules
+      <div className="min-w-0 max-w-full overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
+        <div className="mb-6 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-gray-800">
+            <LayoutDashboard className="h-5 w-5 shrink-0 text-slate-700" /> All Modules
           </h2>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <div className="flex min-w-0 w-full flex-col gap-3 lg:max-w-2xl xl:max-w-none xl:flex-1">
+            <div className="relative min-w-0 w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search modules..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+                className="w-full min-w-0 rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
               {categories.map((cat) => (
                 <button
                   key={cat.id}
+                  type="button"
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${selectedCategory === cat.id
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${selectedCategory === cat.id
                     ? 'bg-slate-800 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
@@ -705,7 +816,12 @@ const Dashboard = () => {
 
       {/* Footer Info */}
       <div className="mt-6 text-center text-xs text-gray-400">
-        <p>Admin Tool • {filteredModules.length} Modules Available • Last updated: {new Date().toLocaleTimeString()}</p>
+        <p>
+          Admin Tool • {filteredModules.length} Modules Available
+          {overview?.fetchedAt
+            ? ` • Last updated: ${new Date(overview.fetchedAt).toLocaleTimeString()}`
+            : ''}
+        </p>
       </div>
     </div>
   );

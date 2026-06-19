@@ -3,6 +3,7 @@
  */
 
 import { api } from '../lib/apiClient';
+import type { GrnQcSpecsStored } from '../lib/grnQcSpecs';
 
 export interface GRNRecordFromApi {
   id: string;
@@ -17,10 +18,13 @@ export interface GRNRecordFromApi {
   assignedTo: string;
   qcStatus: string;
   qcBy: string;
+  qcSpecs?: GrnQcSpecsStored | null;
   status: string;
   lineItems?: Array<{
     id: string;
+    /** Display name (from RM/PM master when enriched). */
     item: string;
+    itemName?: string;
     itemCode: string;
     poQty: number;
     rcvdQty: number;
@@ -38,6 +42,7 @@ export interface GRNRecordFromApi {
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
@@ -53,9 +58,11 @@ export interface GeneratedLabel {
 export interface GenerateLabelsPayload {
   noOfBoxes?: number;
   unitsPerBox?: number;
-  /** Items in the last box when it is not a full carton (boxes 1..n-1 use unitsPerBox). */
-  lastBoxUnits?: number | null;
+  /** Per-box units list (length must equal noOfBoxes). */
+  unitsPerBoxList?: number[];
   locationPrefix?: string;
+  locationZone?: string;
+  locationSource?: 'facility' | 'custom';
   grnBatchMfg?: string;
   expiry?: string;
   mfgBatch?: string;
@@ -69,6 +76,32 @@ export async function generateGRNLabels(
 ): Promise<{ labels: GeneratedLabel[]; workflowSteps?: string[] }> {
   const res = await api.post<{ labels: GeneratedLabel[]; workflowSteps?: string[] }>(`/api/v1/grn/${id}/generate-labels`, payload ?? {});
   return res;
+}
+
+/** Resolved line display name (master name preferred over code). */
+export function grnLineItemDisplayName(
+  li: { item?: string; itemName?: string; itemCode?: string } | null | undefined
+): string {
+  if (!li) return '—';
+  const name = String(li.item ?? li.itemName ?? '').trim();
+  if (name) return name;
+  const code = String(li.itemCode ?? '').trim();
+  return code || '—';
+}
+
+/** Comma-separated item names for GRN Monitor tables (truncates long lists). */
+export function grnLineItemsNameSummary(
+  lineItems: GRNRecordFromApi['lineItems'] | undefined,
+  maxNames = 2
+): string {
+  const lines = lineItems ?? [];
+  if (lines.length === 0) return '—';
+  const names = lines.map((li) => grnLineItemDisplayName(li)).filter((n) => n !== '—');
+  if (names.length === 0) return '—';
+  const head = names.slice(0, maxNames);
+  const extra = names.length - head.length;
+  const text = head.join(', ');
+  return extra > 0 ? `${text} +${extra} more` : text;
 }
 
 export async function fetchGRNList(): Promise<GRNRecordFromApi[]> {
@@ -95,6 +128,16 @@ export async function fetchGRNById(id: string): Promise<GRNRecordFromApi | null>
   } catch {
     return null;
   }
+}
+
+export interface GrnQcReferenceResponse {
+  qcSpecs: GrnQcSpecsStored;
+  derivedQcStatus: string;
+}
+
+/** Master quality specs merged with saved GRN QC results. */
+export async function fetchGRNQcReference(id: string): Promise<GrnQcReferenceResponse> {
+  return api.get<GrnQcReferenceResponse>(`/api/v1/grn/${id}/qc-reference`);
 }
 
 export interface CreateGRNPayload {
@@ -127,6 +170,7 @@ export interface UpdateGRNPayload {
   receivedDate?: string | null;
   qcStatus?: string;
   qcBy?: string | null;
+  qcSpecs?: GrnQcSpecsStored | null;
   status?: string;
   lineItems?: GRNRecordFromApi['lineItems'];
   workflowSteps?: string[];
@@ -134,8 +178,10 @@ export interface UpdateGRNPayload {
   invoiceAmount?: number | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
-  lastBoxUnits?: number | null;
   locationPrefix?: string | null;
+  locationZone?: string | null;
+  /** When "custom", backend routes put-away to the facility default warehouse zone/rack. */
+  locationSource?: 'facility' | 'custom';
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
