@@ -4,17 +4,19 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, ArrowLeft, Layers, Wallet, Clock } from 'lucide-react';
+import { Settings, ArrowLeft, Layers, Wallet, Clock, History } from 'lucide-react';
 import { PageHeader } from '../../components/ui';
 import GradeManager from './settings/GradeManager';
 import OverheadManager from './settings/OverheadManager';
 import TimelineConfig from './settings/TimelineConfig';
+import AuditLog from './settings/AuditLog';
 
-type Tab = 'grades' | 'overheads' | 'timeline';
+type Tab = 'grades' | 'overheads' | 'timeline' | 'audit';
 const TABS: { key: Tab; label: string; icon: typeof Layers }[] = [
   { key: 'grades', label: 'Grade Manager', icon: Layers },
   { key: 'overheads', label: 'Overhead Management', icon: Wallet },
   { key: 'timeline', label: 'Timeline Configuration', icon: Clock },
+  { key: 'audit', label: 'Audit Log', icon: History },
 ];
 
 export default function QuoteSettings() {
@@ -52,6 +54,7 @@ export default function QuoteSettings() {
           {tab === 'grades' && <GradeManager />}
           {tab === 'overheads' && <OverheadManager />}
           {tab === 'timeline' && <TimelineConfig />}
+          {tab === 'audit' && <AuditLog />}
         </div>
       </div>
     </div>

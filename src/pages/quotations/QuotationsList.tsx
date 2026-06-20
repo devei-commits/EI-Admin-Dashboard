@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart, BarChart3, GitCompare } from 'lucide-react';
+import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart, BarChart3, GitCompare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -45,6 +45,19 @@ export default function QuotationsList() {
     setToDelete(null);
     if (r.success) { toast.success('Quote deleted'); load(); loadStats(); }
     else toast.error(r.error ? String(r.error) : 'Failed to delete');
+  };
+
+  const exportCsv = async () => {
+    const r = await quotesApi.fetchSavedQuotes(search, 1000, 0, statusFilter || undefined);
+    if (!r.success || !r.data) { toast.error('Export failed'); return; }
+    const rows = r.data.quotes;
+    const headers = ['Ref', 'Name', 'Status', 'Customer', 'BOM', 'Headline', 'MOQ', 'Sales Order', 'Created'];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers.join(','), ...rows.map((q) => [q.quote_ref, q.quote_name, q.status, q.customer_name, q.bom_code, q.headline_sell, q.headline_moq, q.sales_order_ref, new Date(q.created_at).toLocaleDateString()].map(esc).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = `quotations-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} quotes`);
   };
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -92,6 +105,9 @@ export default function QuotationsList() {
               <GitCompare className="w-4 h-4" /> Compare ({selected.size})
             </button>
           )}
+          <button onClick={exportCsv} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200" title="Export CSV">
+            <Download className="w-4 h-4" /> Export
+          </button>
         </div>
 
         {loading ? (

@@ -342,6 +342,17 @@ export async function deleteSavedQuote(id: number): Promise<ServiceResult<null>>
   catch (e) { return fail(e, null, 'Failed to delete quote'); }
 }
 
+// ─────────────── Audit log ───────────────
+export interface AuditEntry { id: number; entity_type: string; entity_id: number | null; action: string; summary: string | null; changed_by_name: string | null; created_at: string; }
+export async function fetchAudit(entityType = '', limit = 50, offset = 0): Promise<ServiceResult<{ entries: AuditEntry[]; total: number }>> {
+  try {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (entityType) params.set('entity_type', entityType);
+    const d = await api.get<{ entries: AuditEntry[]; total: number }>(`/api/v1/quotes/audit?${params.toString()}`);
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { entries: [], total: 0 }, 'Failed to load audit log'); }
+}
+
 // ─────────────── Material lead-time tooling ───────────────
 export interface LeadTimeItem {
   id: number; code: string; name: string; klass: string | null;
