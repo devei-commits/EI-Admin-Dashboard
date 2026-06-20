@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Settings, Trash2, Loader2 } from 'lucide-react';
+import { FileText, Plus, Settings, Trash2, Loader2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -49,6 +49,9 @@ export default function QuotationsList() {
         icon={<FileText className="w-6 h-6" />}
         actions={
           <>
+            <button onClick={() => navigate('/quotations/guide')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
+              <BookOpen className="w-4 h-4" /> Guide
+            </button>
             <button onClick={() => navigate('/quotations/settings')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
               <Settings className="w-4 h-4" /> Settings
             </button>

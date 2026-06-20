@@ -45,6 +45,7 @@ const QuotationsList = lazy(() => import('./pages/quotations/QuotationsList'))
 const QuoteBuilder = lazy(() => import('./pages/quotations/QuoteBuilder'))
 const QuoteDetail = lazy(() => import('./pages/quotations/QuoteDetail'))
 const QuoteSettings = lazy(() => import('./pages/quotations/QuoteSettings'))
+const QuoteGuide = lazy(() => import('./pages/quotations/QuoteGuide'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
 const Procurement = lazy(() => import('./pages/procurement/index'))
@@ -445,6 +446,11 @@ const AppLayout = () => {
                                                  <Route path="/quotations/settings" element={
                                                         <SuperAdminRoute>
                                                                <QuoteSettings />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/guide" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteGuide />
                                                         </SuperAdminRoute>
                                                  } />
                                                  <Route path="/quotations/:id/edit" element={
