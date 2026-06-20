@@ -70,7 +70,7 @@ export interface QuoteBand {
 
 export interface RmDetail { name: string; rm_code: string; pct_w_w: number; price_per_kg: number; landed_per_kg: number; weighted_contribution: number; missing_price: boolean; }
 export interface PmDetail { name: string; pm_code: string; qty_per_unit: number; price_per_pc: number; landed_per_pc: number; line_total: number; missing_price: boolean; }
-export interface MissingSgLine { rm_code: string; name: string; pct_w_w: number; }
+export interface MissingSgLine { raw_material_id: number | null; rm_code: string; name: string; pct_w_w: number; }
 
 export interface SgInfo {
   blended_sg: number | null;
@@ -269,4 +269,12 @@ export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQu
 export async function deleteSavedQuote(id: number): Promise<ServiceResult<null>> {
   try { await api.delete(`/api/v1/quotes/saved/${id}`); return { data: null, error: null, success: true }; }
   catch (e) { return fail(e, null, 'Failed to delete quote'); }
+}
+
+// ─────────────── Raw-material SG persistence ───────────────
+export async function saveRmSg(updates: { raw_material_id: number; specific_gravity: number }[]): Promise<ServiceResult<{ updated: number }>> {
+  try {
+    const d = await api.post<{ updated: number }>('/api/v1/quotes/rm-sg', { updates });
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { updated: 0 }, 'Failed to save SG to master'); }
 }

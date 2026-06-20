@@ -72,6 +72,7 @@ export default function QuoteBuilder() {
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [savingSg, setSavingSg] = useState(false);
 
   useEffect(() => {
     quotesApi.fetchGrades().then((r) => {
@@ -147,6 +148,19 @@ export default function QuoteBuilder() {
   const hasInput = mode === 'bom' ? !!selectedBom : adhocRm.some((r) => r.inci_name.trim() || r.pct_w_w.trim());
   const setRm = (i: number, k: keyof RmRow, v: string) => setAdhocRm((p) => p.map((r, j) => j === i ? { ...r, [k]: v } : r));
   const setPm = (i: number, k: keyof PmRow, v: string) => setAdhocPm((p) => p.map((r, j) => j === i ? { ...r, [k]: v } : r));
+
+  const saveSgToMaster = async () => {
+    if (!sg) return;
+    const updates = sg.missing_sg_lines
+      .filter((l) => l.raw_material_id != null && (sgOverrides[l.rm_code] ?? '').trim() !== '')
+      .map((l) => ({ raw_material_id: l.raw_material_id as number, specific_gravity: Number(sgOverrides[l.rm_code]) }));
+    if (!updates.length) { toast.error('Enter SG values first'); return; }
+    setSavingSg(true);
+    const r = await quotesApi.saveRmSg(updates);
+    setSavingSg(false);
+    if (r.success && r.data) toast.success(`Saved ${r.data.updated} SG value(s) to RM master`);
+    else toast.error(r.error ? String(r.error) : 'Failed to save SG');
+  };
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -287,14 +301,21 @@ export default function QuoteBuilder() {
                     <div className="space-y-3">
                       <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{sg.missing_sg_lines.length} ingredient(s) missing SG ({sg.sg_known_pct}% known). {mode === 'adhoc' ? 'Fill the SG column above, or' : 'Enter values below, or'} set a manual blended SG.</span></div>
                       {mode === 'bom' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {sg.missing_sg_lines.map((l) => (
-                            <div key={l.rm_code} className="flex items-center gap-2">
-                              <span className="text-sm text-gray-600 flex-1 truncate" title={l.name}>{l.name} <span className="text-gray-400">({l.pct_w_w}%)</span></span>
-                              <input className={`${inputClassName} w-24`} type="number" step="0.001" placeholder="SG" value={sgOverrides[l.rm_code] ?? ''} onChange={(e) => setSgOverrides((p) => ({ ...p, [l.rm_code]: e.target.value }))} />
-                            </div>
-                          ))}
-                        </div>
+                        <>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {sg.missing_sg_lines.map((l) => (
+                              <div key={l.rm_code} className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600 flex-1 truncate" title={l.name}>{l.name} <span className="text-gray-400">({l.pct_w_w}%)</span></span>
+                                <input className={`${inputClassName} w-24`} type="number" step="0.001" placeholder="SG" value={sgOverrides[l.rm_code] ?? ''} onChange={(e) => setSgOverrides((p) => ({ ...p, [l.rm_code]: e.target.value }))} />
+                              </div>
+                            ))}
+                          </div>
+                          {sg.missing_sg_lines.some((l) => l.raw_material_id != null) && (
+                            <button onClick={saveSgToMaster} disabled={savingSg} className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-medium disabled:opacity-50">
+                              {savingSg && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save entered SG values to RM master
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
