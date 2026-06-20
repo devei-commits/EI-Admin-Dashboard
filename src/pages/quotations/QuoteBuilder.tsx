@@ -67,6 +67,7 @@ export default function QuoteBuilder() {
   const [annualRatePct, setAnnualRatePct] = useState('14');
   const [targetPrice, setTargetPrice] = useState('');
   const [sgOverrides, setSgOverrides] = useState<Record<string, string>>({});
+  const [pricingSource, setPricingSource] = useState<'master' | 'vendor'>('master');
 
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -112,7 +113,7 @@ export default function QuoteBuilder() {
       rmLogistics: Number(rmLogistics), pmLogistics: Number(pmLogistics),
       freightPct: Number(freightPct) / 100, insurancePct: Number(insurancePct) / 100, handlingPct: Number(handlingPct) / 100,
       creditDays: Number(creditDays), annualRate: Number(annualRatePct) / 100,
-      targetPrice: num(targetPrice) ?? 0, sgOverrides: sgOv,
+      targetPrice: num(targetPrice) ?? 0, sgOverrides: sgOv, pricingSource,
       volumeMl: num(volumeMl), sg: num(sgManual),
     };
     if (mode === 'bom') return selectedBom ? { ...base, bom_id: Number(selectedBom.id) } : null;
@@ -124,7 +125,7 @@ export default function QuoteBuilder() {
       rmLines: rm.map((r) => ({ rm_code: r.rm_code, inci_name: r.inci_name, pct_w_w: Number(r.pct_w_w) || 0, price_per_kg: Number(r.price_per_kg) || 0, specific_gravity: r.specific_gravity.trim() === '' ? null : Number(r.specific_gravity), category: r.category || null })),
       pmLines: adhocPm.filter((p) => p.description.trim()).map((p) => ({ pm_code: p.pm_code, description: p.description, qty_per_unit: Number(p.qty_per_unit) || 0, price_per_pc: Number(p.price_per_pc) || 0, material: p.material || null })),
     };
-  }, [mode, gradeId, packagingType, volumeKey, monocarton, useBatchLead, rmWastagePct, pmWastagePct, rmLogistics, pmLogistics, freightPct, insurancePct, handlingPct, creditDays, annualRatePct, targetPrice, sgOverrides, volumeMl, sgManual, selectedBom, adhocName, adhocRm, adhocPm]);
+  }, [mode, gradeId, packagingType, volumeKey, monocarton, useBatchLead, rmWastagePct, pmWastagePct, rmLogistics, pmLogistics, freightPct, insurancePct, handlingPct, creditDays, annualRatePct, targetPrice, sgOverrides, pricingSource, volumeMl, sgManual, selectedBom, adhocName, adhocRm, adhocPm]);
 
   const reqIdRef = useRef(0);
   useEffect(() => {
@@ -176,9 +177,9 @@ export default function QuoteBuilder() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* LEFT: config */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="w-full lg:w-80 lg:shrink-0 space-y-6">
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               {(['bom', 'adhoc'] as const).map((m) => (
@@ -221,6 +222,17 @@ export default function QuoteBuilder() {
                 {grades.map((g) => <option key={g.id} value={g.id}>{g.name}{g.zero_pm ? ' (no PM)' : ''}</option>)}
               </select>
             </FormField>
+            {mode === 'bom' && (
+              <FormField label="Pricing Source">
+                <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                  {(['master', 'vendor'] as const).map((s) => (
+                    <button key={s} onClick={() => setPricingSource(s)} className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${pricingSource === s ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500'}`}>
+                      {s === 'master' ? 'Master price' : 'Cheapest vendor'}
+                    </button>
+                  ))}
+                </div>
+              </FormField>
+            )}
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
@@ -252,7 +264,7 @@ export default function QuoteBuilder() {
         </div>
 
         {/* RIGHT: adhoc editors + results */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="w-full flex-1 min-w-0 space-y-6">
           {mode === 'adhoc' && (
             <>
               <LineEditor title="Raw Materials" cols={['Code', 'Ingredient', '% w/w', '₹/kg', 'SG', 'Category']}>
@@ -373,12 +385,19 @@ export default function QuoteBuilder() {
                 </div>
               </div>
 
-              {result && (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {result && (mode === 'bom' ? (
+                <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
+                  <PriceBreakdown title={`RM Breakdown (${result.rm_detail.length})`} qtyHeader="% w/w" lastHeader="Landed/kg"
+                    rows={result.rm_detail.map((r) => ({ name: r.name, qty: String(r.pct_w_w), master: r.db_price, vendor: r.vendor_price, used: r.price_per_kg, source: r.price_source, last: r.landed_per_kg, missing: r.missing_price }))} />
+                  <PriceBreakdown title={`PM Breakdown (${result.pm_detail.length})`} qtyHeader="Qty" lastHeader="Line"
+                    rows={result.pm_detail.map((p) => ({ name: p.name, qty: String(p.qty_per_unit), master: p.db_price, vendor: p.vendor_price, used: p.price_per_pc, source: p.price_source, last: p.line_total, missing: p.missing_price }))} />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
                   <BreakdownCard title={`RM Breakdown (${result.rm_detail.length})`} headers={['Ingredient', '% w/w', '₹/kg', 'Landed']} rows={result.rm_detail.map((r) => [r.name, String(r.pct_w_w), f2(r.price_per_kg), f2(r.landed_per_kg), r.missing_price])} />
                   <BreakdownCard title={`PM Breakdown (${result.pm_detail.length})`} headers={['Component', 'Qty', '₹/pc', 'Line']} rows={result.pm_detail.map((p) => [p.name, String(p.qty_per_unit), f2(p.price_per_pc), f2(p.line_total), p.missing_price])} />
                 </div>
-              )}
+              ))}
             </>
           )}
         </div>
@@ -407,11 +426,41 @@ function AddRow({ onClick, span, label }: { onClick: () => void; span: number; l
   return <tr><td colSpan={span} className="p-1"><button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 font-medium"><Plus className="w-4 h-4" /> {label}</button></td></tr>;
 }
 
+function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
+  title: string; qtyHeader: string; lastHeader: string;
+  rows: Array<{ name: string; qty: string; master: number | null; vendor: number | null; used: number; source: string | null; last: number; missing: boolean }>;
+}) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+            <th className="py-2.5 px-4">Item</th><th className="py-2.5 px-3 text-right">{qtyHeader}</th><th className="py-2.5 px-3 text-right">Master ₹</th><th className="py-2.5 px-3 text-right">Vendor ₹</th><th className="py-2.5 px-3 text-right">Used ₹</th><th className="py-2.5 px-4 text-right">{lastHeader}</th>
+          </tr></thead>
+          <tbody className="divide-y divide-gray-50">
+            {rows.map((r, i) => (
+              <tr key={i} className={r.missing ? 'bg-red-50/40' : ''}>
+                <td className="py-2 px-4 text-gray-800 truncate max-w-[16rem]" title={r.name}>{r.name}{r.missing && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
+                <td className="py-2 px-3 text-right text-gray-600">{r.qty}</td>
+                <td className={`py-2 px-3 text-right ${r.source === 'master' ? 'font-semibold text-slate-900' : 'text-gray-400'}`}>{r.master != null ? r.master.toFixed(2) : '—'}</td>
+                <td className={`py-2 px-3 text-right ${r.source === 'vendor' ? 'font-semibold text-emerald-700' : 'text-gray-400'}`}>{r.vendor != null ? r.vendor.toFixed(2) : '—'}</td>
+                <td className="py-2 px-3 text-right font-semibold text-slate-900">{r.used.toFixed(2)}</td>
+                <td className="py-2 px-4 text-right text-gray-600">{r.last.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function BreakdownCard({ title, headers, rows }: { title: string; headers: string[]; rows: Array<Array<string | boolean>> }) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto max-h-80">
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">{headers.map((h, i) => <th key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-gray-50">

@@ -5,14 +5,14 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { inputClassName, selectClassName, ConfirmDialog } from '../../../components/ui';
+import { inputClassName, selectClassName, SearchInput, ConfirmDialog } from '../../../components/ui';
 import * as api from '../../../services/quotations.service';
-import type { ProcurementRule, ManufacturingRule, QcRule, DispatchRule } from '../../../services/quotations.service';
+import type { ProcurementRule, ManufacturingRule, QcRule, DispatchRule, LeadTimeItem } from '../../../services/quotations.service';
 
-type Sub = 'procurement' | 'manufacturing' | 'qc' | 'dispatch';
+type Sub = 'procurement' | 'manufacturing' | 'qc' | 'dispatch' | 'leads';
 const SUBS: { key: Sub; label: string }[] = [
-  { key: 'procurement', label: 'Procurement' }, { key: 'manufacturing', label: 'Manufacturing' },
-  { key: 'qc', label: 'QC' }, { key: 'dispatch', label: 'Dispatch' },
+  { key: 'procurement', label: 'Procurement Rules' }, { key: 'manufacturing', label: 'Manufacturing' },
+  { key: 'qc', label: 'QC' }, { key: 'dispatch', label: 'Dispatch' }, { key: 'leads', label: 'Material Leads' },
 ];
 
 export default function TimelineConfig() {
@@ -31,6 +31,92 @@ export default function TimelineConfig() {
       {sub === 'manufacturing' && <ManufacturingTab />}
       {sub === 'qc' && <QcTab />}
       {sub === 'dispatch' && <DispatchTab />}
+      {sub === 'leads' && <MaterialLeadsTab />}
+    </div>
+  );
+}
+
+// ─────────────── Material Leads (per-material lead_time_days) ───────────────
+const LEADS_PAGE = 25;
+function MaterialLeadsTab() {
+  const [type, setType] = useState<'RM' | 'PM'>('RM');
+  const [search, setSearch] = useState('');
+  const [missingOnly, setMissingOnly] = useState(false);
+  const [page, setPage] = useState(0);
+  const [items, setItems] = useState<LeadTimeItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [edits, setEdits] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.fetchLeadTimes(type, search, missingOnly, LEADS_PAGE, page * LEADS_PAGE).then((r) => {
+      setLoading(false);
+      if (r.success && r.data) { setItems(r.data.items); setTotal(r.data.total); }
+    });
+  };
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [type, search, missingOnly, page]);
+  useEffect(() => { setPage(0); setEdits({}); }, [type, search, missingOnly]);
+
+  const dirty = Object.keys(edits).length > 0;
+  const saveAll = async () => {
+    const updates = Object.entries(edits).map(([id, v]) => ({ id: Number(id), lead_time_days: v.trim() === '' ? null : Number(v) }));
+    setSaving(true);
+    const r = await api.saveLeadTimes(type, updates);
+    setSaving(false);
+    if (r.success && r.data) { toast.success(`Updated ${r.data.updated} material(s)`); setEdits({}); load(); }
+    else toast.error(String(r.error));
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / LEADS_PAGE));
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-500">Set exact procurement lead time per material. The engine prefers this over the vendor rate and the category rule.</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1">
+          {(['RM', 'PM'] as const).map((t) => (
+            <button key={t} onClick={() => setType(t)} className={`px-3 py-1 rounded-md text-xs font-semibold ${type === t ? 'bg-slate-200 text-slate-900' : 'bg-gray-50 text-gray-500'}`}>{t}</button>
+          ))}
+        </div>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search code or name…" className="max-w-xs" />
+        <label className="flex items-center gap-1.5 text-sm text-gray-600"><input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Missing only</label>
+        {dirty && <button onClick={saveAll} disabled={saving} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save {Object.keys(edits).length}</button>}
+      </div>
+      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+        <div className="border border-gray-200 rounded-lg overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
+              <th className="py-2.5 px-3">Code</th><th className="py-2.5 px-3">Name</th><th className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th className="py-2.5 px-3 text-right">Vendor lead</th><th className="py-2.5 px-3 text-right">Master lead (d)</th>
+            </tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {items.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-gray-400">No materials match.</td></tr>}
+              {items.map((it) => (
+                <tr key={it.id} className={edits[it.id] !== undefined ? 'bg-amber-50/40' : ''}>
+                  <td className="py-1.5 px-3 font-medium text-slate-900">{it.code}</td>
+                  <td className="py-1.5 px-3 text-gray-600 truncate max-w-[18rem]" title={it.name}>{it.name}</td>
+                  <td className="py-1.5 px-3 text-gray-500">{it.klass || '—'}</td>
+                  <td className="py-1.5 px-3 text-right text-gray-400">{it.vendor_lead ?? '—'}</td>
+                  <td className="py-1.5 px-3 text-right">
+                    <input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" placeholder={it.vendor_lead != null ? `${it.vendor_lead} (vendor)` : 'rule'}
+                      value={edits[it.id] !== undefined ? edits[it.id] : (it.lead_time_days ?? '')}
+                      onChange={(e) => setEdits((p) => ({ ...p, [it.id]: e.target.value }))} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500">{total} materials · page {page + 1}/{totalPages}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 bg-gray-100 rounded-lg text-gray-700 disabled:opacity-40">Prev</button>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 bg-gray-100 rounded-lg text-gray-700 disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

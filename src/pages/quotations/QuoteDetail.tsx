@@ -3,12 +3,13 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown } from 'lucide-react';
+import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '../../components/ui';
+import { PageHeader, FormField, inputClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteFull } from '../../services/quotations.service';
 import { generateQuotePdf } from '../../lib/quotePdf';
+import { statusBadge, NEXT_ACTIONS, type Action } from './quoteStatus';
 
 const f2 = (n: number | null | undefined) => (n == null ? '—' : Number(n).toFixed(2));
 const pct = (n: number | null | undefined) => (n == null ? '—' : (Number(n) * 100).toFixed(1) + '%');
@@ -19,6 +20,7 @@ export default function QuoteDetail() {
   const [quote, setQuote] = useState<SavedQuoteFull | null>(null);
   const [loading, setLoading] = useState(true);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<Action | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +77,43 @@ export default function QuoteDetail() {
         {quote.notes && <p className="text-sm text-gray-600 mt-2">{quote.notes}</p>}
       </div>
 
+      {/* Status & approvals */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Status</span>
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusBadge(quote.status).cls}`}>{statusBadge(quote.status).label}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {(NEXT_ACTIONS[quote.status] || []).map((a) => (
+              <button key={a.to} onClick={() => setPendingAction(a)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  a.variant === 'primary' ? 'bg-slate-800 text-white hover:bg-slate-900'
+                    : a.variant === 'danger' ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                {a.label}
+              </button>
+            ))}
+            {(NEXT_ACTIONS[quote.status] || []).length === 0 && <span className="text-sm text-gray-400">No further actions</span>}
+          </div>
+        </div>
+        {quote.status_history.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"><Clock className="w-3.5 h-3.5" /> History</div>
+            <ul className="space-y-1.5">
+              {quote.status_history.slice().reverse().map((h, i) => (
+                <li key={i} className="text-sm text-gray-600 flex flex-wrap gap-x-2">
+                  <span className="text-gray-400">{new Date(h.at).toLocaleString()}</span>
+                  <span><span className="text-gray-500">{statusBadge(h.from).label}</span> → <span className="font-medium text-slate-800">{statusBadge(h.to).label}</span></span>
+                  {h.by_name && <span className="text-gray-400">by {h.by_name}</span>}
+                  {h.note && <span className="text-gray-500 italic">“{h.note}”</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
       {/* Pricing */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3></div>
@@ -127,6 +166,37 @@ export default function QuoteDetail() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {pendingAction && (
+        <StatusModal action={pendingAction} quoteRef={quote.quote_ref} onClose={() => setPendingAction(null)}
+          onDone={(updated) => { setPendingAction(null); setQuote((q) => q ? { ...q, status: updated.status, status_history: updated.status_history } : q); }} quoteId={quote.id} />
+      )}
+    </div>
+  );
+}
+
+function StatusModal({ action, quoteId, quoteRef, onClose, onDone }: { action: Action; quoteId: number; quoteRef: string; onClose: () => void; onDone: (u: { status: string; status_history: quotesApi.StatusEvent[] }) => void }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    const r = await quotesApi.changeQuoteStatus(quoteId, action.to, note || undefined);
+    setBusy(false);
+    if (r.success && r.data) { toast.success(`${quoteRef} → ${action.label}`); onDone(r.data); }
+    else toast.error(r.error ? String(r.error) : 'Failed to change status');
+  };
+  return (
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">{action.label}</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+        <div className="p-5">
+          <FormField label="Note (optional)"><textarea className={inputClassName} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason or comment for the audit trail…" /></FormField>
+        </div>
+        <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
+          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={busy} className={`inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 ${action.variant === 'danger' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-800 text-white hover:bg-slate-900'}`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} {action.label}</button>
         </div>
       </div>
     </div>

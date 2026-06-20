@@ -5,15 +5,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Plus, Settings, Trash2, Loader2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader, SearchInput, Pagination, ConfirmDialog } from '../../components/ui';
+import { PageHeader, SearchInput, Pagination, ConfirmDialog, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem } from '../../services/quotations.service';
+import { statusBadge, STATUS_META } from './quoteStatus';
 
 const PAGE_SIZE = 20;
 
 export default function QuotationsList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [quotes, setQuotes] = useState<SavedQuoteListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -22,14 +24,14 @@ export default function QuotationsList() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await quotesApi.fetchSavedQuotes(search, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+    const r = await quotesApi.fetchSavedQuotes(search, PAGE_SIZE, (page - 1) * PAGE_SIZE, statusFilter || undefined);
     setLoading(false);
     if (r.success && r.data) { setQuotes(r.data.quotes); setTotal(r.data.total); }
     else toast.error(r.error ? String(r.error) : 'Failed to load quotes');
-  }, [search, page]);
+  }, [search, page, statusFilter]);
 
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
-  useEffect(() => { setPage(1); }, [search]);
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
 
   const confirmDelete = async () => {
     if (!toDelete) return;
@@ -63,8 +65,12 @@ export default function QuotationsList() {
       />
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-4 border-b border-gray-100">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by ref, name, customer, or BOM…" className="max-w-md" />
+        <div className="p-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search by ref, name, customer, or BOM…" className="max-w-md flex-1" />
+          <select className={`${selectClassName} w-auto`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">All statuses</option>
+            {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
         </div>
 
         {loading ? (
@@ -80,7 +86,7 @@ export default function QuotationsList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                  <th className="py-3 px-4">Ref</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Customer</th>
+                  <th className="py-3 px-4">Ref</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
                   <th className="py-3 px-4">BOM</th><th className="py-3 px-4 text-right">Headline ₹</th><th className="py-3 px-4">MOQ</th>
                   <th className="py-3 px-4">Created</th><th className="py-3 px-4"></th>
                 </tr>
@@ -90,6 +96,7 @@ export default function QuotationsList() {
                   <tr key={q.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
                     <td className="py-3 px-4 font-medium text-slate-900">{q.quote_ref}</td>
                     <td className="py-3 px-4 text-gray-700 max-w-[16rem] truncate">{q.quote_name}</td>
+                    <td className="py-3 px-4"><span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span></td>
                     <td className="py-3 px-4 text-gray-600">{q.customer_name || '—'}</td>
                     <td className="py-3 px-4 text-gray-500">{q.bom_code || '—'}</td>
                     <td className="py-3 px-4 text-right text-slate-900 font-semibold">{q.headline_sell != null ? Number(q.headline_sell).toFixed(2) : '—'}</td>

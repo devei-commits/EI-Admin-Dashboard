@@ -68,8 +68,8 @@ export interface QuoteBand {
   timeline: BandTimeline;
 }
 
-export interface RmDetail { name: string; rm_code: string; pct_w_w: number; price_per_kg: number; landed_per_kg: number; weighted_contribution: number; missing_price: boolean; }
-export interface PmDetail { name: string; pm_code: string; qty_per_unit: number; price_per_pc: number; landed_per_pc: number; line_total: number; missing_price: boolean; }
+export interface RmDetail { name: string; rm_code: string; pct_w_w: number; price_per_kg: number; db_price: number | null; vendor_price: number | null; price_source: string | null; landed_per_kg: number; weighted_contribution: number; missing_price: boolean; }
+export interface PmDetail { name: string; pm_code: string; qty_per_unit: number; price_per_pc: number; db_price: number | null; vendor_price: number | null; price_source: string | null; landed_per_pc: number; line_total: number; missing_price: boolean; }
 export interface MissingSgLine { raw_material_id: number | null; rm_code: string; name: string; pct_w_w: number; }
 
 export interface SgInfo {
@@ -85,7 +85,7 @@ export interface QuoteResult {
   bom_id: number | null;
   bom_code: string; bom_name: string; pack_size: string; product_code?: string | null;
   grade: number; grade_ref: string; grade_name: string;
-  product_type: string; overhead_category: string;
+  product_type: string; overhead_category: string; pricing_source?: string;
   zero_pm: boolean; has_weight: boolean;
   volume_ml: number; sg: number; weight_per_unit_kg: number;
   landing_factor: number; total_pct_ww: number;
@@ -108,17 +108,19 @@ export interface CalculatePayload {
   creditDays?: number; annualRate?: number;
   grade?: number; customMargins?: number[] | null; targetPrice?: number;
   rmOverrides?: Record<string, number>; pmOverrides?: Record<string, number>; sgOverrides?: Record<string, number>;
-  useBatchLead?: boolean; productSubtype?: string;
+  useBatchLead?: boolean; productSubtype?: string; pricingSource?: 'master' | 'vendor';
 }
+
+export interface StatusEvent { from: string; to: string; by: number | null; by_name: string | null; note: string | null; at: string; }
 
 export interface SavedQuoteListItem {
   id: number; quote_ref: string; quote_name: string; customer_name: string | null;
   bom_id: number | null; bom_code: string | null; grade: number | null; mode: string | null;
-  headline_sell: number | null; headline_moq: string | null; notes: string | null; created_at: string;
+  status: string; headline_sell: number | null; headline_moq: string | null; notes: string | null; created_at: string;
 }
 
 export interface SavedQuoteFull extends SavedQuoteListItem {
-  payload: Record<string, unknown>; result: QuoteResult;
+  payload: Record<string, unknown>; result: QuoteResult; status_history: StatusEvent[];
   gst_pct: number; valid_until: string | null; client_id: number | null; prepared_by: string | null;
 }
 
@@ -253,14 +255,22 @@ export async function saveQuote(payload: {
   try { const d = await api.post<{ id: number; quote_ref: string; created_at: string }>('/api/v1/quotes/save', payload); return { data: d, error: null, success: true }; }
   catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string; created_at: string }, 'Failed to save quote'); }
 }
-export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
+export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
   try {
     const params = new URLSearchParams();
     if (search?.trim()) params.set('search', search.trim());
+    if (status) params.set('status', status);
     params.set('limit', String(limit)); params.set('offset', String(offset));
     const d = await api.get<{ quotes: SavedQuoteListItem[]; total: number }>(`/api/v1/quotes/saved?${params.toString()}`);
     return { data: d, error: null, success: true };
   } catch (e) { return fail(e, { quotes: [], total: 0 }, 'Failed to load saved quotes'); }
+}
+
+export async function changeQuoteStatus(id: number, status: string, note?: string): Promise<ServiceResult<{ status: string; status_history: StatusEvent[] }>> {
+  try {
+    const d = await api.post<{ status: string; status_history: StatusEvent[] }>(`/api/v1/quotes/saved/${id}/status`, { status, note });
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as { status: string; status_history: StatusEvent[] }, 'Failed to change status'); }
 }
 export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQuoteFull>> {
   try { const d = await api.get<SavedQuoteFull>(`/api/v1/quotes/saved/${id}`); return { data: d, error: null, success: true }; }
@@ -269,6 +279,27 @@ export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQu
 export async function deleteSavedQuote(id: number): Promise<ServiceResult<null>> {
   try { await api.delete(`/api/v1/quotes/saved/${id}`); return { data: null, error: null, success: true }; }
   catch (e) { return fail(e, null, 'Failed to delete quote'); }
+}
+
+// ─────────────── Material lead-time tooling ───────────────
+export interface LeadTimeItem {
+  id: number; code: string; name: string; klass: string | null;
+  lead_time_days: number | null; vendor_lead: number | null;
+}
+export async function fetchLeadTimes(type: 'RM' | 'PM', search = '', missingOnly = false, limit = 50, offset = 0): Promise<ServiceResult<{ items: LeadTimeItem[]; total: number }>> {
+  try {
+    const params = new URLSearchParams({ type, limit: String(limit), offset: String(offset) });
+    if (search.trim()) params.set('search', search.trim());
+    if (missingOnly) params.set('missingOnly', 'true');
+    const d = await api.get<{ items: LeadTimeItem[]; total: number }>(`/api/v1/quotes/lead-times?${params.toString()}`);
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { items: [], total: 0 }, 'Failed to load lead times'); }
+}
+export async function saveLeadTimes(type: 'RM' | 'PM', updates: { id: number; lead_time_days: number | null }[]): Promise<ServiceResult<{ updated: number }>> {
+  try {
+    const d = await api.post<{ updated: number }>('/api/v1/quotes/lead-times', { type, updates });
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { updated: 0 }, 'Failed to save lead times'); }
 }
 
 // ─────────────── Raw-material SG persistence ───────────────
