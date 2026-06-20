@@ -482,14 +482,23 @@ function BreakdownCard({ title, headers, rows }: { title: string; headers: strin
 function SaveQuoteModal({ result, payload, onClose, onSaved }: { result: QuoteResult; payload: CalculatePayload | null; onClose: () => void; onSaved: (ref: string) => void }) {
   const [quoteName, setQuoteName] = useState(result.bom_name || 'Untitled Quote');
   const [customerName, setCustomerName] = useState('');
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [clientResults, setClientResults] = useState<quotesApi.ClientItem[]>([]);
+  const [clientOpen, setClientOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [gst, setGst] = useState('18');
   const [validUntil, setValidUntil] = useState('');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!clientOpen) return;
+    const t = setTimeout(() => { quotesApi.searchClients(customerName).then((r) => { if (r.success) setClientResults(r.data); }); }, 250);
+    return () => clearTimeout(t);
+  }, [customerName, clientOpen]);
+
   const submit = async () => {
     setSaving(true);
-    const r = await quotesApi.saveQuote({ quote_name: quoteName, customer_name: customerName, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined });
+    const r = await quotesApi.saveQuote({ quote_name: quoteName, customer_name: customerName || undefined, client_id: clientId ?? undefined, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined });
     setSaving(false);
     if (r.success && r.data) onSaved(r.data.quote_ref); else toast.error(r.error ? String(r.error) : 'Failed to save');
   };
@@ -500,7 +509,22 @@ function SaveQuoteModal({ result, payload, onClose, onSaved }: { result: QuoteRe
         <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">Save Quote</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="Quote Name" required><input className={inputClassName} value={quoteName} onChange={(e) => setQuoteName(e.target.value)} /></FormField>
-          <FormField label="Customer"><input className={inputClassName} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="optional" /></FormField>
+          <FormField label="Customer / Client">
+            <div className="relative">
+              <input className={inputClassName} placeholder="Search clients or type a name…" value={customerName}
+                onChange={(e) => { setCustomerName(e.target.value); setClientId(null); setClientOpen(true); }} onFocus={() => setClientOpen(true)} />
+              {clientOpen && clientResults.length > 0 && (
+                <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-auto">
+                  {clientResults.map((c) => (
+                    <button key={c.id} onClick={() => { setCustomerName(c.name); setClientId(c.id); setClientOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm border-b border-gray-50 last:border-0">
+                      <span className="font-medium text-slate-900">{c.name}</span>{c.segment && <span className="text-gray-400 text-xs ml-1">· {c.segment}</span>}{c.city && <span className="text-gray-400 text-xs ml-1">· {c.city}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {clientId && <span className="text-xs text-emerald-600 mt-1 inline-block">✓ Linked to client record</span>}
+          </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="GST %"><input className={inputClassName} type="number" value={gst} onChange={(e) => setGst(e.target.value)} /></FormField>
             <FormField label="Valid Until"><input className={inputClassName} type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></FormField>

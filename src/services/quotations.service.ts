@@ -122,8 +122,11 @@ export interface SavedQuoteListItem {
 export interface SavedQuoteFull extends SavedQuoteListItem {
   payload: Record<string, unknown>; result: QuoteResult; status_history: StatusEvent[];
   sales_order_id: number | null;
+  version: number; root_quote_id: number | null; superseded_by: number | null;
   gst_pct: number; valid_until: string | null; client_id: number | null; prepared_by: string | null;
 }
+
+export interface VersionItem { id: number; quote_ref: string; version: number; status: string; headline_sell: number | null; superseded_by: number | null; created_at: string; }
 
 function fail<T>(e: unknown, fallback: T, msg: string): ServiceResult<T> {
   const message = e instanceof Error ? e.message : msg;
@@ -256,6 +259,15 @@ export async function saveQuote(payload: {
   try { const d = await api.post<{ id: number; quote_ref: string; created_at: string }>('/api/v1/quotes/save', payload); return { data: d, error: null, success: true }; }
   catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string; created_at: string }, 'Failed to save quote'); }
 }
+export interface ClientItem { id: number; entity_code: string | null; name: string; email: string | null; segment: string | null; payment_terms: string | null; city: string | null; }
+export async function searchClients(search = ''): Promise<ServiceResult<ClientItem[]>> {
+  try {
+    const qs = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+    const d = await api.get<{ clients: ClientItem[] }>(`/api/v1/quotes/clients${qs}`);
+    return { data: d.clients ?? [], error: null, success: true };
+  } catch (e) { return fail(e, [], 'Failed to load clients'); }
+}
+
 export interface QuoteStats { total: number; by_status: Record<string, number>; converted: number; }
 export async function fetchQuoteStats(): Promise<ServiceResult<QuoteStats>> {
   try {
@@ -264,11 +276,12 @@ export async function fetchQuoteStats(): Promise<ServiceResult<QuoteStats>> {
   } catch (e) { return fail(e, { total: 0, by_status: {}, converted: 0 }, 'Failed to load stats'); }
 }
 
-export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
+export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string, clientId?: number): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
   try {
     const params = new URLSearchParams();
     if (search?.trim()) params.set('search', search.trim());
     if (status) params.set('status', status);
+    if (clientId) params.set('client_id', String(clientId));
     params.set('limit', String(limit)); params.set('offset', String(offset));
     const d = await api.get<{ quotes: SavedQuoteListItem[]; total: number }>(`/api/v1/quotes/saved?${params.toString()}`);
     return { data: d, error: null, success: true };
@@ -287,6 +300,20 @@ export async function convertQuoteToSO(id: number, band_index: number, quantity?
     const d = await api.post<{ sales_order_id: number; order_id: string }>(`/api/v1/quotes/saved/${id}/convert`, { band_index, quantity, unit_price });
     return { data: d, error: null, success: true };
   } catch (e) { return fail(e, null as unknown as { sales_order_id: number; order_id: string }, 'Failed to convert quote'); }
+}
+
+export async function reviseQuote(id: number): Promise<ServiceResult<{ id: number; quote_ref: string; version: number }>> {
+  try {
+    const d = await api.post<{ id: number; quote_ref: string; version: number }>(`/api/v1/quotes/saved/${id}/revise`, {});
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string; version: number }, 'Failed to revise quote'); }
+}
+
+export async function fetchVersions(id: number): Promise<ServiceResult<VersionItem[]>> {
+  try {
+    const d = await api.get<{ versions: VersionItem[] }>(`/api/v1/quotes/saved/${id}/versions`);
+    return { data: d.versions ?? [], error: null, success: true };
+  } catch (e) { return fail(e, [], 'Failed to load versions'); }
 }
 export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQuoteFull>> {
   try { const d = await api.get<SavedQuoteFull>(`/api/v1/quotes/saved/${id}`); return { data: d, error: null, success: true }; }

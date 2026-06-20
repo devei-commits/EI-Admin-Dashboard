@@ -3,11 +3,11 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock, ShoppingCart } from 'lucide-react';
+import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock, ShoppingCart, GitBranch, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, FormField, inputClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
-import type { SavedQuoteFull } from '../../services/quotations.service';
+import type { SavedQuoteFull, SavedQuoteListItem } from '../../services/quotations.service';
 import { generateQuotePdf } from '../../lib/quotePdf';
 import { statusBadge, NEXT_ACTIONS, type Action } from './quoteStatus';
 
@@ -22,7 +22,21 @@ export default function QuoteDetail() {
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<Action | null>(null);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [clientQuotes, setClientQuotes] = useState<SavedQuoteListItem[]>([]);
+  const [versions, setVersions] = useState<quotesApi.VersionItem[]>([]);
   const pdfRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!quote?.id) return;
+    quotesApi.fetchVersions(quote.id).then((r) => { if (r.success && r.data) setVersions(r.data); });
+  }, [quote?.id, quote?.superseded_by]);
+
+  const doRevise = async () => {
+    if (!quote) return;
+    const r = await quotesApi.reviseQuote(quote.id);
+    if (r.success && r.data) { toast.success(`Created v${r.data.version} · ${r.data.quote_ref}`); navigate(`/quotations/${r.data.id}`); }
+    else toast.error(r.error ? String(r.error) : 'Failed to revise');
+  };
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => { if (pdfRef.current && !pdfRef.current.contains(e.target as Node)) setPdfOpen(false); };
@@ -38,6 +52,14 @@ export default function QuoteDetail() {
       else toast.error(r.error ? String(r.error) : 'Failed to load quote');
     });
   }, [id]);
+
+  useEffect(() => {
+    const cid = quote?.client_id;
+    if (!cid) { setClientQuotes([]); return; }
+    quotesApi.fetchSavedQuotes('', 20, 0, undefined, cid).then((r) => {
+      if (r.success && r.data) setClientQuotes(r.data.quotes.filter((q) => q.id !== quote?.id));
+    });
+  }, [quote?.client_id, quote?.id]);
 
   const emailStub = () => toast.info('Email delivery is coming soon.');
 
@@ -59,6 +81,7 @@ export default function QuoteDetail() {
           <>
             <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
             <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Pencil className="w-4 h-4" /> Edit</button>
+            {!quote.superseded_by && <button onClick={doRevise} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><GitBranch className="w-4 h-4" /> Revise</button>}
             <button onClick={emailStub} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Mail className="w-4 h-4" /> Email</button>
             <div ref={pdfRef} className="relative">
               <button onClick={() => setPdfOpen((o) => !o)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold"><Download className="w-4 h-4" /> PDF <ChevronDown className="w-3.5 h-3.5" /></button>
@@ -73,10 +96,59 @@ export default function QuoteDetail() {
         }
       />
 
+      {quote.superseded_by && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+          <span className="text-sm text-amber-800 flex-1">This quote has been superseded by a newer version.</span>
+          <button onClick={() => navigate(`/quotations/${quote.superseded_by}`)} className="text-sm font-semibold text-amber-700 hover:underline">View newer version →</button>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-        <p className="text-sm text-gray-500">{meta}</p>
+        <p className="text-sm text-gray-500">
+          {meta}
+          {quote.version > 1 && <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">v{quote.version}</span>}
+          {quote.client_id && <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">linked client</span>}
+        </p>
         {quote.notes && <p className="text-sm text-gray-600 mt-2">{quote.notes}</p>}
       </div>
+
+      {versions.length > 1 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3"><GitBranch className="w-4 h-4" /> Revision History ({versions.length})</div>
+          <ul className="divide-y divide-gray-50">
+            {versions.map((v) => (
+              <li key={v.id}>
+                <button onClick={() => v.id !== quote.id && navigate(`/quotations/${v.id}`)} className={`w-full text-left py-2 flex items-center gap-3 rounded-lg px-2 -mx-2 ${v.id === quote.id ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">v{v.version}</span>
+                  <span className="font-medium text-slate-900 text-sm">{v.quote_ref}</span>
+                  {v.id === quote.id && <span className="text-xs text-slate-500">(viewing)</span>}
+                  {!v.superseded_by && <span className="text-xs text-emerald-600 font-medium">current</span>}
+                  <span className={`ml-auto px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(v.status).cls}`}>{statusBadge(v.status).label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {quote.client_id && clientQuotes.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Other quotes from this client ({clientQuotes.length})</h3>
+          <ul className="divide-y divide-gray-50">
+            {clientQuotes.map((q) => (
+              <li key={q.id}>
+                <button onClick={() => navigate(`/quotations/${q.id}`)} className="w-full text-left py-2 flex items-center gap-3 hover:bg-slate-50/50 rounded-lg px-2 -mx-2">
+                  <span className="font-medium text-slate-900 text-sm">{q.quote_ref}</span>
+                  <span className="text-sm text-gray-600 flex-1 truncate">{q.quote_name}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
+                  <span className="text-sm text-gray-500 w-20 text-right">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Status & approvals */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
