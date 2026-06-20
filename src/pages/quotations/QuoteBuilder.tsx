@@ -74,6 +74,7 @@ export default function QuoteBuilder() {
   const [calcError, setCalcError] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [savingSg, setSavingSg] = useState(false);
+  const [editMeta, setEditMeta] = useState<{ quote_name: string; customer_name: string; client_id: number | null; gst_pct: number; valid_until: string | null; notes: string } | null>(null);
 
   useEffect(() => {
     quotesApi.fetchGrades().then((r) => {
@@ -84,15 +85,39 @@ export default function QuoteBuilder() {
   useEffect(() => {
     if (!id) return;
     quotesApi.fetchSavedQuote(Number(id)).then((r) => {
-      if (r.success && r.data) {
-        const p = (r.data.payload || {}) as CalculatePayload;
-        if (p.grade) setGradeId(p.grade);
-        if (p.packagingType) setPackagingType(p.packagingType);
-        if (p.volumeKey) setVolumeKey(p.volumeKey);
-        if (p.monocarton != null) setMonocarton(!!p.monocarton);
-        if (p.bom_id && r.data.bom_code) { setMode('bom'); setSelectedBom({ id: String(p.bom_id), bomCode: r.data.bom_code, name: r.data.quote_name } as BOMRecord); }
-        setResult(r.data.result);
+      if (!r.success || !r.data) return;
+      const d = r.data;
+      const p = (d.payload || {}) as CalculatePayload & { rmLines?: Record<string, unknown>[]; pmLines?: Record<string, unknown>[]; name?: string };
+      const s = (v: unknown) => (v == null ? '' : String(v));
+      if (p.grade) setGradeId(p.grade);
+      if (p.packagingType) setPackagingType(p.packagingType);
+      if (p.volumeKey) setVolumeKey(p.volumeKey);
+      if (p.monocarton != null) setMonocarton(!!p.monocarton);
+      if (p.useBatchLead != null) setUseBatchLead(!!p.useBatchLead);
+      if (p.pricingSource) setPricingSource(p.pricingSource);
+      if (p.rmWastage != null) setRmWastagePct(s(p.rmWastage * 100));
+      if (p.pmWastage != null) setPmWastagePct(s(p.pmWastage * 100));
+      if (p.rmLogistics != null) setRmLogistics(s(p.rmLogistics));
+      if (p.pmLogistics != null) setPmLogistics(s(p.pmLogistics));
+      if (p.freightPct != null) setFreightPct(s(p.freightPct * 100));
+      if (p.insurancePct != null) setInsurancePct(s(p.insurancePct * 100));
+      if (p.handlingPct != null) setHandlingPct(s(p.handlingPct * 100));
+      if (p.creditDays != null) setCreditDays(s(p.creditDays));
+      if (p.annualRate != null) setAnnualRatePct(s(p.annualRate * 100));
+      if (p.targetPrice) setTargetPrice(s(p.targetPrice));
+      if (p.volumeMl != null) setVolumeMl(s(p.volumeMl));
+      if (p.sg != null) setSgManual(s(p.sg));
+      if (p.bom_id && d.bom_code) {
+        setMode('bom');
+        setSelectedBom({ id: String(p.bom_id), bomCode: d.bom_code, name: d.quote_name } as BOMRecord);
+      } else if (Array.isArray(p.rmLines)) {
+        setMode('adhoc');
+        setAdhocName(p.name || d.quote_name || 'Adhoc Quote');
+        setAdhocRm(p.rmLines.map((l) => ({ rm_code: s(l.rm_code), inci_name: s(l.inci_name), pct_w_w: s(l.pct_w_w), price_per_kg: s(l.price_per_kg), specific_gravity: l.specific_gravity != null ? s(l.specific_gravity) : '', category: s(l.category) || 'Bulk Raw Materials' })));
+        setAdhocPm((p.pmLines || []).map((l) => ({ pm_code: s(l.pm_code), description: s(l.description), qty_per_unit: s(l.qty_per_unit) || '1', price_per_pc: s(l.price_per_pc), material: s(l.material) || 'Packaging - Primary' })));
       }
+      setEditMeta({ quote_name: d.quote_name, customer_name: d.customer_name || '', client_id: d.client_id, gst_pct: d.gst_pct, valid_until: d.valid_until, notes: d.notes || '' });
+      setResult(d.result);
     });
   }, [id]);
 
@@ -172,7 +197,7 @@ export default function QuoteBuilder() {
         actions={
           <>
             <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
-            <button disabled={!result || (result?.bands?.length ?? 0) === 0} onClick={() => setSaveOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-4 h-4" /> Save Quote</button>
+            <button disabled={!result || (result?.bands?.length ?? 0) === 0} onClick={() => setSaveOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-4 h-4" /> {id ? 'Update Quote' : 'Save Quote'}</button>
           </>
         }
       />
@@ -430,7 +455,7 @@ export default function QuoteBuilder() {
         </div>
       </div>
 
-      {saveOpen && result && <SaveQuoteModal result={result} payload={buildPayload()} onClose={() => setSaveOpen(false)} onSaved={(ref) => { toast.success(`Quote saved: ${ref}`); navigate('/quotations'); }} />}
+      {saveOpen && result && <SaveQuoteModal result={result} payload={buildPayload()} editId={id ? Number(id) : null} initial={editMeta} onClose={() => setSaveOpen(false)} onSaved={(savedId, ref) => { toast.success(`Quote ${id ? 'updated' : 'saved'}: ${ref}`); navigate(`/quotations/${savedId}`); }} />}
     </div>
   );
 }
@@ -506,15 +531,15 @@ function BreakdownCard({ title, headers, rows }: { title: string; headers: strin
   );
 }
 
-function SaveQuoteModal({ result, payload, onClose, onSaved }: { result: QuoteResult; payload: CalculatePayload | null; onClose: () => void; onSaved: (ref: string) => void }) {
-  const [quoteName, setQuoteName] = useState(result.bom_name || 'Untitled Quote');
-  const [customerName, setCustomerName] = useState('');
-  const [clientId, setClientId] = useState<number | null>(null);
+function SaveQuoteModal({ result, payload, editId, initial, onClose, onSaved }: { result: QuoteResult; payload: CalculatePayload | null; editId: number | null; initial: { quote_name: string; customer_name: string; client_id: number | null; gst_pct: number; valid_until: string | null; notes: string } | null; onClose: () => void; onSaved: (id: number, ref: string) => void }) {
+  const [quoteName, setQuoteName] = useState(initial?.quote_name || result.bom_name || 'Untitled Quote');
+  const [customerName, setCustomerName] = useState(initial?.customer_name || '');
+  const [clientId, setClientId] = useState<number | null>(initial?.client_id ?? null);
   const [clientResults, setClientResults] = useState<quotesApi.ClientItem[]>([]);
   const [clientOpen, setClientOpen] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [gst, setGst] = useState('18');
-  const [validUntil, setValidUntil] = useState('');
+  const [notes, setNotes] = useState(initial?.notes || '');
+  const [gst, setGst] = useState(String(initial?.gst_pct ?? 18));
+  const [validUntil, setValidUntil] = useState(initial?.valid_until || '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -525,15 +550,16 @@ function SaveQuoteModal({ result, payload, onClose, onSaved }: { result: QuoteRe
 
   const submit = async () => {
     setSaving(true);
-    const r = await quotesApi.saveQuote({ quote_name: quoteName, customer_name: customerName || undefined, client_id: clientId ?? undefined, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined });
+    const body = { quote_name: quoteName, customer_name: customerName || undefined, client_id: clientId ?? undefined, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined };
+    const r = editId ? await quotesApi.updateSavedQuote(editId, body) : await quotesApi.saveQuote(body);
     setSaving(false);
-    if (r.success && r.data) onSaved(r.data.quote_ref); else toast.error(r.error ? String(r.error) : 'Failed to save');
+    if (r.success && r.data) onSaved(r.data.id, r.data.quote_ref); else toast.error(r.error ? String(r.error) : 'Failed to save');
   };
 
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">Save Quote</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">{editId ? 'Update Quote' : 'Save Quote'}</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="Quote Name" required><input className={inputClassName} value={quoteName} onChange={(e) => setQuoteName(e.target.value)} /></FormField>
           <FormField label="Customer / Client">
@@ -560,7 +586,7 @@ function SaveQuoteModal({ result, payload, onClose, onSaved }: { result: QuoteRe
         </div>
         <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
           <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
-          <button onClick={submit} disabled={saving || !quoteName.trim()} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
+          <button onClick={submit} disabled={saving || !quoteName.trim()} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />} {editId ? 'Update' : 'Save'}</button>
         </div>
       </div>
     </div>

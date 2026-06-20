@@ -333,6 +333,16 @@ export async function fetchVersions(id: number): Promise<ServiceResult<VersionIt
     return { data: d.versions ?? [], error: null, success: true };
   } catch (e) { return fail(e, [], 'Failed to load versions'); }
 }
+export async function updateSavedQuote(id: number, payload: {
+  quote_name?: string; customer_name?: string; client_id?: number | null; notes?: string;
+  payload: Record<string, unknown>; result: QuoteResult; gst_pct?: number; valid_until?: string;
+}): Promise<ServiceResult<{ id: number; quote_ref: string }>> {
+  try {
+    const d = await api.put<{ id: number; quote_ref: string }>(`/api/v1/quotes/saved/${id}`, payload);
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string }, 'Failed to update quote'); }
+}
+
 export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQuoteFull>> {
   try { const d = await api.get<SavedQuoteFull>(`/api/v1/quotes/saved/${id}`); return { data: d, error: null, success: true }; }
   catch (e) { return fail(e, null as unknown as SavedQuoteFull, 'Failed to load quote'); }
