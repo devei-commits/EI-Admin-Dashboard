@@ -1,9 +1,9 @@
 /**
  * Quote Detail — full breakdown of a saved quote + PDF export.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2 } from 'lucide-react';
+import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -18,6 +18,14 @@ export default function QuoteDetail() {
   const { id } = useParams();
   const [quote, setQuote] = useState<SavedQuoteFull | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => { if (pdfRef.current && !pdfRef.current.contains(e.target as Node)) setPdfOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -30,6 +38,8 @@ export default function QuoteDetail() {
 
   const emailStub = () => toast.info('Email delivery is coming soon.');
 
+  const downloadPdf = (variant: 'client' | 'internal') => { if (quote) generateQuotePdf(quote, variant); setPdfOpen(false); };
+
   if (loading) return <div className="p-12 text-center"><Loader2 className="w-6 h-6 mx-auto text-slate-400 animate-spin" /></div>;
   if (!quote) return <div className="p-12 text-center text-gray-500">Quote not found.</div>;
 
@@ -37,17 +47,25 @@ export default function QuoteDetail() {
   const meta = [quote.customer_name && `Customer: ${quote.customer_name}`, r.bom_code && `BOM: ${r.bom_code}`, r.pack_size && `Pack: ${r.pack_size}`, r.grade_name].filter(Boolean).join('  ·  ');
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title={quote.quote_ref}
         subtitle={quote.quote_name}
         icon={<FileText className="w-6 h-6" />}
         actions={
           <>
-            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
-            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Pencil className="w-4 h-4" /> Edit</button>
-            <button onClick={emailStub} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Mail className="w-4 h-4" /> Email</button>
-            <button onClick={() => generateQuotePdf(quote)} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold"><Download className="w-4 h-4" /> PDF</button>
+            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
+            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Pencil className="w-4 h-4" /> Edit</button>
+            <button onClick={emailStub} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Mail className="w-4 h-4" /> Email</button>
+            <div ref={pdfRef} className="relative">
+              <button onClick={() => setPdfOpen((o) => !o)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold"><Download className="w-4 h-4" /> PDF <ChevronDown className="w-3.5 h-3.5" /></button>
+              {pdfOpen && (
+                <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-30 overflow-hidden">
+                  <button onClick={() => downloadPdf('client')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50">Client PDF <span className="block text-xs text-gray-400">price + delivery</span></button>
+                  <button onClick={() => downloadPdf('internal')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-50">Internal PDF <span className="block text-xs text-gray-400">full cost breakdown</span></button>
+                </div>
+              )}
+            </div>
           </>
         }
       />

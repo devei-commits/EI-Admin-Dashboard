@@ -163,7 +163,7 @@ export default function QuoteBuilder() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title={id ? 'Edit Quote' : 'New Quote'}
         subtitle="Pick a BOM or enter materials, then compute pricing & timeline"
@@ -394,8 +394,8 @@ function LineEditor({ title, cols, children }: { title: string; cols: string[]; 
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
       <div className="overflow-x-auto p-2">
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{cols.map((c) => <th key={c} className="px-2 py-1">{c}</th>)}<th></th></tr></thead>
+        <table className="w-full text-sm min-w-[44rem]">
+          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{cols.map((c) => <th key={c} className="px-2 py-1">{c}</th>)}<th></th></tr></thead>
           <tbody>{children}</tbody>
         </table>
       </div>

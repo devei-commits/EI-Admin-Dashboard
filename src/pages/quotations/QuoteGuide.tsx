@@ -114,7 +114,7 @@ export default function QuoteGuide() {
   const ohTotals = Array.from({ length: 7 }, (_, i) => overheads.reduce((s, r) => s + (Number(r.band_values[i]) || 0), 0));
 
   return (
-    <div className="p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title="Quotation Guide"
         subtitle="Methodology, formulas, and the live engine configuration"
@@ -123,7 +123,7 @@ export default function QuoteGuide() {
       />
 
       {/* in-page nav */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex flex-wrap gap-2 sticky top-0 z-10">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex flex-wrap gap-2">
         {SECTIONS.map(([id, label]) => (
           <a key={id} href={`#${id}`} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-slate-800 hover:text-white transition-all">{label}</a>
         ))}
