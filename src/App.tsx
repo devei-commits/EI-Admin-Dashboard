@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import SessionExpiredNotifier from './components/SessionExpiredNotifier'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
+import { SuperAdminRoute } from './components/SuperAdminRoute'
 import Sidebar from "./components/Sidebar"
 import StandaloneModuleLayout from "./components/StandaloneModuleLayout"
 import { monitorConnection } from './lib/performanceOptimization'
@@ -40,6 +41,10 @@ const UniversalSwap = lazy(() => import('./pages/UniversalSwap'))
 const UniversalSwapPage = lazy(() => import('./pages/UniversalSwapPage'))
 const ItemGroups = lazy(() => import('./pages/ItemGroups'))
 const ItemsList = lazy(() => import('./pages/ItemsList'))
+const QuotationsList = lazy(() => import('./pages/quotations/QuotationsList'))
+const QuoteBuilder = lazy(() => import('./pages/quotations/QuoteBuilder'))
+const QuoteDetail = lazy(() => import('./pages/quotations/QuoteDetail'))
+const QuoteSettings = lazy(() => import('./pages/quotations/QuoteSettings'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
 const Procurement = lazy(() => import('./pages/procurement/index'))
@@ -426,6 +431,31 @@ const AppLayout = () => {
                                                         <ProtectedModuleRoute moduleId="inventory">
                                                                <ItemsList />
                                                         </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/quotations" element={
+                                                        <SuperAdminRoute>
+                                                               <QuotationsList />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/new" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteBuilder />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/settings" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteSettings />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/:id/edit" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteBuilder />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/:id" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteDetail />
+                                                        </SuperAdminRoute>
                                                  } />
                                                  <Route path="/vendor-client" element={
                                                         <ProtectedModuleRoute moduleId="vendor-client">
