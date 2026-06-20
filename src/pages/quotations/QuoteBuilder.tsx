@@ -385,6 +385,33 @@ export default function QuoteBuilder() {
                 </div>
               </div>
 
+              {result && result.target_calc && result.target_calc.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Target-Price Solver</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Blended RM cost/kg (landed) needed to hit ₹{Number(targetPrice).toFixed(2)} — green = achievable at current RM price.</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                        <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Required RM ₹/kg</th><th className="py-3 px-3 text-right">Current RM ₹/kg</th><th className="py-3 px-3 text-right">Headroom</th><th className="py-3 px-4">Feasible</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {result.target_calc.map((t) => (
+                          <tr key={t.moq} className="hover:bg-slate-50/50">
+                            <td className="py-2.5 px-4 font-medium text-slate-900">{t.moq}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-700">{f2(t.required_rm_kg_landed)}</td>
+                            <td className="py-2.5 px-3 text-right text-gray-500">{f2(t.current_rm_kg_landed)}</td>
+                            <td className={`py-2.5 px-3 text-right font-medium ${t.gap >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{t.gap >= 0 ? '+' : ''}{f2(t.gap)}</td>
+                            <td className="py-2.5 px-4">{t.feasible ? <span className="text-emerald-600 font-semibold">✓ Yes</span> : <span className="text-red-500 font-semibold">✗ No</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {result && (mode === 'bom' ? (
                 <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
                   <PriceBreakdown title={`RM Breakdown (${result.rm_detail.length})`} qtyHeader="% w/w" lastHeader="Landed/kg"

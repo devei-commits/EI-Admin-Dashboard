@@ -93,8 +93,11 @@ export interface QuoteResult {
   rm_detail: RmDetail[]; pm_detail: PmDetail[];
   sg_info: SgInfo | null;
   bands: QuoteBand[];
+  target_calc?: TargetCalc[];
   warnings: string[];
 }
+
+export interface TargetCalc { moq: string; required_rm_kg_landed: number; required_rm_kg_exworks: number; current_rm_kg_landed: number; gap: number; feasible: boolean; }
 
 export interface CalculatePayload {
   bom_id?: number;
@@ -266,6 +269,21 @@ export async function searchClients(search = ''): Promise<ServiceResult<ClientIt
     const d = await api.get<{ clients: ClientItem[] }>(`/api/v1/quotes/clients${qs}`);
     return { data: d.clients ?? [], error: null, success: true };
   } catch (e) { return fail(e, [], 'Failed to load clients'); }
+}
+
+export interface QuoteAnalytics {
+  total: number; converted: number; avg_sell: number | null;
+  by_status: Record<string, number>;
+  win_rate: number | null; conversion_rate: number | null;
+  top_boms: { bom_code: string; name: string; c: number }[];
+  by_month: { m: string; c: number }[];
+  recent: { id: number; quote_ref: string; quote_name: string; status: string; headline_sell: string | number | null; created_at: string }[];
+}
+export async function fetchAnalytics(): Promise<ServiceResult<QuoteAnalytics>> {
+  try {
+    const d = await api.get<QuoteAnalytics>('/api/v1/quotes/analytics');
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as QuoteAnalytics, 'Failed to load analytics'); }
 }
 
 export interface QuoteStats { total: number; by_status: Record<string, number>; converted: number; }

@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart } from 'lucide-react';
+import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart, BarChart3, GitCompare } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -22,6 +22,8 @@ export default function QuotationsList() {
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState<SavedQuoteListItem | null>(null);
   const [stats, setStats] = useState<QuoteStats | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggleSel = (id: number) => setSelected((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else if (n.size < 4) n.add(id); return n; });
 
   const loadStats = useCallback(() => { quotesApi.fetchQuoteStats().then((r) => { if (r.success && r.data) setStats(r.data); }); }, []);
   useEffect(() => { loadStats(); }, [loadStats]);
@@ -55,6 +57,9 @@ export default function QuotationsList() {
         icon={<FileText className="w-6 h-6" />}
         actions={
           <>
+            <button onClick={() => navigate('/quotations/dashboard')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
+              <BarChart3 className="w-4 h-4" /> Dashboard
+            </button>
             <button onClick={() => navigate('/quotations/guide')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
               <BookOpen className="w-4 h-4" /> Guide
             </button>
@@ -82,6 +87,11 @@ export default function QuotationsList() {
             <option value="">All statuses</option>
             {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
+          {selected.size >= 2 && (
+            <button onClick={() => navigate(`/quotations/compare?ids=${[...selected].join(',')}`)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">
+              <GitCompare className="w-4 h-4" /> Compare ({selected.size})
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -97,7 +107,7 @@ export default function QuotationsList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                  <th className="py-3 px-4">Ref</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
+                  <th className="py-3 px-4 w-8"></th><th className="py-3 px-4">Ref</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
                   <th className="py-3 px-4">BOM</th><th className="py-3 px-4 text-right">Headline ₹</th><th className="py-3 px-4">MOQ</th>
                   <th className="py-3 px-4">Created</th><th className="py-3 px-4"></th>
                 </tr>
@@ -105,6 +115,9 @@ export default function QuotationsList() {
               <tbody className="divide-y divide-gray-50">
                 {quotes.map((q) => (
                   <tr key={q.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)} disabled={!selected.has(q.id) && selected.size >= 4} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" />
+                    </td>
                     <td className="py-3 px-4 font-medium text-slate-900">{q.quote_ref}</td>
                     <td className="py-3 px-4 text-gray-700 max-w-[16rem] truncate">{q.quote_name}</td>
                     <td className="py-3 px-4">
