@@ -164,7 +164,7 @@ export default function QuoteBuilder() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="pt-4 md:pt-6 space-y-6">
       <PageHeader
         title={id ? 'Edit Quote' : 'New Quote'}
         subtitle="Pick a BOM or enter materials, then compute pricing & timeline"

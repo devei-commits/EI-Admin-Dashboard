@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock } from 'lucide-react';
+import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, FormField, inputClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -21,6 +21,7 @@ export default function QuoteDetail() {
   const [loading, setLoading] = useState(true);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<Action | null>(null);
+  const [convertOpen, setConvertOpen] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function QuoteDetail() {
   const meta = [quote.customer_name && `Customer: ${quote.customer_name}`, r.bom_code && `BOM: ${r.bom_code}`, r.pack_size && `Pack: ${r.pack_size}`, r.grade_name].filter(Boolean).join('  ·  ');
 
   return (
-    <div className="space-y-6">
+    <div className="pt-4 md:pt-6 space-y-6">
       <PageHeader
         title={quote.quote_ref}
         subtitle={quote.quote_name}
@@ -114,6 +115,20 @@ export default function QuoteDetail() {
         )}
       </div>
 
+      {/* Sales Order */}
+      {(quote.status === 'accepted' || quote.sales_order_ref) && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <span className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Sales Order</span>
+            {quote.sales_order_ref ? (
+              <span className="inline-flex items-center gap-2 text-sm"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{quote.sales_order_ref}</span><span className="text-gray-400">created from this quote</span></span>
+            ) : (
+              <button onClick={() => setConvertOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><ShoppingCart className="w-4 h-4" /> Convert to Sales Order</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Pricing */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3></div>
@@ -173,6 +188,53 @@ export default function QuoteDetail() {
         <StatusModal action={pendingAction} quoteRef={quote.quote_ref} onClose={() => setPendingAction(null)}
           onDone={(updated) => { setPendingAction(null); setQuote((q) => q ? { ...q, status: updated.status, status_history: updated.status_history } : q); }} quoteId={quote.id} />
       )}
+      {convertOpen && (
+        <ConvertModal quote={quote} onClose={() => setConvertOpen(false)}
+          onDone={(ref) => { setConvertOpen(false); setQuote((q) => q ? { ...q, sales_order_ref: ref } : q); }} />
+      )}
+    </div>
+  );
+}
+
+function ConvertModal({ quote, onClose, onDone }: { quote: SavedQuoteFull; onClose: () => void; onDone: (ref: string) => void }) {
+  const bands = quote.result.bands;
+  const [bandIdx, setBandIdx] = useState(Math.min(3, bands.length - 1));
+  const [qty, setQty] = useState(String(bands[Math.min(3, bands.length - 1)]?.moqv ?? ''));
+  const [price, setPrice] = useState(String(bands[Math.min(3, bands.length - 1)]?.sell_price ?? ''));
+  const [busy, setBusy] = useState(false);
+
+  const pickBand = (i: number) => { setBandIdx(i); setQty(String(bands[i].moqv)); setPrice(String(bands[i].sell_price)); };
+  const total = (Number(qty) || 0) * (Number(price) || 0);
+
+  const submit = async () => {
+    setBusy(true);
+    const r = await quotesApi.convertQuoteToSO(quote.id, bandIdx, Number(qty), Number(price));
+    setBusy(false);
+    if (r.success && r.data) { toast.success(`Sales order ${r.data.order_id} created`); onDone(r.data.order_id); }
+    else toast.error(r.error ? String(r.error) : 'Failed to convert');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">Convert to Sales Order</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+        <div className="p-5 space-y-4">
+          <FormField label="MOQ Band">
+            <select className={inputClassName} value={bandIdx} onChange={(e) => pickBand(Number(e.target.value))}>
+              {bands.map((b, i) => <option key={b.moqv} value={i}>{b.moq} units @ ₹{b.sell_price.toFixed(2)}</option>)}
+            </select>
+          </FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Quantity"><input className={inputClassName} type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></FormField>
+            <FormField label="Unit Price ₹"><input className={inputClassName} type="number" value={price} onChange={(e) => setPrice(e.target.value)} /></FormField>
+          </div>
+          <div className="bg-slate-50 rounded-lg px-4 py-3 flex justify-between text-sm"><span className="text-gray-500">Order total</span><span className="font-semibold text-slate-900">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+        </div>
+        <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
+          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={busy || !(Number(qty) > 0)} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">{busy && <Loader2 className="w-4 h-4 animate-spin" />} Create Sales Order</button>
+        </div>
+      </div>
     </div>
   );
 }

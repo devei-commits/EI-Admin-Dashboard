@@ -116,11 +116,12 @@ export interface StatusEvent { from: string; to: string; by: number | null; by_n
 export interface SavedQuoteListItem {
   id: number; quote_ref: string; quote_name: string; customer_name: string | null;
   bom_id: number | null; bom_code: string | null; grade: number | null; mode: string | null;
-  status: string; headline_sell: number | null; headline_moq: string | null; notes: string | null; created_at: string;
+  status: string; sales_order_ref: string | null; headline_sell: number | null; headline_moq: string | null; notes: string | null; created_at: string;
 }
 
 export interface SavedQuoteFull extends SavedQuoteListItem {
   payload: Record<string, unknown>; result: QuoteResult; status_history: StatusEvent[];
+  sales_order_id: number | null;
   gst_pct: number; valid_until: string | null; client_id: number | null; prepared_by: string | null;
 }
 
@@ -255,6 +256,14 @@ export async function saveQuote(payload: {
   try { const d = await api.post<{ id: number; quote_ref: string; created_at: string }>('/api/v1/quotes/save', payload); return { data: d, error: null, success: true }; }
   catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string; created_at: string }, 'Failed to save quote'); }
 }
+export interface QuoteStats { total: number; by_status: Record<string, number>; converted: number; }
+export async function fetchQuoteStats(): Promise<ServiceResult<QuoteStats>> {
+  try {
+    const d = await api.get<QuoteStats>('/api/v1/quotes/stats');
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { total: 0, by_status: {}, converted: 0 }, 'Failed to load stats'); }
+}
+
 export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
   try {
     const params = new URLSearchParams();
@@ -271,6 +280,13 @@ export async function changeQuoteStatus(id: number, status: string, note?: strin
     const d = await api.post<{ status: string; status_history: StatusEvent[] }>(`/api/v1/quotes/saved/${id}/status`, { status, note });
     return { data: d, error: null, success: true };
   } catch (e) { return fail(e, null as unknown as { status: string; status_history: StatusEvent[] }, 'Failed to change status'); }
+}
+
+export async function convertQuoteToSO(id: number, band_index: number, quantity?: number, unit_price?: number): Promise<ServiceResult<{ sales_order_id: number; order_id: string }>> {
+  try {
+    const d = await api.post<{ sales_order_id: number; order_id: string }>(`/api/v1/quotes/saved/${id}/convert`, { band_index, quantity, unit_price });
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as { sales_order_id: number; order_id: string }, 'Failed to convert quote'); }
 }
 export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQuoteFull>> {
   try { const d = await api.get<SavedQuoteFull>(`/api/v1/quotes/saved/${id}`); return { data: d, error: null, success: true }; }

@@ -114,7 +114,7 @@ export default function QuoteGuide() {
   const ohTotals = Array.from({ length: 7 }, (_, i) => overheads.reduce((s, r) => s + (Number(r.band_values[i]) || 0), 0));
 
   return (
-    <div className="space-y-6">
+    <div className="pt-4 md:pt-6 space-y-6">
       <PageHeader
         title="Quotation Guide"
         subtitle="Methodology, formulas, and the live engine configuration"

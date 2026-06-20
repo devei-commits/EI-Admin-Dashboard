@@ -22,7 +22,7 @@ export default function QuoteSettings() {
   const [tab, setTab] = useState<Tab>('grades');
 
   return (
-    <div className="space-y-6">
+    <div className="pt-4 md:pt-6 space-y-6">
       <PageHeader
         title="Quotation Settings"
         subtitle="Manage grades, overheads, and timeline configuration"

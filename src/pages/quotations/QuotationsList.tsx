@@ -3,11 +3,11 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Settings, Trash2, Loader2, BookOpen } from 'lucide-react';
+import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader, SearchInput, Pagination, ConfirmDialog, selectClassName } from '../../components/ui';
+import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
-import type { SavedQuoteListItem } from '../../services/quotations.service';
+import type { SavedQuoteListItem, QuoteStats } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
 
 const PAGE_SIZE = 20;
@@ -21,6 +21,10 @@ export default function QuotationsList() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState<SavedQuoteListItem | null>(null);
+  const [stats, setStats] = useState<QuoteStats | null>(null);
+
+  const loadStats = useCallback(() => { quotesApi.fetchQuoteStats().then((r) => { if (r.success && r.data) setStats(r.data); }); }, []);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,14 +41,14 @@ export default function QuotationsList() {
     if (!toDelete) return;
     const r = await quotesApi.deleteSavedQuote(toDelete.id);
     setToDelete(null);
-    if (r.success) { toast.success('Quote deleted'); load(); }
+    if (r.success) { toast.success('Quote deleted'); load(); loadStats(); }
     else toast.error(r.error ? String(r.error) : 'Failed to delete');
   };
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-6">
+    <div className="pt-4 md:pt-6 space-y-6">
       <PageHeader
         title="Quotations"
         subtitle="BOM-driven price & timeline quotes"
@@ -63,6 +67,13 @@ export default function QuotationsList() {
           </>
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={stats?.total ?? '—'} iconBgClass="bg-slate-100" iconColorClass="text-slate-700" />
+        <StatCard icon={<Clock className="w-5 h-5" />} title="Pending Approval" value={stats?.by_status?.pending_approval ?? 0} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
+        <StatCard icon={<CheckCircle2 className="w-5 h-5" />} title="Accepted" value={stats?.by_status?.accepted ?? 0} iconBgClass="bg-emerald-100" iconColorClass="text-emerald-600" />
+        <StatCard icon={<ShoppingCart className="w-5 h-5" />} title="Converted to SO" value={stats?.converted ?? 0} iconBgClass="bg-violet-100" iconColorClass="text-violet-600" />
+      </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">
         <div className="p-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
@@ -96,7 +107,10 @@ export default function QuotationsList() {
                   <tr key={q.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
                     <td className="py-3 px-4 font-medium text-slate-900">{q.quote_ref}</td>
                     <td className="py-3 px-4 text-gray-700 max-w-[16rem] truncate">{q.quote_name}</td>
-                    <td className="py-3 px-4"><span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span></td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
+                      {q.sales_order_ref && <span className="block text-xs text-emerald-600 mt-0.5">→ {q.sales_order_ref}</span>}
+                    </td>
                     <td className="py-3 px-4 text-gray-600">{q.customer_name || '—'}</td>
                     <td className="py-3 px-4 text-gray-500">{q.bom_code || '—'}</td>
                     <td className="py-3 px-4 text-right text-slate-900 font-semibold">{q.headline_sell != null ? Number(q.headline_sell).toFixed(2) : '—'}</td>
