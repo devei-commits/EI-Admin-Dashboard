@@ -4,12 +4,13 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, ArrowLeft, Loader2, FileText, Trophy, ShoppingCart, IndianRupee } from 'lucide-react';
+import { BarChart3, Loader2, FileText, Trophy, ShoppingCart, IndianRupee } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { PageHeader, StatCard } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
 import type { QuoteAnalytics } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
+import QuotationsNav from './QuotationsNav';
 
 const STATUS_COLOR: Record<string, string> = {
   draft: '#94a3b8', pending_approval: '#f59e0b', approved: '#3b82f6',
@@ -34,8 +35,9 @@ export default function QuoteDashboard() {
         title="Quotations Dashboard"
         subtitle="Pipeline analytics & activity"
         icon={<BarChart3 className="w-6 h-6" />}
-        actions={<button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back to list</button>}
       />
+
+      <QuotationsNav />
 
       {loading ? (
         <div className="p-12 text-center"><Loader2 className="w-6 h-6 mx-auto text-slate-400 animate-spin" /></div>

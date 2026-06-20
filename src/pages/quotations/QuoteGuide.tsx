@@ -5,9 +5,9 @@
  * the current engine configuration.
  */
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BookOpen, ArrowLeft, Loader2 } from 'lucide-react';
+import { BookOpen, Loader2 } from 'lucide-react';
 import { PageHeader } from '../../components/ui';
+import QuotationsNav from './QuotationsNav';
 import * as api from '../../services/quotations.service';
 import type { QuoteGrade, OverheadRow, ProcurementRule, ManufacturingRule, QcRule, DispatchRule } from '../../services/quotations.service';
 
@@ -83,7 +83,6 @@ const SECTIONS = [
 const pct0 = (n: number) => (n * 100).toFixed(0) + '%';
 
 export default function QuoteGuide() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [grades, setGrades] = useState<QuoteGrade[]>([]);
   const [overheads, setOverheads] = useState<OverheadRow[]>([]);
@@ -119,8 +118,9 @@ export default function QuoteGuide() {
         title="Quotation Guide"
         subtitle="Methodology, formulas, and the live engine configuration"
         icon={<BookOpen className="w-6 h-6" />}
-        actions={<button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>}
       />
+
+      <QuotationsNav />
 
       {/* in-page nav */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex flex-wrap gap-2">

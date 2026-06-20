@@ -3,13 +3,13 @@
  * and Timeline Configuration. All CRUD against /api/v1/quotes/* (super_admin).
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Settings, ArrowLeft, Layers, Wallet, Clock, History } from 'lucide-react';
+import { Settings, Layers, Wallet, Clock, History } from 'lucide-react';
 import { PageHeader } from '../../components/ui';
 import GradeManager from './settings/GradeManager';
 import OverheadManager from './settings/OverheadManager';
 import TimelineConfig from './settings/TimelineConfig';
 import AuditLog from './settings/AuditLog';
+import QuotationsNav from './QuotationsNav';
 
 type Tab = 'grades' | 'overheads' | 'timeline' | 'audit';
 const TABS: { key: Tab; label: string; icon: typeof Layers }[] = [
@@ -20,7 +20,6 @@ const TABS: { key: Tab; label: string; icon: typeof Layers }[] = [
 ];
 
 export default function QuoteSettings() {
-  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('grades');
 
   return (
@@ -29,12 +28,9 @@ export default function QuoteSettings() {
         title="Quotation Settings"
         subtitle="Manage grades, overheads, and timeline configuration"
         icon={<Settings className="w-6 h-6" />}
-        actions={
-          <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
-            <ArrowLeft className="w-4 h-4" /> Back
-          </button>
-        }
       />
+
+      <QuotationsNav />
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">
         <div className="flex border-b border-gray-100 overflow-x-auto">

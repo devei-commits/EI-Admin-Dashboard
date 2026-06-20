@@ -3,12 +3,13 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Settings, Trash2, Loader2, BookOpen, Clock, CheckCircle2, ShoppingCart, BarChart3, GitCompare, Download } from 'lucide-react';
+import { FileText, Plus, Trash2, Loader2, Clock, CheckCircle2, ShoppingCart, GitCompare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem, QuoteStats } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
+import QuotationsNav from './QuotationsNav';
 
 const PAGE_SIZE = 20;
 
@@ -69,22 +70,13 @@ export default function QuotationsList() {
         subtitle="BOM-driven price & timeline quotes"
         icon={<FileText className="w-6 h-6" />}
         actions={
-          <>
-            <button onClick={() => navigate('/quotations/dashboard')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
-              <BarChart3 className="w-4 h-4" /> Dashboard
-            </button>
-            <button onClick={() => navigate('/quotations/guide')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
-              <BookOpen className="w-4 h-4" /> Guide
-            </button>
-            <button onClick={() => navigate('/quotations/settings')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium">
-              <Settings className="w-4 h-4" /> Settings
-            </button>
-            <button onClick={() => navigate('/quotations/new')} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold">
-              <Plus className="w-4 h-4" /> New Quote
-            </button>
-          </>
+          <button onClick={() => navigate('/quotations/new')} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold">
+            <Plus className="w-4 h-4" /> New Quote
+          </button>
         }
       />
+
+      <QuotationsNav />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={stats?.total ?? '—'} iconBgClass="bg-slate-100" iconColorClass="text-slate-700" />
