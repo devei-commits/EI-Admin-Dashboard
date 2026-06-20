@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Loader2, FileText, Trophy, ShoppingCart, IndianRupee } from 'lucide-react';
+import { BarChart3, FileText, Trophy, ShoppingCart, IndianRupee } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { PageHeader, StatCard } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -40,7 +40,10 @@ export default function QuoteDashboard() {
       <QuotationsNav />
 
       {loading ? (
-        <div className="p-12 text-center"><Loader2 className="w-6 h-6 mx-auto text-slate-400 animate-spin" /></div>
+        <div className="space-y-6 animate-pulse">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-56 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
+        </div>
       ) : !a ? (
         <div className="p-12 text-center text-gray-500">No analytics available.</div>
       ) : (

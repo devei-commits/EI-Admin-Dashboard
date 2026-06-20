@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Trash2, Loader2, Clock, CheckCircle2, ShoppingCart, GitCompare, Download } from 'lucide-react';
+import { FileText, Plus, Trash2, Clock, CheckCircle2, ShoppingCart, GitCompare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
 import * as quotesApi from '../../services/quotations.service';
@@ -103,18 +103,36 @@ export default function QuotationsList() {
         </div>
 
         {loading ? (
-          <div className="p-12 text-center"><Loader2 className="w-6 h-6 mx-auto text-slate-400 animate-spin" /></div>
+          <div className="divide-y divide-gray-50 animate-pulse">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                <div className="w-4 h-4 bg-gray-100 rounded" />
+                <div className="h-3 bg-gray-100 rounded w-20" />
+                <div className="h-3 bg-gray-100 rounded flex-1 max-w-[14rem]" />
+                <div className="h-5 bg-gray-100 rounded-full w-24" />
+                <div className="h-3 bg-gray-100 rounded w-24" />
+                <div className="h-3 bg-gray-100 rounded w-16 ml-auto" />
+              </div>
+            ))}
+          </div>
         ) : quotes.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-500 font-medium">{search ? 'No quotes match your search.' : 'No saved quotes yet.'}</p>
-            {!search && <button onClick={() => navigate('/quotations/new')} className="mt-3 text-sm text-slate-700 font-medium hover:underline">Create your first quote</button>}
+          <div className="p-16 text-center">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-slate-50 flex items-center justify-center">
+              <FileText className="w-7 h-7 text-slate-300" />
+            </div>
+            <p className="text-slate-700 font-semibold">{search || statusFilter ? 'No quotes match your filters.' : 'No quotes yet'}</p>
+            <p className="text-gray-400 text-sm mt-1">{search || statusFilter ? 'Try clearing the search or status filter.' : 'Generate your first BOM-driven quote.'}</p>
+            {!search && !statusFilter && (
+              <button onClick={() => navigate('/quotations/new')} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">
+                <Plus className="w-4 h-4" /> New Quote
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/50">
                   <th className="py-3 px-4 w-8"></th><th className="py-3 px-4">Ref</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
                   <th className="py-3 px-4">BOM</th><th className="py-3 px-4 text-right">Headline ₹</th><th className="py-3 px-4">MOQ</th>
                   <th className="py-3 px-4">Created</th><th className="py-3 px-4"></th>
