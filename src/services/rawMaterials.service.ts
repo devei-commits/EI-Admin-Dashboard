@@ -4,6 +4,10 @@
  */
 
 import { api } from '../lib/apiClient';
+import {
+  normalizeStageAssignees,
+  type MasterApprovalStageAssignees,
+} from '../constants/masterApprovalStatus';
 
 export interface RawMaterialFromApi {
   id: string;
@@ -34,6 +38,9 @@ export interface RawMaterialFromApi {
   rm_owner?: string | null;
   universal_swap_eligibility?: string | null;
   functional_equivalents?: string | null;
+  approval_stage_assignees?: unknown;
+  approval_assigned_user_id?: number | null;
+  approval_assigned_display_name?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -63,6 +70,9 @@ export interface RawMaterialRecord {
   rmOwner: string | null;
   universalSwapEligibility: string | null;
   functionalEquivalents: string | null;
+  approvalStageAssignees: MasterApprovalStageAssignees;
+  approvalAssignedUserId: number | null;
+  approvalAssignedDisplayName: string | null;
 }
 
 export interface PaginatedRowsResponse<T> {
@@ -101,18 +111,31 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     rmOwner: row.rm_owner ?? null,
     universalSwapEligibility: row.universal_swap_eligibility ?? null,
     functionalEquivalents: row.functional_equivalents ?? null,
+    approvalStageAssignees: normalizeStageAssignees(row.approval_stage_assignees),
+    approvalAssignedUserId: row.approval_assigned_user_id ?? null,
+    approvalAssignedDisplayName: row.approval_assigned_display_name ?? null,
   };
 }
 
 /**
  * Fetch raw materials list; optional search for filtering.
+ * Pass `{ forPicker: true }` for SO/PR BOM pickers — returns every approval stage (Draft, Under Review, Active, …).
  */
-export async function fetchRawMaterialsList(search?: string): Promise<RawMaterialRecord[]> {
+export async function fetchRawMaterialsList(
+  search?: string,
+  opts?: { forPicker?: boolean }
+): Promise<RawMaterialRecord[]> {
   const params = new URLSearchParams();
   if (search != null && search.trim()) params.set('search', search.trim());
+  if (opts?.forPicker) params.set('for_picker', '1');
   const path = `/api/v1/raw-materials${params.toString() ? `?${params.toString()}` : ''}`;
   const list = await api.get<RawMaterialFromApi[]>(path);
   return (list ?? []).map(mapApiToRecord);
+}
+
+/** Picker alias — all approval statuses for PR BOM / planning flows. */
+export async function fetchRawMaterialsForPicker(search?: string): Promise<RawMaterialRecord[]> {
+  return fetchRawMaterialsList(search, { forPicker: true });
 }
 
 export async function fetchRawMaterialsPage(opts: {

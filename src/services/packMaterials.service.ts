@@ -18,6 +18,8 @@ export interface PackMaterialFromApi {
   moq: number;
   lead_time_days: number;
   print_status: string;
+  /** Registration approval workflow status (Draft → Under Review → Under Approval → Active). */
+  status?: string;
   products: string[];
   /** Primary info for Zoho sync (TODO: implement Zoho integration) */
   zoho_id?: string | null;
@@ -33,6 +35,9 @@ export interface PackMaterialFromApi {
   updated_at?: string;
   /** Full form snapshot (create/update) — includes bulk quality specs for PM. */
   form_data?: Record<string, unknown> | null;
+  approval_assigned_user_id?: number | null;
+  approval_assigned_display_name?: string | null;
+  approval_stage_assignees?: Record<string, unknown> | null;
 }
 
 export interface PackMaterialRecord {
@@ -48,6 +53,7 @@ export interface PackMaterialRecord {
   moq: number;
   leadTimeDays: number;
   printStatus: string;
+  status: string;
   products: string[];
   zohoId: string | null;
   zohoSkuCode: string | null;
@@ -58,6 +64,9 @@ export interface PackMaterialRecord {
   pkgReturnable: boolean | null;
   pkgAssociateItems: string | null;
   form_data?: Record<string, unknown> | null;
+  approvalAssignedUserId: number | null;
+  approvalAssignedDisplayName: string | null;
+  approvalStageAssignees: Record<string, unknown> | null;
 }
 
 export interface PaginatedRowsResponse<T> {
@@ -81,6 +90,7 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     moq: Number.isFinite(Number(row.moq)) ? Number(row.moq) : 0,
     leadTimeDays: Number.isFinite(Number(row.lead_time_days)) ? Number(row.lead_time_days) : 0,
     printStatus: row.print_status ?? '',
+    status: row.status ?? 'Draft',
     products: Array.isArray(row.products) ? row.products : [],
     zohoId: row.zoho_id ?? null,
     zohoSkuCode: row.zoho_sku_code ?? null,
@@ -91,18 +101,39 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     pkgReturnable: row.pkg_returnable ?? null,
     pkgAssociateItems: row.pkg_associate_items ?? null,
     form_data: row.form_data ?? null,
+    approvalAssignedUserId: (() => {
+      const raw = row.approval_assigned_user_id;
+      if (raw == null || raw === '') return null;
+      const id = Number(raw);
+      return Number.isFinite(id) && id > 0 ? id : null;
+    })(),
+    approvalAssignedDisplayName: row.approval_assigned_display_name ?? null,
+    approvalStageAssignees:
+      row.approval_stage_assignees != null && typeof row.approval_stage_assignees === 'object'
+        ? (row.approval_stage_assignees as Record<string, unknown>)
+        : null,
   };
 }
 
 /**
  * Fetch pack materials list; optional search for filtering.
+ * Pass `{ forPicker: true }` for PR BOM pickers — returns every approval stage.
  */
-export async function fetchPackMaterialsList(search?: string): Promise<PackMaterialRecord[]> {
+export async function fetchPackMaterialsList(
+  search?: string,
+  opts?: { forPicker?: boolean }
+): Promise<PackMaterialRecord[]> {
   const params = new URLSearchParams();
   if (search != null && search.trim()) params.set('search', search.trim());
+  if (opts?.forPicker) params.set('for_picker', '1');
   const path = `/api/v1/pack-materials${params.toString() ? `?${params.toString()}` : ''}`;
   const list = await api.get<PackMaterialFromApi[]>(path);
   return (list ?? []).map(mapApiToRecord);
+}
+
+/** Picker alias — all approval statuses for PR BOM / planning flows. */
+export async function fetchPackMaterialsForPicker(search?: string): Promise<PackMaterialRecord[]> {
+  return fetchPackMaterialsList(search, { forPicker: true });
 }
 
 export async function fetchPackMaterialsPage(opts: {

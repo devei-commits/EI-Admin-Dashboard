@@ -10,6 +10,7 @@ import {
   type CustomerOption,
   type ProductOption,
 } from '../../services/fulfillment.service';
+import { masterPickerLabelSuffix } from '../../constants/masterApprovalStatus';
 import {
   parseStagedPaymentTerms,
   serializeStagedPaymentTerms,
@@ -441,7 +442,10 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                     setActiveProductSuggestIndex(null);
                   }}
                 >
-                  <span className={SUGGEST_ITEM_PRIMARY_CLASS}>{p.name}</span>
+                  <span className={SUGGEST_ITEM_PRIMARY_CLASS}>
+                    {p.name}
+                    {masterPickerLabelSuffix(p.approvalStatus)}
+                  </span>
                   <span className={SUGGEST_ITEM_META_CLASS}>
                     SKU {p.sku}
                     {p.pack ? ` · ${p.pack}` : ''}

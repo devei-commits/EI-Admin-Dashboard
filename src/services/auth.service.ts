@@ -216,8 +216,10 @@ const USERTYPE_TO_ROLE: Record<string, { roleId: number; roleName: string; roleL
  super_admin: { roleId: 1, roleName: 'Super Admin', roleLevel: 'admin' },
  admin: { roleId: 2, roleName: 'Admin', roleLevel: 'admin' },
  bd_manager: { roleId: 3, roleName: 'BD Manager', roleLevel: 'manager' },
- doctor: { roleId: 4, roleName: 'Doctor', roleLevel: 'staff' },
- customer: { roleId: 5, roleName: 'Customer', roleLevel: 'client' },
+ manager: { roleId: 4, roleName: 'Manager', roleLevel: 'manager' },
+ accounts_team: { roleId: 5, roleName: 'Accounts Team', roleLevel: 'manager' },
+ doctor: { roleId: 6, roleName: 'Doctor', roleLevel: 'staff' },
+ customer: { roleId: 7, roleName: 'Customer', roleLevel: 'client' },
 };
 
 /** Backend GET /users/me returns { success: true, data: MeResponse } */

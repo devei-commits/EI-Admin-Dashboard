@@ -4,6 +4,12 @@
  */
 
 import type { BatchSplit, FFStatus, OrderItem } from '../types/orderFulfillment';
+import {
+  batchLifecycleProgress01,
+  getBatchLifecycleStage,
+  type BmrStatus,
+  type BprStatus,
+} from './batchLifecycle';
 
 /** Weights sum to 1 — each phase is a slice of full fulfillment. */
 export const FULFILLMENT_EXEC_PHASE_WEIGHTS = {
@@ -166,40 +172,17 @@ function procurementProgress01(
   return 0;
 }
 
-const BPR_PRODUCTION_PROGRESS: Record<string, number> = {
-  fg_ready: 1,
-  qc_failed: 1,
-  pack_qc: 0.92,
-  packaging: 0.88,
-  fill_qc: 0.82,
-  filling: 0.75,
-  pm_dispensing: 0.68,
-  pm_connected: 0.62,
-  scheduled: 0.58,
-  pm_reserved: 0.55,
-};
-
-const BMR_PRODUCTION_PROGRESS: Record<string, number> = {
-  cleared: 0.5,
-  bulk_qc: 0.45,
-  in_production: 0.4,
-  dispensing: 0.35,
-  rm_connected: 0.28,
-  scheduled: 0.25,
-  rm_reserved: 0.22,
-  batch_confirmed: 0.15,
-};
 
 function productionProgressFromBatchStatuses(split: BatchSplit | undefined): number | null {
   if (!split) return null;
-  const bpr = normalizeProdStatus(split.bprStatus);
-  const bmr = normalizeProdStatus(split.bmrStatus);
-  const bprScore = bpr ? BPR_PRODUCTION_PROGRESS[bpr] : undefined;
-  const bmrScore = bmr ? BMR_PRODUCTION_PROGRESS[bmr] : undefined;
-  if (bprScore != null || bmrScore != null) {
-    return Math.max(bprScore ?? 0, bmrScore ?? 0);
-  }
-  return null;
+  const bmr = normalizeProdStatus(split.bmrStatus) as BmrStatus | '';
+  const bpr = normalizeProdStatus(split.bprStatus) as BprStatus | '';
+  if (!bmr && !bpr) return null;
+  const stage = getBatchLifecycleStage({
+    bmrStatus: (bmr || 'draft') as BmrStatus,
+    bprStatus: (bpr || 'draft') as BprStatus,
+  });
+  return batchLifecycleProgress01(stage);
 }
 
 /** 0–1 within the production slice (before picking). */

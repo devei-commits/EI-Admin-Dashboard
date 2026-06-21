@@ -13,6 +13,11 @@ import {
  DEFAULT_GLOBAL_SETTINGS
 } from '../components/rolemanagementcomp/types/permissions.types';
 import { parseApiPermissions } from '../components/rolemanagementcomp/types/permissionKeys';
+import {
+ legacyInventorySubModuleAllows,
+ legacyModuleAllowsView,
+ allowedModulesList,
+} from '../lib/legacyModuleAccess';
 
 export interface PermissionCheck {
  canView: boolean;
@@ -101,11 +106,11 @@ export const usePermissions = (): UsePermissionsReturn => {
  }, [user]);
 
  useEffect(() => {
-  if (!user || isAdminByRole || !user.roleId) {
+  const roleId = user?.roleId?.trim();
+  if (!user || isAdminByRole || !roleId) {
    setRolePermissionsFromApi(null);
    return;
   }
-  const roleId = String(user.roleId);
   setPermissionsLoading(true);
   api.get<RoleApiResponse>(`/api/v1/roles/${roleId}`)
    .then((res) => {
@@ -170,18 +175,14 @@ export const usePermissions = (): UsePermissionsReturn => {
   };
  }, [user, isAdminByRole, rolePermissionsFromApi]);
 
- // Check if user has access to a module (allowedModules from /me, or role permissions)
+ // Check if user has access to a module (granular role permissions + legacy allowedModules from /me)
  const hasModuleAccess = (moduleId: string): boolean => {
   if (isAdmin) return true;
   if (userPermissions) {
    const module = userPermissions.modules.find(m => m.moduleId === moduleId);
-   if (!module) return false;
-   return module.subModules.some(sub => sub.actions.view);
+   if (module?.subModules.some(sub => sub.actions.view)) return true;
   }
-  if (user?.allowedModules?.length) {
-   return user.allowedModules.includes('*') || user.allowedModules.includes(moduleId);
-  }
-  return false;
+  return legacyModuleAllowsView(user?.allowedModules, moduleId);
  };
 
  // Get permissions for a specific sub-module
@@ -230,8 +231,24 @@ export const usePermissions = (): UsePermissionsReturn => {
   subModuleId: string, 
   action: keyof PermissionCheck
  ): boolean => {
+  if (isAdmin) return true;
   const permissions = getSubModulePermissions(moduleId, subModuleId);
-  return permissions[action];
+  if (permissions[action]) return true;
+  if (moduleId === 'inventory' && userPermissions) {
+   const mod = userPermissions.modules.find((m) => m.moduleId === moduleId);
+   const sub = mod?.subModules.find((s) => s.subModuleId === subModuleId);
+   // Role has explicit granular grants for this submodule — do not elevate via legacy allowedModules.
+   if (sub && Object.values(sub.actions).some(Boolean)) {
+    return false;
+   }
+  }
+  if (moduleId === 'inventory') {
+   return legacyInventorySubModuleAllows(user?.allowedModules, subModuleId, action);
+  }
+  if (action === 'canView') {
+   return legacyModuleAllowsView(user?.allowedModules, moduleId);
+  }
+  return false;
  };
 
  // Get column-level permissions
@@ -266,19 +283,18 @@ export const usePermissions = (): UsePermissionsReturn => {
  // Check if user has any permission in a module
  const hasAnyPermission = (moduleId: string): boolean => {
   if (isAdmin) return true;
-  if (!userPermissions) return false;
-
-  const module = userPermissions.modules.find(m => m.moduleId === moduleId);
-  if (!module) return false;
-
-  return module.subModules.some(sub => 
-   sub.actions.view || 
-   sub.actions.create || 
-   sub.actions.edit || 
-   sub.actions.delete ||
-   sub.actions.approve ||
-   sub.actions.export
-  );
+  if (userPermissions) {
+   const module = userPermissions.modules.find(m => m.moduleId === moduleId);
+   if (module?.subModules.some(sub =>
+    sub.actions.view ||
+    sub.actions.create ||
+    sub.actions.edit ||
+    sub.actions.delete ||
+    sub.actions.approve ||
+    sub.actions.export
+   )) return true;
+  }
+  return legacyModuleAllowsView(user?.allowedModules, moduleId);
  };
 
  // Get list of visible module IDs for sidebar
@@ -288,9 +304,11 @@ export const usePermissions = (): UsePermissionsReturn => {
   }
 
   if (userPermissions) {
-   return userPermissions.modules
+   const fromGranular = userPermissions.modules
     .filter(module => module.subModules.some(sub => sub.actions.view))
     .map(m => m.moduleId);
+   const fromLegacy = allowedModulesList(user?.allowedModules).filter((m) => m !== '*');
+   return [...new Set([...fromGranular, ...fromLegacy])];
   }
 
   if (user?.allowedModules?.length) return user.allowedModules.filter((m) => m !== '*');

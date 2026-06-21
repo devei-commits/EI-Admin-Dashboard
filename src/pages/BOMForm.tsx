@@ -11,8 +11,8 @@ import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import PmMasterTypeahead from '../components/PmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 import { buildPmTypeaheadOptions, pmTypeaheadLabelForId } from '../lib/pmTypeahead';
-import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
-import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
+import { fetchRawMaterialsForPicker, type RawMaterialRecord } from '../services/rawMaterials.service';
+import { fetchPackMaterialsForPicker, type PackMaterialRecord } from '../services/packMaterials.service';
 import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
 import {
   createPRRegistration,
@@ -378,6 +378,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
     bom_composite_item: fd.bomCompositeItem === 'Yes',
     status: 'Draft',
+    lifecycle_status: 'Draft',
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
     pack_configuration: fd.packConfiguration || null,
@@ -766,7 +767,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   useEffect(() => {
     let cancelled = false;
     setMasterLoading(true);
-    Promise.all([fetchRawMaterialsList(), fetchPackMaterialsList(), fetchItemGroups('RM')])
+    Promise.all([fetchRawMaterialsForPicker(), fetchPackMaterialsForPicker(), fetchItemGroups('RM')])
       .then(([rms, pms, groupsRes]) => {
         if (cancelled) return;
         setRawMaterials(rms || []);

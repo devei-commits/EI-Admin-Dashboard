@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
+import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
@@ -17,6 +20,13 @@ import VendorCommercialEditor, {
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
+import {
+  buildMasterApprovalStatusCounts,
+  matchesMasterApprovalStatusTab,
+  normalizeMasterApprovalStatus,
+  type MasterApprovalStatusTab,
+} from '../constants/masterApprovalStatus';
+import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import {
@@ -214,7 +224,8 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
 function createEmptyPackagingFormData() {
   return {
     itemCode: '',
-    status: 'Active',
+    status: 'Draft',
+    masterApprovalStatus: 'Draft' as const,
     version: 'v1.0',
     pmLifecycleStatus: 'Active',
     pmClientScope: '',
@@ -765,7 +776,6 @@ const PackagingRefactored: React.FC = () => {
       setFormData((prev) => ({
         ...prev,
         pmLifecycleStatus: normalized,
-        status: normalized,
       }));
       return;
     }
@@ -2336,17 +2346,18 @@ const PackagingRefactored: React.FC = () => {
         (fdObj as { tradeCommercialName?: string })?.tradeCommercialName ?? ''
       ).trim();
       const tradeName = fdTrade || String(pm.description ?? '').trim();
-      const fdStatus = String((fdObj as { status?: string })?.status ?? '').trim();
+      const fdStatus = String((fdObj as { masterApprovalStatus?: string; status?: string })?.masterApprovalStatus
+        ?? (fdObj as { status?: string })?.status
+        ?? pm.status
+        ?? '').trim();
+      const fdLifecycle = String((fdObj as { pmLifecycleStatus?: string }).pmLifecycleStatus ?? '').trim();
       const baseFromRecord = {
         itemCode: pm.code,
         tradeCommercialName: tradeName,
         name: tradeName,
-        status: fdStatus || 'Active',
-        pmLifecycleStatus: normalizePmLifecycleStatus(
-          String(
-            (fdObj as { pmLifecycleStatus?: string }).pmLifecycleStatus ?? fdStatus ?? 'Active'
-          )
-        ),
+        masterApprovalStatus: normalizeMasterApprovalStatus(fdStatus || undefined, 'Draft'),
+        status: normalizeMasterApprovalStatus(fdStatus || undefined, 'Draft'),
+        pmLifecycleStatus: normalizePmLifecycleStatus(fdLifecycle || 'Active'),
         pmClientScope: String((fdObj as { pmClientScope?: string }).pmClientScope ?? '').trim(),
         pmOwner: String((fdObj as { pmOwner?: string }).pmOwner ?? '').trim(),
         intendedUse: String((fdObj as { intendedUse?: string }).intendedUse ?? '').trim(),
@@ -2846,13 +2857,15 @@ function normalizePmLifecycleStatus(raw: unknown): string {
   return s;
 }
 
-function pmLifecycleStatusLabel(pm: PackMaterialRecord): string {
+function pmApprovalStatusLabel(pm: PackMaterialRecord): string {
+  if (pm.status?.trim()) {
+    return normalizeMasterApprovalStatus(pm.status);
+  }
   const fd =
     pm.form_data && typeof pm.form_data === 'object'
-      ? (pm.form_data as { pmLifecycleStatus?: string; status?: string })
+      ? (pm.form_data as { masterApprovalStatus?: string; status?: string })
       : null;
-  const s = normalizePmLifecycleStatus(fd?.pmLifecycleStatus ?? fd?.status);
-  return s || '—';
+  return normalizeMasterApprovalStatus(fd?.masterApprovalStatus ?? fd?.status);
 }
 
 function pmSubtitleLine(pm: PackMaterialRecord): string {
@@ -2942,12 +2955,21 @@ function applyPmConditionalLegacyFields(merged: Record<string, unknown>): void {
   copyIfEmpty('pmPrintingCmykPantones', row.secArtLink);
 }
 
-/** Map legacy `status` and catalogue visibility into lifecycle & ownership fields. */
+/** Map legacy catalogue visibility into lifecycle & ownership fields (approval status is separate). */
 function applyPmLifecycleLegacyFields(merged: Record<string, unknown>): void {
   const row = merged as Record<string, unknown>;
-  const statusRaw = row.pmLifecycleStatus ?? row.status;
-  row.pmLifecycleStatus = normalizePmLifecycleStatus(statusRaw);
-  row.status = row.pmLifecycleStatus;
+  const legacyStatus = String(row.status ?? '').trim();
+  const legacyIsLifecycle = PM_LIFECYCLE_STATUS_OPTIONS.some(
+    (o) => o.toLowerCase() === legacyStatus.toLowerCase() || normalizePmLifecycleStatus(legacyStatus) === o
+  );
+  const lifecycleRaw = row.pmLifecycleStatus ?? (legacyIsLifecycle ? legacyStatus : undefined);
+  row.pmLifecycleStatus = normalizePmLifecycleStatus(lifecycleRaw);
+  if (!String(row.masterApprovalStatus ?? '').trim()) {
+    row.masterApprovalStatus = legacyIsLifecycle
+      ? 'Active'
+      : normalizeMasterApprovalStatus(row.status, 'Draft');
+  }
+  row.status = row.masterApprovalStatus;
   if (!String(row.pmClientScope ?? '').trim()) {
     const vis = String(row.catCatalogueVisibility ?? '').trim();
     if (vis === 'Client-locked') row.pmClientScope = 'Client-locked';
@@ -3080,6 +3102,7 @@ const BprDashboard: React.FC<{
   onEditPm: (pm: PackMaterialRecord) => void;
   onDeletePm: (pm: PackMaterialRecord) => void | Promise<void>;
 }> = ({ refreshKey = 0, onSwitchToForm, onEditPm, onDeletePm }) => {
+  const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('PM');
   const [searchParams] = useSearchParams();
   const pmFromQuery = searchParams.get('pm') ?? '';
   const [search, setSearch] = useState(pmFromQuery);
@@ -3090,6 +3113,7 @@ const BprDashboard: React.FC<{
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   /** Stat card filter: null = all, else PM detail sub-category label (Tubes, Bottles, …). */
   const [statFilter, setStatFilter] = useState<string | null>(null);
+  const [statusTab, setStatusTab] = useState<MasterApprovalStatusTab>('all');
   const [statCardSort, setStatCardSort] = useState<MasterStatCardSort>('count-desc');
   const queryClient = useQueryClient();
   const { addToast } = useToast();
@@ -3183,8 +3207,16 @@ const BprDashboard: React.FC<{
     gcTime: 10 * 60 * 1000,
   });
 
+  const statusCounts = useMemo(
+    () => buildMasterApprovalStatusCounts(allRows, (p) => pmApprovalStatusLabel(p)),
+    [allRows]
+  );
+
   const filteredRows = useMemo(() => {
     let rows = allRows;
+    if (statusTab !== 'all') {
+      rows = rows.filter((p) => matchesMasterApprovalStatusTab(pmApprovalStatusLabel(p), statusTab));
+    }
     if (statFilter) {
       rows = rows.filter((p) => {
         const sub = pmListSubCategoryLabel(p) || 'Unset';
@@ -3198,7 +3230,7 @@ const BprDashboard: React.FC<{
         (s ?? '').toLowerCase().includes(q)
       )
     );
-  }, [allRows, search, statFilter]);
+  }, [allRows, search, statFilter, statusTab]);
 
   const togglePmSort = useCallback((column: PmListSortColumn) => {
     if (sortColumn === column) {
@@ -3227,7 +3259,7 @@ const BprDashboard: React.FC<{
         case 'uom':
           return compareMasterTableSort(a.unit ?? 'PCS', b.unit ?? 'PCS', dir);
         case 'status':
-          return compareMasterTableSort(pmLifecycleStatusLabel(a), pmLifecycleStatusLabel(b), dir);
+          return compareMasterTableSort(pmApprovalStatusLabel(a), pmApprovalStatusLabel(b), dir);
         case 'products':
           return compareMasterTableSort(a.products?.length ?? 0, b.products?.length ?? 0, dir);
         default:
@@ -3246,7 +3278,7 @@ const BprDashboard: React.FC<{
   // Reset to page 1 when search or page size changes (same pattern as Products PR page).
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter]);
+  }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter, statusTab]);
 
   const categoryBuckets = useMemo(
     () => buildMasterStatBuckets(allRows, (p) => pmListSubCategoryLabel(p as PackMaterialRecord), statCardSort),
@@ -3394,6 +3426,16 @@ const BprDashboard: React.FC<{
               </div>
             </div>
 
+            <MasterApprovalStatusTabs
+              value={statusTab}
+              onChange={(tab) => {
+                setStatusTab(tab as MasterApprovalStatusTab);
+                setCurrentPage(1);
+              }}
+              counts={statusCounts}
+              accent="violet"
+            />
+
             {/* ── Table Card (columns aligned with Raw Material masters list) ── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
 
@@ -3525,6 +3567,7 @@ const BprDashboard: React.FC<{
                         accent="violet"
                         thClassName="py-4"
                       />
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Assign</th>
                       <SortableTableTh
                         label="Products"
                         column="products"
@@ -3540,7 +3583,7 @@ const BprDashboard: React.FC<{
                   <tbody className="divide-y divide-gray-50">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">
                           <div className="flex flex-col items-center gap-2">
                             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -3553,7 +3596,7 @@ const BprDashboard: React.FC<{
                       const subCategoryLabel = pmListSubCategoryLabel(pm);
                       const catStyle = getCategoryStyle(subCategoryLabel);
                       const uom = (pm.unit || 'PCS').trim() || 'PCS';
-                      const statusLabel = pmLifecycleStatusLabel(pm);
+                      const statusLabel = pmApprovalStatusLabel(pm);
                       return (
                         <tr key={pm.code} className="hover:bg-linear-to-r hover:from-violet-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
                           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-violet-700 whitespace-nowrap group-hover:text-violet-900">{pm.code}</td>
@@ -3569,11 +3612,24 @@ const BprDashboard: React.FC<{
                           <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.level || '—'}</td>
                           <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
                           <td className="px-4 py-3.5 text-gray-700 font-medium">{subCategoryLabel || '—'}</td>
-                          <td className="px-4 py-3.5">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              {statusLabel}
-                            </span>
+                          <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                            <MasterApprovalStatusCell
+                              kind="PM"
+                              itemId={pm.id}
+                              status={statusLabel}
+                              canUpdate={canApproveAtStatus(statusLabel, pm.approvalStageAssignees)}
+                              onUpdated={() => void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] })}
+                            />
+                          </td>
+                          <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                            <MasterApprovalAssignCell
+                              kind="PM"
+                              itemId={pm.id}
+                              itemCode={pm.code}
+                              stageAssignees={pm.approvalStageAssignees}
+                              canAssign={canAssignApprover}
+                              onSaved={() => void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] })}
+                            />
                           </td>
                           <td className="px-4 py-3.5">
                             {pm.products.length === 0 ? (

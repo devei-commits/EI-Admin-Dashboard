@@ -1,5 +1,7 @@
 // Comprehensive Permission Types for Role-Based Access Control
 
+import { getMastersModuleDefinition } from './mastersModuleDefinition';
+
 // Module-level permission actions
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export' | 'import';
 
@@ -229,53 +231,7 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
    }
   ]
  },
- {
-  moduleId: 'inventory',
-  moduleName: 'Inventory Management',
-  icon: 'inventory',
-  description: 'Stock and inventory control',
-  subModules: [
-   {
-    subModuleId: 'raw-materials',
-    subModuleName: 'Raw Materials',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'material-code', columnName: 'Material Code', view: false, edit: false },
-     { columnId: 'material-name', columnName: 'Material Name', view: false, edit: false },
-     { columnId: 'category', columnName: 'Category', view: false, edit: false },
-     { columnId: 'current-stock', columnName: 'Current Stock', view: false, edit: false },
-     { columnId: 'min-stock', columnName: 'Minimum Stock', view: false, edit: false },
-     { columnId: 'unit-price', columnName: 'Unit Price', view: false, edit: false },
-     { columnId: 'supplier', columnName: 'Supplier', view: false, edit: false },
-     { columnId: 'expiry-date', columnName: 'Expiry Date', view: false, edit: false },
-    ]
-   },
-   {
-    subModuleId: 'packaging',
-    subModuleName: 'Packaging Materials',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'pkg-code', columnName: 'Package Code', view: false, edit: false },
-     { columnId: 'pkg-name', columnName: 'Package Name', view: false, edit: false },
-     { columnId: 'pkg-type', columnName: 'Package Type', view: false, edit: false },
-     { columnId: 'pkg-stock', columnName: 'Stock', view: false, edit: false },
-     { columnId: 'pkg-cost', columnName: 'Cost', view: false, edit: false },
-    ]
-   },
-   {
-    subModuleId: 'bom',
-    subModuleName: 'Bill of Materials',
-    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
-    columns: [
-     { columnId: 'bom-id', columnName: 'BOM ID', view: false, edit: false },
-     { columnId: 'product-name', columnName: 'Product Name', view: false, edit: false },
-     { columnId: 'components', columnName: 'Components', view: false, edit: false },
-     { columnId: 'quantities', columnName: 'Quantities', view: false, edit: false },
-     { columnId: 'total-cost', columnName: 'Total Cost', view: false, edit: false },
-    ]
-   }
-  ]
- },
+ getMastersModuleDefinition(),
  {
   moduleId: 'vendor-client',
   moduleName: 'Vendors & Clients',

@@ -26,6 +26,7 @@ import {
   type CustomerOption,
   type ProductOption,
 } from '../../services/fulfillment.service';
+import { masterPickerLabelSuffix } from '../../constants/masterApprovalStatus';
 
 const DEFAULT_STAGED = { advance_pct: 0, pre_shipment_pct: 100, post_shipment_pct: 0, credit_days: 30 };
 const MAX_PRODUCT_SUGGESTIONS = 100;
@@ -560,7 +561,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                     setAutocompleteTarget(null);
                   }}
                 >
-                  <span className={SUGGEST_ITEM_PRIMARY_CLASS}>{p.name}</span>
+                  <span className={SUGGEST_ITEM_PRIMARY_CLASS}>
+                    {p.name}
+                    {masterPickerLabelSuffix(p.approvalStatus)}
+                  </span>
                   <span className={SUGGEST_ITEM_META_CLASS}>SKU {p.sku}{p.pack ? ` · ${p.pack}` : ''}</span>
                 </button>
               ))

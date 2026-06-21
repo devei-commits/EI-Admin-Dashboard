@@ -8,6 +8,7 @@
 export interface ScheduledBatchLike {
   mainVessel?: string;
   mfgDate?: string;
+  supportingTanks?: string[];
   fillingLine?: string;
   fillDate?: string;
   packagingLine?: string;
@@ -475,18 +476,99 @@ export function getCompatibleVesselIds(
   return byCap.length > 0 ? byCap : nonSupport;
 }
 
-/** True if no scheduled batch uses this equipment on this date. */
+/** True when vessel, fill line, and pack line are all assigned. */
+export function hasBatchEquipmentReserved(
+  batch: Pick<ScheduledBatchLike, 'mainVessel' | 'fillingLine' | 'packagingLine'>,
+): boolean {
+  return Boolean(
+    String(batch.mainVessel || '').trim()
+    && String(batch.fillingLine || '').trim()
+    && String(batch.packagingLine || '').trim(),
+  );
+}
+
+export interface ScheduleEquipmentReservationInput {
+  mainVessel: string;
+  fillingLine: string;
+  packagingLine: string;
+  supportingTanks?: string[];
+  mfgDate: string;
+  fillDate: string;
+  packDate: string;
+}
+
+/** Client-side validation before saving schedule — requires equipment and checks occupancy. */
+export function validateScheduleEquipmentReservation(
+  input: ScheduleEquipmentReservationInput,
+  batches: ScheduledBatchLike[],
+  excludeBmrNo?: string,
+): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const mainVessel = String(input.mainVessel || '').trim();
+  const fillingLine = String(input.fillingLine || '').trim();
+  const packagingLine = String(input.packagingLine || '').trim();
+  const mfgDate = String(input.mfgDate || '').trim();
+  const fillDate = String(input.fillDate || '').trim();
+  const packDate = String(input.packDate || '').trim();
+
+  if (!mfgDate) errors.push('Manufacturing date is required.');
+  if (!fillDate) errors.push('Fill date is required.');
+  if (!packDate) errors.push('Pack date is required.');
+  if (!mainVessel) errors.push('Select a manufacturing vessel.');
+  if (!fillingLine) errors.push('Select a filling line.');
+  if (!packagingLine) errors.push('Select a packaging line.');
+
+  if (mainVessel && mfgDate && !isEquipmentFreeOnDate(batches, mainVessel, mfgDate, excludeBmrNo)) {
+    const blocked = getEquipmentOccupiedOnDate(batches, mainVessel, mfgDate, excludeBmrNo);
+    errors.push(
+      blocked
+        ? `Vessel ${mainVessel} is reserved on ${blocked}. Available from ${equipmentAvailableFromDate(blocked)}.`
+        : `Vessel ${mainVessel} is not available on ${mfgDate}.`,
+    );
+  }
+  if (fillingLine && fillDate && !isEquipmentFreeOnDate(batches, fillingLine, fillDate, excludeBmrNo)) {
+    const blocked = getEquipmentOccupiedOnDate(batches, fillingLine, fillDate, excludeBmrNo);
+    errors.push(
+      blocked
+        ? `Filling line ${fillingLine} is reserved on ${blocked}. Available from ${equipmentAvailableFromDate(blocked)}.`
+        : `Filling line ${fillingLine} is not available on ${fillDate}.`,
+    );
+  }
+  if (packagingLine && packDate && !isEquipmentFreeOnDate(batches, packagingLine, packDate, excludeBmrNo)) {
+    const blocked = getEquipmentOccupiedOnDate(batches, packagingLine, packDate, excludeBmrNo);
+    errors.push(
+      blocked
+        ? `Packaging line ${packagingLine} is reserved on ${blocked}. Available from ${equipmentAvailableFromDate(blocked)}.`
+        : `Packaging line ${packagingLine} is not available on ${packDate}.`,
+    );
+  }
+  for (const tankId of input.supportingTanks ?? []) {
+    const tid = String(tankId || '').trim();
+    if (!tid || !mfgDate) continue;
+    if (!isEquipmentFreeOnDate(batches, tid, mfgDate, excludeBmrNo)) {
+      const blocked = getEquipmentOccupiedOnDate(batches, tid, mfgDate, excludeBmrNo);
+      errors.push(
+        blocked
+          ? `Supporting tank ${tid} is reserved on ${blocked}. Available from ${equipmentAvailableFromDate(blocked)}.`
+          : `Supporting tank ${tid} is not available on ${mfgDate}.`,
+      );
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * True when no other batch reserves this equipment on the same stage date.
+ * Equipment reserved on date D is available again from D+1 onward.
+ */
 export function isEquipmentFreeOnDate(
   batches: ScheduledBatchLike[],
   equipId: string,
   dateStr: string,
+  excludeBmrNo?: string,
 ): boolean {
-  return !batches.some(
-    (b) =>
-      (b.mainVessel === equipId && b.mfgDate === dateStr) ||
-      (b.fillingLine === equipId && b.fillDate === dateStr) ||
-      (b.packagingLine === equipId && b.packDate === dateStr),
-  );
+  return getEquipmentOccupiedOnDate(batches, equipId, dateStr, excludeBmrNo) == null;
 }
 
 /** First equipment ID from list that is free on dateStr, or '' if none free. */
@@ -511,6 +593,37 @@ export function getEquipDisplayName(
   return equipment.packaging?.find((e) => e.id === id)?.name ?? fallback;
 }
 
+/** Prefer batch-compatible IDs; fall back to full catalog when compat list is empty or stale. */
+export function resolveScheduleEquipIds(preferredIds: string[], catalogIds: string[]): string[] {
+  const catalog = new Set(catalogIds);
+  const matched = preferredIds.filter((id) => catalog.has(id));
+  if (matched.length > 0) return matched;
+  return catalogIds;
+}
+
+/** ISO date when equipment becomes free again after a same-day reservation (exclusive end → next day). */
+export function equipmentAvailableFromDate(reservedOnDate: string): string {
+  return addDaysToDateStr(reservedOnDate, 1);
+}
+
+/** Stage date another batch holds this equipment, if it blocks the requested date (same calendar day). */
+export function getEquipmentOccupiedOnDate(
+  batches: ScheduledBatchLike[],
+  equipId: string,
+  dateStr: string,
+  excludeBmrNo?: string,
+): string | null {
+  if (!equipId || !dateStr) return null;
+  for (const b of batches) {
+    if (excludeBmrNo && b.bmrNo === excludeBmrNo) continue;
+    if (b.mainVessel === equipId && b.mfgDate === dateStr) return b.mfgDate ?? dateStr;
+    if (b.fillingLine === equipId && b.fillDate === dateStr) return b.fillDate ?? dateStr;
+    if (b.packagingLine === equipId && b.packDate === dateStr) return b.packDate ?? dateStr;
+    if (b.supportingTanks?.includes(equipId) && b.mfgDate === dateStr) return b.mfgDate ?? dateStr;
+  }
+  return null;
+}
+
 /** Fill/pack compat IDs for batch (filling type and packaging list). */
 export function getCompatibleFillLineIds(
   batch: BatchForScheduleLike,
@@ -518,7 +631,8 @@ export function getCompatibleFillLineIds(
 ): string[] {
   if (batch.compatibleFillLines?.length) return batch.compatibleFillLines;
   const fillType = batch.fillingType ?? 'bottle';
-  return filling.filter((e) => e.compatible.includes(fillType)).map((e) => e.id);
+  const byType = filling.filter((e) => e.compatible?.includes(fillType)).map((e) => e.id);
+  return byType.length > 0 ? byType : filling.map((e) => e.id);
 }
 
 export function getCompatiblePackLineIds(

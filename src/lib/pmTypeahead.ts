@@ -1,4 +1,5 @@
 import type { PackMaterialRecord } from '../services/packMaterials.service';
+import { masterPickerLabelSuffix } from '../constants/masterApprovalStatus';
 
 export type PmTypeaheadOption = {
   id: string;
@@ -20,7 +21,8 @@ export function buildPmTypeaheadOptions(
     const id = String(pm.id);
     const code = String(pm.code ?? '').trim();
     const desc = String(pm.description || '').trim();
-    const label = code ? `${code} — ${desc || code}` : desc || id;
+    const labelBase = code ? `${code} — ${desc || code}` : desc || id;
+    const label = `${labelBase}${masterPickerLabelSuffix(pm.status)}`;
     const haystack = `${code} ${desc} ${pm.type || ''} ${pm.level || ''} ${id}`.trim().toLowerCase();
     const disabled = Boolean(exclude?.has(id) && id !== allowId);
     return { id, code, label, haystack, disabled };

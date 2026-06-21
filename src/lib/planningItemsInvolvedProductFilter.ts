@@ -1,4 +1,5 @@
-import type { ItemsInvolvedRow } from '../services/planningExtracted.service';
+import type { ItemsInvolvedRow, PlanningExtractedRow } from '../services/planningExtracted.service';
+import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 
 export type PlanningProductFilterOption = {
   id: string;
@@ -93,6 +94,88 @@ export function formatPlanningProductFilterDisplay(opt: PlanningProductFilterOpt
   const sku = String(opt.sku || '').trim();
   if (name && sku) return `${name} — ${sku}`;
   return name || sku || 'Product';
+}
+
+/** Product chips + dropdown options — planning list plus items-involved PE ids (confirmed BOMs). */
+export function buildPlanningProductFilterOptions(
+  planningRows: PlanningExtractedRow[],
+  itemsRows: ItemsInvolvedRow[],
+  dateFilter: { from: string; to: string }
+): PlanningProductFilterOption[] {
+  const peById = new Map<string, PlanningExtractedRow>();
+  for (const row of planningRows) {
+    peById.set(String(row.id), row);
+  }
+
+  const candidateIds = new Set<string>();
+
+  for (const row of planningRows) {
+    const id = String(row.id);
+    if (!row.bomConfirmedAt) continue;
+    if (!matchesDateRangeFilter(row.orderDate ?? '', dateFilter.from, dateFilter.to)) continue;
+    candidateIds.add(id);
+  }
+
+  for (const item of itemsRows) {
+    for (const peId of item.planningExtractedIds ?? []) {
+      const id = String(peId);
+      const pe = peById.get(id);
+      const orderDate = pe?.orderDate ?? '';
+      if (!matchesDateRangeFilter(orderDate, dateFilter.from, dateFilter.to)) continue;
+      candidateIds.add(id);
+    }
+  }
+
+  const options: PlanningProductFilterOption[] = [];
+  for (const id of candidateIds) {
+    const pe = peById.get(id);
+    if (pe) {
+      options.push({
+        id,
+        name: String(pe.productName || pe.productCode || 'Product').trim(),
+        sku: String(pe.productCode ?? '').trim(),
+        soNumber: pe.soNumber ? `SO ${pe.soNumber}` : '',
+      });
+      continue;
+    }
+    const productNames = new Set<string>();
+    for (const item of itemsRows) {
+      if (!(item.planningExtractedIds ?? []).map(String).includes(id)) continue;
+      for (const name of item.usedInProducts ?? []) {
+        const trimmed = String(name ?? '').trim();
+        if (trimmed) productNames.add(trimmed);
+      }
+    }
+    options.push({
+      id,
+      name:
+        productNames.size === 1
+          ? [...productNames][0]!
+          : productNames.size > 1
+            ? [...productNames].slice(0, 2).join(', ')
+            : `Planning line ${id}`,
+      sku: '',
+      soNumber: '',
+    });
+  }
+
+  return options.sort((a, b) =>
+    formatPlanningProductFilterDisplay(a).localeCompare(formatPlanningProductFilterDisplay(b), undefined, {
+      sensitivity: 'base',
+    })
+  );
+}
+
+/** Filter consolidated items-involved rows to selected planning-extracted ids. */
+export function filterItemsInvolvedRowsByProductIds(
+  rows: ItemsInvolvedRow[],
+  selectedProductIds: string[]
+): ItemsInvolvedRow[] {
+  if (selectedProductIds.length === 0) return rows;
+  const selected = new Set(selectedProductIds.map(String));
+  return rows.filter((row) =>
+    (row.planningExtractedIds ?? []).some((id) => selected.has(String(id)))
+  );
 }
 
 export function filterPlanningProductFilterOptions(

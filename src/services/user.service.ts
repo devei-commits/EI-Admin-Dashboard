@@ -27,8 +27,9 @@ export interface StaffUserFromApi {
  mobile?: string;
  usertype?: string;
  status?: string;
- created_at?: string;
- role_id?: number;
+  created_at?: string;
+  last_login_at?: string | null;
+  role_id?: number;
  role_name?: string;
  department?: string;
  vendor_client_id?: number | null;
@@ -43,17 +44,28 @@ export interface UserSearchHit {
   userid: number;
   display_name: string;
   email: string;
+  role_name?: string | null;
+}
+
+/** Portal accounts must never appear in assignee pickers. */
+const PORTAL_USERTYPES = new Set(['customer', 'doctor']);
+
+function isInternalTeamSearchHit(row: UserSearchHit): boolean {
+  const role = String(row.role_name ?? '').trim().toLowerCase();
+  if (role === 'customer' || role === 'doctor') return false;
+  return true;
 }
 
 /**
- * Search staff users by name or email. Backend: GET /api/v1/users/search?q=...
- * Use for approver dropdown (e.g. Universal Swap). Any authenticated user can call.
+ * Search internal staff by name or email. Backend: GET /api/v1/users/search?q=...
+ * Returns dashboard team only (admin, manager, BD, etc.) — never portal customers/doctors.
  */
 export async function searchUsers(q: string): Promise<ServiceResult<UserSearchHit[]>> {
   try {
     const query = typeof q === 'string' && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '?q=';
     const list = await api.get<UserSearchHit[]>(`/api/v1/users/search${query}`);
-    return { data: list ?? [], error: null, success: true };
+    const rows = (list ?? []).filter(isInternalTeamSearchHit);
+    return { data: rows, error: null, success: true };
   } catch (err) {
     return {
       data: null,
@@ -66,13 +78,13 @@ export async function searchUsers(q: string): Promise<ServiceResult<UserSearchHi
 /**
  * Fetch staff users only (internal team with staff_profiles). Backend: GET /api/v1/users/getusers?staffOnly=true
  */
-const PORTAL_USERTYPES = new Set(['customer', 'doctor']);
-
 export async function fetchStaffUsers(): Promise<ServiceResult<StaffUserFromApi[]>> {
  try {
   const list = await api.get<StaffUserFromApi[]>('/api/v1/users/getusers?staffOnly=true');
   const rows = (list ?? []).filter(
-    (row) => !PORTAL_USERTYPES.has(String(row.usertype || '').trim().toLowerCase()),
+    (row) =>
+      !PORTAL_USERTYPES.has(String(row.usertype || '').trim().toLowerCase()) &&
+      !PORTAL_USERTYPES.has(String(row.role_name || '').trim().toLowerCase()),
   );
   return { data: rows, error: null, success: true };
  } catch (err) {

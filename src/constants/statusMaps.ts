@@ -22,6 +22,7 @@ export const GENERAL_STATUS_COLORS: Record<string, string> = {
   'Approved':       'bg-green-100 text-green-700',
   'Rejected':       'bg-red-100 text-red-700',
   'Under Review':   'bg-yellow-100 text-yellow-700',
+  'Under Approval': 'bg-orange-100 text-orange-700',
   'Pass':           'bg-green-100 text-green-700',
   'Fail':           'bg-red-100 text-red-700',
 };

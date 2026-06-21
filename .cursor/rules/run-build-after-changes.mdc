@@ -1,0 +1,40 @@
+---
+description: Run build after code changes in EI-Admin-Dashboard
+alwaysApply: true
+---
+
+# Run build after changes
+
+After making **any code changes** in this repo (not for read-only questions or reviews), run the build before finishing the task.
+
+## Required command
+
+From the repo root:
+
+```bash
+npm run build:check
+```
+
+This runs TypeScript checking and the Vite production build.
+
+## When to run
+
+- After editing, adding, or deleting source files
+- Before telling the user the task is complete
+- If the build fails, fix the errors and re-run until it passes
+
+## When to skip
+
+- User asked a question only (no file edits)
+- Read-only exploration or code review with no modifications
+- Build already passed in the same turn after the latest edits
+
+## If you also changed the backend
+
+When edits span repos, also run validation in `../ei-website-backend`:
+
+```bash
+cd ../ei-website-backend && npm run test:math
+```
+
+Report build/test failures clearly; do not leave broken builds for the user to discover.

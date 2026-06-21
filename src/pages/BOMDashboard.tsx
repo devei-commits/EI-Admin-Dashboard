@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
+import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
+import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
+import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
+import {
+  buildMasterApprovalStatusCounts,
+  normalizeMasterApprovalStatus,
+  type MasterApprovalStatusTab,
+} from '../constants/masterApprovalStatus';
 import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaSummaryChunk, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaSummaryGroupResult, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
 import { parseFormulaBomWorkbook, chunkSummaryRows, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
@@ -49,7 +58,9 @@ type PrListSortColumn =
   | 'version'
   | 'openSos';
 
-const STATUS_OPTIONS = ['Draft', 'R&D Review', 'Approved', 'Production Released', 'Discontinued'];
+const STATUS_OPTIONS = ['Draft', 'Under Review', 'Under Approval', 'Active', 'Discontinued'];
+
+type PrStatusTab = MasterApprovalStatusTab | 'Discontinued';
 
 /** Summary rows per chunk POST. */
 const FORMULA_SUMMARY_CHUNK_ROWS = 25;
@@ -60,13 +71,14 @@ const FORMULA_BOM_CHUNK_GROUPS = 5;
 const BOMDashboard: React.FC = () => {
   const { hasModuleAccess } = usePermissions();
   const canEdit = hasModuleAccess('catalogue-management') || hasModuleAccess('packaging-management');
+  const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('PR');
 
   const [list, setList] = useState<PRProductListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const [selectedStatus, setSelectedStatus] = useState('All Statuses');
+  const [statusTab, setStatusTab] = useState<PrStatusTab>('all');
   const [selectedProduct, setSelectedProduct] = useState<PRProductDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -793,7 +805,7 @@ const BOMDashboard: React.FC = () => {
   useEffect(() => {
     // Reset to page 1 whenever filters/search/page size change.
     setCurrentPage(1);
-  }, [searchTerm, selectedCategory, selectedStatus, pageSize, sortColumn, sortDirection]);
+  }, [searchTerm, selectedCategory, statusTab, pageSize, sortColumn, sortDirection]);
 
   const togglePrSort = useCallback((column: PrListSortColumn) => {
     if (sortColumn === column) {
@@ -805,6 +817,11 @@ const BOMDashboard: React.FC = () => {
     setCurrentPage(1);
   }, [sortColumn]);
 
+  const statusCounts = useMemo(
+    () => buildMasterApprovalStatusCounts(list, (p) => p.status, ['Discontinued']),
+    [list]
+  );
+
   const filteredList = useMemo(() => {
     return list.filter((p) => {
       const matchSearch = !searchTerm.trim() || [
@@ -814,10 +831,15 @@ const BOMDashboard: React.FC = () => {
         (p as unknown as { product_sku?: string }).product_sku,
       ].some((s) => (s ?? '').toLowerCase().includes(searchTerm.toLowerCase()));
       const matchCat = selectedCategory === 'All Categories' || p.category === selectedCategory;
-      const matchStatus = selectedStatus === 'All Statuses' || p.status === selectedStatus;
+      const matchStatus =
+        statusTab === 'all'
+          ? true
+          : statusTab === 'Discontinued'
+            ? String(p.status ?? '').trim() === 'Discontinued'
+            : normalizeMasterApprovalStatus(p.status) === statusTab;
       return matchSearch && matchCat && matchStatus;
     });
-  }, [list, searchTerm, selectedCategory, selectedStatus]);
+  }, [list, searchTerm, selectedCategory, statusTab]);
 
   const sortedFilteredList = useMemo(() => {
     if (!sortColumn) return filteredList;
@@ -884,7 +906,7 @@ const BOMDashboard: React.FC = () => {
 
   const statCardData = [
     { label: 'TOTAL PRODUCTS', value: list.length, sub: 'Registered PR masters', accent: 'border-l-blue-500', num: 'text-blue-600' },
-    { label: 'PRODUCTION RELEASED', value: list.filter((p) => p.status === 'Production Released').length, sub: 'Ready to manufacture', accent: 'border-l-green-500', num: 'text-green-600' },
+    { label: 'ACTIVE', value: list.filter((p) => p.status === 'Active').length, sub: 'Approved masters', accent: 'border-l-green-500', num: 'text-green-600' },
     { label: 'CATEGORIES', value: [...new Set(list.map((p) => p.category).filter(Boolean))].length, sub: 'Product categories', accent: 'border-l-orange-400', num: 'text-orange-500' },
     { label: 'RM INGREDIENTS', value: list.reduce((sum, p) => sum + (p.rm_ingredients_count ?? 0), 0), sub: 'Total in formulas', accent: 'border-l-teal-500', num: 'text-teal-600' },
     { label: 'PM COMPONENTS', value: list.reduce((sum, p) => sum + (p.pack_items_count ?? 0), 0), sub: 'Total pack items', accent: 'border-l-rose-500', num: 'text-rose-600' },
@@ -921,6 +943,17 @@ const BOMDashboard: React.FC = () => {
           ))}
         </div>
 
+        <MasterApprovalStatusTabs
+          value={statusTab}
+          onChange={(tab) => {
+            setStatusTab(tab as PrStatusTab);
+            setCurrentPage(1);
+          }}
+          counts={statusCounts}
+          extraTabs={[{ id: 'Discontinued', label: 'Discontinued' }]}
+          accent="blue"
+        />
+
         {/* ── Table Card ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
 
@@ -928,7 +961,7 @@ const BOMDashboard: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-gray-900">Products Master</span>
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200/50">{list.length}</span>
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200/50">{pagedFilteredList.length} / {totalFiltered}</span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* search */}
@@ -954,19 +987,6 @@ const BOMDashboard: React.FC = () => {
                 {[...new Set(list.map((p) => p.category).filter(Boolean))].map((c) => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
-
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all"
-              >
-                <option>All Statuses</option>
-                <option>Production Released</option>
-                <option>Draft</option>
-                <option>R&D Review</option>
-                <option>Approved</option>
-                <option>Discontinued</option>
               </select>
 
               <Link
@@ -1130,6 +1150,7 @@ const BOMDashboard: React.FC = () => {
                       onSort={togglePrSort}
                       accent="cyan"
                     />
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Assign</th>
                     <SortableTableTh
                       label="Ver."
                       column="version"
@@ -1152,7 +1173,7 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={15} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -1189,12 +1210,38 @@ const BOMDashboard: React.FC = () => {
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">{p.rm_ingredients_count ?? 0}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-amber-600 text-center">{p.pack_items_count ?? 0}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{p.mrp_price != null ? `Rs.${p.mrp_price}` : '—'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            p.status === 'Production Released' ? 'bg-green-100 text-green-700' : p.status === 'Draft' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {p.status || '—'}
-                          </span>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterApprovalStatusCell
+                            kind="PR"
+                            itemId={p.product_id}
+                            status={p.status ?? 'Draft'}
+                            canUpdate={canApproveAtStatus(p.status, p.approval_stage_assignees)}
+                            onUpdated={(next) => {
+                              setList((prev) =>
+                                prev.map((row) =>
+                                  row.product_id === p.product_id ? { ...row, status: next } : row
+                                )
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterApprovalAssignCell
+                            kind="PR"
+                            itemId={p.product_id}
+                            itemCode={p.product_code || String(p.product_id)}
+                            stageAssignees={p.approval_stage_assignees}
+                            canAssign={canAssignApprover}
+                            onSaved={(assignees) => {
+                              setList((prev) =>
+                                prev.map((row) =>
+                                  row.product_id === p.product_id
+                                    ? { ...row, approval_stage_assignees: assignees }
+                                    : row
+                                )
+                              );
+                            }}
+                          />
                         </td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.version ?? '—'}</td>
                         <td className="px-4 py-3 text-center">

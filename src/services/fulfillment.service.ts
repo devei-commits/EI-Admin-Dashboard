@@ -186,7 +186,17 @@ export interface CustomerOption {
   /** Subset of vendor_clients.data for ClientForm payables + receivables credit days. */
   clientData?: Record<string, unknown>;
 }
-export interface ProductOption { id: string; type: string; name: string; sku: string; pack: string; category: string; price: number; }
+export interface ProductOption {
+  id: string;
+  type: string;
+  name: string;
+  sku: string;
+  pack: string;
+  category: string;
+  price: number;
+  /** Master approval workflow status — all stages visible in SO picker */
+  approvalStatus?: string;
+}
 
 export async function fetchNextSoNo(): Promise<string> {
   const res = await api.get<NextSoNoResponse>(`${BASE}/next-so-no`);

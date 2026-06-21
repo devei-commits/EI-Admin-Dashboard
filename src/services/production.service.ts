@@ -94,6 +94,9 @@ export async function deleteTeamMember(pk: number) {
 export interface DispensingItem {
   code: string; inci?: string; name?: string;
   required: number; dispensed: number; done: boolean;
+  trayContainer?: string;
+  traySlot?: string;
+  dispensedAt?: string;
 }
 
 export interface QCSpec {

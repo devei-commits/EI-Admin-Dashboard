@@ -1,4 +1,5 @@
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
+import { masterPickerLabelSuffix } from '../constants/masterApprovalStatus';
 
 export type RmTypeaheadOption = {
   id: string;
@@ -27,7 +28,8 @@ export function buildRmTypeaheadOptions(
     const displayName = inci || tradeName || code;
     const codeTokens = [code, sku].filter((s, i, arr) => Boolean(s) && arr.indexOf(s) === i);
     const codePart = codeTokens.join(' / ');
-    const label = codePart ? `${codePart} — ${displayName}` : displayName || id;
+    const labelBase = codePart ? `${codePart} — ${displayName}` : displayName || id;
+    const label = `${labelBase}${masterPickerLabelSuffix(rm.status)}`;
     const haystack = [code, sku, inci, tradeName, id].filter(Boolean).join(' ').trim().toLowerCase();
     const disabled = Boolean(exclude?.has(id) && id !== allowId);
     return { id, code, label, haystack, disabled };

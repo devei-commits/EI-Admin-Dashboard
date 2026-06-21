@@ -9,6 +9,8 @@ import {
   getBatchVolumeLiters,
   getCompatibleVesselIds,
   isEquipmentFreeOnDate,
+  hasBatchEquipmentReserved,
+  validateScheduleEquipmentReservation,
   getFirstFreeEquipment,
   getEquipDisplayName,
   getCompatibleFillLineIds,
@@ -124,6 +126,86 @@ describe('isEquipmentFreeOnDate', () => {
 
   it('returns false for pack line on pack date', () => {
     expect(isEquipmentFreeOnDate(batches, 'PL-01', '2026-03-19')).toBe(false);
+  });
+
+  it('excludes the current batch when checking occupancy', () => {
+    const withBmr: ScheduledBatchLike[] = [
+      { bmrNo: 'BMR-1', mainVessel: 'MV-01', mfgDate: '2026-03-15' },
+    ];
+    expect(isEquipmentFreeOnDate(withBmr, 'MV-01', '2026-03-15', 'BMR-1')).toBe(true);
+    expect(isEquipmentFreeOnDate(withBmr, 'MV-01', '2026-03-15', 'BMR-2')).toBe(false);
+  });
+
+  it('treats supporting tanks as occupied on mfg date', () => {
+    const withSupport: ScheduledBatchLike[] = [
+      { mainVessel: 'MV-01', mfgDate: '2026-03-15', supportingTanks: ['ST-01'] },
+    ];
+    expect(isEquipmentFreeOnDate(withSupport, 'ST-01', '2026-03-15')).toBe(false);
+    expect(isEquipmentFreeOnDate(withSupport, 'ST-01', '2026-03-16')).toBe(true);
+  });
+});
+
+describe('hasBatchEquipmentReserved', () => {
+  it('requires vessel, fill line, and pack line', () => {
+    expect(hasBatchEquipmentReserved({ mainVessel: 'MV-01', fillingLine: 'FL-01', packagingLine: 'PL-01' })).toBe(true);
+    expect(hasBatchEquipmentReserved({ mainVessel: 'MV-01', fillingLine: '', packagingLine: 'PL-01' })).toBe(false);
+  });
+});
+
+describe('validateScheduleEquipmentReservation', () => {
+  const occupancy: ScheduledBatchLike[] = [
+    { bmrNo: 'BMR-OTHER', mainVessel: 'MV-01', mfgDate: '2026-03-15' },
+  ];
+
+  it('rejects incomplete equipment selection', () => {
+    const result = validateScheduleEquipmentReservation(
+      {
+        mainVessel: '',
+        fillingLine: 'FL-01',
+        packagingLine: 'PL-01',
+        mfgDate: '2026-03-20',
+        fillDate: '2026-03-23',
+        packDate: '2026-03-24',
+      },
+      occupancy,
+      'BMR-NEW',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('vessel'))).toBe(true);
+  });
+
+  it('rejects conflicting vessel occupancy', () => {
+    const result = validateScheduleEquipmentReservation(
+      {
+        mainVessel: 'MV-01',
+        fillingLine: 'FL-01',
+        packagingLine: 'PL-01',
+        mfgDate: '2026-03-15',
+        fillDate: '2026-03-18',
+        packDate: '2026-03-19',
+      },
+      occupancy,
+      'BMR-NEW',
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('MV-01'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('Available from'))).toBe(true);
+  });
+
+  it('allows saving when equipment is free', () => {
+    const result = validateScheduleEquipmentReservation(
+      {
+        mainVessel: 'MV-02',
+        fillingLine: 'FL-01',
+        packagingLine: 'PL-01',
+        mfgDate: '2026-03-20',
+        fillDate: '2026-03-23',
+        packDate: '2026-03-24',
+      },
+      occupancy,
+      'BMR-NEW',
+    );
+    expect(result.ok).toBe(true);
   });
 });
 

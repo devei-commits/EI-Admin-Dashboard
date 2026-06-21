@@ -34,6 +34,9 @@ export interface PRProductListItem {
   rm_ingredients_count: number;
   pack_items_count: number;
   open_sos_count: number;
+  approval_stage_assignees?: unknown;
+  approval_assigned_user_id?: number | null;
+  approval_assigned_display_name?: string | null;
 }
 
 export interface PaginatedRowsResponse<T> {

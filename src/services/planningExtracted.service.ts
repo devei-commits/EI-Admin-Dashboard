@@ -73,10 +73,22 @@ export interface PlanningExtractedRow {
   planningSla?: PlanningSlaMeta;
 }
 
+function normalizePlanningExtractedListResponse(payload: unknown): PlanningExtractedRow[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') {
+    const o = payload as { data?: unknown; rows?: unknown };
+    if (Array.isArray(o.data)) return o.data as PlanningExtractedRow[];
+    if (Array.isArray(o.rows)) return o.rows as PlanningExtractedRow[];
+  }
+  return [];
+}
+
 export async function fetchPlanningExtractedList(): Promise<PlanningExtractedRow[]> {
-  const res = await api.get<PlanningExtractedRow[]>('/api/v1/planning-extracted');
-  const data = res?.data ?? res;
-  return Array.isArray(data) ? data : [];
+  const res = await api.get<PlanningExtractedRow[] | { data?: PlanningExtractedRow[]; rows?: PlanningExtractedRow[] }>(
+    '/api/v1/planning-extracted'
+  );
+  const data = (res as { data?: unknown })?.data ?? res;
+  return normalizePlanningExtractedListResponse(data);
 }
 
 export async function fetchPlanningExtractedById(id: string): Promise<PlanningExtractedRow | null> {
@@ -384,11 +396,23 @@ export interface ItemsInvolvedForPiRow extends ItemsInvolvedRow {
   netStock?: number;
 }
 
+function normalizeItemsInvolvedResponse(payload: unknown): ItemsInvolvedForPiRow[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') {
+    const o = payload as { data?: unknown; rows?: unknown };
+    if (Array.isArray(o.data)) return o.data as ItemsInvolvedForPiRow[];
+    if (Array.isArray(o.rows)) return o.rows as ItemsInvolvedForPiRow[];
+  }
+  return [];
+}
+
 export async function fetchItemsInvolvedByPlanningId(planningExtractedId: string): Promise<ItemsInvolvedForPiRow[]> {
   try {
-    const res = await api.get<ItemsInvolvedForPiRow[]>(`/api/v1/planning-extracted/${planningExtractedId}/items-involved`);
-    const data = res?.data ?? res;
-    return Array.isArray(data) ? data : [];
+    const res = await api.get<ItemsInvolvedForPiRow[] | { data?: ItemsInvolvedForPiRow[]; rows?: ItemsInvolvedForPiRow[] }>(
+      `/api/v1/planning-extracted/${planningExtractedId}/items-involved`
+    );
+    const data = (res as { data?: unknown })?.data ?? res;
+    return normalizeItemsInvolvedResponse(data);
   } catch {
     return [];
   }

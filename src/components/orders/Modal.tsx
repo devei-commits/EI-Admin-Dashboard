@@ -14,6 +14,8 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Override scroll/overflow on the body panel (e.g. overflow-visible for nested dropdowns). */
+  bodyClassName?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
@@ -23,7 +25,8 @@ export const Modal: React.FC<ModalProps> = ({
   subtitle,
   size = 'md', 
   children,
-  footer 
+  footer,
+  bodyClassName,
 }) => {
   // Close on Escape key
   useEffect(() => {
@@ -95,7 +98,7 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className={`flex-1 overflow-y-auto px-5 py-4 ${bodyClassName ?? ''}`}>
           {children}
         </div>
 

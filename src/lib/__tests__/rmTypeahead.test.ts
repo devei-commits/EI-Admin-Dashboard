@@ -12,6 +12,34 @@ describe('rmTypeahead', () => {
     expect(hits[0].code).toBe('RM-A');
   });
 
+  it('appends approval status suffix for non-Active masters', () => {
+    const options = buildRmTypeaheadOptions([
+      {
+        id: '3',
+        code: 'RM-C',
+        name: 'Beta Glucan',
+        inci: 'Beta Glucan',
+        category: '',
+        rmType: '',
+        uom: 'KG',
+        pricePerKg: 0,
+        gst: 0,
+        shelf: '',
+        leadTimeDays: null,
+        status: 'Under Review',
+        products: [],
+        group: null,
+        zohoId: null,
+        zohoSkuCode: null,
+        hsnCode: null,
+        taxPref: null,
+        salesPurchaseAccount: null,
+        specificGravity: null,
+      },
+    ]);
+    expect(options[0].label).toContain('[Under Review]');
+  });
+
   it('matches Zoho SKU code in haystack', () => {
     const options = buildRmTypeaheadOptions([
       {

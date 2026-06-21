@@ -5,6 +5,12 @@ import {
   FULFILLMENT_EXEC_PHASE_WEIGHTS,
   productionSliceProgress01,
 } from '../fulfillmentExecutionPct';
+import {
+  batchLifecycleProgress01,
+  getBatchLifecycleStage,
+  type BmrStatus,
+  type BprStatus,
+} from '../batchLifecycle';
 import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
 
 describe('fulfillmentExecutionPct', () => {
@@ -102,7 +108,14 @@ describe('fulfillmentExecutionPct', () => {
       dispatchDate: null,
       etaDate: null,
     };
-    expect(productionSliceProgress01('fg_pending', split)).toBe(0.55);
+    expect(productionSliceProgress01('fg_pending', split)).toBe(
+      batchLifecycleProgress01(
+        getBatchLifecycleStage({
+          bmrStatus: 'cleared' as BmrStatus,
+          bprStatus: 'pm_reserved' as BprStatus,
+        }),
+      ),
+    );
     const planning = {
       totalBatches: 1,
       sentCount: 1,

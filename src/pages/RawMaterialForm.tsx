@@ -4,6 +4,9 @@ import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
+import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
@@ -35,6 +38,12 @@ import {
   shouldShowRmQualitySubSpecTable,
 } from '../lib/rmQualitySpecVisibility';
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
+import {
+  buildMasterApprovalStatusCounts,
+  matchesMasterApprovalStatusTab,
+  type MasterApprovalStatusTab,
+} from '../constants/masterApprovalStatus';
+import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import {
@@ -2607,13 +2616,15 @@ function getCategoryStyle(category: string): { bg: string; text: string; border:
 type RmListSortColumn = 'code' | 'name' | 'subCategory' | 'type' | 'uom' | 'category' | 'status' | 'products';
 
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
+ const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('RM');
  const [search, setSearch] = useState('');
  const [pageSize, setPageSize] = useState(25);
  const [currentPage, setCurrentPage] = useState(1);
  const [sortColumn, setSortColumn] = useState<RmListSortColumn | null>('code');
  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
- /** Stat card filter: null = all, `__active__` = active only, else RM category label. */
+ /** Stat card filter: null = all, else RM category label. */
  const [statFilter, setStatFilter] = useState<string | null>(null);
+ const [statusTab, setStatusTab] = useState<MasterApprovalStatusTab>('all');
  const [statCardSort, setStatCardSort] = useState<MasterStatCardSort>('count-desc');
  const [linkedSkusModalRm, setLinkedSkusModalRm] = useState<RawMaterialRecord | null>(null);
  const queryClient = useQueryClient();
@@ -2704,11 +2715,17 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     gcTime: 10 * 60 * 1000,
   });
 
+  const statusCounts = useMemo(
+    () => buildMasterApprovalStatusCounts(allRows, (r) => r.status),
+    [allRows]
+  );
+
   const filteredRows = useMemo(() => {
     let rows = allRows;
-    if (statFilter === '__active__') {
-      rows = rows.filter((r) => String(r.status).toLowerCase() === 'active');
-    } else if (statFilter) {
+    if (statusTab !== 'all') {
+      rows = rows.filter((r) => matchesMasterApprovalStatusTab(r.status, statusTab));
+    }
+    if (statFilter) {
       rows = rows.filter((r) => (r.category ?? '').trim() === statFilter);
     }
     const q = search.trim().toLowerCase();
@@ -2716,7 +2733,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     return rows.filter((r) =>
       [r.code, r.name, r.inci, r.category, r.rmType, r.zohoSkuCode].some((s) => (s ?? '').toLowerCase().includes(q))
     );
-  }, [allRows, search, statFilter]);
+  }, [allRows, search, statFilter, statusTab]);
 
   const toggleRmSort = useCallback((column: RmListSortColumn) => {
     if (sortColumn === column) {
@@ -2768,12 +2785,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   // Reset to page 1 when search or page size changes (same pattern as Products PR page).
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter]);
-
-  const activeCount = useMemo(
-    () => allRows.filter((r) => String(r.status).toLowerCase() === 'active').length,
-    [allRows]
-  );
+  }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter, statusTab]);
 
   const categoryBuckets = useMemo(
     () => buildMasterStatBuckets(allRows, (r) => (r as RawMaterialRecord).category ?? '', statCardSort),
@@ -2805,14 +2817,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         accent: 'border-l-teal-500',
         num: 'text-teal-600',
       },
-      {
-        id: '__active__',
-        label: 'ACTIVE',
-        value: activeCount,
-        sub: 'Approved status',
-        accent: 'border-l-orange-400',
-        num: 'text-orange-500',
-      },
     ];
     const dynamic: RmStatCard[] = categoryBuckets.map((b) => {
       const style = getCategoryStyle(b.label);
@@ -2827,7 +2831,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       };
     });
     return [...fixed, ...dynamic];
-  }, [allRows.length, activeCount, categoryBuckets]);
+  }, [allRows.length, categoryBuckets]);
 
  return (
   <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
@@ -2928,6 +2932,16 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       })}
      </div>
     </div>
+
+    <MasterApprovalStatusTabs
+     value={statusTab}
+     onChange={(tab) => {
+      setStatusTab(tab as MasterApprovalStatusTab);
+      setCurrentPage(1);
+     }}
+     counts={statusCounts}
+     accent="teal"
+    />
 
     {/* ── Table Card ── */}
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -3064,6 +3078,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           accent="teal"
           thClassName="py-4"
          />
+         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Assign</th>
          <SortableTableTh
           label="Products"
           column="products"
@@ -3079,7 +3094,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        <tbody className="divide-y divide-gray-50">
         {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -3112,11 +3127,33 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
            {/* category (replaces GST column in masters table view) */}
            <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.category || '—'}</td>
            {/* status */}
-           <td className="px-4 py-3.5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-             {rm.status}
-            </span>
+           <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+            <MasterApprovalStatusCell
+             kind="RM"
+             itemId={rm.id}
+             status={rm.status}
+             canUpdate={canApproveAtStatus(rm.status, rm.approvalStageAssignees)}
+             onUpdated={() => void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] })}
+            />
+           </td>
+           <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+            <MasterApprovalAssignCell
+             kind="RM"
+             itemId={rm.id}
+             itemCode={rm.code}
+             stageAssignees={rm.approvalStageAssignees}
+             canAssign={canAssignApprover}
+             onSaved={(assignees) => {
+              void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+              void queryClient.setQueryData<RawMaterialRecord[]>(
+                ['raw-materials-full-list', refreshKey],
+                (prev) =>
+                  prev?.map((row) =>
+                    row.id === rm.id ? { ...row, approvalStageAssignees: assignees } : row
+                  ) ?? prev
+              );
+             }}
+            />
            </td>
            {/* products — compact link; full SKU list in modal */}
            <td className="px-4 py-3.5">

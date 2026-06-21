@@ -76,6 +76,8 @@ import {
   summarizePlannedReleaseTargetsByWeek,
 } from '../lib/plannedReleaseTargets';
 import {
+  buildPlanningProductFilterOptions,
+  filterItemsInvolvedRowsByProductIds,
   formatPlanningProductFilterDisplay,
   mergeItemsInvolvedRows,
   resolvePlanningExtractedIdForRelease,
@@ -662,6 +664,42 @@ function findItemsInvolvedRowByMaterial(
       r.itemType === itemType &&
       normalizeMaterialCode(String(r.code ?? '').trim().toLowerCase()) === codeNorm
   );
+}
+
+function pipelineQtyForBatchMaterial(
+  items: ItemsInvolvedDisplayRow[],
+  itemType: 'RM' | 'PM',
+  sourceId: number | undefined,
+  code: string,
+  wh: WarehouseInventoryRow | undefined,
+  rm: RawMaterialRecord | undefined,
+  lineSg: number
+): { plannedQty: number; poQty: number; inTransit: number } {
+  const involved = findItemsInvolvedRowByMaterial(items, itemType, sourceId, code);
+  if (involved) {
+    return {
+      plannedQty: involved.plannedQtyNum,
+      poQty: involved.poQtyNum,
+      inTransit: involved.inTransitQtyNum,
+    };
+  }
+  if (itemType === 'RM') {
+    return {
+      plannedQty: 0,
+      poQty: warehouseQtyToKg(wh?.poQuantity ?? 0, wh, rm, lineSg),
+      inTransit: warehouseQtyToKg(wh?.inTransit ?? 0, wh, rm, lineSg),
+    };
+  }
+  return {
+    plannedQty: 0,
+    poQty: Number(wh?.poQuantity ?? 0) || 0,
+    inTransit: Number(wh?.inTransit ?? 0) || 0,
+  };
+}
+
+function formatBatchDetailQty(value: number, unit: string): string {
+  const kind = unit?.toUpperCase() === 'KG' ? 'kg' : 'pcs';
+  return formatQtyExact(value, kind);
 }
 
 type ReleaseToPlanningStatusKind = 'not-in-list' | 'no-shortage' | 'not-released' | 'partial' | 'released' | 'covered';
@@ -3701,13 +3739,18 @@ const Planning = () => {
 
   const activeItemsInvolvedRows = useMemo(() => {
     if (itemsInvolvedProductFilterMode === 'all') return itemsInvolvedRows;
-    if (itemsInvolvedProductFilterMode === 'single') return itemsInvolvedByProductRows;
-    return mergedMultiProductItemsRows;
+    if (itemsInvolvedProductFilterMode === 'single') {
+      if (itemsInvolvedByProductRows.length > 0) return itemsInvolvedByProductRows;
+      return filterItemsInvolvedRowsByProductIds(itemsInvolvedRows, itemsInvolvedSelectedProductIds);
+    }
+    if (mergedMultiProductItemsRows.length > 0) return mergedMultiProductItemsRows;
+    return filterItemsInvolvedRowsByProductIds(itemsInvolvedRows, itemsInvolvedSelectedProductIds);
   }, [
     itemsInvolvedProductFilterMode,
     itemsInvolvedRows,
     itemsInvolvedByProductRows,
     mergedMultiProductItemsRows,
+    itemsInvolvedSelectedProductIds,
   ]);
 
   const activeItemsInvolvedLoading = useMemo(() => {
@@ -4306,26 +4349,10 @@ const Planning = () => {
     [itemsInvolved, procurementRequests, plannedLinesFromBackend, rawMaterialsList]
   );
 
-  /** Confirmed-BOM products (planning extracted lines) — drives product-scoped items + Release to Planning. */
+  /** Confirmed-BOM products — from planning list + items-involved PE ids (dropdown + Release to Planning). */
   const itemsInvolvedProductSelectOptions = useMemo(() => {
-    return planningExtractedList
-      .filter((row) => Boolean(row.bomConfirmedAt))
-      .filter((row) => {
-        if (!dateFilter.from && !dateFilter.to) return true;
-        return matchesDateRangeFilter(row.orderDate, dateFilter.from, dateFilter.to);
-      })
-      .map((row) => ({
-        id: String(row.id),
-        name: String(row.productName || row.productCode || 'Product').trim(),
-        sku: String(row.productCode ?? '').trim(),
-        soNumber: row.soNumber ? `SO ${row.soNumber}` : '',
-      }))
-      .sort((a, b) =>
-        formatPlanningProductFilterDisplay(a).localeCompare(formatPlanningProductFilterDisplay(b), undefined, {
-          sensitivity: 'base',
-        })
-      );
-  }, [planningExtractedList, dateFilter]);
+    return buildPlanningProductFilterOptions(planningExtractedList, itemsInvolvedRows, dateFilter);
+  }, [planningExtractedList, itemsInvolvedRows, dateFilter]);
 
   useEffect(() => {
     const validIds = new Set(itemsInvolvedProductSelectOptions.map((o) => o.id));
@@ -4337,7 +4364,7 @@ const Planning = () => {
 
   const filteredItemsInvolved = useMemo(() => {
     return itemsInvolved.filter((row) => {
-      if (dateFilter.from || dateFilter.to) {
+      if (itemsInvolvedProductFilterMode === 'all' && (dateFilter.from || dateFilter.to)) {
         const peIds = row.planningExtractedIds ?? (row.planningExtractedId ? [row.planningExtractedId] : []);
         const linked = peIds.some((id) => planningExtractedIdsInDateRange.has(String(id)));
         if (!linked) return false;
@@ -4359,6 +4386,7 @@ const Planning = () => {
     itemsInvolved,
     itemsInvolvedCategoryFilter,
     itemsInvolvedSearchTerm,
+    itemsInvolvedProductFilterMode,
     dateFilter,
     planningExtractedIdsInDateRange,
   ]);
@@ -6930,8 +6958,16 @@ const Planning = () => {
               {!activeItemsInvolvedLoading && itemsInvolved.length === 0 && (
                 <div className="p-12 text-center border border-dashed border-gray-200 rounded-lg">
                   <div className="text-4xl mb-2">⧖</div>
-                  <div className="font-semibold text-gray-700 mb-1">No confirmed batches</div>
-                  <div className="text-sm text-gray-500">Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.</div>
+                  <div className="font-semibold text-gray-700 mb-1">
+                    {itemsInvolvedProductFilterMode !== 'all'
+                      ? 'No items for selected product(s)'
+                      : 'No confirmed batches'}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {itemsInvolvedProductFilterMode !== 'all'
+                      ? 'Try another product, clear the product filter, or confirm BOM in Plan Batches (PIs Extracted).'
+                      : 'Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.'}
+                  </div>
                 </div>
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length === 0 && (
@@ -8310,7 +8346,7 @@ const Planning = () => {
         );
       })()}
 
-      {/* Batch detail modal: items with SIH, Reserved, Available, Shortfall, PR per row (PR raised against batch id) */}
+      {/* Batch detail modal: items with SIH, Reserved, Available, pipeline qty, Shortfall, Release to Planning */}
       {batchForDetailModal && (() => {
         const batch = batchForDetailModal;
         const sizeKg = Number(batch.sizeKg) || 0;
@@ -8320,7 +8356,23 @@ const Planning = () => {
         const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
         const rmByCode = new Map(rawMaterialsList.map((r) => [r.code?.toLowerCase() ?? '', r]));
         const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
-        type BatchDetailRow = { id: string; type: 'RM' | 'PM'; name: string; code: string; required: number; unit: string; sih: number; reserved: number; available: number; shortfall: number; raw_material_id?: number; pack_material_id?: number };
+        type BatchDetailRow = {
+          id: string;
+          type: 'RM' | 'PM';
+          name: string;
+          code: string;
+          required: number;
+          unit: string;
+          sih: number;
+          reserved: number;
+          available: number;
+          plannedQty: number;
+          poQty: number;
+          inTransit: number;
+          shortfall: number;
+          raw_material_id?: number;
+          pack_material_id?: number;
+        };
         const rows: BatchDetailRow[] = [];
         (batch.rmLines || []).forEach((line: BatchRmLine, idx: number) => {
           const code = line.rm_code || (line as { code?: string }).code || '';
@@ -8334,6 +8386,15 @@ const Planning = () => {
           const reserved = warehouseQtyToKg(wh?.reserved ?? 0, wh, rm, lineSg);
           const available = Math.max(0, sih - reserved);
           const shortfall = Math.max(0, required - available);
+          const pipeline = pipelineQtyForBatchMaterial(
+            itemsInvolvedForBatchDetailModal,
+            'RM',
+            raw_material_id,
+            code,
+            wh,
+            rm,
+            lineSg
+          );
           rows.push({
             id: `rm-${raw_material_id ?? code}-${idx}`,
             type: 'RM',
@@ -8344,6 +8405,9 @@ const Planning = () => {
             sih,
             reserved,
             available,
+            plannedQty: pipeline.plannedQty,
+            poQty: pipeline.poQty,
+            inTransit: pipeline.inTransit,
             shortfall,
             raw_material_id: raw_material_id ?? undefined,
           });
@@ -8359,6 +8423,15 @@ const Planning = () => {
           const reserved = wh?.reserved ?? 0;
           const available = Math.max(0, sih - reserved);
           const shortfall = Math.max(0, required - available);
+          const pipeline = pipelineQtyForBatchMaterial(
+            itemsInvolvedForBatchDetailModal,
+            'PM',
+            pack_material_id,
+            code,
+            wh,
+            undefined,
+            1
+          );
           rows.push({
             id: `pm-${pack_material_id ?? code}-${idx}`,
             type: 'PM',
@@ -8369,6 +8442,9 @@ const Planning = () => {
             sih,
             reserved,
             available,
+            plannedQty: pipeline.plannedQty,
+            poQty: pipeline.poQty,
+            inTransit: pipeline.inTransit,
             shortfall,
             pack_material_id: pack_material_id ?? undefined,
           });
@@ -8387,7 +8463,7 @@ const Planning = () => {
         );
         return (
           <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl my-8">
               <div className="flex items-center justify-between p-4 border-b border-gray-200">
                 <h3 className="text-lg font-bold text-gray-900">
                   Batch — {batch.batchCode ?? `PE-${batch.planningExtractedId}-B${batch.sequence}`}
@@ -8418,6 +8494,9 @@ const Planning = () => {
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Stock in hand</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Available</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Planned qty</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">PO qty</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">In transit</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-700">Shortfall</th>
                       <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">
                         Release to Planning
@@ -8440,6 +8519,15 @@ const Planning = () => {
                         <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.available.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-mono text-blue-700">
+                          {row.plannedQty > 0 ? formatBatchDetailQty(row.plannedQty, row.unit) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-indigo-700">
+                          {row.poQty > 0 ? formatBatchDetailQty(row.poQty, row.unit) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-sky-700">
+                          {row.inTransit > 0 ? formatBatchDetailQty(row.inTransit, row.unit) : '—'}
+                        </td>
                         <td className="px-3 py-2 text-right font-mono font-semibold">{row.shortfall > 0 ? <span className="text-red-600">{row.shortfall.toLocaleString()}</span> : '—'}</td>
                         <td className="px-3 py-2 text-center whitespace-nowrap">
                           {batchDetailItemsLoading ? (

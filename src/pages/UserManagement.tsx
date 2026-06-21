@@ -86,6 +86,13 @@ const FALLBACK_DEPARTMENTS = [
 ];
 
 /** Map API staff user to page User type */
+function formatLastLogin(raw: string | null | undefined): string {
+ if (!raw) return '';
+ const d = new Date(raw);
+ if (Number.isNaN(d.getTime())) return '';
+ return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function mapStaffToUser(r: StaffUserFromApi): User {
  const name = (r.display_name || '').trim();
  const [firstName, ...rest] = name.split(/\s+/);
@@ -101,7 +108,7 @@ function mapStaffToUser(r: StaffUserFromApi): User {
   department: r.department ?? '',
   status,
   createdAt: r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : '',
-  lastLogin: '',
+  lastLogin: formatLastLogin(r.last_login_at),
   vendorClientCode: r.vendor_client_code ?? null,
  };
 }
