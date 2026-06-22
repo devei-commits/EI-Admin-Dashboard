@@ -1,8 +1,10 @@
 import {
   normalizePmDetailSubCategoryKey,
   normalizePmFunctionalSubCategoryKey,
+  normalizePmSkuCategoryForSelect,
   normalizePmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
+import { pmUnifiedToLegacyQualityCategory } from '../constants/eiMastersUnifiedSchema';
 import { clonePmQualitySpecTableDefaults, hasPmQualitySpecDefaults } from '../constants/pmQualitySpecTableDefaults';
 import {
   clonePmQualitySubSpecTableDefaults,
@@ -45,12 +47,17 @@ export type PmQualitySpecResolvedContext = {
 };
 
 export function resolvePmQualitySpecContext(ctx: PmQualitySpecContext): PmQualitySpecResolvedContext {
-  const functionalCategory = (normalizePmDetailSubCategoryKey(ctx.optionalPmSubCategory) ||
-    '') as PmFunctionalCategory | '';
-  const sku = ctx.pmSkuCategory || ctx.subCategory || '';
+  const sku = normalizePmSkuCategoryForSelect(ctx.pmSkuCategory || ctx.subCategory || '') || 'ppm';
+  const unifiedSub =
+    normalizePmDetailSubCategoryKey(ctx.optionalPmSubCategory) ||
+    String(ctx.optionalPmSubCategory ?? '').trim();
+  const functionalCategory = (pmUnifiedToLegacyQualityCategory(
+    sku,
+    unifiedSub
+  ) || '') as PmFunctionalCategory | '';
   const functionalSub =
     normalizePmSubSubCategoryForSelect(
-      ctx.optionalPmSubCategory,
+      unifiedSub,
       ctx.optionalPmSubSubCategory ?? '',
       sku
     ) || String(ctx.optionalPmSubSubCategory ?? '').trim();
@@ -59,7 +66,7 @@ export function resolvePmQualitySpecContext(ctx: PmQualitySpecContext): PmQualit
     functionalCategory,
     functionalSub,
     functionalSubNorm: normSub(functionalSub),
-    categoryDisplayLabel: functionalCategory || String(ctx.optionalPmSubCategory ?? '').trim(),
+    categoryDisplayLabel: functionalCategory || unifiedSub,
     subSpecPathKey:
       functionalCategory && functionalSub
         ? pmQualitySubSpecPathKey(functionalCategory, functionalSub)

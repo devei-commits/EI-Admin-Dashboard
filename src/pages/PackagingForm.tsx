@@ -450,12 +450,15 @@ const PackagingRefactored: React.FC = () => {
     }
     return base;
   }, [formData.pmSkuCategory, formData.subCategory, formData.optionalPmSubCategory]);
-  const pmSubSubCategoryRequired = pmDetailSubCategoryHasSubSubCategory(formData.optionalPmSubCategory);
+  const pmSubSubCategoryRequired = pmDetailSubCategoryHasSubSubCategory(
+    formData.optionalPmSubCategory,
+    formData.pmSkuCategory || formData.subCategory
+  );
   const pmUsesFunctionalTaxonomy = pmUsesFunctionalCategoryTaxonomy(
     formData.pmSkuCategory || formData.subCategory
   );
-  const pmFunctionalCategoryLabel = pmUsesFunctionalTaxonomy ? 'Category' : 'Sub-category';
-  const pmFunctionalSubCategoryLabel = pmUsesFunctionalTaxonomy ? 'Sub-category' : 'Sub-sub category';
+  const pmFunctionalCategoryLabel = pmUsesFunctionalTaxonomy ? 'Sub-category' : 'Sub-category';
+  const pmFunctionalSubCategoryLabel = pmUsesFunctionalTaxonomy ? 'Sub-sub category' : 'Sub-sub category';
   const pmConditionalVisibility = useMemo(
     () =>
       getPmConditionalVisibility({

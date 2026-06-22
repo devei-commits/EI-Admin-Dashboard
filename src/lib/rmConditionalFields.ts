@@ -1,9 +1,4 @@
-import {
-  normalizeRmDetailSubCategoryForSelect,
-  normalizeRmDetailSubCategoryKey,
-  normalizeRmSubCategoryForSelect,
-  normalizeRmSubSubCategoryForSelect,
-} from '../constants/materialMasterSkuRules';
+import { buildRmConditionalVisibility } from '../constants/eiMastersUnifiedSchema';
 import { hasRmQualitySpecFields } from './rmQualitySpecVisibility';
 
 export type RmCategoryContext = {
@@ -13,54 +8,14 @@ export type RmCategoryContext = {
   rmState: string;
 };
 
-function normSub(raw: string): string {
-  return String(raw ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-export type RmConditionalVisibility = {
-  regMaxUseLevelPct: boolean;
-  regAllergenDeclarationEu26: boolean;
-  regIfraCategoryLimit: boolean;
-  regCiNumber: boolean;
-  regApprovedArea: boolean;
-  rmPhysicalFormSolid: boolean;
-  rmPhysicalFormLiquid: boolean;
+export type RmConditionalVisibility = ReturnType<typeof buildRmConditionalVisibility> & {
   showRegulatoryConditional: boolean;
   showTechnicalConditional: boolean;
   showQualityConditional: boolean;
 };
 
 export function getRmConditionalVisibility(ctx: RmCategoryContext): RmConditionalVisibility {
-  const cat = normalizeRmSubCategoryForSelect(ctx.subCategory);
-  const functionalCat =
-    normalizeRmDetailSubCategoryKey(ctx.optionalRmSubCategory) ||
-    normalizeRmDetailSubCategoryForSelect(ctx.subCategory, ctx.optionalRmSubCategory) ||
-    String(ctx.optionalRmSubCategory ?? '').trim();
-  const functionalSub =
-    normalizeRmSubSubCategoryForSelect(ctx.optionalRmSubCategory, ctx.optionalRmSubSubCategory) ||
-    String(ctx.optionalRmSubSubCategory ?? '').trim();
-  const functionalSubNorm = normSub(functionalSub);
-
-  const isBulk = cat === 'Bulk raw materials';
-  const isFragranceSku = cat === 'Fragrance';
-  const isColors = cat === 'Colors & Pigments';
-
-  const regMaxUseLevelPct =
-    isBulk &&
-    (functionalCat === 'Preservative' ||
-      (functionalCat === 'Active' && functionalSubNorm === 'uv filter'));
-  const regAllergenDeclarationEu26 = isFragranceSku || (isBulk && functionalCat === 'Fragrance');
-  const regIfraCategoryLimit = regAllergenDeclarationEu26;
-  const regCiNumber = isColors;
-  const regApprovedArea = isColors;
-
-  const state = String(ctx.rmState ?? '').trim();
-  const rmPhysicalFormSolid = state === 'Solid';
-  const rmPhysicalFormLiquid = state === 'Liquid';
-
+  const flags = buildRmConditionalVisibility(ctx);
   const showQualityConditional = hasRmQualitySpecFields({
     subCategory: ctx.subCategory,
     optionalRmSubCategory: ctx.optionalRmSubCategory,
@@ -68,20 +23,14 @@ export function getRmConditionalVisibility(ctx: RmCategoryContext): RmConditiona
   });
 
   return {
-    regMaxUseLevelPct,
-    regAllergenDeclarationEu26,
-    regIfraCategoryLimit,
-    regCiNumber,
-    regApprovedArea,
-    rmPhysicalFormSolid,
-    rmPhysicalFormLiquid,
+    ...flags,
     showRegulatoryConditional:
-      regMaxUseLevelPct ||
-      regAllergenDeclarationEu26 ||
-      regIfraCategoryLimit ||
-      regCiNumber ||
-      regApprovedArea,
-    showTechnicalConditional: rmPhysicalFormSolid || rmPhysicalFormLiquid,
+      flags.regMaxUseLevelPct ||
+      flags.regAllergenDeclarationEu26 ||
+      flags.regIfraCategoryLimit ||
+      flags.regCiNumber ||
+      flags.regApprovedArea,
+    showTechnicalConditional: flags.rmPhysicalFormSolid || flags.rmPhysicalFormLiquid,
     showQualityConditional,
   };
 }

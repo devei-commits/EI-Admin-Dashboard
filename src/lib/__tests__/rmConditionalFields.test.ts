@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getRmConditionalVisibility } from '../rmConditionalFields';
 
 describe('getRmConditionalVisibility', () => {
-  it('shows max use level for bulk preservatives / UV filters', () => {
+  it('shows max use level for preservatives / UV filters', () => {
     const preserv = getRmConditionalVisibility({
-      subCategory: 'Bulk raw materials',
-      optionalRmSubCategory: 'Preservative',
+      subCategory: 'RAW MATERIALS',
+      optionalRmSubCategory: 'PRESERVATIVES',
       optionalRmSubSubCategory: '',
       rmState: '',
     });
@@ -13,9 +13,9 @@ describe('getRmConditionalVisibility', () => {
     expect(preserv.regCiNumber).toBe(false);
 
     const uv = getRmConditionalVisibility({
-      subCategory: 'Bulk raw materials',
-      optionalRmSubCategory: 'Active',
-      optionalRmSubSubCategory: 'UV Filter',
+      subCategory: 'RAW MATERIALS',
+      optionalRmSubCategory: 'UV FILTERS',
+      optionalRmSubSubCategory: 'UVA',
       rmState: '',
     });
     expect(uv.regMaxUseLevelPct).toBe(true);
@@ -23,8 +23,8 @@ describe('getRmConditionalVisibility', () => {
 
   it('shows fragrance regulatory fields for Fragrance category', () => {
     const v = getRmConditionalVisibility({
-      subCategory: 'Fragrance',
-      optionalRmSubCategory: '',
+      subCategory: 'FRAGRANCES / PERFUMES',
+      optionalRmSubCategory: 'OIL SOLUBLE',
       rmState: '',
     });
     expect(v.regAllergenDeclarationEu26).toBe(true);
@@ -32,29 +32,38 @@ describe('getRmConditionalVisibility', () => {
     expect(v.regMaxUseLevelPct).toBe(false);
   });
 
-  it('shows colour fields for Colors & Pigments', () => {
+  it('shows colour fields for COLOURS', () => {
     const v = getRmConditionalVisibility({
-      subCategory: 'Colors & Pigments',
-      optionalRmSubCategory: '',
+      subCategory: 'COLOURS',
+      optionalRmSubCategory: 'OIL SOLUBLE',
       rmState: '',
     });
     expect(v.regCiNumber).toBe(true);
     expect(v.regApprovedArea).toBe(true);
   });
 
+  it('accepts legacy category labels', () => {
+    const v = getRmConditionalVisibility({
+      subCategory: 'Bulk raw materials',
+      optionalRmSubCategory: 'Preservative',
+      rmState: '',
+    });
+    expect(v.regMaxUseLevelPct).toBe(true);
+  });
+
   it('shows quality spec section for bulk functional categories', () => {
     expect(
       getRmConditionalVisibility({
-        subCategory: 'Bulk raw materials',
-        optionalRmSubCategory: 'Surfactant',
-        optionalRmSubSubCategory: 'Anionic',
+        subCategory: 'RAW MATERIALS',
+        optionalRmSubCategory: 'SURFACTANTS',
+        optionalRmSubSubCategory: 'ANIONIC',
         rmState: '',
       }).showQualityConditional
     ).toBe(true);
 
     expect(
       getRmConditionalVisibility({
-        subCategory: 'Bulk raw materials',
+        subCategory: '',
         optionalRmSubCategory: '',
         optionalRmSubSubCategory: '',
         rmState: '',
@@ -65,15 +74,15 @@ describe('getRmConditionalVisibility', () => {
   it('shows physical form fields by technical state', () => {
     expect(
       getRmConditionalVisibility({
-        subCategory: 'Actives',
-        optionalRmSubCategory: '',
+        subCategory: 'RAW MATERIALS',
+        optionalRmSubCategory: 'ACTIVES',
         rmState: 'Solid',
       }).rmPhysicalFormSolid
     ).toBe(true);
     expect(
       getRmConditionalVisibility({
-        subCategory: 'Actives',
-        optionalRmSubCategory: '',
+        subCategory: 'RAW MATERIALS',
+        optionalRmSubCategory: 'ACTIVES',
         rmState: 'Liquid',
       }).rmPhysicalFormLiquid
     ).toBe(true);

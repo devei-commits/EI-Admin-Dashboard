@@ -49,7 +49,6 @@ import { fetchVendorClients, type VendorClientRecord } from '../services/vendorC
 import {
   RM_SUB_CATEGORY_SKU_SELECT_OPTIONS,
   normalizeRmSubCategoryForSelect,
-  rmBulkUsesFunctionalCategoryTaxonomy,
   normalizeRmDetailSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
   rmDetailSubCategoryHasSubSubCategory,
@@ -146,11 +145,9 @@ function hydrateRmSourcingFromVendor(
 
 function rmSubCategoryLeadingDigit(sub: string): '1' | '2' | '3' | null {
   const canon = normalizeRmSubCategoryForSelect(sub);
-  if (canon === 'Bulk raw materials') return '1';
-  const k = String(sub || '').trim().toLowerCase();
-  if (k === 'raw material' || k === 'raw materials' || k.includes('bulk raw')) return '1';
-  if (k === 'fragrance' || k === 'fragrances') return '2';
-  if (k === 'colors & pigments') return '3';
+  if (canon === 'RAW MATERIALS') return '1';
+  if (canon === 'FRAGRANCES / PERFUMES') return '2';
+  if (canon === 'COLOURS') return '3';
   return null;
 }
 
@@ -433,20 +430,23 @@ const RawMaterialRefactored: React.FC = () => {
   }
   return base;
  }, [formData.subCategory, formData.optionalRmSubCategory]);
- const rmSubSubCategoryRequired = rmDetailSubCategoryHasSubSubCategory(formData.optionalRmSubCategory);
+ const rmSubSubCategoryRequired = rmDetailSubCategoryHasSubSubCategory(
+  formData.optionalRmSubCategory,
+  formData.subCategory
+ );
  const rmSubSubCategoryOptions = useMemo(() => {
-  const base = rmSubSubCategoryOptionsForDetailSubCategory(formData.optionalRmSubCategory);
+  const base = rmSubSubCategoryOptionsForDetailSubCategory(
+   formData.optionalRmSubCategory,
+   formData.subCategory
+  );
   const cur = String(formData.optionalRmSubSubCategory ?? '').trim();
   if (cur && !base.some((o) => o.value === cur)) {
    return [{ value: cur, label: cur }, ...base];
   }
   return base;
- }, [formData.optionalRmSubCategory, formData.optionalRmSubSubCategory]);
- const rmUsesBulkFunctionalTaxonomy = rmBulkUsesFunctionalCategoryTaxonomy(formData.subCategory);
- const rmFunctionalCategoryLabel = rmUsesBulkFunctionalTaxonomy ? 'Category' : 'Sub-category (optional)';
- const rmFunctionalSubCategoryLabel = rmUsesBulkFunctionalTaxonomy
-  ? 'Sub-category'
-  : 'Sub-sub category (optional)';
+ }, [formData.optionalRmSubCategory, formData.optionalRmSubSubCategory, formData.subCategory]);
+ const rmFunctionalCategoryLabel = 'Sub-category';
+ const rmFunctionalSubCategoryLabel = 'Sub-sub category';
  const canAdvancePastPrimary =
   !isNewRm ||
   Boolean(
@@ -1148,13 +1148,11 @@ const RawMaterialRefactored: React.FC = () => {
     <div className="min-w-0 space-y-5 sm:space-y-6">
      <div className="min-w-0">
       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-       {rmUsesBulkFunctionalTaxonomy
-        ? 'SKU series, category & sub-category'
-        : 'Category, sub-category & sub-sub category'}
+       Category, sub-category &amp; sub-sub category
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
        <SelectField
-        label={rmUsesBulkFunctionalTaxonomy ? 'SKU series' : 'Category'}
+        label="Category"
         id="subCategory"
         value={formData.subCategory}
         onChange={handleInputChange}
@@ -1202,12 +1200,8 @@ const RawMaterialRefactored: React.FC = () => {
          onChange={handleInputChange}
          placeholder={
           formData.optionalRmSubCategory?.trim()
-            ? rmUsesBulkFunctionalTaxonomy
-              ? 'No sub-categories for this category'
-              : 'No sub-sub options for this sub-category'
-            : rmUsesBulkFunctionalTaxonomy
-              ? 'Select category first'
-              : 'Select sub-category first'
+            ? 'No sub-sub options for this sub-category'
+            : 'Select sub-category first'
          }
          error={errors.optionalRmSubSubCategory}
          readOnly
@@ -1216,18 +1210,9 @@ const RawMaterialRefactored: React.FC = () => {
        )}
       </div>
       <p className="text-xs text-gray-500 mt-2">
-       {rmUsesBulkFunctionalTaxonomy ? (
-        <>
-         SKU series drives the internal code prefix (<span className="font-mono">1</span> bulk). Pick a functional
-         category (Surfactant, Active, Polymer, …) and sub-category (Anionic, Vitamin, Carbomer, …).
-        </>
-       ) : (
-        <>
-         Category drives the internal SKU prefix (<span className="font-mono">1</span> bulk,{' '}
-         <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colors). Sub-category
-         lists depend on the category you pick.
-        </>
-       )}
+       Category drives the internal SKU prefix (<span className="font-mono">1</span> raw materials,{' '}
+       <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colours). Pick a
+       sub-category (EMULSIFIERS, SURFACTANTS, TUBES, …) and sub-sub where applicable.
       </p>
      </div>
 

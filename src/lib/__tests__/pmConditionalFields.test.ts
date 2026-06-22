@@ -5,8 +5,8 @@ describe('getPmConditionalVisibility', () => {
   it('shows PPM primary fields for ppm category', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
-      optionalPmSubCategory: 'Primary Pack',
-      optionalPmSubSubCategory: 'Bottle (PET/HDPE)',
+      optionalPmSubCategory: 'BOTTLES',
+      optionalPmSubSubCategory: 'PET',
     });
     expect(v.primaryAssemblyCode).toBe(true);
     expect(v.technicalEmptyWeight).toBe(true);
@@ -16,8 +16,8 @@ describe('getPmConditionalVisibility', () => {
   it('shows bottle-specific technical fields', () => {
     const v = getPmConditionalVisibility({
       pmSkuCategory: 'ppm',
-      optionalPmSubCategory: 'Primary Pack',
-      optionalPmSubSubCategory: 'Bottle (PET/HDPE)',
+      optionalPmSubCategory: 'BOTTLES',
+      optionalPmSubSubCategory: 'PET',
     });
     expect(v.technicalNominalVolume).toBe(true);
     expect(v.technicalShoulderHeight).toBe(true);
@@ -34,14 +34,24 @@ describe('getPmConditionalVisibility', () => {
     expect(v.technicalNominalVolume).toBe(true);
   });
 
+  it('shows caps/lids diameter fields', () => {
+    const caps = getPmConditionalVisibility({
+      pmSkuCategory: 'ppm',
+      optionalPmSubCategory: 'CAPS',
+    });
+    expect(caps.technicalOuterDiameter).toBe(true);
+    expect(caps.technicalNominalVolume).toBe(false);
+    expect(caps.aestheticsCapOvercapColour).toBe(true);
+  });
+
   it('limits adhesive compatibility to labels and other secondary', () => {
     const labels = getPmConditionalVisibility({
       pmSkuCategory: 'spm-labels',
-      optionalPmSubCategory: '',
+      optionalPmSubCategory: 'SHEET FORM',
     });
     const mono = getPmConditionalVisibility({
       pmSkuCategory: 'spm-monocarton',
-      optionalPmSubCategory: '',
+      optionalPmSubCategory: 'LOCK BOTTOM',
     });
     expect(labels.compatAdhesiveCompatibility).toBe(true);
     expect(labels.compatContainerSurface).toBe(true);

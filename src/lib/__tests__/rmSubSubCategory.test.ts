@@ -10,34 +10,38 @@ import {
 
 describe('RM sub-sub category', () => {
   it('lists bulk functional categories in catalog order', () => {
-    const opts = rmDetailSubCategoryOptionsForSkuCategory('Bulk raw materials').map((o) => o.value);
+    const opts = rmDetailSubCategoryOptionsForSkuCategory('RAW MATERIALS').map((o) => o.value);
     expect(opts).toEqual(Object.keys(RM_BULK_FUNCTIONAL_SUB_CATEGORIES));
   });
 
   it('exposes surfactant sub-categories', () => {
-    expect(rmDetailSubCategoryHasSubSubCategory('Surfactant')).toBe(true);
-    expect(rmSubSubCategoryOptionsForDetailSubCategory('Surfactant').map((o) => o.value)).toEqual([
-      'Anionic',
-      'Non-ionic',
-      'Amphoteric',
-      'Cationic',
+    expect(rmDetailSubCategoryHasSubSubCategory('SURFACTANTS', 'RAW MATERIALS')).toBe(true);
+    expect(rmSubSubCategoryOptionsForDetailSubCategory('SURFACTANTS', 'RAW MATERIALS').map((o) => o.value)).toEqual([
+      'ANIONIC',
+      'CATIONIC',
+      'NON-IONIC',
+      'AMPHOTERIC',
     ]);
   });
 
-  it('exposes active sub-categories including UV Filter', () => {
-    expect(rmSubSubCategoryOptionsForDetailSubCategory('Active').map((o) => o.value)).toContain('UV Filter');
+  it('exposes UV filter sub-categories', () => {
+    expect(rmSubSubCategoryOptionsForDetailSubCategory('UV FILTERS', 'RAW MATERIALS').map((o) => o.value)).toContain(
+      'UVA'
+    );
   });
 
-  it('has no sub-sub for fragrance oil / water soluble SKU tabs', () => {
-    expect(normalizeRmDetailSubCategoryForSelect('Fragrance', 'oil soluble')).toBe('Oil soluble');
-    expect(rmDetailSubCategoryHasSubSubCategory('Oil soluble')).toBe(false);
-    expect(rmSubSubCategoryOptionsForDetailSubCategory('Water soluble')).toEqual([]);
+  it('has no sub-sub for fragrance oil / water soluble tabs', () => {
+    expect(normalizeRmDetailSubCategoryForSelect('FRAGRANCES / PERFUMES', 'oil soluble')).toBe('OIL SOLUBLE');
+    expect(rmDetailSubCategoryHasSubSubCategory('OIL SOLUBLE', 'FRAGRANCES / PERFUMES')).toBe(false);
+    expect(rmSubSubCategoryOptionsForDetailSubCategory('WATER SOLUBLE', 'FRAGRANCES / PERFUMES')).toEqual([]);
   });
 
   it('normalizes legacy surfactant labels and sub-sub aliases', () => {
-    expect(normalizeRmDetailSubCategoryForSelect('Bulk raw materials', 'surfactants')).toBe('Surfactant');
-    expect(normalizeRmSubSubCategoryForSelect('Surfactant', 'non ionic')).toBe('Non-ionic');
-    expect(normalizeRmSubSubCategoryForSelect('Preservative', 'phenoxyethanol')).toBe('Phenoxyethanol-type');
-    expect(normalizeRmSubSubCategoryForSelect('Active', 'uv filter')).toBe('UV Filter');
+    expect(normalizeRmDetailSubCategoryForSelect('RAW MATERIALS', 'surfactants')).toBe('SURFACTANTS');
+    expect(normalizeRmSubSubCategoryForSelect('SURFACTANTS', 'non ionic', 'RAW MATERIALS')).toBe('NON-IONIC');
+    expect(normalizeRmSubSubCategoryForSelect('PRESERVATIVES', 'phenoxyethanol', 'RAW MATERIALS')).toBe(
+      'BROAD SPECTRUM'
+    );
+    expect(normalizeRmSubSubCategoryForSelect('UV FILTERS', 'uva', 'RAW MATERIALS')).toBe('UVA');
   });
 });

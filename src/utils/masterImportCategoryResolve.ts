@@ -5,6 +5,7 @@
 import {
   normalizeRmSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
+  normalizeRmDetailSubCategoryForSelect,
   normalizePmSkuCategoryForSelect,
   normalizePmDetailSubCategoryForSelect,
   normalizePmSubSubCategoryForSelect,
@@ -47,14 +48,19 @@ export function resolveRmEditCategories(record: {
       record.category
   );
   const rmType = trim((fd as { rmType?: string }).rmType || record.rmType);
-  const optionalRmSubCategory = trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory);
+  const optionalRmSubCategory =
+    normalizeRmDetailSubCategoryForSelect(subCategory, trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory)) ||
+    trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory);
   const optionalRmSubSubCategoryRaw = trim(
     (fd as { optionalRmSubSubCategory?: string }).optionalRmSubSubCategory ||
       (fd as { rm_sub_sub_category?: string }).rm_sub_sub_category
   );
   const optionalRmSubSubCategory =
-    normalizeRmSubSubCategoryForSelect(optionalRmSubCategory, optionalRmSubSubCategoryRaw) ||
-    optionalRmSubSubCategoryRaw;
+    normalizeRmSubSubCategoryForSelect(
+      optionalRmSubCategory,
+      optionalRmSubSubCategoryRaw,
+      subCategory
+    ) || optionalRmSubSubCategoryRaw;
 
   return {
     subCategory,

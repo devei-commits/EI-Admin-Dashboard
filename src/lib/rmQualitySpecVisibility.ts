@@ -4,6 +4,10 @@ import {
   normalizeRmSubCategoryForSelect,
   normalizeRmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
+import {
+  rmUnifiedToLegacyQualityCategory,
+  rmUnifiedToLegacyQualitySub,
+} from '../constants/eiMastersUnifiedSchema';
 import { cloneRmQualitySpecTableDefaults } from '../constants/rmQualitySpecTableDefaults';
 import {
   cloneRmQualitySubSpecTableDefaults,
@@ -45,19 +49,25 @@ function normSub(raw: string): string {
 
 export function resolveRmQualitySpecContext(ctx: RmQualitySpecContext): RmQualitySpecResolvedContext {
   const cat = normalizeRmSubCategoryForSelect(ctx.subCategory);
-  const isBulk = cat === 'Bulk raw materials';
-  const functionalCategory =
+  const isBulk = cat === 'RAW MATERIALS';
+  const unifiedCategory =
     normalizeRmDetailSubCategoryKey(ctx.optionalRmSubCategory) ||
     normalizeRmDetailSubCategoryForSelect(ctx.subCategory, ctx.optionalRmSubCategory) ||
     String(ctx.optionalRmSubCategory ?? '').trim();
-  const functionalSub =
-    normalizeRmSubSubCategoryForSelect(ctx.optionalRmSubCategory, ctx.optionalRmSubSubCategory) ||
-    String(ctx.optionalRmSubSubCategory ?? '').trim();
+  const unifiedSub =
+    normalizeRmSubSubCategoryForSelect(
+      unifiedCategory,
+      ctx.optionalRmSubSubCategory ?? '',
+      ctx.subCategory
+    ) || String(ctx.optionalRmSubSubCategory ?? '').trim();
 
-  const categoryDisplayLabel = functionalCategory || 'Skin Care';
+  const functionalCategory = rmUnifiedToLegacyQualityCategory(unifiedCategory);
+  const functionalSub = rmUnifiedToLegacyQualitySub(unifiedCategory, unifiedSub);
+
+  const categoryDisplayLabel = functionalCategory || unifiedCategory || 'Skin Care';
 
   return {
-    isBulkFunctional: isBulk && Boolean(functionalCategory),
+    isBulkFunctional: isBulk && Boolean(unifiedCategory),
     functionalCategory,
     functionalSub,
     categoryDisplayLabel,
