@@ -27,13 +27,10 @@ function buildFallbackCommonTemplates(): Record<string, CommonSpecTemplate[]> {
 
 const FALLBACK_COMMON_TEMPLATES = buildFallbackCommonTemplates();
 
-export function hasPmQualitySpecDefaults(category: string): boolean {
-  const key = category.trim();
-  return Boolean(PM_QC_COMMON_BY_CATEGORY[key]?.length || FALLBACK_COMMON_TEMPLATES[key]?.length);
+export function hasPmQualitySpecDefaults(_category: string): boolean {
+  return false;
 }
 
-export function clonePmQualitySpecTableDefaults(category: string): QualitySpecTableRow[] {
-  const key = category.trim();
-  const templates = PM_QC_COMMON_BY_CATEGORY[key] ?? FALLBACK_COMMON_TEMPLATES[key] ?? [];
-  return templates.map((row) => createEmptyQualitySpecRow(row));
+export function clonePmQualitySpecTableDefaults(_category: string): QualitySpecTableRow[] {
+  return [];
 }

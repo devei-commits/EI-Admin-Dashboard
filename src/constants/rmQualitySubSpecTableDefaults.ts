@@ -35,16 +35,13 @@ export function rmQualitySubSpecPathKey(category: string, subCategory: string): 
   return subSpecPathKey(category, subCategory);
 }
 
-export function hasRmQualitySubSpecDefaults(category: string, subCategory: string): boolean {
-  const key = rmQualitySubSpecPathKey(category, subCategory);
-  return Boolean(RM_QC_SUB_BY_PATH[key]?.length || FALLBACK_SUB_SPEC_TEMPLATES[key]?.length);
+export function hasRmQualitySubSpecDefaults(_category: string, _subCategory: string): boolean {
+  return false;
 }
 
 export function cloneRmQualitySubSpecTableDefaults(
-  category: string,
-  subCategory: string
+  _category: string,
+  _subCategory: string
 ): QualitySpecTableRow[] {
-  const key = rmQualitySubSpecPathKey(category, subCategory);
-  const templates = RM_QC_SUB_BY_PATH[key] ?? FALLBACK_SUB_SPEC_TEMPLATES[key] ?? [];
-  return templates.map((row) => createEmptyQualitySpecRow(row));
+  return [];
 }

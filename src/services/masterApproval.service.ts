@@ -37,6 +37,59 @@ function approvalPath(kind: MasterApprovalKind, itemId: string | number): string
   }
 }
 
+function approvalHistoryPath(kind: MasterApprovalKind, itemId: string | number): string {
+  const id = encodeURIComponent(String(itemId));
+  switch (kind) {
+    case 'RM':
+      return `/api/v1/raw-materials/${id}/approval-status/history`;
+    case 'PM':
+      return `/api/v1/pack-materials/${id}/approval-status/history`;
+    case 'PR':
+      return `/api/v1/products/${id}/approval-status/history`;
+  }
+}
+
+export type MasterApprovalStatusHistoryEntry = {
+  id: number;
+  masterKind: MasterApprovalKind;
+  masterId: number;
+  masterCode: string | null;
+  fromStatus: string | null;
+  toStatus: string;
+  changedByUserId: number | null;
+  changedByDisplayName: string | null;
+  source: string | null;
+  note: string | null;
+  createdAt: string;
+};
+
+export type FetchMasterApprovalStatusHistoryResult = {
+  success: boolean;
+  data: { entries: MasterApprovalStatusHistoryEntry[] } | null;
+  error: string | null;
+};
+
+export async function fetchMasterApprovalStatusHistory(
+  kind: MasterApprovalKind,
+  itemId: string | number,
+  limit = 50
+): Promise<FetchMasterApprovalStatusHistoryResult> {
+  try {
+    const qs = limit !== 50 ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    const body = await api.get<{ success?: boolean; data?: { entries?: MasterApprovalStatusHistoryEntry[] } }>(
+      `${approvalHistoryPath(kind, itemId)}${qs}`
+    );
+    return {
+      success: true,
+      data: { entries: body?.data?.entries ?? [] },
+      error: null,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load approval status history';
+    return { success: false, data: null, error: message };
+  }
+}
+
 function readStatusFromResponse(kind: MasterApprovalKind, body: Record<string, unknown>): string {
   if (kind === 'PM') {
     const fd = body.form_data;

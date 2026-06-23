@@ -145,16 +145,23 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
     title: 'Specs & Regulatory',
     fields: fieldDefs(
       [
-        'prQualitySpecRowsBySection',
-        'prQualityBulkSubSpecRowsByPath',
-        'prQualityFinalSubSpecRowsByPath',
-        'prQualityDispatchSubSpecRowsByPath',
         'applicableRegulation',
         'cosmosNaturalCertification',
         'dermatologicallyTested',
         'crueltyFreeVegan',
         'approvedMarketingClaims',
         'claimsSubstantiation',
+      ]
+    ),
+  },
+  {
+    title: 'Quality specifications',
+    fields: fieldDefs(
+      [
+        'prQualitySpecRowsBySection',
+        'prQualityBulkSubSpecRowsByPath',
+        'prQualityFinalSubSpecRowsByPath',
+        'prQualityDispatchSubSpecRowsByPath',
       ],
       {
         prQualitySpecRowsBySection: 'Quality specifications (Bulk / Final / Dispatch tabular)',

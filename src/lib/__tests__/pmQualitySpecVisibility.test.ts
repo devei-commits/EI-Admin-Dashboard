@@ -44,13 +44,9 @@ describe('pmQualitySpecVisibility', () => {
     ).toBe(false);
   });
 
-  it('seeds primary pack common default rows', () => {
-    const defaults = getDefaultPmQualitySpecRows(bottleCtx);
-    expect(defaults.some((r) => r.parameter === 'COA from Vendor')).toBe(true);
-    expect(defaults.some((r) => r.parameter === 'Visual Damage / Defect')).toBe(true);
-  });
-
-  it('supports all five PM functional categories for quality specs', () => {
+  it('does not auto-seed template default rows', () => {
+    expect(getDefaultPmQualitySpecRows(bottleCtx)).toEqual([]);
+    expect(getDefaultPmQualitySubSpecRows(bottleCtx)).toEqual([]);
     for (const category of [
       'Closures & Pumps',
       'Secondary Pack',
@@ -64,52 +60,15 @@ describe('pmQualitySpecVisibility', () => {
         optionalPmSubSubCategory: '',
       };
       expect(shouldShowPmQualitySpecTable(ctx)).toBe(true);
-      const defaults = getDefaultPmQualitySpecRows(ctx);
-      expect(defaults.length).toBeGreaterThan(0);
+      expect(getDefaultPmQualitySpecRows(ctx)).toEqual([]);
     }
-  });
-
-  it('seeds bottle sub-category default rows', () => {
-    const defaults = getDefaultPmQualitySubSpecRows(bottleCtx);
-    expect(defaults.some((r) => r.parameter === 'Height')).toBe(true);
-    expect(defaults.some((r) => r.parameter === 'Stress-Crack Resistance (ESCR)')).toBe(true);
-  });
-
-  it('seeds secondary pack common and monocarton sub-category default rows', () => {
-    const monoCtx = {
-      pmSkuCategory: 'spm-monocarton',
-      optionalPmSubCategory: 'Secondary Pack',
-      optionalPmSubSubCategory: 'Monocarton',
-    };
-    const common = getDefaultPmQualitySpecRows(monoCtx);
-    expect(common.some((r) => r.parameter === 'Artwork Match')).toBe(true);
-    expect(common.some((r) => r.parameter === 'Barcode Scan')).toBe(true);
-
-    const sub = getDefaultPmQualitySubSpecRows(monoCtx);
-    expect(sub.some((r) => r.parameter === 'GSM')).toBe(true);
-    expect(sub.some((r) => r.parameter === 'Folding Quality (creases)')).toBe(true);
-  });
-
-  it('seeds closures & pumps common and pump sub-category default rows', () => {
-    const pumpCtx = {
-      pmSkuCategory: 'ppm',
-      optionalPmSubCategory: 'Closures & Pumps',
-      optionalPmSubSubCategory: 'Pump (Lotion/Foam)',
-    };
-    const common = getDefaultPmQualitySpecRows(pumpCtx);
-    expect(common.some((r) => r.parameter === 'Visual Defects')).toBe(true);
-    expect(common.some((r) => r.parameter === 'Compatibility with Bottle / Tube')).toBe(true);
-
-    const sub = getDefaultPmQualitySubSpecRows(pumpCtx);
-    expect(sub.some((r) => r.parameter === 'Output Volume per Stroke')).toBe(true);
-    expect(sub.some((r) => r.parameter === 'Cap Closure Lock' && r.mandatory)).toBe(true);
   });
 
   it('does not require quality spec rows on save', () => {
     expect(validatePmQualitySpecRows([], bottleCtx)).toEqual({});
   });
 
-  it('hydrates tabular common rows from form_data', () => {
+  it('hydrates only custom tabular common rows from form_data', () => {
     const rows = hydratePmQualitySpecRows({
       pmQualitySpecRows: [
         {
@@ -122,6 +81,18 @@ describe('pmQualitySpecVisibility', () => {
           frequency: 'Per lot',
           sample: '1',
           acceptance: 'Signed',
+          custom: true,
+        },
+        {
+          id: 'qs-2',
+          parameter: 'Height',
+          specLimit: 'Per Master mm',
+          method: 'Vernier',
+          mandatory: true,
+          tolerance: '',
+          frequency: '',
+          sample: '',
+          acceptance: '',
         },
       ],
     });
@@ -130,16 +101,18 @@ describe('pmQualitySpecVisibility', () => {
     expect(rows[0]?.mandatory).toBe(true);
   });
 
-  it('hydrates legacy flat qc keys into tabular rows', () => {
-    const rows = hydratePmQualitySpecRows({
-      qcPmPriBottleHeight: '120 mm',
-      qcPmPriCoa: 'Yes — on file',
-    });
-    expect(rows.some((r) => r.parameter === 'COA')).toBe(true);
-    const byPath = hydratePmQualitySubSpecRowsByPath({
-      qcPmPriBottleHeight: '120 mm',
-    });
-    expect(byPath['Primary Pack::Bottle (PET/HDPE)']?.some((r) => r.parameter === 'Height')).toBe(true);
+  it('ignores legacy flat qc keys when loading tabular specs', () => {
+    expect(
+      hydratePmQualitySpecRows({
+        qcPmPriBottleHeight: '120 mm',
+        qcPmPriCoa: 'Yes — on file',
+      })
+    ).toEqual([]);
+    expect(
+      hydratePmQualitySubSpecRowsByPath({
+        qcPmPriBottleHeight: '120 mm',
+      })
+    ).toEqual({});
   });
 
   it('flattens tabular rows for payload', () => {
@@ -155,6 +128,7 @@ describe('pmQualitySpecVisibility', () => {
         sample: '10',
         acceptance: 'Within tolerance',
         attachments: [],
+        custom: true,
       },
       {
         id: 'qs-2',
@@ -167,6 +141,38 @@ describe('pmQualitySpecVisibility', () => {
         sample: '',
         acceptance: '',
         attachments: [],
+      },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parameter).toBe('Height');
+  });
+
+  it('persists only custom rows on save', () => {
+    const rows = flattenPmQualitySpecRowsForPayload([
+      {
+        id: 'tpl',
+        parameter: 'COA from Vendor',
+        specLimit: 'Signed',
+        method: 'Doc review',
+        mandatory: true,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+      },
+      {
+        id: 'custom',
+        parameter: 'Height',
+        specLimit: '120 mm',
+        method: 'Vernier',
+        mandatory: true,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+        custom: true,
       },
     ]);
     expect(rows).toHaveLength(1);
@@ -187,6 +193,7 @@ describe('pmQualitySpecVisibility', () => {
           sample: '10',
           acceptance: 'Within tolerance',
           attachments: [],
+          custom: true,
         },
       ],
       'Primary Pack::': [],

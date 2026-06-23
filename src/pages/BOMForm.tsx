@@ -5,8 +5,21 @@ import { Plus, Trash2, Pencil, Check, ArrowUpFromLine } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
+import { MasterApprovalStatusHistoryPanel } from '../components/masters/MasterApprovalStatusHistoryPanel';
 import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
+import {
+  advanceMasterApprovalStatus,
+  getMasterApprovalSubmitAction,
+  withMasterDraftApprovalStatus,
+} from '../utils/masterSaveSubmit';
+import {
+  emptyStageAssignees,
+  normalizeMasterApprovalStatus,
+  normalizeStageAssignees,
+  type MasterApprovalStageAssignees,
+} from '../constants/masterApprovalStatus';
+import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import PmMasterTypeahead from '../components/PmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
@@ -180,6 +193,7 @@ interface BOMFormState {
   approvedMarketingClaims: string;
   claimsSubstantiation: string;
   prFacilityLicences: PrFacilityLicenceRecord[];
+  masterApprovalStatus: string;
 }
 
 function emptyBomForm(): BOMFormState {
@@ -219,6 +233,7 @@ function emptyBomForm(): BOMFormState {
     approvedMarketingClaims: '',
     claimsSubstantiation: '',
     prFacilityLicences: hydratePrFacilityLicenceRecords([]),
+    masterApprovalStatus: 'Draft',
   };
 }
 
@@ -388,8 +403,8 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
     bom_composite_item: fd.bomCompositeItem === 'Yes',
-    status: 'Draft',
-    lifecycle_status: 'Draft',
+    status: fd.masterApprovalStatus || 'Draft',
+    lifecycle_status: fd.masterApprovalStatus || 'Draft',
     pr_qc_group: fd.prQcGroup || null,
     pr_sub_category: fd.prSubCategory || null,
     pack_configuration: fd.packConfiguration || null,
@@ -677,6 +692,11 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     prFacilityLicences: hydratePrFacilityLicenceRecords(
       (p as unknown as { pr_facility_licences?: unknown }).pr_facility_licences
     ),
+    masterApprovalStatus: normalizeMasterApprovalStatus(
+      (p as unknown as { status?: string; lifecycle_status?: string }).status ??
+        (p as unknown as { lifecycle_status?: string }).lifecycle_status,
+      'Draft'
+    ),
   };
 }
 
@@ -684,10 +704,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const navigate = useNavigate();
   const { id: productIdFromParams } = useParams<{ id: string }>();
   const productIdFromRoute = productIdProp ?? productIdFromParams;
+  const [localProductId, setLocalProductId] = useState<string | null>(null);
+  const effectiveProductId = productIdFromRoute ?? localProductId ?? undefined;
   const { addToast } = useToast();
   const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
-  const [editLoading, setEditLoading] = useState(!!productIdFromRoute);
+  const [editLoading, setEditLoading] = useState(!!effectiveProductId);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const focusPrField = useCallback((target: 'category' | 'prSubCategory' | 'productName' | 'formula' | 'pack' | 'bomCompositeItem') => {
     window.setTimeout(() => {
@@ -741,6 +763,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     { mode: 'create' | 'update'; body: Record<string, unknown> } | null
   >(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
+    useState<MasterApprovalStageAssignees>(emptyStageAssignees);
+  const [approvalHistoryRefreshKey, setApprovalHistoryRefreshKey] = useState(0);
+  const { canApproveAtStatus } = useMasterApprovalPermission('PR');
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
   const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
@@ -753,10 +780,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     'Pack BOM',
     'Process Steps',
     'Specs & Regulatory',
+    'Quality specifications',
     'Licensing',
   ];
 
-  const isNewProduct = !productIdFromRoute;
+  const isNewProduct = !effectiveProductId;
+  const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
+  const canShowApprovalSubmit =
+    approvalSubmitAction != null &&
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
   const canAdvancePastPrimary =
     !isNewProduct ||
     Boolean(
@@ -776,12 +808,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   // Exception: legacy rows that have no BOM payload loaded (all edit arrays empty)
   // need a bootstrap edit pass to set missing composite/returnable/code metadata.
   const isBomBootstrapEdit =
-    !!productIdFromRoute &&
+    !!effectiveProductId &&
     formData.formulaIngredients.length === 0 &&
     formData.skuBomLines.length === 0 &&
     formData.packingComponents.length === 0 &&
     formData.processSteps.length === 0;
-  const lockPrimaryFields = !!productIdFromRoute && !isBomBootstrapEdit;
+  const lockPrimaryFields = !!effectiveProductId && !isBomBootstrapEdit;
 
   // Load RM/PM masters once so the BOM lines can reference actual items (ids/codes/prices).
   useEffect(() => {
@@ -960,19 +992,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     []
   );
 
+  useEffect(() => {
+    if (!effectiveProductId) {
+      setEditApprovalStageAssignees(emptyStageAssignees());
+    }
+  }, [effectiveProductId]);
+
   // When route has :id, fetch product and fill form for edit
   useEffect(() => {
-    if (!productIdFromRoute) return;
+    if (!effectiveProductId) return;
     setCurrentStage(0);
     let cancelled = false;
     setEditLoading(true);
-    fetchPRProductDetail(productIdFromRoute).then((res) => {
+    fetchPRProductDetail(effectiveProductId).then((res) => {
       if (cancelled) return;
       setEditLoading(false);
       if (res.success && res.data) {
         const d = res.data;
         const dbg = {
-          productIdFromRoute,
+          effectiveProductId,
           formulaBomPhases: Array.isArray(d.formulaBom) ? d.formulaBom.length : null,
           formulaBomIngredientsTotal: Array.isArray(d.formulaBom)
             ? d.formulaBom.reduce((sum: number, ph: any) => sum + (Array.isArray(ph.ingredients) ? ph.ingredients.length : 0), 0)
@@ -983,16 +1021,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         };
         console.log('[PR Edit Populate Debug]', JSON.stringify(dbg, null, 2));
         if ((dbg.formulaBomPhases ?? 0) === 0 && (dbg.packBomRows ?? 0) === 0) {
-          window.alert(`PR edit populate looks empty for id=${productIdFromRoute}. See console log [PR Edit Populate Debug].`);
+          window.alert(`PR edit populate looks empty for id=${effectiveProductId}. See console log [PR Edit Populate Debug].`);
         }
         const next = productDetailToBomForm(d);
         setFormData(next);
+        setEditApprovalStageAssignees(normalizeStageAssignees(d.approval_stage_assignees));
       }
     }).catch(() => {
       if (!cancelled) setEditLoading(false);
     });
     return () => { cancelled = true; };
-  }, [productIdFromRoute]);
+  }, [effectiveProductId]);
 
   const prQualitySpecCtx = useMemo(
     () => ({
@@ -1098,7 +1137,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   }, []);
 
   useEffect(() => {
-    if (currentStage !== 5) return;
+    if (currentStage !== 6) return;
     setFormData((prev) => {
       const seeded = seedPrQualitySpecsIfEmpty(
         { category: prev.category, prSubCategory: prev.prSubCategory },
@@ -1126,7 +1165,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   }, [currentStage, formData.category, formData.prSubCategory]);
 
   useEffect(() => {
-    if (currentStage !== 6) return;
+    if (currentStage !== 7) return;
     setFormData((prev) => {
       const seeded = seedPrFacilityLicencesIfEmpty(prev.prFacilityLicences);
       if (seeded === prev.prFacilityLicences) return prev;
@@ -1631,10 +1670,82 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       return null;
     }
 
-    if (productIdFromRoute) {
-      return { mode: 'update', body: buildPrUpdateBody(formData) };
+    if (effectiveProductId) {
+      return {
+        mode: 'update' as const,
+        body: withMasterDraftApprovalStatus(buildPrUpdateBody(formData), formData.masterApprovalStatus),
+      };
     }
-    return { mode: 'create', body: buildPrRegistrationBody(formData) };
+    return {
+      mode: 'create' as const,
+      body: withMasterDraftApprovalStatus(buildPrRegistrationBody(formData), formData.masterApprovalStatus),
+    };
+  };
+
+  const validatePrForDraft = (): { mode: 'update' | 'create'; body: Record<string, unknown> } | null => {
+    if (!formData.productName.trim()) {
+      addToast('error', 'Product name is required to save a draft');
+      setCurrentStage(0);
+      focusPrField('productName');
+      return null;
+    }
+    if (effectiveProductId) {
+      return {
+        mode: 'update',
+        body: withMasterDraftApprovalStatus(buildPrUpdateBody(formData), formData.masterApprovalStatus),
+      };
+    }
+    return {
+      mode: 'create',
+      body: withMasterDraftApprovalStatus(buildPrRegistrationBody(formData), formData.masterApprovalStatus),
+    };
+  };
+
+  const handleSave = async () => {
+    const pending = validatePrForDraft();
+    if (!pending) return;
+    setDraftSaving(true);
+    try {
+      if (pending.mode === 'update' && effectiveProductId) {
+        const res = await updatePRProduct(effectiveProductId, pending.body);
+        if (!res.success || !res.data) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to save draft');
+          return;
+        }
+        setFormData(productDetailToBomForm(res.data));
+        setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+      } else {
+        const res = await createPRRegistration(pending.body);
+        if (!res.success || !res.data) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to save draft');
+          return;
+        }
+        const product = res.data.product as Record<string, unknown>;
+        const pid = product.product_id ?? product.productId;
+        if (pid != null) {
+          const idStr = String(pid);
+          setLocalProductId(idStr);
+          const detail = await fetchPRProductDetail(idStr);
+          if (detail.success && detail.data) {
+            setFormData(productDetailToBomForm(detail.data));
+            setEditApprovalStageAssignees(normalizeStageAssignees(detail.data.approval_stage_assignees));
+          } else {
+            setFormData((prev) => ({
+              ...prev,
+              skuCode: String(product.product_code ?? product.productCode ?? prev.skuCode),
+              masterApprovalStatus: 'Draft',
+            }));
+          }
+        }
+      }
+      addToast('success', 'Draft saved. Continue editing and submit for review when ready.');
+      onSaved?.();
+    } catch (err) {
+      console.error(err);
+      addToast('error', err instanceof Error ? err.message : 'Failed to save draft');
+    } finally {
+      setDraftSaving(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -1658,73 +1769,85 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     if (!pending) return;
     setSubmitConfirming(true);
     try {
-      if (pending.mode === 'update' && productIdFromRoute) {
-        const res = await updatePRProduct(productIdFromRoute, pending.body);
-        if (res.success && res.data) {
-          setFormData(productDetailToBomForm(res.data));
-          setSaveSuccessIsEdit(true);
-          setSaveSuccessCode(formData.skuCode.trim() || '');
-          setSaveSuccessRows([
-            { label: 'Product name', value: formData.productName.trim() },
-            { label: 'Category', value: formData.category || '' },
-            {
-              label: 'Record type',
-              value:
-                formData.prRecordType === 'temporary'
-                  ? 'Temporary'
-                  : formData.prRecordType === 'permanent'
-                    ? 'Permanent'
-                    : 'Legacy',
-            },
-            ...(formData.skuBomLimitQty.trim()
-              ? [
-                  {
-                    label: 'SKU BOM net per unit',
-                    value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
-                  },
-                ]
-              : []),
-          ]);
-          setSubmitPreviewOpen(false);
-          setPendingPrSubmit(null);
-          setSaveSuccessOpen(true);
-        } else {
+      let recordId = effectiveProductId;
+      let approvalStatus = formData.masterApprovalStatus;
+
+      if (pending.mode === 'update' && effectiveProductId) {
+        const res = await updatePRProduct(effectiveProductId, pending.body);
+        if (!res.success || !res.data) {
           addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update product');
+          return;
         }
-        return;
+        setFormData(productDetailToBomForm(res.data));
+        setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+        setSaveSuccessIsEdit(true);
+        setSaveSuccessCode(formData.skuCode.trim() || '');
+      } else {
+        const res = await createPRRegistration(pending.body);
+        if (!res.success || !res.data) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to register product');
+          return;
+        }
+        const product = res.data.product as Record<string, unknown>;
+        recordId = String(product.product_id ?? product.productId ?? '');
+        if (recordId) setLocalProductId(recordId);
+        setSaveSuccessIsEdit(false);
+        setSaveSuccessCode(String(product.product_code ?? product.productCode ?? '').trim());
       }
 
-      const res = await createPRRegistration(pending.body);
-      if (res.success && res.data) {
-        const product = res.data.product as Record<string, unknown>;
-        const code = String(product.product_code ?? product.productCode ?? '').trim();
-        setSaveSuccessIsEdit(false);
-        setSaveSuccessCode(code);
-        setSaveSuccessRows([
-          { label: 'Product name', value: String(product.product_name ?? product.name ?? formData.productName).trim() },
-          { label: 'Category', value: String(product.category ?? formData.category ?? '') },
-          {
-            label: 'Record type',
-            value: formData.prRecordType === 'temporary' ? 'Temporary (TPR#####)' : 'Permanent (PR#####)',
-          },
-          ...(formData.skuBomLimitQty.trim()
-            ? [
-                {
-                  label: 'SKU BOM net per unit',
-                  value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
-                },
-              ]
-            : []),
-          ...(res.data.bom?.bom_code
-            ? [{ label: 'Linked BOM', value: String(res.data.bom.bom_code) }]
-            : []),
-        ]);
-        setSubmitPreviewOpen(false);
-        setPendingPrSubmit(null);
-        setSaveSuccessOpen(true);
-      } else {
-        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to register product');
+      const freshAfterSave = recordId ? await fetchPRProductDetail(recordId) : null;
+      if (freshAfterSave?.success && freshAfterSave.data) {
+        setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees));
       }
+
+      if (recordId && getMasterApprovalSubmitAction(approvalStatus)) {
+        const assigneesForAdvance =
+          freshAfterSave?.success && freshAfterSave.data
+            ? normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees)
+            : editApprovalStageAssignees;
+        if (!canApproveAtStatus(approvalStatus, assigneesForAdvance)) {
+          addToast(
+            'error',
+            'Only the person assigned to this approval stage can submit for the next status. Assign them in the list, then try again.'
+          );
+        } else {
+          const advanced = await advanceMasterApprovalStatus('PR', recordId);
+          if (advanced.ok) {
+            approvalStatus = advanced.status;
+            setFormData((prev) => ({ ...prev, masterApprovalStatus: advanced.status }));
+            setApprovalHistoryRefreshKey((k) => k + 1);
+          } else {
+            addToast('error', advanced.error);
+          }
+        }
+      }
+
+      setSaveSuccessRows([
+        { label: 'Product name', value: formData.productName.trim() },
+        { label: 'Category', value: formData.category || '' },
+        {
+          label: 'Record type',
+          value:
+            formData.prRecordType === 'temporary'
+              ? 'Temporary'
+              : formData.prRecordType === 'permanent'
+                ? 'Permanent'
+                : 'Legacy',
+        },
+        { label: 'Approval status', value: approvalStatus },
+        ...(formData.skuBomLimitQty.trim()
+          ? [
+              {
+                label: 'SKU BOM net per unit',
+                value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
+              },
+            ]
+          : []),
+      ]);
+      setSubmitPreviewOpen(false);
+      setPendingPrSubmit(null);
+      setSaveSuccessOpen(true);
+      onSaved?.();
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Save failed');
@@ -3066,42 +3189,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   </div>
                 </div>
               </div>
-              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white min-w-0">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality specifications</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Choose Bulk Clearance, Final Clearance, or Dispatch Specs above the table — use Add when no template exists for that section.
-                </p>
-                <PrQualitySpecTable
-                  categoryLabel={prQualitySpecResolved.categoryDisplayLabel}
-                  subCategoryLabel={prQualitySpecResolved.subCategory || '—'}
-                  rowsBySection={formData.prQualitySpecRowsBySection}
-                  bulkSubRows={currentPrBulkSubSpecRows}
-                  finalSubRows={currentPrFinalSubSpecRows}
-                  dispatchSubRows={currentPrDispatchSubSpecRows}
-                  onSectionChange={handlePrQualitySpecSectionChange}
-                  onBulkSubChange={handlePrBulkSubSpecRowsChange}
-                  onFinalSubChange={handlePrFinalSubSpecRowsChange}
-                  onDispatchSubChange={handlePrDispatchSubSpecRowsChange}
-                  showBulkSubTable={showPrBulkSubSpecTable}
-                  showFinalSubTable={showPrFinalSubSpecTable}
-                  showDispatchSubTable={showPrDispatchSubSpecTable}
-                  bulkSubDisabledHint={
-                    showPrBulkSubSpecTable
-                      ? undefined
-                      : 'Select PR category and sub-category in Primary info to add bulk sub-category specs.'
-                  }
-                  finalSubDisabledHint={
-                    showPrFinalSubSpecTable
-                      ? undefined
-                      : 'Select PR category and sub-category in Primary info to add final sub-category specs.'
-                  }
-                  dispatchSubDisabledHint={
-                    showPrDispatchSubSpecTable
-                      ? undefined
-                      : 'Select PR category and sub-category in Primary info to add dispatch sub-category specs.'
-                  }
-                />
-              </div>
 
               <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
                 <label className="block text-sm font-semibold text-blue-700 mb-3">REGULATORY & CLAIMS</label>
@@ -3154,6 +3241,45 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         );
       case 6:
         return (
+          <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white min-w-0">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality specifications</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Choose Bulk Clearance, Final Clearance, or Dispatch Specs above the table — use Add when no template exists for that section.
+            </p>
+            <PrQualitySpecTable
+              categoryLabel={prQualitySpecResolved.categoryDisplayLabel}
+              subCategoryLabel={prQualitySpecResolved.subCategory || '—'}
+              rowsBySection={formData.prQualitySpecRowsBySection}
+              bulkSubRows={currentPrBulkSubSpecRows}
+              finalSubRows={currentPrFinalSubSpecRows}
+              dispatchSubRows={currentPrDispatchSubSpecRows}
+              onSectionChange={handlePrQualitySpecSectionChange}
+              onBulkSubChange={handlePrBulkSubSpecRowsChange}
+              onFinalSubChange={handlePrFinalSubSpecRowsChange}
+              onDispatchSubChange={handlePrDispatchSubSpecRowsChange}
+              showBulkSubTable={showPrBulkSubSpecTable}
+              showFinalSubTable={showPrFinalSubSpecTable}
+              showDispatchSubTable={showPrDispatchSubSpecTable}
+              bulkSubDisabledHint={
+                showPrBulkSubSpecTable
+                  ? undefined
+                  : 'Select PR category and sub-category in Primary info to add bulk sub-category specs.'
+              }
+              finalSubDisabledHint={
+                showPrFinalSubSpecTable
+                  ? undefined
+                  : 'Select PR category and sub-category in Primary info to add final sub-category specs.'
+              }
+              dispatchSubDisabledHint={
+                showPrDispatchSubSpecTable
+                  ? undefined
+                  : 'Select PR category and sub-category in Primary info to add dispatch sub-category specs.'
+              }
+            />
+          </div>
+        );
+      case 7:
+        return (
           <div className="min-w-0 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
             <PrFacilityLicenceStep
               records={formData.prFacilityLicences}
@@ -3178,18 +3304,29 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   return (
     <>
       <MasterFormBase
-        title={productIdFromRoute ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
+        title={effectiveProductId ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
         stages={stages}
         currentStage={currentStage}
         onStageChange={setCurrentStage}
         errors={errors}
         formData={formData as unknown as Record<string, unknown>}
         onInputChange={() => {}}
-        onSubmit={handleSubmit}
+        onSave={() => void handleSave()}
+        onSubmit={canShowApprovalSubmit ? handleSubmit : undefined}
+        submitLabel={approvalSubmitAction?.submitLabel ?? 'Submit'}
         nextDisabled={isNewProduct && !canAdvancePastPrimary}
         nextDisabledTitle="Complete PR category, sub-category, composite item, and product name on this step before continuing."
         isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
       >
+        {effectiveProductId ? (
+          <div className="mb-4">
+            <MasterApprovalStatusHistoryPanel
+              kind="PR"
+              itemId={effectiveProductId}
+              refreshKey={approvalHistoryRefreshKey}
+            />
+          </div>
+        ) : null}
         {renderStageContent()}
       </MasterFormBase>
       <MasterSubmitPreviewModal
@@ -3201,11 +3338,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }}
         onConfirm={handleConfirmSubmit}
         title={
-          productIdFromRoute ? 'Preview — update product (PR)' : 'Preview — new product registration (PR)'
+          effectiveProductId ? 'Preview — update product (PR)' : 'Preview — new product registration (PR)'
+        }
+        subtitle={
+          approvalSubmitAction?.previewSubtitle ??
+          'Review all values below. Confirm to save and advance approval status.'
         }
         sections={prPreviewSections}
+        confirmLabel={approvalSubmitAction?.confirmLabel ?? 'Confirm & submit'}
         confirming={submitConfirming}
-        isEdit={!!productIdFromRoute}
+        isEdit={!!effectiveProductId}
       />
       <MasterSaveSuccessModal
         isOpen={saveSuccessOpen}

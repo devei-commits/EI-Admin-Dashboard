@@ -1,21 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from '../orders/Modal';
 import { normCustomFieldLabel } from '../../lib/masterCustomFields';
+import {
+  defaultGrnOutputTypeFromDataType,
+  GRN_OUTPUT_TYPE_OPTIONS,
+  MASTER_QUALITY_SPEC_TYPE_OPTIONS,
+  type GrnQualitySpecOutputType,
+  type MasterQualitySpecDataType,
+} from '../../lib/qualitySpecDataType';
 import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../../types/qualitySpecTable';
+import { QualitySpecLimitInput } from './QualitySpecLimitInput';
 
-export type MasterQualitySpecDataType =
-  | 'text'
-  | 'textarea'
-  | 'number'
-  | 'number-range'
-  | 'number-le'
-  | 'number-ge'
-  | 'number-match'
-  | 'date'
-  | 'select'
-  | 'boolean'
-  | 'pass-fail'
-  | 'attachment';
+export type { MasterQualitySpecDataType };
 
 export type MasterAddCustomQualitySpecModalProps = {
   isOpen: boolean;
@@ -26,21 +22,6 @@ export type MasterAddCustomQualitySpecModalProps = {
   categoryScopeLabel: string;
   onSave: (row: QualitySpecTableRow, scope: 'common' | 'specific') => void;
 };
-
-const DATA_TYPES: { value: MasterQualitySpecDataType; label: string }[] = [
-  { value: 'text', label: 'Text — single line' },
-  { value: 'textarea', label: 'Text — long / textarea' },
-  { value: 'number', label: 'Number — single value' },
-  { value: 'number-range', label: 'Number — range (min–max)' },
-  { value: 'number-le', label: 'Number — ≤ limit' },
-  { value: 'number-ge', label: 'Number — ≥ limit' },
-  { value: 'number-match', label: 'Number — target ± tolerance' },
-  { value: 'date', label: 'Date' },
-  { value: 'select', label: 'Dropdown' },
-  { value: 'boolean', label: 'Yes / No' },
-  { value: 'pass-fail', label: 'Pass / Fail' },
-  { value: 'attachment', label: 'Attachment / file ref' },
-];
 
 const NUMBER_TYPES: MasterQualitySpecDataType[] = [
   'number',
@@ -61,6 +42,7 @@ export function MasterAddCustomQualitySpecModal({
 }: MasterAddCustomQualitySpecModalProps): React.ReactElement {
   const [name, setName] = useState('');
   const [dataType, setDataType] = useState<MasterQualitySpecDataType>('text');
+  const [outputType, setOutputType] = useState<GrnQualitySpecOutputType>('text');
   const [mandatory, setMandatory] = useState(false);
   const [unit, setUnit] = useState('');
   const [optionsText, setOptionsText] = useState('');
@@ -77,6 +59,7 @@ export function MasterAddCustomQualitySpecModal({
     if (!isOpen) return;
     setName('');
     setDataType('text');
+    setOutputType('text');
     setMandatory(false);
     setUnit('');
     setOptionsText('');
@@ -90,8 +73,22 @@ export function MasterAddCustomQualitySpecModal({
     setError('');
   }, [isOpen, allowScopeSelection]);
 
-  const showOptions = dataType === 'select';
+  const showOptions = dataType === 'select' || outputType === 'select';
   const showUnit = NUMBER_TYPES.includes(dataType);
+  const modalInputCls =
+    'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  const specDataType = showUnit && unit.trim() ? `${dataType}|${unit.trim()}` : dataType;
+  const parsedOptions = optionsText
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const specSelectOptions = dataType === 'select' ? parsedOptions : [];
+
+  const handleDataTypeChange = (next: MasterQualitySpecDataType): void => {
+    setDataType(next);
+    setSpec('');
+    setOutputType(defaultGrnOutputTypeFromDataType(next));
+  };
 
   const handleSave = (): void => {
     const parameter = normCustomFieldLabel(name);
@@ -99,9 +96,20 @@ export function MasterAddCustomQualitySpecModal({
       setError('Parameter / field name is required.');
       return;
     }
+    const usesTypedInput = dataType === 'date' || dataType === 'boolean' || dataType === 'pass-fail' || dataType === 'select';
+    const parsedOptions = optionsText
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const selectOptions =
+      dataType === 'select' || outputType === 'select'
+        ? parsedOptions.length
+          ? parsedOptions
+          : undefined
+        : undefined;
     const row = createEmptyQualitySpecRow({
       parameter,
-      specLimit: spec.trim() || 'Per Master',
+      specLimit: usesTypedInput ? spec.trim() : spec.trim() || 'Per Master',
       method: method.trim() || '—',
       mandatory,
       tolerance: tolerance.trim() || '—',
@@ -109,11 +117,10 @@ export function MasterAddCustomQualitySpecModal({
       sample: sample.trim() || '1',
       acceptance: acceptance.trim() || 'Within range',
       dataType: showUnit && unit.trim() ? `${dataType}|${unit.trim()}` : dataType,
+      outputType,
+      selectOptions: selectOptions?.length ? selectOptions : undefined,
       custom: true,
     });
-    if (dataType === 'select' && optionsText.trim()) {
-      row.specLimit = row.specLimit === 'Per Master' ? optionsText.trim() : row.specLimit;
-    }
     onSave(row, allowScopeSelection ? scope : 'common');
     onClose();
   };
@@ -167,10 +174,10 @@ export function MasterAddCustomQualitySpecModal({
           <select
             id="mqc-type"
             value={dataType}
-            onChange={(e) => setDataType(e.target.value as MasterQualitySpecDataType)}
+            onChange={(e) => handleDataTypeChange(e.target.value as MasterQualitySpecDataType)}
             className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            {DATA_TYPES.map((opt) => (
+            {MASTER_QUALITY_SPEC_TYPE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -220,19 +227,40 @@ export function MasterAddCustomQualitySpecModal({
             />
           </div>
         ) : null}
+        <div>
+          <label htmlFor="mqc-output-type" className="block text-sm font-medium text-gray-700 mb-1">
+            GRN output field / Input type <span className="text-red-600">*</span>
+          </label>
+          <select
+            id="mqc-output-type"
+            value={outputType}
+            onChange={(e) => setOutputType(e.target.value as GrnQualitySpecOutputType)}
+            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {GRN_OUTPUT_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            How warehouse staff enter measured results during GRN QC (saved on the master for later use).
+          </p>
+        </div>
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 space-y-3">
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">QC Spec details</p>
           <div>
             <label htmlFor="mqc-spec" className="block text-sm font-medium text-gray-700 mb-1">
               Spec / Limit
             </label>
-            <input
+            <QualitySpecLimitInput
               id="mqc-spec"
-              type="text"
+              enabled
+              inputCls={modalInputCls}
               value={spec}
-              onChange={(e) => setSpec(e.target.value)}
-              placeholder="e.g. 5.5–6.5 or ≤50"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={setSpec}
+              dataType={specDataType}
+              selectOptions={specSelectOptions}
             />
           </div>
           <div>

@@ -127,6 +127,19 @@ export function stageKeyForCurrentStatus(status: unknown): MasterApprovalStageKe
   return found?.key ?? null;
 }
 
+export function isAssignedForCurrentApprovalStage(
+  currentUserId: string | number | undefined,
+  currentStatus: unknown,
+  assignees: MasterApprovalStageAssignees
+): boolean {
+  const stageKey = stageKeyForCurrentStatus(currentStatus);
+  if (!stageKey) return false;
+  const slot = assignees[stageKey];
+  if (!slot?.user_id) return false;
+  const me = parseInt(String(currentUserId ?? ''), 10);
+  return Number.isFinite(me) && me === slot.user_id;
+}
+
 export function canActAtCurrentStage(
   isAdmin: boolean,
   hasTeamAccess: boolean,
@@ -136,12 +149,7 @@ export function canActAtCurrentStage(
 ): boolean {
   if (isAdmin) return true;
   if (!hasTeamAccess) return false;
-  const stageKey = stageKeyForCurrentStatus(currentStatus);
-  if (!stageKey) return false;
-  const slot = assignees[stageKey];
-  if (!slot?.user_id) return true;
-  const me = parseInt(String(currentUserId ?? ''), 10);
-  return Number.isFinite(me) && me === slot.user_id;
+  return isAssignedForCurrentApprovalStage(currentUserId, currentStatus, assignees);
 }
 
 /** Tab filter on master list screens — `all` shows every row. */

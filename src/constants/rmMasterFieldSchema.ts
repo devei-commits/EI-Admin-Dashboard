@@ -41,22 +41,15 @@ export const RM_MASTER_MODULE_ORDER = [
   {
     "title": "SOURCING & COST",
     "slug": "sourcing"
-  },
-  {
-    "title": "INVENTORY & LOGISTICS",
-    "slug": "inventory"
-  },
-  {
-    "title": "LIFECYCLE & OWNERSHIP",
-    "slug": "lifecycle"
-  },
-  {
-    "title": "SIMILAR & GROUP",
-    "slug": "similar"
   }
 ] as const;
 
-export type RmMasterModuleSlug = (typeof RM_MASTER_MODULE_ORDER)[number]['slug'];
+/** Schema-only modules — hidden from the RM master stepper UI. */
+export type RmMasterHiddenModuleSlug = 'inventory' | 'lifecycle' | 'similar';
+
+export type RmMasterModuleSlug =
+  | (typeof RM_MASTER_MODULE_ORDER)[number]['slug']
+  | RmMasterHiddenModuleSlug;
 
 export const RM_MASTER_FIELDS: RmMasterFieldDef[] = [
   {

@@ -116,7 +116,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         onClick={onSave}
         className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
        >
-        Save
+        Save draft
        </button>
       )}
       {onSubmit && (
@@ -125,7 +125,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         onClick={onSubmit}
         className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
        >
-        Submit
+        {submitLabel}
        </button>
       )}
      </div>
@@ -242,6 +242,15 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
          Previous
         </button>
         <div className="flex items-center gap-2">
+         {onSave && (
+          <button
+           type="button"
+           onClick={onSave}
+           className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+          >
+           Save draft
+          </button>
+         )}
          {onSubmit && currentStage === stages.length - 1 && (
           <button
            type="button"

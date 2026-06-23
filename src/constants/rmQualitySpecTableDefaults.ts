@@ -27,15 +27,12 @@ function buildFallbackCommonTemplates(): Record<string, CommonSpecTemplate[]> {
 
 const FALLBACK_COMMON_TEMPLATES = buildFallbackCommonTemplates();
 
-export function hasRmQualitySpecDefaults(category: string): boolean {
-  const key = category.trim();
-  return Boolean(RM_QC_COMMON_BY_CATEGORY[key]?.length || FALLBACK_COMMON_TEMPLATES[key]?.length);
+export function hasRmQualitySpecDefaults(_category: string): boolean {
+  return false;
 }
 
-export function cloneRmQualitySpecTableDefaults(category: string): QualitySpecTableRow[] {
-  const key = category.trim();
-  const templates = RM_QC_COMMON_BY_CATEGORY[key] ?? FALLBACK_COMMON_TEMPLATES[key] ?? [];
-  return templates.map((row) => createEmptyQualitySpecRow(row));
+export function cloneRmQualitySpecTableDefaults(_category: string): QualitySpecTableRow[] {
+  return [];
 }
 
 /** @deprecated Use cloneRmQualitySpecTableDefaults(category) — kept for legacy imports. */

@@ -1,6 +1,7 @@
 import React from 'react';
-import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../../types/qualitySpecTable';
+import { grnOutputTypeLabel } from '../../lib/qualitySpecDataType';
 import { QualitySpecAttachmentsCell } from './QualitySpecAttachmentsCell';
+import { QualitySpecLimitInputFromRow } from './QualitySpecLimitInput';
 
 export type QualitySpecTableProps = {
   title: string;
@@ -83,13 +84,14 @@ export function QualitySpecTable({
               <th className="px-2 py-2 text-left font-semibold min-w-[5.5rem]">Frequency</th>
               <th className="px-2 py-2 text-left font-semibold min-w-[4.5rem]">Sample</th>
               <th className="px-2 py-2 text-left font-semibold min-w-[5.5rem]">Acceptance</th>
+              <th className="px-2 py-2 text-left font-semibold min-w-[6.5rem]">GRN output</th>
               <th className="px-2 py-2 text-center font-semibold min-w-[9rem]">Attachments</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-gray-500">
                   <p>{emptyMessage}</p>
                   {enabled && showAddButton ? (
                     <button
@@ -123,14 +125,12 @@ export function QualitySpecTable({
                     <label className="sr-only" htmlFor={`${row.id}-specLimit`}>
                       Spec / Limit
                     </label>
-                    <input
+                    <QualitySpecLimitInputFromRow
+                      row={row}
                       id={`${row.id}-specLimit`}
-                      type="text"
-                      value={row.specLimit}
-                      onChange={(e) => updateRow(row.id, { specLimit: e.target.value })}
-                      className={inputCls}
-                      placeholder="Spec / limit"
-                      disabled={!enabled}
+                      enabled={enabled}
+                      inputCls={inputCls}
+                      onChange={(specLimit) => updateRow(row.id, { specLimit })}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -215,6 +215,18 @@ export function QualitySpecTable({
                       placeholder="Acceptance"
                       disabled={!enabled}
                     />
+                  </td>
+                  <td className="px-2 py-2">
+                    {row.outputType ? (
+                      <span
+                        className="inline-block max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                        title={grnOutputTypeLabel(row.outputType) ?? row.outputType}
+                      >
+                        {grnOutputTypeLabel(row.outputType) ?? row.outputType}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">—</span>
+                    )}
                   </td>
                   <td className="px-2 py-2">
                     <QualitySpecAttachmentsCell

@@ -6,6 +6,7 @@ import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalStatusHistoryPanel } from '../components/masters/MasterApprovalStatusHistoryPanel';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
@@ -50,9 +51,17 @@ import {
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
   buildMasterApprovalStatusCounts,
+  emptyStageAssignees,
   matchesMasterApprovalStatusTab,
+  normalizeMasterApprovalStatus,
+  type MasterApprovalStageAssignees,
   type MasterApprovalStatusTab,
 } from '../constants/masterApprovalStatus';
+import {
+  advanceMasterApprovalStatus,
+  getMasterApprovalSubmitAction,
+  withMasterDraftApprovalStatus,
+} from '../utils/masterSaveSubmit';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { fetchRawMaterialsList, createRawMaterial, updateRawMaterial, deleteRawMaterial, fetchRawMaterialById, fetchReservedStock, postRawMaterialsMasterExcel, resetAllRawMaterialsMaster, type RawMaterialRecord, type ReservedStockResponse } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
@@ -132,6 +141,7 @@ type RawMaterialFormData = RmScalarFields & {
   alternateVendorClientId: string;
   sourcingCurrency: string;
   masterLifecycleStatus: string;
+  masterApprovalStatus: string;
   rmQualitySpecRows: QualitySpecTableRow[];
   rmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
   vendors: RmCommercialVendor[];
@@ -211,6 +221,7 @@ function createEmptyRmFormData(): RawMaterialFormData {
     alternateVendorClientId: '',
     sourcingCurrency: 'INR',
     masterLifecycleStatus: 'Active',
+    masterApprovalStatus: 'Draft',
     rmQualitySpecRows: [] as QualitySpecTableRow[],
     rmQualitySubSpecRowsByPath: {} as Record<string, QualitySpecTableRow[]>,
     vendors: [] as RmCommercialVendor[],
@@ -269,6 +280,11 @@ const RawMaterialRefactored: React.FC = () => {
  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
  const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
  const [submitConfirming, setSubmitConfirming] = useState(false);
+ const [draftSaving, setDraftSaving] = useState(false);
+ const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
+  useState<MasterApprovalStageAssignees>(emptyStageAssignees);
+ const [approvalHistoryRefreshKey, setApprovalHistoryRefreshKey] = useState(0);
+ const { canApproveAtStatus } = useMasterApprovalPermission('RM');
  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
  const [saveSuccessCode, setSaveSuccessCode] = useState('');
  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
@@ -302,6 +318,7 @@ const RawMaterialRefactored: React.FC = () => {
   setTempTest({ name: '', result: '', date: '', approvedBy: '', remarks: '' });
   setErrors({});
   setCurrentStage(0);
+  setEditApprovalStageAssignees(emptyStageAssignees());
  }, []);
 
  const { data: vendorClientData, isLoading: vendorClientsLoading } = useQuery({
@@ -499,6 +516,8 @@ const RawMaterialRefactored: React.FC = () => {
     subCategory: next,
     optionalRmSubCategory: normalizeRmDetailSubCategoryForSelect(next, prev.optionalRmSubCategory),
     optionalRmSubSubCategory: '',
+    rmQualitySpecRows: [],
+    rmQualitySubSpecRowsByPath: {},
    }));
    setErrors((prev) => {
     const n = { ...prev };
@@ -516,6 +535,8 @@ const RawMaterialRefactored: React.FC = () => {
     ...prev,
     optionalRmSubCategory: detail,
     optionalRmSubSubCategory: normalizeRmSubSubCategoryForSelect(detail, prev.optionalRmSubSubCategory),
+    rmQualitySpecRows: [],
+    rmQualitySubSpecRowsByPath: {},
    }));
    setErrors((prev) => {
     if (!prev.optionalRmSubCategory && !prev.optionalRmSubSubCategory) return prev;
@@ -527,12 +548,18 @@ const RawMaterialRefactored: React.FC = () => {
    return;
   }
   if (id === 'optionalRmSubSubCategory') {
+   setFormData((prev) => ({
+    ...prev,
+    optionalRmSubSubCategory: value,
+    rmQualitySubSpecRowsByPath: {},
+   }));
    setErrors((prev) => {
     if (!prev.optionalRmSubSubCategory) return prev;
     const n = { ...prev };
     delete n.optionalRmSubSubCategory;
     return n;
    });
+   return;
   }
   setFormData(prev => ({
    ...prev,
@@ -735,8 +762,15 @@ const RawMaterialRefactored: React.FC = () => {
   }));
  };
 
- const buildRmSavePayload = (): Record<string, unknown> | null => {
-  if (!existingRmId) {
+ const buildRmSavePayload = (mode: 'draft' | 'submit' = 'submit'): Record<string, unknown> | null => {
+  if (mode === 'draft') {
+   if (!existingRmId && !formData.subCategory?.trim()) {
+    addToast('error', 'Select a category before saving a draft');
+    setCurrentStage(0);
+    focusFieldById('subCategory');
+    return null;
+   }
+  } else if (!existingRmId) {
    if (!formData.subCategory?.trim()) {
     addToast('error', 'Category is required (Primary info step)');
     setCurrentStage(0);
@@ -744,6 +778,7 @@ const RawMaterialRefactored: React.FC = () => {
     return null;
    }
   }
+  if (mode === 'submit') {
   if (!formData.rmReturnable?.trim()) {
    setErrors((prev) => ({
     ...prev,
@@ -810,6 +845,7 @@ const RawMaterialRefactored: React.FC = () => {
    }
    return null;
   }
+  }
   const linkedProducts = parseRmLinkedProductsFromForm(formData);
   const qcSpecRows = flattenRmQualitySpecRowsForPayload(formData.rmQualitySpecRows ?? []);
   const qcSubSpecRowsByPath = flattenRmQualitySubSpecRowsByPathForPayload(
@@ -839,7 +875,7 @@ const RawMaterialRefactored: React.FC = () => {
     payload,
     deriveRmSourcingFieldsFromVendors(formData.vendors, formData.primaryUom)
   );
-  return payload;
+  return withMasterDraftApprovalStatus(payload, formData.masterApprovalStatus);
  };
 
  const rmPreviewFormData = useMemo(
@@ -865,10 +901,73 @@ const RawMaterialRefactored: React.FC = () => {
  );
 
  const handleSubmit = () => {
-  const savePayload = buildRmSavePayload();
+  const savePayload = buildRmSavePayload('submit');
   if (!savePayload) return;
   setPendingSavePayload(savePayload);
   setSubmitPreviewOpen(true);
+ };
+
+ const persistRmRecord = async (
+  savePayload: Record<string, unknown>
+ ): Promise<{
+  id: string;
+  code: string;
+  isEdit: boolean;
+  record: Awaited<ReturnType<typeof updateRawMaterial>>;
+  syncCreated: number;
+ } | null> => {
+  if (existingRmId) {
+   const rmIdForSync = parseInt(String(existingRmId), 10);
+   const record = await updateRawMaterial(existingRmId, savePayload);
+   const syncCreated = Number.isNaN(rmIdForSync) ? 0 : await syncRmVendorsToItemsListAfterSave(rmIdForSync);
+   return {
+    id: existingRmId,
+    code: record.code || formData.rmSku || '',
+    isEdit: true,
+    record,
+    syncCreated,
+   };
+  }
+  const { record } = await createRawMaterial(savePayload);
+  const newRmId = String(record.id);
+  const parsedId = parseInt(newRmId, 10);
+  const syncCreated = Number.isNaN(parsedId) ? 0 : await syncRmVendorsToItemsListAfterSave(parsedId);
+  setExistingRmId(newRmId);
+  setFormData((prev) => ({
+   ...prev,
+   rmSku: record.code || prev.rmSku,
+   masterApprovalStatus: 'Draft',
+  }));
+  return { id: newRmId, code: record.code || '', isEdit: false, record, syncCreated };
+ };
+
+ const handleSave = async () => {
+  const savePayload = buildRmSavePayload('draft');
+  if (!savePayload) return;
+  setDraftSaving(true);
+  try {
+   const saved = await persistRmRecord(savePayload);
+   if (!saved) return;
+   queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
+   setMasterRefreshKey((k) => k + 1);
+   const freshAfterSave = await fetchRawMaterialById(saved.id);
+   if (freshAfterSave) {
+    setEditApprovalStageAssignees(
+     freshAfterSave.record.approvalStageAssignees ?? emptyStageAssignees()
+    );
+   }
+   addToast(
+    'success',
+    saved.isEdit
+     ? 'Draft saved. Continue editing and submit for review when ready.'
+     : `Draft saved (${saved.code || 'new RM'}). Continue editing and submit for review when ready.`
+   );
+  } catch (err) {
+   console.error(err);
+   addToast('error', err instanceof Error ? err.message : 'Failed to save draft');
+  } finally {
+   setDraftSaving(false);
+  }
  };
 
  const closeSaveSuccessAndExit = () => {
@@ -885,40 +984,52 @@ const RawMaterialRefactored: React.FC = () => {
   if (!savePayload) return;
   setSubmitConfirming(true);
   try {
-   if (existingRmId) {
-    const rmIdForSync = parseInt(String(existingRmId), 10);
-    const record = await updateRawMaterial(existingRmId, savePayload);
-    const syncCreated = Number.isNaN(rmIdForSync) ? 0 : await syncRmVendorsToItemsListAfterSave(rmIdForSync);
-    setSaveSuccessIsEdit(true);
-    setSaveSuccessCode(record.code || formData.rmSku || '');
-    setSaveSuccessRows([
-     { label: 'INCI name', value: record.inci || formData.inciName || '' },
-     { label: 'Trade / commercial name', value: record.name || formData.tradeCommercialName || '' },
-     { label: 'Category', value: record.category || formData.subCategory || '' },
-     { label: 'Primary UoM', value: record.uom || formData.primaryUom || '' },
-     ...(syncCreated > 0
-      ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
-      : []),
-    ]);
-   } else {
-    const { record } = await createRawMaterial(savePayload);
-    const newRmId = parseInt(String(record.id), 10);
-    const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
-    setSaveSuccessIsEdit(false);
-    setSaveSuccessCode(record.code || '');
-    setSaveSuccessRows([
-     { label: 'INCI name', value: record.inci || formData.inciName || '' },
-     { label: 'Trade / commercial name', value: record.name || formData.tradeCommercialName || '' },
-     { label: 'Category', value: record.category || formData.subCategory || '' },
-     { label: 'Primary UoM', value: record.uom || formData.primaryUom || '' },
-     ...(syncCreated > 0
-      ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
-      : []),
-    ]);
+   const saved = await persistRmRecord(savePayload);
+   if (!saved) return;
+
+   const freshAfterSave = await fetchRawMaterialById(saved.id);
+   if (freshAfterSave) {
+    setEditApprovalStageAssignees(
+     freshAfterSave.record.approvalStageAssignees ?? emptyStageAssignees()
+    );
    }
+
+   let approvalStatus = formData.masterApprovalStatus;
+   if (getMasterApprovalSubmitAction(approvalStatus)) {
+    const assigneesForAdvance =
+     freshAfterSave?.record.approvalStageAssignees ?? editApprovalStageAssignees;
+    if (!canApproveAtStatus(approvalStatus, assigneesForAdvance)) {
+     addToast(
+      'error',
+      'Only the person assigned to this approval stage can submit for the next status. Assign them in the list, then try again.'
+     );
+    } else {
+     const advanced = await advanceMasterApprovalStatus('RM', saved.id);
+     if (!advanced.ok) {
+      addToast('error', advanced.error);
+     } else {
+      approvalStatus = advanced.status;
+      setFormData((prev) => ({ ...prev, masterApprovalStatus: advanced.status }));
+      setApprovalHistoryRefreshKey((k) => k + 1);
+     }
+    }
+   }
+
+   setSaveSuccessIsEdit(saved.isEdit);
+   setSaveSuccessCode(saved.code);
+   setSaveSuccessRows([
+    { label: 'INCI name', value: saved.record.inci || formData.inciName || '' },
+    { label: 'Trade / commercial name', value: saved.record.name || formData.tradeCommercialName || '' },
+    { label: 'Category', value: saved.record.category || formData.subCategory || '' },
+    { label: 'Primary UoM', value: saved.record.uom || formData.primaryUom || '' },
+    { label: 'Approval status', value: approvalStatus },
+    ...(saved.syncCreated > 0
+     ? [{ label: 'Items List', value: `${saved.syncCreated} vendor rate(s) synced` }]
+     : []),
+   ]);
    queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
    setMasterRefreshKey((k) => k + 1);
-   if (existingRmId) {
+   if (saved.isEdit) {
     setRmReloadToken((t) => t + 1);
    }
    setSubmitPreviewOpen(false);
@@ -1124,6 +1235,7 @@ const RawMaterialRefactored: React.FC = () => {
    }
 
    const r = result.record;
+   setEditApprovalStageAssignees(r.approvalStageAssignees ?? emptyStageAssignees());
    const recordCode = r.code ?? '';
    const resolvedCats = resolveRmEditCategories({
      code: recordCode,
@@ -1187,6 +1299,10 @@ const RawMaterialRefactored: React.FC = () => {
       (RM_MASTER_LIFECYCLE_OPTIONS as readonly string[]).includes(r.masterLifecycleStatus)
         ? r.masterLifecycleStatus
         : 'Active',
+     masterApprovalStatus: normalizeMasterApprovalStatus(
+      r.status ?? (fdObj as { masterApprovalStatus?: string } | null)?.masterApprovalStatus,
+      'Draft'
+     ),
      rmOwner: r.rmOwner ?? '',
      universalSwapEligibility:
       r.universalSwapEligibility === 'Yes' || r.universalSwapEligibility === 'No'
@@ -1330,7 +1446,12 @@ const RawMaterialRefactored: React.FC = () => {
         resetRmFormToEmpty();
         setPageTab('form');
       }}
-      onEditRm={(rm) => { setExistingRmId(rm.id); setPageTab('form'); setCurrentStage(0); }}
+      onEditRm={(rm) => {
+        setEditApprovalStageAssignees(rm.approvalStageAssignees ?? emptyStageAssignees());
+        setExistingRmId(rm.id);
+        setPageTab('form');
+        setCurrentStage(0);
+      }}
       onDeleteRm={async (rm) => {
         if (!window.confirm(`Delete raw material "${rm.name}" (${rm.code})? This cannot be undone.`)) return;
         try {
@@ -1350,6 +1471,10 @@ const RawMaterialRefactored: React.FC = () => {
 
   const isEditLoading = pageTab === 'form' && !!existingRmId && editRmLoading;
   const isEditing = !!existingRmId;
+ const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
+ const canShowApprovalSubmit =
+  approvalSubmitAction != null &&
+  canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
   const closeFormPopup = () => {
     setExistingRmId(null);
     setPageTab('dashboard');
@@ -1403,6 +1528,16 @@ const RawMaterialRefactored: React.FC = () => {
               </button>
             </div>
 
+            {isEditing && existingRmId && !isEditLoading ? (
+              <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+                <MasterApprovalStatusHistoryPanel
+                  kind="RM"
+                  itemId={existingRmId}
+                  refreshKey={approvalHistoryRefreshKey}
+                />
+              </div>
+            ) : null}
+
             <div className="max-h-[88vh] overflow-y-auto">
               {isEditLoading ? (
                 <div className="min-h-[60vh] bg-[#f9fafb] flex items-center justify-center">
@@ -1420,7 +1555,9 @@ const RawMaterialRefactored: React.FC = () => {
                   formData={formData}
                   onInputChange={handleInputChange}
                   primaryFields={getPrimaryFields('rawMaterial')}
-                  onSubmit={handleSubmit}
+                  onSave={() => void handleSave()}
+                  onSubmit={canShowApprovalSubmit ? handleSubmit : undefined}
+                  submitLabel={approvalSubmitAction?.submitLabel ?? 'Submit'}
                   isNextDisabled={(idx) =>
                     isNewRm &&
                     ((idx === 0 && !canAdvancePastPrimary) || (idx === 1 && !canAdvancePastUnitsTax))
@@ -1457,7 +1594,12 @@ const RawMaterialRefactored: React.FC = () => {
         }}
         onConfirm={handleConfirmSubmit}
         title={isEditing ? 'Preview — update raw material' : 'Preview — new raw material'}
+        subtitle={
+          approvalSubmitAction?.previewSubtitle ??
+          'Review all values below. Confirm to save and advance approval status.'
+        }
         sections={rmPreviewSections}
+        confirmLabel={approvalSubmitAction?.confirmLabel ?? 'Confirm & submit'}
         confirming={submitConfirming}
         isEdit={isEditing}
       />
@@ -1524,7 +1666,7 @@ function rmListSubCategoryLabel(rm: RawMaterialRecord): string {
 }
 
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
- const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('RM');
+ const { canAssignApprover } = useMasterApprovalPermission('RM');
  const [search, setSearch] = useState('');
  const [pageSize, setPageSize] = useState(25);
  const [currentPage, setCurrentPage] = useState(1);
@@ -2030,8 +2172,6 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
              kind="RM"
              itemId={rm.id}
              status={rm.status}
-             canUpdate={canApproveAtStatus(rm.status, rm.approvalStageAssignees)}
-             onUpdated={() => void queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] })}
             />
            </td>
            <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>

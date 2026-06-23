@@ -17,6 +17,7 @@ import {
   type PmFunctionalCategory,
   type PmQualitySpecFieldDef,
 } from '../constants/pmQualitySpecFields';
+import { parseGrnOutputType } from './qualitySpecDataType';
 import {
   createEmptyQualitySpecRow,
   createQualitySpecAttachment,
@@ -205,6 +206,13 @@ function parseQualitySpecRow(raw: unknown, idx: number): QualitySpecTableRow | n
     acceptance: String(row.acceptance ?? '').trim(),
     attachments: parseQualitySpecAttachments(row.attachments, row),
     dataType: String(row.dataType ?? row.data_type ?? '').trim() || undefined,
+    outputType:
+      parseGrnOutputType(row.outputType ?? row.output_type ?? row.type) ?? undefined,
+    selectOptions: Array.isArray(row.selectOptions)
+      ? row.selectOptions.map((o) => String(o).trim()).filter(Boolean)
+      : Array.isArray(row.select_options)
+        ? (row.select_options as unknown[]).map((o) => String(o).trim()).filter(Boolean)
+        : undefined,
     custom: row.custom === true || row._custom === true,
   });
 }
@@ -216,16 +224,15 @@ function parseQualitySpecRows(raw: unknown): QualitySpecTableRow[] {
     .filter((r): r is QualitySpecTableRow => r !== null);
 }
 
-/** Load common tabular rows from form_data; migrates legacy flat pmQualitySpecs when needed. */
+function keepCustomQualitySpecRows(rows: QualitySpecTableRow[]): QualitySpecTableRow[] {
+  return rows.filter((row) => row.custom === true);
+}
+
+/** Load common tabular rows from form_data — only user-added custom specs (no template defaults). */
 export function hydratePmQualitySpecRows(source: Record<string, unknown>): QualitySpecTableRow[] {
   const nested = source.pmQualitySpecRows;
-  if (Array.isArray(nested) && nested.length > 0) {
-    const rows = parseQualitySpecRows(nested);
-    if (rows.length > 0) return rows;
-  }
-
-  const { common } = splitLegacyPmQualitySpecs(source);
-  return common;
+  if (!Array.isArray(nested) || nested.length === 0) return [];
+  return keepCustomQualitySpecRows(parseQualitySpecRows(nested));
 }
 
 const PM_LEGACY_FUNCTIONAL_CATEGORIES = new Set<PmFunctionalCategory>([
@@ -252,29 +259,20 @@ function migratePmQualitySubSpecPathKey(pathKey: string): string {
   return pmQualitySubSpecPathKey(category, subCategory);
 }
 
-/** Load sub-category tabular rows keyed by `Category::SubCategory`. */
+/** Load sub-category tabular rows keyed by `Category::SubCategory` — custom specs only. */
 export function hydratePmQualitySubSpecRowsByPath(
   source: Record<string, unknown>
 ): Record<string, QualitySpecTableRow[]> {
   const nested = source.pmQualitySubSpecRowsByPath;
-  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-    const out: Record<string, QualitySpecTableRow[]> = {};
-    for (const [pathKey, rawRows] of Object.entries(nested as Record<string, unknown>)) {
-      const rows = parseQualitySpecRows(rawRows);
-      if (rows.length === 0) continue;
-      const migratedKey = migratePmQualitySubSpecPathKey(pathKey);
-      out[migratedKey] = [...(out[migratedKey] ?? []), ...rows];
-    }
-    if (Object.keys(out).length > 0) return out;
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return {};
+  const out: Record<string, QualitySpecTableRow[]> = {};
+  for (const [pathKey, rawRows] of Object.entries(nested as Record<string, unknown>)) {
+    const rows = keepCustomQualitySpecRows(parseQualitySpecRows(rawRows));
+    if (rows.length === 0) continue;
+    const migratedKey = migratePmQualitySubSpecPathKey(pathKey);
+    out[migratedKey] = [...(out[migratedKey] ?? []), ...rows];
   }
-
-  const { byPath } = splitLegacyPmQualitySpecs(source);
-  const migrated: Record<string, QualitySpecTableRow[]> = {};
-  for (const [pathKey, rows] of Object.entries(byPath)) {
-    const key = migratePmQualitySubSpecPathKey(pathKey);
-    migrated[key] = [...(migrated[key] ?? []), ...rows];
-  }
-  return migrated;
+  return out;
 }
 
 function splitLegacyPmQualitySpecs(source: Record<string, unknown>): {
@@ -339,7 +337,7 @@ function flattenQualitySpecAttachments(attachments: QualitySpecAttachment[]): Qu
 export function flattenPmQualitySpecRowsForPayload(
   rows: QualitySpecTableRow[]
 ): QualitySpecTableRow[] {
-  return rows
+  return keepCustomQualitySpecRows(rows)
     .map((row) => ({
       ...row,
       parameter: row.parameter.trim(),

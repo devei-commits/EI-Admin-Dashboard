@@ -59,9 +59,6 @@ export function buildRmMasterFieldVisibility(ctx: RmMasterFieldContext): Record<
     'technical',
     'quality',
     'sourcing',
-    'inventory',
-    'lifecycle',
-    'similar',
   ] as const) {
     for (const field of rmFieldsForModule(slug)) {
       out[field.key] = condOK(field.cond, condCtx);

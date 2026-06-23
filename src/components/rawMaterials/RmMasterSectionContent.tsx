@@ -365,30 +365,6 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
     );
   }
 
-  if (sectionIndex === 6) {
-    return (
-      <RmSchemaFieldRenderer module="inventory" {...schemaRendererProps} />
-    );
-  }
-
-  if (sectionIndex === 7) {
-    return (
-      <div className="min-w-0 space-y-5 sm:space-y-6">
-        <p className="text-xs text-gray-500">
-          Lifecycle status here is the material sourcing/usage state (Active, Preferred, Phase-out, etc.). It is stored
-          separately from archive lifecycle used when a record is soft-deleted.
-        </p>
-        <RmSchemaFieldRenderer module="lifecycle" {...schemaRendererProps} />
-      </div>
-    );
-  }
-
-  if (sectionIndex === 8) {
-    return (
-      <RmSchemaFieldRenderer module="similar" {...schemaRendererProps} />
-    );
-  }
-
   return (
     <RmSchemaFieldRenderer module={moduleSlug} {...schemaRendererProps} />
   );

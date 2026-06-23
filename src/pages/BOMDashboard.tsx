@@ -71,7 +71,7 @@ const FORMULA_BOM_CHUNK_GROUPS = 5;
 const BOMDashboard: React.FC = () => {
   const { hasModuleAccess } = usePermissions();
   const canEdit = hasModuleAccess('catalogue-management') || hasModuleAccess('packaging-management');
-  const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('PR');
+  const { canAssignApprover } = useMasterApprovalPermission('PR');
 
   const [list, setList] = useState<PRProductListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1219,14 +1219,6 @@ const BOMDashboard: React.FC = () => {
                             kind="PR"
                             itemId={p.product_id}
                             status={p.status ?? 'Draft'}
-                            canUpdate={canApproveAtStatus(p.status, p.approval_stage_assignees)}
-                            onUpdated={(next) => {
-                              setList((prev) =>
-                                prev.map((row) =>
-                                  row.product_id === p.product_id ? { ...row, status: next } : row
-                                )
-                              );
-                            }}
                           />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalStatusHistoryPanel } from '../components/masters/MasterApprovalStatusHistoryPanel';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
@@ -22,10 +23,18 @@ import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceLi
 import { validateStagedPercents, serializeStagedPaymentTerms } from '../lib/stagedPaymentTerms';
 import {
   buildMasterApprovalStatusCounts,
+  emptyStageAssignees,
   matchesMasterApprovalStatusTab,
   normalizeMasterApprovalStatus,
+  normalizeStageAssignees,
+  type MasterApprovalStageAssignees,
   type MasterApprovalStatusTab,
 } from '../constants/masterApprovalStatus';
+import {
+  advanceMasterApprovalStatus,
+  getMasterApprovalSubmitAction,
+  withMasterDraftApprovalStatus,
+} from '../utils/masterSaveSubmit';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
@@ -290,6 +299,11 @@ const PackagingRefactored: React.FC = () => {
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
   const [pendingPmPayload, setPendingPmPayload] = useState<CreatePackMaterialPayload | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
+    useState<MasterApprovalStageAssignees>(emptyStageAssignees);
+  const [approvalHistoryRefreshKey, setApprovalHistoryRefreshKey] = useState(0);
+  const { canApproveAtStatus } = useMasterApprovalPermission('PM');
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
   const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
@@ -487,12 +501,68 @@ const PackagingRefactored: React.FC = () => {
     setErrors({});
     setCurrentSection(0);
     setExistingPmId(null);
+    setEditApprovalStageAssignees(emptyStageAssignees());
   }, []);
 
-  const doSave = (silent = false) => {
-    const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    setLastSaved(now);
-    if (!silent) addToast('success', 'Draft saved locally (session only)');
+  const buildPmPayloadWithApproval = (): CreatePackMaterialPayload =>
+    withMasterDraftApprovalStatus(
+      buildPayload() as Record<string, unknown>,
+      formData.masterApprovalStatus
+    ) as CreatePackMaterialPayload;
+
+  const validatePmForDraft = (): CreatePackMaterialPayload | null => {
+    if (!existingPmId) {
+      const hasCategory = Boolean(
+        normalizePmSkuCategoryForSelect(formData.pmSkuCategory || formData.subCategory)
+      );
+      const hasName = Boolean(formData.tradeCommercialName?.trim() || formData.name?.trim());
+      if (!hasCategory && !hasName) {
+        addToast('error', 'Enter a PM category or item name before saving a draft');
+        setCurrentSection(0);
+        return null;
+      }
+    }
+    return buildPmPayloadWithApproval();
+  };
+
+  const handleSave = async () => {
+    const payload = validatePmForDraft();
+    if (!payload) return;
+    setDraftSaving(true);
+    try {
+      let savedPmId = existingPmId;
+      if (existingPmId) {
+        const pmIdForSync = parseInt(String(existingPmId), 10);
+        await updatePackMaterial(existingPmId, payload);
+        if (!Number.isNaN(pmIdForSync)) await syncPmVendorsToItemsListAfterSave(pmIdForSync);
+      } else {
+        const saved = await createPackMaterial({ ...payload });
+        savedPmId = String(saved.id);
+        setExistingPmId(savedPmId);
+        setFormData((prev) => ({
+          ...prev,
+          itemCode: saved.code || prev.itemCode,
+          masterApprovalStatus: 'Draft',
+          status: 'Draft',
+        }));
+        const newPmId = parseInt(String(saved.id), 10);
+        if (!Number.isNaN(newPmId)) await syncPmVendorsToItemsListAfterSave(newPmId);
+      }
+      if (savedPmId) {
+        const fresh = await fetchPackMaterialById(savedPmId);
+        if (fresh) {
+          setEditApprovalStageAssignees(normalizeStageAssignees(fresh.approvalStageAssignees));
+        }
+      }
+      localStorage.removeItem('packaging_draft_new');
+      queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      setMasterRefreshKey((k) => k + 1);
+      addToast('success', 'Draft saved. Continue editing and submit for review when ready.');
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save draft');
+    } finally {
+      setDraftSaving(false);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -526,6 +596,8 @@ const PackagingRefactored: React.FC = () => {
         subCategory: canon || prev.subCategory,
         optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(canon, prev.optionalPmSubCategory),
         optionalPmSubSubCategory: '',
+        pmQualitySpecRows: [],
+        pmQualitySubSpecRowsByPath: {},
         ...(level ? { level } : {}),
       }));
       setErrors((prev) => {
@@ -550,6 +622,8 @@ const PackagingRefactored: React.FC = () => {
           prev.optionalPmSubSubCategory,
           formData.pmSkuCategory || formData.subCategory
         ),
+        pmQualitySpecRows: [],
+        pmQualitySubSpecRowsByPath: {},
       }));
       setErrors((prev) => {
         if (!prev.optionalPmSubCategory && !prev.optionalPmSubSubCategory) return prev;
@@ -561,12 +635,18 @@ const PackagingRefactored: React.FC = () => {
       return;
     }
     if (id === 'optionalPmSubSubCategory') {
+      setFormData((prev) => ({
+        ...prev,
+        optionalPmSubSubCategory: value,
+        pmQualitySubSpecRowsByPath: {},
+      }));
       setErrors((prev) => {
         if (!prev.optionalPmSubSubCategory) return prev;
         const next = { ...prev };
         delete next.optionalPmSubSubCategory;
         return next;
       });
+      return;
     }
     if (id === 'pmLifecycleStatus') {
       const normalized = normalizePmLifecycleStatus(value);
@@ -896,7 +976,12 @@ const PackagingRefactored: React.FC = () => {
   const handleSubmit = () => {
     const payload = validatePmForSubmit();
     if (!payload) return;
-    setPendingPmPayload(payload);
+    setPendingPmPayload(
+      withMasterDraftApprovalStatus(
+        payload as Record<string, unknown>,
+        formData.masterApprovalStatus
+      ) as CreatePackMaterialPayload
+    );
     setSubmitPreviewOpen(true);
   };
 
@@ -914,39 +999,82 @@ const PackagingRefactored: React.FC = () => {
     if (!payload) return;
     setSubmitConfirming(true);
     try {
+      let recordId = existingPmId;
+      let savedCode = '';
+      let savedDescription = '';
+      let savedGroup = '';
+      let savedLevel = '';
+      let syncCreated = 0;
+      let isEdit = false;
+
       if (existingPmId) {
         const pmIdForSync = parseInt(String(existingPmId), 10);
         const saved = await updatePackMaterial(existingPmId, payload);
-        const syncCreated = Number.isNaN(pmIdForSync) ? 0 : await syncPmVendorsToItemsListAfterSave(pmIdForSync);
-        setSaveSuccessIsEdit(true);
-        setSaveSuccessCode(saved.code || formData.itemCode || '');
-        setSaveSuccessRows([
-          { label: 'Item name', value: saved.description || formData.name || '' },
-          { label: 'Category', value: saved.group || formData.pmSkuCategory || '' },
-          { label: 'Level', value: saved.level || formData.level || '' },
-          ...(syncCreated > 0
-            ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
-            : []),
-        ]);
+        syncCreated = Number.isNaN(pmIdForSync) ? 0 : await syncPmVendorsToItemsListAfterSave(pmIdForSync);
+        isEdit = true;
+        savedCode = saved.code || formData.itemCode || '';
+        savedDescription = saved.description || formData.name || '';
+        savedGroup = saved.group || formData.pmSkuCategory || '';
+        savedLevel = saved.level || formData.level || '';
       } else {
         const saved = await createPackMaterial({ ...payload });
+        recordId = String(saved.id);
+        setExistingPmId(recordId);
         const newPmId = parseInt(String(saved.id), 10);
-        const syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
-        setSaveSuccessIsEdit(false);
-        setSaveSuccessCode(saved.code || '');
-        setSaveSuccessRows([
-          { label: 'Item name', value: saved.description || formData.name || '' },
-          { label: 'Category', value: saved.group || formData.pmSkuCategory || '' },
-          { label: 'Level', value: saved.level || formData.level || '' },
-          ...(syncCreated > 0
-            ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
-            : []),
-        ]);
+        syncCreated = Number.isNaN(newPmId) ? 0 : await syncPmVendorsToItemsListAfterSave(newPmId);
+        savedCode = saved.code || '';
+        savedDescription = saved.description || formData.name || '';
+        savedGroup = saved.group || formData.pmSkuCategory || '';
+        savedLevel = saved.level || formData.level || '';
       }
+
+      const freshAfterSave = recordId ? await fetchPackMaterialById(recordId) : null;
+      if (freshAfterSave) {
+        setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.approvalStageAssignees));
+      }
+
+      let approvalStatus = formData.masterApprovalStatus;
+      if (recordId && getMasterApprovalSubmitAction(approvalStatus)) {
+        const assigneesForAdvance =
+          freshAfterSave?.approvalStageAssignees != null
+            ? normalizeStageAssignees(freshAfterSave.approvalStageAssignees)
+            : editApprovalStageAssignees;
+        if (!canApproveAtStatus(approvalStatus, assigneesForAdvance)) {
+          addToast(
+            'error',
+            'Only the person assigned to this approval stage can submit for the next status. Assign them in the list, then try again.'
+          );
+        } else {
+          const advanced = await advanceMasterApprovalStatus('PM', recordId);
+          if (advanced.ok) {
+            approvalStatus = advanced.status;
+            setFormData((prev) => ({
+              ...prev,
+              masterApprovalStatus: advanced.status,
+              status: advanced.status,
+            }));
+            setApprovalHistoryRefreshKey((k) => k + 1);
+          } else {
+            addToast('error', advanced.error);
+          }
+        }
+      }
+
+      setSaveSuccessIsEdit(isEdit);
+      setSaveSuccessCode(savedCode);
+      setSaveSuccessRows([
+        { label: 'Item name', value: savedDescription },
+        { label: 'Category', value: savedGroup },
+        { label: 'Level', value: savedLevel },
+        { label: 'Approval status', value: approvalStatus },
+        ...(syncCreated > 0
+          ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
+          : []),
+      ]);
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
       setMasterRefreshKey((k) => k + 1);
-      if (existingPmId) {
+      if (isEdit) {
         setPmReloadToken((t) => t + 1);
       }
       setSubmitPreviewOpen(false);
@@ -1063,6 +1191,7 @@ const PackagingRefactored: React.FC = () => {
         setEditPmLoading(false);
         return;
       }
+      setEditApprovalStageAssignees(normalizeStageAssignees(pm.approvalStageAssignees));
       const priceRow = await fetchPriceListRowForMaterial('PM', parseInt(String(existingPmId), 10));
       if (cancelled) return;
       setEditPmLoading(false);
@@ -1237,6 +1366,10 @@ const PackagingRefactored: React.FC = () => {
   }, [pageTab, existingPmId, pmReloadToken]);
 
   const isEditingPm = !!existingPmId;
+  const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
+  const canShowApprovalSubmit =
+    approvalSubmitAction != null &&
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
   const closePmFormPopup = () => {
     resetPmFormToEmpty();
     setPageTab('bpr');
@@ -1250,7 +1383,12 @@ const PackagingRefactored: React.FC = () => {
         <BprDashboard
           refreshKey={masterRefreshKey}
           onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
-          onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
+          onEditPm={(pm) => {
+            setEditApprovalStageAssignees(normalizeStageAssignees(pm.approvalStageAssignees));
+            setExistingPmId(pm.id);
+            setPageTab('form');
+            setCurrentSection(0);
+          }}
           onDeletePm={async (pm) => {
             if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
             try {
@@ -1296,7 +1434,12 @@ const PackagingRefactored: React.FC = () => {
     <BprDashboard
       refreshKey={masterRefreshKey}
       onSwitchToForm={() => { resetPmFormToEmpty(); setPageTab('form'); }}
-      onEditPm={(pm) => { setExistingPmId(pm.id); setPageTab('form'); setCurrentSection(0); }}
+      onEditPm={(pm) => {
+        setEditApprovalStageAssignees(normalizeStageAssignees(pm.approvalStageAssignees));
+        setExistingPmId(pm.id);
+        setPageTab('form');
+        setCurrentSection(0);
+      }}
       onDeletePm={async (pm) => {
         if (!window.confirm(`Delete pack material "${pm.description}" (${pm.code})? This cannot be undone.`)) return;
         try {
@@ -1339,6 +1482,16 @@ const PackagingRefactored: React.FC = () => {
             </button>
           </div>
 
+          {isEditingPm && existingPmId && !editPmLoading ? (
+            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+              <MasterApprovalStatusHistoryPanel
+                kind="PM"
+                itemId={existingPmId}
+                refreshKey={approvalHistoryRefreshKey}
+              />
+            </div>
+          ) : null}
+
           <MasterDropdownOptionsProvider entity="PM">
           <MasterCustomFieldsProvider entity="PM" taxonomyKey={pmCustomFieldsTaxonomyKey}>
           <div className="max-h-[88vh] overflow-y-auto">
@@ -1363,10 +1516,11 @@ const PackagingRefactored: React.FC = () => {
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => doSave(false)}
-                    className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+                    onClick={() => void handleSave()}
+                    disabled={draftSaving}
+                    className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
                   >
-                    Save
+                    {draftSaving ? 'Saving…' : 'Save draft'}
                   </button>
                   <button
                     type="button"
@@ -1375,13 +1529,15 @@ const PackagingRefactored: React.FC = () => {
                   >
                     Reset Form
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
-                  >
-                    Review & submit
-                  </button>
+                  {canShowApprovalSubmit ? (
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
+                    >
+                      {approvalSubmitAction?.submitLabel ?? 'Submit'}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1507,7 +1663,12 @@ const PackagingRefactored: React.FC = () => {
         }}
         onConfirm={handleConfirmSubmit}
         title={isEditingPm ? 'Preview — update packaging material' : 'Preview — new packaging material'}
+        subtitle={
+          approvalSubmitAction?.previewSubtitle ??
+          'Review all values below. Confirm to save and advance approval status.'
+        }
         sections={pmPreviewSections}
+        confirmLabel={approvalSubmitAction?.confirmLabel ?? 'Confirm & submit'}
         confirming={submitConfirming}
         isEdit={isEditingPm}
       />
@@ -1831,7 +1992,7 @@ const BprDashboard: React.FC<{
   onEditPm: (pm: PackMaterialRecord) => void;
   onDeletePm: (pm: PackMaterialRecord) => void | Promise<void>;
 }> = ({ refreshKey = 0, onSwitchToForm, onEditPm, onDeletePm }) => {
-  const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('PM');
+  const { canAssignApprover } = useMasterApprovalPermission('PM');
   const [searchParams] = useSearchParams();
   const pmFromQuery = searchParams.get('pm') ?? '';
   const [search, setSearch] = useState(pmFromQuery);
@@ -2336,8 +2497,6 @@ const BprDashboard: React.FC<{
                               kind="PM"
                               itemId={pm.id}
                               status={statusLabel}
-                              canUpdate={canApproveAtStatus(statusLabel, pm.approvalStageAssignees)}
-                              onUpdated={() => void queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] })}
                             />
                           </td>
                           <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>

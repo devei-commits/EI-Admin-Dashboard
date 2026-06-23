@@ -6,6 +6,8 @@ export type QualitySpecAttachment = {
   url: string;
 };
 
+import type { GrnQualitySpecOutputType } from '../lib/qualitySpecDataType';
+
 /** Tabular quality-spec row (RM / PM masters — Quality Specifications step). */
 export type QualitySpecTableRow = {
   id: string;
@@ -20,6 +22,10 @@ export type QualitySpecTableRow = {
   attachments: QualitySpecAttachment[];
   /** Input method from custom QC spec modal (text, number, pass-fail, etc.). */
   dataType?: string;
+  /** GRN result input type — how measured values are captured at inbound QC. */
+  outputType?: GrnQualitySpecOutputType;
+  /** Dropdown options when dataType is select. */
+  selectOptions?: string[];
   /** True when added via “+ Add Custom Quality Spec”. */
   custom?: boolean;
 };
@@ -48,6 +54,8 @@ export function createEmptyQualitySpecRow(partial?: Partial<QualitySpecTableRow>
     acceptance: partial?.acceptance ?? '',
     attachments: partial?.attachments ? [...partial.attachments] : [],
     dataType: partial?.dataType,
+    outputType: partial?.outputType,
+    selectOptions: partial?.selectOptions ? [...partial.selectOptions] : undefined,
     custom: partial?.custom,
   };
 }

@@ -44,36 +44,16 @@ describe('rmQualitySpecVisibility', () => {
     })).toBe(false);
   });
 
-  it('auto-seeds category-specific common defaults for bulk RM', () => {
-    expect(getDefaultRmQualitySpecRows(bulkCtx).length).toBeGreaterThan(0);
-    expect(
-      getDefaultRmQualitySpecRows({
-        subCategory: 'Fragrance',
-        optionalRmSubCategory: 'Oil soluble',
-      })
-    ).toEqual([]);
-  });
-
-  it('seeds surfactant GRN common rows from EI masters template', () => {
-    const defaults = getDefaultRmQualitySpecRows(bulkCtx);
-    expect(defaults.length).toBeGreaterThan(0);
-    expect(defaults.some((r) => r.parameter === 'COA from Vendor')).toBe(true);
-    expect(defaults.some((r) => r.parameter === 'TAMC')).toBe(true);
-    expect(defaults.some((r) => r.parameter === 'Bulk Yield')).toBe(false);
-  });
-
-  it('seeds anionic sub-category default rows', () => {
-    const defaults = getDefaultRmQualitySubSpecRows(bulkCtx);
-    expect(defaults.some((r) => r.parameter === 'Active Matter (sulfate %)')).toBe(true);
-    expect(defaults.some((r) => r.parameter === '1,4-Dioxane' && r.mandatory)).toBe(true);
-    expect(defaults.find((r) => r.parameter === 'Free Oil')?.acceptance).toBe('≤ 0.5%');
+  it('does not auto-seed template default rows', () => {
+    expect(getDefaultRmQualitySpecRows(bulkCtx)).toEqual([]);
+    expect(getDefaultRmQualitySubSpecRows(bulkCtx)).toEqual([]);
   });
 
   it('does not require quality spec rows on save', () => {
     expect(validateRmQualitySpecRows([], bulkCtx)).toEqual({});
   });
 
-  it('hydrates tabular common rows from form_data', () => {
+  it('hydrates only custom tabular common rows from form_data', () => {
     const rows = hydrateRmQualitySpecRows({
       rmQualitySpecRows: [
         {
@@ -86,15 +66,26 @@ describe('rmQualitySpecVisibility', () => {
           frequency: 'Per batch',
           sample: '100g',
           acceptance: 'Within range',
+          custom: true,
+        },
+        {
+          id: 'qs-2',
+          parameter: 'Appearance',
+          specLimit: 'Per Master',
+          method: 'Visual',
+          mandatory: true,
+          tolerance: '',
+          frequency: '',
+          sample: '',
+          acceptance: '',
         },
       ],
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]?.parameter).toBe('pH');
-    expect(rows[0]?.mandatory).toBe(true);
   });
 
-  it('hydrates sub-category rows by path', () => {
+  it('hydrates custom sub-category rows by path', () => {
     const byPath = hydrateRmQualitySubSpecRowsByPath({
       rmQualitySubSpecRowsByPath: {
         'Surfactant::Anionic': [
@@ -108,6 +99,7 @@ describe('rmQualitySpecVisibility', () => {
             frequency: 'Per lot',
             sample: '5g',
             acceptance: '≤ 0.5%',
+            custom: true,
           },
         ],
       },
@@ -115,21 +107,19 @@ describe('rmQualitySpecVisibility', () => {
     expect(byPath['Surfactant::Anionic']).toHaveLength(1);
   });
 
-  it('migrates legacy flat rmQualitySpecs into common and sub-category rows', () => {
-    const common = hydrateRmQualitySpecRows({
-      qcSurfAppearance: 'Clear liquid',
-      qcSurfAnionicFreeOil: '≤ 0.3%',
-    });
-    const byPath = hydrateRmQualitySubSpecRowsByPath({
-      qcSurfAppearance: 'Clear liquid',
-      qcSurfAnionicFreeOil: '≤ 0.3%',
-    });
-    expect(common.some((r) => r.parameter === 'Appearance' && r.specLimit === 'Clear liquid')).toBe(true);
+  it('ignores legacy flat qc keys when loading tabular specs', () => {
     expect(
-      byPath['Surfactant::Anionic']?.some(
-        (r) => r.parameter === 'Free Oil' && r.specLimit === '≤ 0.3%'
-      )
-    ).toBe(true);
+      hydrateRmQualitySpecRows({
+        qcSurfAppearance: 'Clear liquid',
+        qcSurfAnionicFreeOil: '≤ 0.3%',
+      })
+    ).toEqual([]);
+    expect(
+      hydrateRmQualitySubSpecRowsByPath({
+        qcSurfAppearance: 'Clear liquid',
+        qcSurfAnionicFreeOil: '≤ 0.3%',
+      })
+    ).toEqual({});
   });
 
   it('flattens rows and drops empty parameters', () => {
@@ -145,6 +135,7 @@ describe('rmQualitySpecVisibility', () => {
         sample: '',
         acceptance: '',
         attachments: [],
+        custom: true,
       },
       {
         id: 'b',
@@ -163,7 +154,39 @@ describe('rmQualitySpecVisibility', () => {
     expect(out[0]?.parameter).toBe('Odor');
   });
 
-  it('hydrates multiple attachments per row', () => {
+  it('persists only custom rows on save', () => {
+    const out = flattenRmQualitySpecRowsForPayload([
+      {
+        id: 'tpl',
+        parameter: 'Appearance',
+        specLimit: 'Clear',
+        method: 'Visual',
+        mandatory: true,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+      },
+      {
+        id: 'custom',
+        parameter: 'pH',
+        specLimit: '5–7',
+        method: 'pH meter',
+        mandatory: true,
+        tolerance: '',
+        frequency: '',
+        sample: '',
+        acceptance: '',
+        attachments: [],
+        custom: true,
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.parameter).toBe('pH');
+  });
+
+  it('hydrates multiple attachments on custom rows', () => {
     const rows = hydrateRmQualitySpecRows({
       rmQualitySpecRows: [
         {
@@ -176,6 +199,7 @@ describe('rmQualitySpecVisibility', () => {
           frequency: '',
           sample: '',
           acceptance: '',
+          custom: true,
           attachments: [
             { id: 'a1', type: 'file', name: 'coa.pdf', url: '' },
             { id: 'a2', type: 'link', name: 'https://example.com/spec', url: 'https://example.com/spec' },
@@ -184,22 +208,6 @@ describe('rmQualitySpecVisibility', () => {
       ],
     });
     expect(rows[0]?.attachments).toHaveLength(2);
-  });
-
-  it('migrates legacy attachmentName and linkUrl into attachments array', () => {
-    const rows = hydrateRmQualitySpecRows({
-      rmQualitySpecRows: [
-        {
-          id: 'qs-1',
-          parameter: 'Color',
-          attachmentName: 'swatch.jpg',
-          linkUrl: 'https://example.com/swatch',
-        },
-      ],
-    });
-    expect(rows[0]?.attachments).toHaveLength(2);
-    expect(rows[0]?.attachments[0]?.type).toBe('file');
-    expect(rows[0]?.attachments[1]?.type).toBe('link');
   });
 
   it('flattens sub-category rows by path', () => {
@@ -216,6 +224,7 @@ describe('rmQualitySpecVisibility', () => {
           sample: '',
           acceptance: '',
           attachments: [],
+          custom: true,
         },
       ],
       'Surfactant::': [],

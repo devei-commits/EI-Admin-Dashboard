@@ -10,6 +10,8 @@ export interface GrnQcTestRow {
   frequency: string;
   sample: string;
   acceptance: string;
+  /** GRN result input type from master QC spec (pass-fail, number-range, etc.). */
+  outputType?: string;
   result: string;
   passed: boolean | null;
 }
