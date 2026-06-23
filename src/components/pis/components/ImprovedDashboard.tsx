@@ -10,6 +10,7 @@ import { getStageLabel } from '../utils/permissions';
 import { ArrowRight, TrendingUp, Clock, AlertTriangle } from 'lucide-react';
 import { PISDetailsDialog } from './PISDetailsDialog';
 import { getServerBaseUrl, pisApi } from '../utils/api';
+import QuotationsDashboardWidget from '../../../pages/quotations/QuotationsDashboardWidget';
 import { toast } from 'sonner';
 
 // Type definitions for dashboard data
@@ -878,6 +879,8 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
      </Card>
     </>
    )}
+
+   <QuotationsDashboardWidget />
 
    <PISDetailsDialog
     pis={selectedPIS}
