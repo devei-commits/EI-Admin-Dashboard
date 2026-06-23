@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getRmConditionalVisibility } from '../rmConditionalFields';
+import { isRmMasterFieldVisible, visibleRmFieldsForModule } from '../rmMasterFieldVisibility';
+import { RM_MASTER_FIELDS } from '../../constants/rmMasterFieldSchema';
 
 describe('getRmConditionalVisibility', () => {
   it('shows max use level for preservatives / UV filters', () => {
@@ -86,5 +88,18 @@ describe('getRmConditionalVisibility', () => {
         rmState: 'Liquid',
       }).rmPhysicalFormLiquid
     ).toBe(true);
+  });
+
+  it('renders regulatory fields from schema for fragrance category', () => {
+    const ctx = {
+      subCategory: 'FRAGRANCES / PERFUMES',
+      optionalRmSubCategory: 'OIL SOLUBLE',
+      rmState: '',
+    };
+    const reg = visibleRmFieldsForModule('regulatory', ctx);
+    expect(reg.some((f) => f.key === 'regAllergenDeclarationEu26')).toBe(true);
+    expect(isRmMasterFieldVisible(RM_MASTER_FIELDS.find((f) => f.key === 'regCiNumber')!, ctx)).toBe(
+      false
+    );
   });
 });

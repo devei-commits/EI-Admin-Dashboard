@@ -18,6 +18,10 @@ export type QualitySpecTableRow = {
   sample: string;
   acceptance: string;
   attachments: QualitySpecAttachment[];
+  /** Input method from custom QC spec modal (text, number, pass-fail, etc.). */
+  dataType?: string;
+  /** True when added via “+ Add Custom Quality Spec”. */
+  custom?: boolean;
 };
 
 export function createQualitySpecAttachment(
@@ -43,5 +47,7 @@ export function createEmptyQualitySpecRow(partial?: Partial<QualitySpecTableRow>
     sample: partial?.sample ?? '',
     acceptance: partial?.acceptance ?? '',
     attachments: partial?.attachments ? [...partial.attachments] : [],
+    dataType: partial?.dataType,
+    custom: partial?.custom,
   };
 }

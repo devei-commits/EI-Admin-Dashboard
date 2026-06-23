@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import VendorClientNameTypeahead from './VendorClientNameTypeahead';
 import { fetchVendorClientById, type VendorClientRecord } from '../services/vendorClient.service';
 import {
@@ -199,8 +199,17 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
     return row?.id ?? '';
   }, [vendorClientList, tempFields.name]);
 
+  const paymentTermsEmpty = useMemo(() => {
+    return (
+      !String(tempFields.advancePct ?? '').trim() &&
+      !String(tempFields.preShipmentPct ?? '').trim() &&
+      !String(tempFields.postShipmentPct ?? '').trim() &&
+      !String(tempFields.creditDays ?? '').trim()
+    );
+  }, [tempFields.advancePct, tempFields.preShipmentPct, tempFields.postShipmentPct, tempFields.creditDays]);
+
   /** Pull location, lead time, MOQ, and staged payment terms from vendor master (full row when possible). */
-  const hydrateFromVendorMaster = (name: string) => {
+  const hydrateFromVendorMaster = (name: string, opts?: { forcePaymentTerms?: boolean }) => {
     const listRow = findVendorClientByName(vendorClientList, name);
     if (!listRow) return;
     const reqId = ++hydrateRequestRef.current;
@@ -239,12 +248,21 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
         resolveStagedPaymentTermsFromVendorRecord(paymentTerms, data),
         data
       );
-      onTempFieldChange('advancePct', String(staged.advance_pct));
-      onTempFieldChange('preShipmentPct', String(staged.pre_shipment_pct));
-      onTempFieldChange('postShipmentPct', String(staged.post_shipment_pct));
-      onTempFieldChange('creditDays', staged.credit_days ? String(staged.credit_days) : '');
+      const shouldFillPayment = opts?.forcePaymentTerms || paymentTermsEmpty;
+      if (shouldFillPayment) {
+        onTempFieldChange('advancePct', String(staged.advance_pct));
+        onTempFieldChange('preShipmentPct', String(staged.pre_shipment_pct));
+        onTempFieldChange('postShipmentPct', String(staged.post_shipment_pct));
+        onTempFieldChange('creditDays', staged.credit_days ? String(staged.credit_days) : '');
+      }
     })();
   };
+
+  useEffect(() => {
+    const name = String(tempFields.name ?? '').trim();
+    if (!name || !selectedVendorId) return;
+    hydrateFromVendorMaster(name, { forcePaymentTerms: paymentTermsEmpty });
+  }, [selectedVendorId, vendorClientList, tempFields.name, paymentTermsEmpty]);
 
   return (
     <div className="border border-gray-300 rounded-lg p-4 mb-4 space-y-4">
@@ -264,7 +282,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               onSelect={(party) => {
                 const name = party?.name?.trim() ?? '';
                 onTempFieldChange('name', name);
-                if (name) hydrateFromVendorMaster(name);
+                if (name) hydrateFromVendorMaster(name, { forcePaymentTerms: true });
               }}
             />
             {errors.venName ? <p className="text-red-500 text-xs mt-1">{errors.venName}</p> : null}

@@ -18,14 +18,12 @@ function trim(s: string | null | undefined): string {
 export function resolveRmEditCategories(record: {
   code?: string | null;
   category?: string | null;
-  rmType?: string | null;
   group?: string | null;
   form_data?: Record<string, unknown> | null;
 }): {
   subCategory: string;
   rmCategoryKey: string;
   rmCategory: string;
-  rmType: string;
   optionalRmSubCategory: string;
   optionalRmSubSubCategory: string;
 } {
@@ -47,7 +45,6 @@ export function resolveRmEditCategories(record: {
       (fd as { rmCategory?: string }).rmCategory ||
       record.category
   );
-  const rmType = trim((fd as { rmType?: string }).rmType || record.rmType);
   const optionalRmSubCategory =
     normalizeRmDetailSubCategoryForSelect(subCategory, trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory)) ||
     trim((fd as { optionalRmSubCategory?: string }).optionalRmSubCategory);
@@ -66,7 +63,6 @@ export function resolveRmEditCategories(record: {
     subCategory,
     rmCategoryKey: trim((fd as { rmCategoryKey?: string }).rmCategoryKey),
     rmCategory,
-    rmType,
     optionalRmSubCategory,
     optionalRmSubSubCategory,
   };
@@ -76,7 +72,6 @@ export function resolvePmEditCategories(record: {
   code?: string | null;
   group?: string | null;
   material?: string | null;
-  type?: string | null;
   form_data?: Record<string, unknown> | null;
 }): { subCategory: string; optionalPmSubCategory: string; optionalPmSubSubCategory: string } {
   const fd = record.form_data && typeof record.form_data === 'object' ? record.form_data : {};

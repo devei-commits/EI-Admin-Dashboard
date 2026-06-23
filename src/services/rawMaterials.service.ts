@@ -15,7 +15,6 @@ export interface RawMaterialFromApi {
   name: string;
   inci: string;
   category: string;
-  rm_type: string;
   uom: string;
   specific_gravity?: number | null;
   price_per_kg: number;
@@ -51,7 +50,6 @@ export interface RawMaterialRecord {
   name: string;
   inci: string;
   category: string;
-  rmType: string;
   uom: string;
   specificGravity: number | null;
   pricePerKg: number;
@@ -89,7 +87,6 @@ function mapApiToRecord(row: RawMaterialFromApi): RawMaterialRecord {
     name: row.name ?? '',
     inci: row.inci ?? '',
     category: row.category ?? '',
-    rmType: row.rm_type ?? '',
     uom: row.uom ?? '',
     specificGravity:
       row.specific_gravity != null && Number(row.specific_gravity) > 0

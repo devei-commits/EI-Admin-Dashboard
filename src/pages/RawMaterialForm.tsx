@@ -9,27 +9,37 @@ import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAs
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
+import { deriveRmSourcingFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
-  findVendorClientByName,
   type RmCommercialVendor,
   type VendorTierDraft,
 } from '../components/VendorCommercialEditor';
-import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
 import { fetchPriceListRowForMaterial, mergeRmVendorsWithPriceList } from '../utils/mergeVendorsFromItemsList';
-import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails, GST_RATE_OPTIONS } from '../utils/masterFormUtils';
+import { getPrimaryFields, validatePrimaryFields, validateMasterTaxDetails } from '../utils/masterFormUtils';
 import { validateStagedPercents } from '../lib/stagedPaymentTerms';
-import { getRmConditionalVisibility } from '../lib/rmConditionalFields';
-import { RmQualitySpecTable } from '../components/masters/RmQualitySpecTable';
 import { MasterLinkedPrProductsPanel } from '../components/masters/MasterLinkedPrProductsPanel';
+import RmMasterSectionContent from '../components/rawMaterials/RmMasterSectionContent';
+import { MasterDropdownOptionsProvider } from '../context/MasterDropdownOptionsContext';
+import { MasterCustomFieldsProvider } from '../context/MasterCustomFieldsContext';
+import {
+  loadEntityCustomDropdownOptions,
+  mergeEntityCustomDropdownOptions,
+} from '../lib/masterDropdownCustomOptions';
+import {
+  buildMasterCustomFieldsTaxonomyKey,
+  loadEntityCustomFields,
+  mergeEntityCustomFields,
+  type MasterCustomFieldDef,
+} from '../lib/masterCustomFields';
+import { buildRmMasterFieldContext } from '../lib/rmMasterFieldVisibility';
+import { RM_MASTER_MODULE_ORDER, emptyRmMasterScalarDefaults, RM_MASTER_FIELD_KEYS } from '../constants/rmMasterFieldSchema';
 import { parseMasterLinkedProductCodes } from '../lib/masterLinkedPrProducts';
 import {
   flattenRmQualitySpecRowsForPayload,
   flattenRmQualitySubSpecRowsByPathForPayload,
-  getDefaultRmQualitySpecRows,
-  getDefaultRmQualitySubSpecRows,
   hydrateRmQualitySpecRows,
   hydrateRmQualitySubSpecRowsByPath,
   resolveRmQualitySpecContext,
@@ -81,11 +91,6 @@ const RM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
 /** Primary UoM choices when creating a new RM (backend/storage standard). */
 const RM_NEW_PRIMARY_UOM_OPTIONS = ['KG', 'L'] as const;
 const RM_EDIT_PRIMARY_UOM_OPTIONS = ['KG', 'GM', 'L', 'ML'] as const;
-const RM_GRADE_OPTIONS = ['Cosmetic', 'IP', 'BP', 'USP', 'EP', 'FCC', 'Pharma'] as const;
-const RM_BIS_COMPLIANCE_OPTIONS = ['Leave on', 'Rinse off'] as const;
-const RM_ANIMAL_ORIGIN_OPTIONS = ['Yes', 'No'] as const;
-const RM_STATE_OPTIONS = ['Solid', 'Liquid', 'Semi-solid'] as const;
-const RM_CHARGE_TYPE_OPTIONS = ['Anionic', 'Cationic', 'Non-ionic', 'Amphoteric'] as const;
 
 const RM_TECHNICAL_REQUIRED_FIELDS = [
   'rmState',
@@ -95,28 +100,8 @@ const RM_TECHNICAL_REQUIRED_FIELDS = [
   'storageCondition',
 ] as const;
 
-const RM_PHYSICAL_FORM_SOLID_OPTIONS = [
-  'pellets',
-  'crystals',
-  'Powders',
-  'Flakes',
-  'Waxes',
-  'Butters',
-] as const;
-
-const RM_PHYSICAL_FORM_LIQUID_OPTIONS = [
-  'Solution',
-  'Emulsion',
-  'Oil',
-  'Gel',
-  'Suspension',
-  'Paste',
-  'Serum',
-] as const;
-
 const RM_QUALITY_REQUIRED_FIELDS = ['coaRequired'] as const;
 
-const RM_SOURCING_CURRENCY_OPTIONS = ['INR', 'USD', 'EUR', 'GBP'] as const;
 /** Business lifecycle on the RM master — not DB `lifecycle_status` (soft-delete archive). */
 const RM_MASTER_LIFECYCLE_OPTIONS = [
   'Active',
@@ -126,22 +111,40 @@ const RM_MASTER_LIFECYCLE_OPTIONS = [
   'Discontinued',
 ] as const;
 
-function hydrateRmSourcingFromVendor(
-  party: VendorClientRecord,
-  prev: ReturnType<typeof createEmptyRmFormData>
-): ReturnType<typeof createEmptyRmFormData> {
-  const country = String(party.country ?? '').trim();
-  const moq = String(party.moq ?? '').trim();
-  const lead = String(party.leadTime ?? '').trim();
-  return {
-    ...prev,
-    preferredVendor: party.name?.trim() ?? prev.preferredVendor,
-    preferredVendorClientId: party.id,
-    sourcingCountryOfOrigin: prev.sourcingCountryOfOrigin?.trim() || country || prev.sourcingCountryOfOrigin,
-    sourcingMoq: prev.sourcingMoq?.trim() || moq || prev.sourcingMoq,
-    sourcingLeadTimeDays: prev.sourcingLeadTimeDays?.trim() || lead || prev.sourcingLeadTimeDays,
-  };
-}
+type RmScalarFields = Record<(typeof RM_MASTER_FIELD_KEYS)[number], string>;
+
+type RawMaterialFormData = RmScalarFields & {
+  zohoId: string;
+  sku: string;
+  rmTaxPreference: string;
+  rmReturnable: '' | 'Yes' | 'No';
+  rmAssociateItems: string;
+  products: string[];
+  rmCategoryKey: string;
+  rmCategory: string;
+  qcInspectionGroup: string;
+  subCategory: string;
+  optionalRmSubCategory: string;
+  optionalRmSubSubCategory: string;
+  seriesPrefix: string;
+  rmDefaultStorageType: string;
+  preferredVendorClientId: string;
+  alternateVendorClientId: string;
+  sourcingCurrency: string;
+  masterLifecycleStatus: string;
+  rmQualitySpecRows: QualitySpecTableRow[];
+  rmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+  vendors: RmCommercialVendor[];
+  documents: Array<{ id: string; type: string; link: string; date: string }>;
+  tests: Array<{
+    id: string;
+    name: string;
+    result: string;
+    date: string;
+    approvedBy: string;
+    remarks: string;
+  }>;
+};
 
 function rmSubCategoryLeadingDigit(sub: string): '1' | '2' | '3' | null {
   const canon = normalizeRmSubCategoryForSelect(sub);
@@ -187,9 +190,9 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
 }
 
 /** Fresh RM form state for new entry or after closing the popup (avoids stale data). */
-function createEmptyRmFormData() {
+function createEmptyRmFormData(): RawMaterialFormData {
   return {
-    rmSku: '',
+    ...(emptyRmMasterScalarDefaults() as RmScalarFields),
     zohoId: '',
     sku: '',
     rmTaxPreference: '',
@@ -202,108 +205,14 @@ function createEmptyRmFormData() {
     subCategory: '',
     optionalRmSubCategory: '',
     optionalRmSubSubCategory: '',
-    hazardHandlingClass: '',
     seriesPrefix: '',
     rmDefaultStorageType: '',
-    inciName: '',
-    tradeCommercialName: '',
-    functionRole: '',
-    rmType: '',
-    casNo: '',
-    einecs: '',
-    countryOfOrigin: '',
-    manufacturer: '',
-    synonyms: '',
-    internalNotes: '',
-    primaryUom: '',
-    issueUom: '',
-    standardPackSize: '',
-    hsnCode: '',
-    gst: '',
-    preferredCurrency: 'INR',
-    grade: '',
-    bisCompliance: '' as '' | (typeof RM_BIS_COMPLIANCE_OPTIONS)[number],
-    animalOrigin: '' as '' | 'Yes' | 'No',
-    compliance: '',
-    allergenRequired: false,
-    gmoRequired: false,
-    sdsAvailable: false,
-    coaAvailable: false,
-    regulatoryNotes: '',
-    regMaxUseLevelPct: '',
-    regAllergenDeclarationEu26: '',
-    regIfraCategoryLimit: '',
-    regCiNumber: '',
-    regApprovedArea: '',
-    rmState: '' as '' | (typeof RM_STATE_OPTIONS)[number],
-    appearance: '',
-    odour: '',
-    activeContentPurityPct: '',
-    viscosityP: '',
-    meltingPointC: '',
-    boilingPointC: '',
-    flashPointC: '',
-    specificGravity: '',
-    refractiveIndex: '',
-    chargeType: '' as '' | (typeof RM_CHARGE_TYPE_OPTIONS)[number],
-    activeMatterPct: '',
-    hlbValue: '',
-    residualSolventsPpm: '',
-    pathogen: '',
-    moistureContentPct: '',
-    doseUseLevel: '',
-    ph: '',
-    vocPct: '',
-    opticalSpectroscopy: '',
-    colourImpartToFormulation: '',
-    msdsSdsNotesLink: '',
-    storageCondition: '',
-    dispensingDirection: '',
-    coaRequired: '' as '' | 'Yes' | 'No',
-    acceptanceSpecMin: '',
-    acceptanceSpecMax: '',
+    preferredVendorClientId: '',
+    alternateVendorClientId: '',
+    sourcingCurrency: 'INR',
+    masterLifecycleStatus: 'Active',
     rmQualitySpecRows: [] as QualitySpecTableRow[],
     rmQualitySubSpecRowsByPath: {} as Record<string, QualitySpecTableRow[]>,
-    physicalFormSolid: '' as '' | (typeof RM_PHYSICAL_FORM_SOLID_OPTIONS)[number],
-    physicalFormLiquid: '' as '' | (typeof RM_PHYSICAL_FORM_LIQUID_OPTIONS)[number],
-    preferredVendor: '',
-    preferredVendorClientId: '',
-    alternateVendors: '',
-    alternateVendorClientId: '',
-    sourcingCountryOfOrigin: '',
-    sourcingMoq: '',
-    sourcingLeadTimeDays: '',
-    sourcingStandardUom: '',
-    sourcingCurrency: 'INR',
-    assayPurity: '',
-    appearanceSpec: '',
-    phSpec: '',
-    moistureLod: '',
-    heavyMetalsSpec: '',
-    microbialSpec: '',
-    odorColorSpec: '',
-    otherSpecs: '',
-    recommendedUseLevel: '',
-    maxUseLevel: '',
-    solubility: '',
-    processingGuidance: '',
-    incompatibilities: '',
-    stabilityNotes: '',
-    claims: '',
-    storageConditions: '',
-    shelfLife: '',
-    retestPeriod: '',
-    warehouseLocation: '',
-    batchTracking: '',
-    fifoFefo: '',
-    minimumStock: '',
-    reorderLevel: '',
-    dispensingBatchNo: '',
-    masterLifecycleStatus: 'Active' as (typeof RM_MASTER_LIFECYCLE_OPTIONS)[number],
-    rmOwner: '',
-    universalSwapEligibility: '' as '' | 'Yes' | 'No',
-    functionalEquivalents: '',
-    handlingNotes: '',
     vendors: [] as RmCommercialVendor[],
     documents: [] as Array<{ id: string; type: string; link: string; date: string }>,
     tests: [] as Array<{
@@ -333,7 +242,7 @@ const RawMaterialRefactored: React.FC = () => {
  const [masterRefreshKey, setMasterRefreshKey] = useState(0);
  const [rmReloadToken, setRmReloadToken] = useState(0);
  const [editRmLoading, setEditRmLoading] = useState(false);
- const [formData, setFormData] = useState(createEmptyRmFormData);
+ const [formData, setFormData] = useState<RawMaterialFormData>(createEmptyRmFormData);
 
  // Temp fields separated
  const [tempVendor, setTempVendor] = useState({
@@ -363,7 +272,6 @@ const RawMaterialRefactored: React.FC = () => {
  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
  const [saveSuccessCode, setSaveSuccessCode] = useState('');
  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
- const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
 
  const focusFieldById = useCallback((fieldId: string) => {
@@ -407,17 +315,7 @@ const RawMaterialRefactored: React.FC = () => {
  });
  const vendorClientList = vendorClientData ?? [];
 
- const stages = [
-  'Primary info (details, code & Books)',
-  'Units, Tax & Procurement',
-  'Regulatory',
-  'Technical',
-  'Quality Specifications',
-  'Sourcing & Cost',
-  'Inventory & Logistics',
-  'Lifecycle & Ownership',
-  'Similar & Group',
- ];
+ const stages = RM_MASTER_MODULE_ORDER.map((m) => m.title);
 
  const isNewRm = !existingRmId;
  const taxIsTaxable = formData.rmTaxPreference === 'Taxable';
@@ -453,45 +351,17 @@ const RawMaterialRefactored: React.FC = () => {
     formData.subCategory?.trim() &&
     formData.inciName?.trim() &&
     formData.tradeCommercialName?.trim() &&
-    formData.primaryUom?.trim()
+    formData.functionRole?.trim() &&
+    (!rmDetailSubCategoryRequired || formData.optionalRmSubCategory?.trim())
   );
  const canAdvancePastUnitsTax =
   !isNewRm ||
   Boolean(
+    formData.primaryUom?.trim() &&
     formData.rmTaxPreference?.trim() &&
     formData.rmReturnable?.trim() &&
     (!taxIsTaxable || (formData.hsnCode?.trim() && formData.gst?.toString().trim()))
   );
- const preferredVendorSelectedId = useMemo(() => {
-  if (formData.preferredVendorClientId) return formData.preferredVendorClientId;
-  const row = findVendorClientByName(vendorClientList, formData.preferredVendor);
-  return row?.id ?? '';
- }, [formData.preferredVendorClientId, formData.preferredVendor, vendorClientList]);
- const alternateVendorSelectedId = useMemo(() => {
-  if (formData.alternateVendorClientId) return formData.alternateVendorClientId;
-  const row = findVendorClientByName(vendorClientList, formData.alternateVendors);
-  return row?.id ?? '';
- }, [formData.alternateVendorClientId, formData.alternateVendors, vendorClientList]);
- const alternateVendorDisabledIds = useMemo(() => {
-  const ids = new Set<string>();
-  if (preferredVendorSelectedId) ids.add(preferredVendorSelectedId);
-  return ids;
- }, [preferredVendorSelectedId]);
- const rmConditionalVisibility = useMemo(
-  () =>
-   getRmConditionalVisibility({
-    subCategory: formData.subCategory,
-    optionalRmSubCategory: formData.optionalRmSubCategory,
-    optionalRmSubSubCategory: formData.optionalRmSubSubCategory,
-    rmState: formData.rmState,
-   }),
-  [
-   formData.subCategory,
-   formData.optionalRmSubCategory,
-   formData.optionalRmSubSubCategory,
-   formData.rmState,
-  ]
- );
  const rmQualitySpecCtx = useMemo(
   () => ({
    subCategory: formData.subCategory,
@@ -543,72 +413,6 @@ const RawMaterialRefactored: React.FC = () => {
   },
   [rmQualitySpecResolved.subSpecPathKey]
  );
-
- useEffect(() => {
-  if (!rmQualitySpecResolved.isBulkFunctional) return;
-  setFormData((prev) => {
-   if (prev.rmQualitySpecRows.length > 0) return prev;
-   const defaults = getDefaultRmQualitySpecRows(rmQualitySpecCtx);
-   if (defaults.length === 0) return prev;
-   return {
-    ...prev,
-    rmQualitySpecRows: defaults,
-   };
-  });
- }, [
-  rmQualitySpecResolved.isBulkFunctional,
-  rmQualitySpecCtx.subCategory,
-  rmQualitySpecCtx.optionalRmSubCategory,
- ]);
-
- useEffect(() => {
-  if (!showRmQualitySubSpecTable) return;
-  const pathKey = rmQualitySpecResolved.subSpecPathKey;
-  if (!pathKey) return;
-  setFormData((prev) => {
-   const existing = prev.rmQualitySubSpecRowsByPath[pathKey];
-   if (existing && existing.length > 0) return prev;
-   const defaults = getDefaultRmQualitySubSpecRows(rmQualitySpecCtx);
-   if (defaults.length === 0) return prev;
-   return {
-    ...prev,
-    rmQualitySubSpecRowsByPath: {
-     ...prev.rmQualitySubSpecRowsByPath,
-     [pathKey]: defaults,
-    },
-   };
-  });
- }, [
-  showRmQualitySubSpecTable,
-  rmQualitySpecResolved.subSpecPathKey,
-  rmQualitySpecCtx.subCategory,
-  rmQualitySpecCtx.optionalRmSubCategory,
-  rmQualitySpecCtx.optionalRmSubSubCategory,
- ]);
- const rmPhysicalFormSolidOptions = useMemo(() => {
-  const base = RM_PHYSICAL_FORM_SOLID_OPTIONS.map((v) => ({ value: v, label: v }));
-  const cur = String(formData.physicalFormSolid ?? '').trim();
-  if (cur && !base.some((o) => o.value === cur)) {
-   return [{ value: cur, label: cur }, ...base];
-  }
-  return base;
- }, [formData.physicalFormSolid]);
- const rmPhysicalFormLiquidOptions = useMemo(() => {
-  const base = RM_PHYSICAL_FORM_LIQUID_OPTIONS.map((v) => ({ value: v, label: v }));
-  const cur = String(formData.physicalFormLiquid ?? '').trim();
-  if (cur && !base.some((o) => o.value === cur)) {
-   return [{ value: cur, label: cur }, ...base];
-  }
-  return base;
- }, [formData.physicalFormLiquid]);
- const rmGradeSelectOptions = useMemo(() => {
-  const base = RM_GRADE_OPTIONS.map((g) => ({ value: g, label: g }));
-  const cur = String(formData.grade ?? '').trim();
-  if (cur && !base.some((o) => o.value === cur)) {
-   return [{ value: cur, label: cur }, ...base];
-  }
-  return base;
- }, [formData.grade]);
  /** On edit: internal SKU/code stays fixed; identity, UoM, returnable, and tax fields remain editable. */
 
  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -659,14 +463,6 @@ const RawMaterialRefactored: React.FC = () => {
     if (!prev[id]) return prev;
     const next = { ...prev };
     delete next[id];
-    return next;
-   });
-  }
-  if (id === 'preferredVendor') {
-   setErrors((prev) => {
-    if (!prev.preferredVendor) return prev;
-    const next = { ...prev };
-    delete next.preferredVendor;
     return next;
    });
   }
@@ -962,10 +758,10 @@ const RawMaterialRefactored: React.FC = () => {
    const uomHint = isNewRm ? 'KG or L' : 'KG / GM / L / ML';
    setErrors((prev) => ({
     ...prev,
-    primaryUom: `Step 1 — Primary UoM is required (pick ${uomHint})`,
+    primaryUom: `Step 2 — Primary UoM is required (pick ${uomHint})`,
    }));
-   addToast('error', `Step 1 — Primary UoM is required (pick ${uomHint})`);
-   setCurrentStage(0);
+   addToast('error', `Step 2 — Primary UoM is required (pick ${uomHint})`);
+   setCurrentStage(1);
    focusFieldById('primaryUom');
    return null;
   }
@@ -981,7 +777,8 @@ const RawMaterialRefactored: React.FC = () => {
       optionalRmSubCategory: 0,
       inciName: 0,
       tradeCommercialName: 0,
-      primaryUom: 0,
+      functionRole: 0,
+      primaryUom: 1,
       rmTaxPreference: 1,
       rmReturnable: 1,
       hsnCode: 1,
@@ -1024,6 +821,8 @@ const RawMaterialRefactored: React.FC = () => {
    category: formData.subCategory?.trim() || formData.rmCategory,
    rmQualitySpecRows: qcSpecRows,
    rmQualitySubSpecRowsByPath: qcSubSpecRowsByPath,
+   masterCustomDropdownOptions: loadEntityCustomDropdownOptions('RM'),
+   masterCustomFields: loadEntityCustomFields('RM'),
    ...(linkedProducts.length > 0 ? { products: linkedProducts } : {}),
   };
   if (isNewRm) {
@@ -1035,6 +834,11 @@ const RawMaterialRefactored: React.FC = () => {
    delete payload.code;
   }
   delete payload.specific_gravity;
+  delete payload.rmType;
+  Object.assign(
+    payload,
+    deriveRmSourcingFieldsFromVendors(formData.vendors, formData.primaryUom)
+  );
   return payload;
  };
 
@@ -1046,8 +850,8 @@ const RawMaterialRefactored: React.FC = () => {
   () =>
    buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS, {
     omitKeys: isNewRm
-     ? ['rmSku', 'sku', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath']
-     : ['rmQualitySpecRows', 'rmQualitySubSpecRowsByPath'],
+     ? ['rmSku', 'sku', 'rmType', 'rm_type', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath']
+     : ['rmType', 'rm_type', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath'],
    }),
   [rmPreviewFormData, isNewRm]
  );
@@ -1071,7 +875,6 @@ const RawMaterialRefactored: React.FC = () => {
   setSaveSuccessOpen(false);
   setSaveSuccessCode('');
   setSaveSuccessRows([]);
-  setSaveSuccessZohoNote(null);
   setExistingRmId(null);
   resetRmFormToEmpty();
   setPageTab('dashboard');
@@ -1097,9 +900,8 @@ const RawMaterialRefactored: React.FC = () => {
       ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
       : []),
     ]);
-    setSaveSuccessZohoNote(null);
    } else {
-    const { record, zohoSync } = await createRawMaterial(savePayload);
+    const { record } = await createRawMaterial(savePayload);
     const newRmId = parseInt(String(record.id), 10);
     const syncCreated = Number.isNaN(newRmId) ? 0 : await syncRmVendorsToItemsListAfterSave(newRmId);
     setSaveSuccessIsEdit(false);
@@ -1113,15 +915,6 @@ const RawMaterialRefactored: React.FC = () => {
       ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
       : []),
     ]);
-    if (zohoSync?.synced === false && zohoSync.error) {
-     setSaveSuccessZohoNote(
-      `Saved in Esthetic Insights, but Zoho Books sync failed: ${zohoSync.error}`
-     );
-    } else if (zohoSync?.synced && zohoSync.item_id) {
-     setSaveSuccessZohoNote(`Linked to Zoho Books (item ${zohoSync.item_id}).`);
-    } else {
-     setSaveSuccessZohoNote(null);
-    }
    }
    queryClient.invalidateQueries({ queryKey: ['raw-materials-full-list'] });
    setMasterRefreshKey((k) => k + 1);
@@ -1139,984 +932,87 @@ const RawMaterialRefactored: React.FC = () => {
   }
  };
 
- // Stage content rendering
- const renderStageContent = () => {
-  switch (currentStage) {
-  case 0: // Primary info — category, code, identity, Zoho
-  {
-   return (
-    <div className="min-w-0 space-y-5 sm:space-y-6">
-     <div className="min-w-0">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-       Category, sub-category &amp; sub-sub category
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-       <SelectField
-        label="Category"
-        id="subCategory"
-        value={formData.subCategory}
-        onChange={handleInputChange}
-        options={[...RM_SUB_CATEGORY_SKU_SELECT_OPTIONS]}
-        requiredMark
-        error={errors.subCategory}
-        disabled={false}
-       />
-       {rmDetailSubCategoryRequired ? (
-        <SelectField
-         label={rmFunctionalCategoryLabel}
-         id="optionalRmSubCategory"
-         value={formData.optionalRmSubCategory}
-         onChange={handleInputChange}
-         options={rmDetailSubCategoryOptions}
-         error={errors.optionalRmSubCategory}
-         disabled={!formData.subCategory?.trim()}
-        />
-       ) : (
-        <InputField
-         label={rmFunctionalCategoryLabel}
-         id="optionalRmSubCategory"
-         value={formData.optionalRmSubCategory}
-         onChange={handleInputChange}
-         placeholder="Select a category first"
-         error={errors.optionalRmSubCategory}
-         disabled={!formData.subCategory?.trim()}
-        />
-       )}
-       {rmSubSubCategoryRequired ? (
-        <SelectField
-         label={rmFunctionalSubCategoryLabel}
-         id="optionalRmSubSubCategory"
-         value={formData.optionalRmSubSubCategory}
-         onChange={handleInputChange}
-         options={rmSubSubCategoryOptions}
-         error={errors.optionalRmSubSubCategory}
-         disabled={!formData.optionalRmSubCategory?.trim()}
-        />
-       ) : (
-        <InputField
-         label={rmFunctionalSubCategoryLabel}
-         id="optionalRmSubSubCategory"
-         value={formData.optionalRmSubSubCategory}
-         onChange={handleInputChange}
-         placeholder={
-          formData.optionalRmSubCategory?.trim()
-            ? 'No sub-sub options for this sub-category'
-            : 'Select sub-category first'
-         }
-         error={errors.optionalRmSubSubCategory}
-         readOnly
-         disabled={!formData.subCategory?.trim() || !formData.optionalRmSubCategory?.trim()}
-        />
-       )}
-      </div>
-      <p className="text-xs text-gray-500 mt-2">
-       Category drives the internal SKU prefix (<span className="font-mono">1</span> raw materials,{' '}
-       <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colours). Pick a
-       sub-category (EMULSIFIERS, SURFACTANTS, TUBES, …) and sub-sub where applicable.
-      </p>
-     </div>
 
-     {!isNewRm ? (
-      <div>
-       <label className="block text-sm font-medium text-gray-700 mb-1">Internal RM code (SKU)</label>
-       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
-        {formData.rmSku || '—'}
-       </div>
-       <p className="text-xs text-gray-500 mt-1">Assigned at creation — cannot be changed here.</p>
-      </div>
-     ) : null}
+ const rmFieldContext = useMemo(
+  () => ({
+   subCategory: formData.subCategory,
+   optionalRmSubCategory: formData.optionalRmSubCategory,
+   optionalRmSubSubCategory: formData.optionalRmSubSubCategory,
+   rmState: formData.rmState,
+  }),
+  [
+   formData.subCategory,
+   formData.optionalRmSubCategory,
+   formData.optionalRmSubSubCategory,
+   formData.rmState,
+  ]
+ );
+ const rmCondContext = useMemo(() => buildRmMasterFieldContext(rmFieldContext), [rmFieldContext]);
+ const rmCustomFieldsTaxonomyKey = useMemo(
+  () => buildMasterCustomFieldsTaxonomyKey(rmCondContext.cat, rmCondContext.sub, rmCondContext.subsub),
+  [rmCondContext]
+ );
+ const rmCustomFieldsTaxonomyLabel = useMemo(() => {
+  const parts = [rmCondContext.cat, rmCondContext.sub, rmCondContext.subsub].filter(Boolean);
+  return parts.length > 0 ? parts.join(' → ') : 'RM master';
+ }, [rmCondContext]);
 
-     <div className="border-t border-gray-200 pt-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <InputField
-        label="INCI Name"
-        id="inciName"
-        value={formData.inciName}
-        onChange={handleInputChange}
-        placeholder="Official INCI name as per supplier / standard"
-        requiredMark
-        readOnly={false}
-       />
-       <InputField
-        label="Trade/Commercial Name"
-        id="tradeCommercialName"
-        value={formData.tradeCommercialName}
-        onChange={handleInputChange}
-        placeholder="What vendor calls this raw material"
-        requiredMark
-        readOnly={false}
-       />
-       <SelectField
-        label="Primary UoM"
-        id="primaryUom"
-        value={formData.primaryUom}
-        onChange={handleInputChange}
-        options={isNewRm ? [...RM_NEW_PRIMARY_UOM_OPTIONS] : [...RM_EDIT_PRIMARY_UOM_OPTIONS]}
-        requiredMark
-        error={errors.primaryUom}
-       />
-       <InputField
-        label="CAS Number"
-        id="casNo"
-        value={formData.casNo}
-        onChange={handleInputChange}
-        placeholder="e.g. 9004-99-3"
-       />
-      </div>
-      <p className="text-xs text-gray-500 mt-2">
-       {isNewRm
-        ? 'New raw materials use KG (mass) or L (volume) only. KG ↔ L conversion uses per-line Specific Gravity on the PR Formula BOM (Planning BOM confirmation).'
-        : 'Base unit this RM is bought, stored and issued in. Mass/volume conversions (e.g. KG ↔ L) use per-line Specific Gravity on the PR Formula BOM — not on the RM master.'}
-      </p>
-     </div>
+ const handleRemoveCustomFieldValue = useCallback((formKey: string) => {
+  setFormData((prev) => {
+   const next = { ...prev } as Record<string, unknown>;
+   delete next[formKey];
+   return next as typeof prev;
+  });
+  setErrors((prev) => {
+   if (!prev[formKey]) return prev;
+   const next = { ...prev };
+   delete next[formKey];
+   return next;
+  });
+ }, []);
 
-    </div>
-   );
-  }
-
-   case 1: // Units & Procurement
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax Classification</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <SelectField
-         label="Returnable Item"
-         id="rmReturnable"
-         value={formData.rmReturnable}
-         onChange={handleInputChange}
-         options={['Yes', 'No']}
-         disabled={false}
-         requiredMark
-         error={errors.rmReturnable}
-        />
-        <SelectField
-         label="Tax Preference"
-         id="rmTaxPreference"
-         value={formData.rmTaxPreference}
-         onChange={handleInputChange}
-         options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-         requiredMark
-         error={errors.rmTaxPreference}
-        />
-        {taxIsTaxable ? (
-         <>
-          <InputField
-           label="HSN/SAC"
-           id="hsnCode"
-           value={formData.hsnCode}
-           onChange={handleInputChange}
-           placeholder="HSN or SAC code"
-           error={errors.hsnCode}
-           requiredMark
-          />
-          <SelectField
-           label="GST %"
-           id="gst"
-           value={formData.gst}
-           onChange={handleInputChange}
-           options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
-           requiredMark
-           error={errors.gst}
-          />
-         </>
-        ) : null}
-       </div>
-       <p className="text-xs text-gray-500 mt-2">
-        Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
-       </p>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Classification</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Hazard Handling Class"
-         id="hazardHandlingClass"
-         value={formData.hazardHandlingClass}
-         onChange={handleInputChange}
-         placeholder="e.g. Flammable, Corrosive, General"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Procurement</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Standard Pack Size"
-         id="standardPackSize"
-         value={formData.standardPackSize}
-         onChange={handleInputChange}
-         placeholder="e.g. 25 KG bag, 200 KG drum"
-        />
-        <SelectField
-         label="Preferred Currency"
-         id="preferredCurrency"
-         value={formData.preferredCurrency}
-         onChange={handleInputChange}
-         options={['INR', 'USD', 'EUR', 'GBP']}
-        />
-       </div>
-      </div>
-
-      <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
-       <p className="text-xs text-gray-500 mb-3">
-        {isNewRm
-         ? 'Saved to Esthetic Insights and synced to Zoho Books with your tax preferences (or both roll back if Books fails). The internal code appears in the confirmation dialog after save.'
-         : 'Internal RM code is fixed; Zoho item ID is read-only.'}
-       </p>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Zoho Item ID"
-         id="zohoId"
-         value={formData.zohoId}
-         onChange={() => {}}
-         placeholder="Populated from the server after save (when Books sync is on)"
-         readOnly
-        />
-       </div>
-       <div className="mt-3">
-        {rmLinkedProductCodes.length > 0 ? (
-         <>
-          <p className="mb-1 text-sm font-medium text-gray-700">Associate Items</p>
-          <p className="mb-2 text-xs text-gray-500">
-           Products linked via BOM. Open a PR master to view or edit the finished product.
-          </p>
-          <MasterLinkedPrProductsPanel codes={rmLinkedProductCodes} accent="teal" />
-         </>
-        ) : (
-         <TextareaField
-          label="Associate Items"
-          id="rmAssociateItems"
-          value={formData.rmAssociateItems}
-          onChange={handleInputChange}
-          placeholder="Link related RM / PM / packaging codes if any"
-         />
-        )}
-       </div>
-       <p className="text-xs text-gray-500 mt-2">Zoho Item ID is read-only — returned by the API after a successful save.</p>
-      </div>
-     </div>
-    );
-
-   case 2: // Regulatory
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div className="border border-gray-200 rounded-lg p-3 sm:p-4 bg-gray-50/50">
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Classification</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <SelectField
-         label="Grade"
-         id="grade"
-         value={formData.grade}
-         onChange={handleInputChange}
-         options={rmGradeSelectOptions}
-         error={errors.grade}
-        />
-        <InputField
-         label="Compliance/Certificate"
-         id="compliance"
-         value={formData.compliance}
-         onChange={handleInputChange}
-         placeholder="e.g. COSMOS, ECOCERT, RSPO"
-        />
-        <SelectField
-         label="BIS Compliance"
-         id="bisCompliance"
-         value={formData.bisCompliance}
-         onChange={handleInputChange}
-         options={[...RM_BIS_COMPLIANCE_OPTIONS]}
-        />
-        <SelectField
-         label="Animal Origin"
-         id="animalOrigin"
-         value={formData.animalOrigin}
-         onChange={handleInputChange}
-         options={[...RM_ANIMAL_ORIGIN_OPTIONS]}
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Technical Identity</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Function/Role"
-         id="functionRole"
-         value={formData.functionRole}
-         onChange={handleInputChange}
-         placeholder="e.g. Emulsifier, Preservative, Fragrance"
-        />
-        <InputField
-         label="Type"
-         id="rmType"
-         value={formData.rmType}
-         onChange={handleInputChange}
-         placeholder="e.g. Liquid, Powder, Paste"
-        />
-        <InputField
-         label="EINECS Number"
-         id="einecs"
-         value={formData.einecs}
-         onChange={handleInputChange}
-         placeholder="If applicable"
-        />
-        <InputField
-         label="Country of Origin"
-         id="countryOfOrigin"
-         value={formData.countryOfOrigin}
-         onChange={handleInputChange}
-         placeholder="e.g. India, France"
-        />
-        <InputField
-         label="Manufacturer"
-         id="manufacturer"
-         value={formData.manufacturer}
-         onChange={handleInputChange}
-         placeholder="Manufacturer / principal supplier"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Notes</h3>
-       <div className="space-y-3">
-        <TextareaField
-         label="Synonyms"
-         id="synonyms"
-         value={formData.synonyms}
-         onChange={handleInputChange}
-         placeholder="Other names used internally or by vendors"
-        />
-        <TextareaField
-         label="Internal Notes"
-         id="internalNotes"
-         value={formData.internalNotes}
-         onChange={handleInputChange}
-         placeholder="Any internal-only remarks for R&D, QC, or Purchase"
-        />
-        <TextareaField
-         label="Regulatory Notes"
-         id="regulatoryNotes"
-         value={formData.regulatoryNotes}
-         onChange={handleInputChange}
-         placeholder="Any specific restrictions, region notes, or regulatory info"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Regulatory Flags</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <CheckboxField label="Allergen Declaration Required" id="allergenRequired" checked={formData.allergenRequired} onChange={handleInputChange} />
-        <CheckboxField label="GMO Test Required" id="gmoRequired" checked={formData.gmoRequired} onChange={handleInputChange} />
-        <CheckboxField label="SDS Available" id="sdsAvailable" checked={formData.sdsAvailable} onChange={handleInputChange} />
-        <CheckboxField label="CoA Available" id="coaAvailable" checked={formData.coaAvailable} onChange={handleInputChange} />
-       </div>
-      </div>
-
-      {rmConditionalVisibility.showRegulatoryConditional ? (
-       <div className="border-t border-gray-200 pt-4">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-         Category-specific regulatory
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-         {rmConditionalVisibility.regMaxUseLevelPct ? (
-          <InputField
-           label="Regulatory max use level %"
-           id="regMaxUseLevelPct"
-           value={formData.regMaxUseLevelPct}
-           onChange={handleInputChange}
-           placeholder="e.g. 1.0% max in finished product"
-          />
-         ) : null}
-         {rmConditionalVisibility.regAllergenDeclarationEu26 ? (
-          <TextareaField
-           label="Allergen declaration (EU 26)"
-           id="regAllergenDeclarationEu26"
-           value={formData.regAllergenDeclarationEu26}
-           onChange={handleInputChange}
-           placeholder="EU fragrance allergen list / declaration notes"
-           rows={2}
-          />
-         ) : null}
-         {rmConditionalVisibility.regIfraCategoryLimit ? (
-          <InputField
-           label="IFRA category & limit"
-           id="regIfraCategoryLimit"
-           value={formData.regIfraCategoryLimit}
-           onChange={handleInputChange}
-           placeholder="e.g. Category 4 — 2.0%"
-          />
-         ) : null}
-         {rmConditionalVisibility.regCiNumber ? (
-          <InputField
-           label="CI number"
-           id="regCiNumber"
-           value={formData.regCiNumber}
-           onChange={handleInputChange}
-           placeholder="e.g. CI 77491"
-          />
-         ) : null}
-         {rmConditionalVisibility.regApprovedArea ? (
-          <InputField
-           label="Approved area"
-           id="regApprovedArea"
-           value={formData.regApprovedArea}
-           onChange={handleInputChange}
-           placeholder="e.g. Eyes / lips / face"
-          />
-         ) : null}
-        </div>
-       </div>
-      ) : null}
-     </div>
-    );
-
-   case 3: // Technical
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Physical state</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <SelectField
-         label="State"
-         id="rmState"
-         value={formData.rmState}
-         onChange={handleInputChange}
-         options={[...RM_STATE_OPTIONS]}
-         error={errors.rmState}
-        />
-        {rmConditionalVisibility.rmPhysicalFormSolid ? (
-         <SelectField
-          label="Physical form — solid"
-          id="physicalFormSolid"
-          value={formData.physicalFormSolid}
-          onChange={handleInputChange}
-          options={rmPhysicalFormSolidOptions}
-         />
-        ) : null}
-        {rmConditionalVisibility.rmPhysicalFormLiquid ? (
-         <SelectField
-          label="Physical form — liquid"
-          id="physicalFormLiquid"
-          value={formData.physicalFormLiquid}
-          onChange={handleInputChange}
-          options={rmPhysicalFormLiquidOptions}
-         />
-        ) : null}
-        <InputField
-         label="Appearance"
-         id="appearance"
-         value={formData.appearance}
-         onChange={handleInputChange}
-         placeholder="e.g. White powder, clear liquid"
-         error={errors.appearance}
-        />
-        <InputField
-         label="Odour"
-         id="odour"
-         value={formData.odour}
-         onChange={handleInputChange}
-         placeholder="e.g. Characteristic, odourless"
-        />
-        <InputField
-         label="Active content / Purity %"
-         id="activeContentPurityPct"
-         value={formData.activeContentPurityPct}
-         onChange={handleInputChange}
-         placeholder="e.g. NLT 98%"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Physical & chemical properties</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Solubility"
-         id="solubility"
-         value={formData.solubility}
-         onChange={handleInputChange}
-         placeholder="e.g. Soluble in oils / water / glycols"
-        />
-        <InputField
-         label="Viscosity (P)"
-         id="viscosityP"
-         value={formData.viscosityP}
-         onChange={handleInputChange}
-         placeholder="e.g. 5000–8000 cP"
-        />
-        <InputField
-         label="Melting point (°C)"
-         id="meltingPointC"
-         value={formData.meltingPointC}
-         onChange={handleInputChange}
-         placeholder="e.g. 45–50"
-        />
-        <InputField
-         label="Boiling point (°C)"
-         id="boilingPointC"
-         value={formData.boilingPointC}
-         onChange={handleInputChange}
-         placeholder="e.g. 100"
-        />
-        <InputField
-         label="Flash point (°C)"
-         id="flashPointC"
-         value={formData.flashPointC}
-         onChange={handleInputChange}
-         placeholder="e.g. > 200"
-        />
-        <InputField
-         label="Specific gravity"
-         id="specificGravity"
-         value={formData.specificGravity}
-         onChange={handleInputChange}
-         placeholder="e.g. 1.02"
-         error={errors.specificGravity}
-        />
-        <InputField
-         label="Refractive index"
-         id="refractiveIndex"
-         value={formData.refractiveIndex}
-         onChange={handleInputChange}
-         placeholder="e.g. 1.45"
-        />
-        <SelectField
-         label="Charge type"
-         id="chargeType"
-         value={formData.chargeType}
-         onChange={handleInputChange}
-         options={[...RM_CHARGE_TYPE_OPTIONS]}
-        />
-        <InputField
-         label="Active matter %"
-         id="activeMatterPct"
-         value={formData.activeMatterPct}
-         onChange={handleInputChange}
-         placeholder="e.g. 30%"
-        />
-        <InputField
-         label="HLB value"
-         id="hlbValue"
-         value={formData.hlbValue}
-         onChange={handleInputChange}
-         placeholder="e.g. 12–14"
-        />
-        <InputField
-         label="Residual / residual solvents (PPM)"
-         id="residualSolventsPpm"
-         value={formData.residualSolventsPpm}
-         onChange={handleInputChange}
-         placeholder="e.g. NMT 500 ppm"
-        />
-        <InputField
-         label="Pathogen"
-         id="pathogen"
-         value={formData.pathogen}
-         onChange={handleInputChange}
-         placeholder="e.g. Absent / limits"
-        />
-        <InputField
-         label="Moisture content %"
-         id="moistureContentPct"
-         value={formData.moistureContentPct}
-         onChange={handleInputChange}
-         placeholder="e.g. NMT 2%"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Formulation & analytical</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Dose / Use level"
-         id="doseUseLevel"
-         value={formData.doseUseLevel}
-         onChange={handleInputChange}
-         placeholder="e.g. 1–3%"
-        />
-        <InputField
-         label="pH"
-         id="ph"
-         value={formData.ph}
-         onChange={handleInputChange}
-         placeholder="e.g. 5.0 – 7.0"
-        />
-        <InputField
-         label="% VOC"
-         id="vocPct"
-         value={formData.vocPct}
-         onChange={handleInputChange}
-         placeholder="e.g. NMT 5%"
-        />
-        <InputField
-         label="Optical / Spectroscopy (λMAX/RI/IR)"
-         id="opticalSpectroscopy"
-         value={formData.opticalSpectroscopy}
-         onChange={handleInputChange}
-         placeholder="λMAX / RI / IR notes"
-        />
-        <InputField
-         label="Colour impart to formulation"
-         id="colourImpartToFormulation"
-         value={formData.colourImpartToFormulation}
-         onChange={handleInputChange}
-         placeholder="e.g. Slight yellow tint"
-        />
-       </div>
-      </div>
-
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Safety, storage & dispensing</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="sm:col-span-2">
-         <TextareaField
-          label="MSDS/SDS Notes & Link"
-          id="msdsSdsNotesLink"
-          value={formData.msdsSdsNotesLink}
-          onChange={handleInputChange}
-          placeholder="Notes and URL or document reference"
-          rows={3}
-          error={errors.msdsSdsNotesLink}
-         />
-        </div>
-        <div className="sm:col-span-2">
-         <TextareaField
-          label="Storage condition"
-          id="storageCondition"
-          value={formData.storageCondition}
-          onChange={handleInputChange}
-          placeholder="e.g. Store below 25°C, protect from light"
-          rows={2}
-          error={errors.storageCondition}
-         />
-        </div>
-        <div className="sm:col-span-2">
-         <TextareaField
-          label="Dispensing direction"
-          id="dispensingDirection"
-          value={formData.dispensingDirection}
-          onChange={handleInputChange}
-          placeholder="How to dispense / handle in production"
-          rows={2}
-         />
-        </div>
-       </div>
-      </div>
-     </div>
-    );
-
-   case 4: // Quality Specifications
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <SelectField
-         label="COA Required"
-         id="coaRequired"
-         value={formData.coaRequired}
-         onChange={handleInputChange}
-         options={['Yes', 'No']}
-         error={errors.coaRequired}
-        />
-        <InputField
-         label="Acceptance Spec (MIN)"
-         id="acceptanceSpecMin"
-         value={formData.acceptanceSpecMin}
-         onChange={handleInputChange}
-         placeholder="Minimum acceptance limit"
-        />
-        <InputField
-         label="Acceptance Spec (MAX)"
-         id="acceptanceSpecMax"
-         value={formData.acceptanceSpecMax}
-         onChange={handleInputChange}
-         placeholder="Maximum acceptance limit"
-        />
-       </div>
-      </div>
-      {showRmQualitySpecTable ? (
-       <RmQualitySpecTable
-        categoryLabel={
-         rmQualitySpecResolved.categoryDisplayLabel ||
-         (formData.subCategory ? String(formData.subCategory) : '—')
-        }
-        commonRows={formData.rmQualitySpecRows ?? []}
-        onCommonChange={handleRmQualitySpecRowsChange}
-        categoryTableEnabled={canEditRmQualityCategory}
-        categoryDisabledHint={
-         canEditRmQualityCategory
-          ? undefined
-          : 'Select RM detail sub-category in Identification to add category specs.'
-        }
-        showSubTable
-        subCategoryLabel={rmQualitySpecResolved.functionalSub || '—'}
-        subRows={currentSubSpecRows}
-        onSubChange={handleRmQualitySubSpecRowsChange}
-        subTableEnabled={showRmQualitySubSpecTable}
-        subTableDisabledHint={
-         showRmQualitySubSpecTable
-          ? undefined
-          : 'Select RM sub-category in Identification to add sub-category specs.'
-        }
-       />
-      ) : (
-       <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
-        Complete <strong>Identification</strong> (sub-category) first to add category and sub-category quality
-        specifications.
-       </p>
-      )}
-     </div>
-    );
-
-   case 5: // Sourcing & Cost (vendors + sourcing fields)
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sourcing</h3>
-       <p className="text-xs text-gray-500 mb-3">
-        Pick preferred and alternate suppliers from vendor master suggestions. Add commercial vendors and pricing when available.
-       </p>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-         <label htmlFor="preferredVendor" className="block text-sm font-medium text-gray-700 mb-1">
-          Preferred vendor
-         </label>
-         <VendorClientNameTypeahead
-          inputId="preferredVendor"
-          parties={vendorClientList}
-          partyKind="vendor"
-          loading={vendorClientsLoading}
-          selectedId={preferredVendorSelectedId}
-          placeholder="Search vendor by name, code, city…"
-          allowFreeText
-          freeTextValue={formData.preferredVendor}
-          onFreeTextChange={(name) => {
-           setFormData((prev) => ({
-            ...prev,
-            preferredVendor: name,
-            preferredVendorClientId:
-             name.trim() === prev.preferredVendor.trim() ? prev.preferredVendorClientId : '',
-           }));
-          }}
-          onSelect={(party) => {
-           if (!party) {
-            setFormData((prev) => ({
-             ...prev,
-             preferredVendor: '',
-             preferredVendorClientId: '',
-            }));
-            return;
-           }
-           setFormData((prev) => hydrateRmSourcingFromVendor(party, prev));
-          }}
-         />
-        </div>
-        <div>
-         <label htmlFor="alternateVendors" className="block text-sm font-medium text-gray-700 mb-1">
-          Alternate vendor
-         </label>
-         <VendorClientNameTypeahead
-          inputId="alternateVendors"
-          parties={vendorClientList}
-          partyKind="vendor"
-          loading={vendorClientsLoading}
-          selectedId={alternateVendorSelectedId}
-          disabledIds={alternateVendorDisabledIds}
-          placeholder="Search alternate vendor…"
-          allowFreeText
-          freeTextValue={formData.alternateVendors}
-          onFreeTextChange={(name) => {
-           setFormData((prev) => ({
-            ...prev,
-            alternateVendors: name,
-            alternateVendorClientId:
-             name.trim() === prev.alternateVendors.trim() ? prev.alternateVendorClientId : '',
-           }));
-          }}
-          onSelect={(party) => {
-           if (!party) {
-            setFormData((prev) => ({
-             ...prev,
-             alternateVendors: '',
-             alternateVendorClientId: '',
-            }));
-            return;
-           }
-           setFormData((prev) => ({
-            ...prev,
-            alternateVendors: party.name?.trim() ?? '',
-            alternateVendorClientId: party.id,
-           }));
-          }}
-         />
-        </div>
-        <InputField
-         label="Country of origin"
-         id="sourcingCountryOfOrigin"
-         value={formData.sourcingCountryOfOrigin}
-         onChange={handleInputChange}
-         placeholder="e.g. India, France"
-        />
-        <SelectField
-         label="UoM"
-         id="sourcingStandardUom"
-         value={formData.sourcingStandardUom}
-         onChange={handleInputChange}
-         options={[...RM_EDIT_PRIMARY_UOM_OPTIONS]}
-        />
-        <InputField
-         label="MOQ"
-         id="sourcingMoq"
-         value={formData.sourcingMoq}
-         onChange={handleInputChange}
-         placeholder="Minimum order quantity"
-        />
-        <InputField
-         label="Lead time (Days)"
-         id="sourcingLeadTimeDays"
-         value={formData.sourcingLeadTimeDays}
-         onChange={handleInputChange}
-         placeholder="e.g. 14"
-        />
-        <SelectField
-         label="Currency"
-         id="sourcingCurrency"
-         value={formData.sourcingCurrency}
-         onChange={handleInputChange}
-         options={[...RM_SOURCING_CURRENCY_OPTIONS]}
-        />
-       </div>
-      </div>
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-        Vendors &amp; commercial
-       </h3>
-       {errors.vendors ? (
-        <p className="text-xs text-red-600 mb-2" role="alert">
-         {errors.vendors}
-        </p>
-       ) : null}
-       <VendorCommercialEditor
-        variant="rm"
-        vendors={formData.vendors}
-        tempFields={tempVendor}
-        tempTiers={tempVendorTiers}
-        vendorClientList={vendorClientList}
-        onTempFieldChange={handleVendorTempFieldChange}
-        onTempTierChange={handleTempVendorTierChange}
-        onAddTempTierRow={handleAddTempVendorTierRow}
-        onAddVendor={handleAddVendor}
-        onRemoveVendor={handleRemoveVendor}
-        onVendorsChange={handleVendorsChange}
-        errors={errors}
-       />
-      </div>
-     </div>
-    );
-
-   case 6: // Inventory & Logistics
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div>
-       <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Inventory & Logistics</h3>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <InputField
-         label="Shelf Life (Months)"
-         id="shelfLife"
-         value={formData.shelfLife}
-         onChange={handleInputChange}
-         placeholder="e.g. 24"
-         error={errors.shelfLife}
-        />
-        <InputField
-         label="Re-test period (Months)"
-         id="retestPeriod"
-         value={formData.retestPeriod}
-         onChange={handleInputChange}
-         placeholder="e.g. 12"
-        />
-        <InputField
-         label="Reorder Level"
-         id="reorderLevel"
-         value={formData.reorderLevel}
-         onChange={handleInputChange}
-         placeholder="Replenishment trigger quantity"
-        />
-        <InputField
-         label="Dispensing Batch No"
-         id="dispensingBatchNo"
-         value={formData.dispensingBatchNo}
-         onChange={handleInputChange}
-         placeholder="Batch number for dispensing"
-        />
-       </div>
-      </div>
-     </div>
-    );
-
-   case 7: // Lifecycle & Ownership
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <p className="text-xs text-gray-500">
-       Lifecycle status here is the material sourcing/usage state (Active, Preferred, Phase-out, etc.). It is stored separately from archive lifecycle used when a record is soft-deleted.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <SelectField
-        label="Lifecycle Status"
-        id="masterLifecycleStatus"
-        value={formData.masterLifecycleStatus}
-        onChange={handleInputChange}
-        options={[...RM_MASTER_LIFECYCLE_OPTIONS]}
-        error={errors.masterLifecycleStatus}
-       />
-       <InputField
-        label="Owner"
-        id="rmOwner"
-        value={formData.rmOwner}
-        onChange={handleInputChange}
-        placeholder="e.g. R&D lead, procurement owner"
-       />
-      </div>
-     </div>
-    );
-
-   case 8: // Similar & Group
-    return (
-     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-       <SelectField
-        label="Universal Swap Eligibility"
-        id="universalSwapEligibility"
-        value={formData.universalSwapEligibility}
-        onChange={handleInputChange}
-        options={['Yes', 'No']}
-       />
-       <div className="sm:col-span-2">
-        <TextareaField
-         label="Functional Equivalents"
-         id="functionalEquivalents"
-         value={formData.functionalEquivalents}
-         onChange={handleInputChange}
-         placeholder="List RM codes or names that are functionally equivalent (one per line or comma-separated)"
-         rows={4}
-        />
-       </div>
-      </div>
-     </div>
-    );
-
-   default:
-    return <p>No content</p>;
-  }
- };
+ const renderStageContent = () => (
+  <RmMasterSectionContent
+   sectionIndex={currentStage}
+   moduleSlug={RM_MASTER_MODULE_ORDER[currentStage]?.slug ?? 'primary'}
+   fieldContext={rmFieldContext}
+   formData={formData}
+   errors={errors}
+   onChange={handleInputChange}
+   isNewRm={isNewRm}
+   rmDetailSubCategoryRequired={rmDetailSubCategoryRequired}
+   rmSubSubCategoryRequired={rmSubSubCategoryRequired}
+   rmFunctionalCategoryLabel={rmFunctionalCategoryLabel}
+   rmFunctionalSubCategoryLabel={rmFunctionalSubCategoryLabel}
+   rmDetailSubCategoryOptions={rmDetailSubCategoryOptions}
+   rmSubSubCategoryOptions={rmSubSubCategoryOptions}
+   rmSkuCategorySelectOptions={[...RM_SUB_CATEGORY_SKU_SELECT_OPTIONS]}
+   rmLinkedProductCodes={rmLinkedProductCodes}
+   taxIsTaxable={taxIsTaxable}
+   showRmQualitySpecTable={showRmQualitySpecTable}
+   canEditRmQualityCategory={canEditRmQualityCategory}
+   showRmQualitySubSpecTable={showRmQualitySubSpecTable}
+   rmQualitySpecResolved={rmQualitySpecResolved}
+   currentSubSpecRows={currentSubSpecRows}
+   onRmQualitySpecRowsChange={handleRmQualitySpecRowsChange}
+   onRmQualitySubSpecRowsChange={handleRmQualitySubSpecRowsChange}
+   primaryUomOptions={isNewRm ? [...RM_NEW_PRIMARY_UOM_OPTIONS] : [...RM_EDIT_PRIMARY_UOM_OPTIONS]}
+   vendorClientList={vendorClientList}
+   tempVendor={tempVendor}
+   tempVendorTiers={tempVendorTiers}
+   onVendorTempFieldChange={handleVendorTempFieldChange}
+   onTempVendorTierChange={handleTempVendorTierChange}
+   onAddTempVendorTierRow={handleAddTempVendorTierRow}
+   onAddVendor={handleAddVendor}
+   onRemoveVendor={handleRemoveVendor}
+   onVendorsChange={handleVendorsChange}
+   InputField={InputField}
+   SelectField={SelectField}
+   TextareaField={TextareaField}
+   customFieldsTaxonomyLabel={rmCustomFieldsTaxonomyLabel}
+   onRemoveCustomFieldValue={handleRemoveCustomFieldValue}
+  />
+ );
 
  // Load existing RM when editing — always populate from API; use form_data if present, else map from record
  useEffect(() => {
@@ -2134,6 +1030,18 @@ const RawMaterialRefactored: React.FC = () => {
    if (cancelled) return;
    setEditRmLoading(false);
    const fdObj = safeParseMaybeJsonObject(result.form_data);
+   mergeEntityCustomDropdownOptions(
+    'RM',
+    (fdObj as Record<string, unknown> | null)?.masterCustomDropdownOptions as
+     | Record<string, string[]>
+     | undefined
+   );
+   mergeEntityCustomFields(
+    'RM',
+    (fdObj as Record<string, unknown> | null)?.masterCustomFields as
+     | Record<string, Partial<Record<'TECH' | 'QUAL' | 'ART', MasterCustomFieldDef[]>>>
+     | undefined
+   );
    const vendorsVal = (fdObj as any)?.vendors;
    const docsVal = (fdObj as any)?.documents;
    const testsVal = (fdObj as any)?.tests;
@@ -2220,7 +1128,6 @@ const RawMaterialRefactored: React.FC = () => {
    const resolvedCats = resolveRmEditCategories({
      code: recordCode,
      category: r.category,
-     rmType: r.rmType,
      group: r.group,
      form_data: fdObj,
    });
@@ -2231,7 +1138,6 @@ const RawMaterialRefactored: React.FC = () => {
      recordInci: r.inci ?? null,
      recordName: r.name ?? null,
      recordCategory: r.category ?? null,
-     recordRmType: r.rmType ?? null,
      formDataKeys: fdObj ? Object.keys(fdObj) : null,
      rmSku: (fdObj as any)?.rmSku ?? null,
      inciName: (fdObj as any)?.inciName ?? null,
@@ -2262,7 +1168,6 @@ const RawMaterialRefactored: React.FC = () => {
        const inf = resolvedCats.rmCategoryKey || inferRmCategoryKeyFromCode(recordCode);
        return inf ? RM_CATEGORIES[inf]?.prefix ?? '' : '';
      })(),
-     rmType: resolvedCats.rmType || (r.rmType ?? ''),
      primaryUom: r.uom ?? '',
      gst: String(r.gst ?? ''),
      shelfLife: r.shelf ?? '',
@@ -2337,7 +1242,6 @@ const RawMaterialRefactored: React.FC = () => {
       merged.optionalRmSubSubCategory ||
       '';
     merged.rmCategory = resolvedCats.rmCategory || merged.rmCategory;
-    merged.rmType = resolvedCats.rmType;
     if (!Array.isArray((merged as { vendors?: unknown }).vendors)) {
       (merged as { vendors: RmCommercialVendor[] }).vendors = mergedVendors;
     }
@@ -2382,24 +1286,20 @@ const RawMaterialRefactored: React.FC = () => {
      if (!merged.tradeCommercialName) {
        merged.tradeCommercialName = String(anyFd?.tradeCommercialName ?? anyFd?.trade_commercial_name ?? anyFd?.name ?? merged.tradeCommercialName ?? '');
      }
-     if (!merged.rmType) merged.rmType = String(anyFd?.rmType ?? anyFd?.rm_type ?? merged.rmType ?? '');
      if (!merged.primaryUom) merged.primaryUom = String(anyFd?.primaryUom ?? anyFd?.uom ?? merged.primaryUom ?? '');
-     if (!merged.preferredVendor?.trim()) {
-       const firstVendor = Array.isArray((merged as { vendors?: RmCommercialVendor[] }).vendors)
-         ? (merged as { vendors: RmCommercialVendor[] }).vendors[0]
-         : undefined;
-       if (firstVendor?.name?.trim()) {
-         merged.preferredVendor = firstVendor.name.trim();
+     const derivedSourcing = deriveRmSourcingFieldsFromVendors(
+       Array.isArray((merged as { vendors?: RmCommercialVendor[] }).vendors)
+         ? (merged as { vendors: RmCommercialVendor[] }).vendors
+         : [],
+       merged.primaryUom
+     );
+     for (const [key, value] of Object.entries(derivedSourcing)) {
+       if (!String((merged as Record<string, unknown>)[key] ?? '').trim() && value.trim()) {
+         (merged as unknown as Record<string, string>)[key] = value;
        }
      }
-     if (!merged.sourcingStandardUom?.trim() && merged.primaryUom?.trim()) {
-       merged.sourcingStandardUom = merged.primaryUom;
-     }
-     if (!merged.sourcingCurrency?.trim() && merged.preferredCurrency?.trim()) {
-       merged.sourcingCurrency = merged.preferredCurrency;
-     }
-     if (!merged.sourcingCountryOfOrigin?.trim() && merged.countryOfOrigin?.trim()) {
-       merged.sourcingCountryOfOrigin = merged.countryOfOrigin;
+     if (!merged.sourcingCurrency?.trim() && String(anyFd?.preferredCurrency ?? '').trim()) {
+       merged.sourcingCurrency = String(anyFd.preferredCurrency);
      }
 
      const sku = String(merged.rmSku || '').trim();
@@ -2509,6 +1409,8 @@ const RawMaterialRefactored: React.FC = () => {
                   <p className="text-gray-500">Loading raw material…</p>
                 </div>
               ) : (
+                <MasterDropdownOptionsProvider entity="RM">
+                <MasterCustomFieldsProvider entity="RM" taxonomyKey={rmCustomFieldsTaxonomyKey}>
                 <MasterFormBase
                   title="Raw Material Master Data"
                   stages={stages}
@@ -2519,8 +1421,19 @@ const RawMaterialRefactored: React.FC = () => {
                   onInputChange={handleInputChange}
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSubmit={handleSubmit}
-                  nextDisabled={isNewRm && !canAdvancePastPrimary}
-                  nextDisabledTitle="Fill all required step-1 fields (category, sub-category when applicable, INCI, trade/commercial name, and primary UoM). For new RMs, internal code is assigned on save."
+                  isNextDisabled={(idx) =>
+                    isNewRm &&
+                    ((idx === 0 && !canAdvancePastPrimary) || (idx === 1 && !canAdvancePastUnitsTax))
+                  }
+                  getNextDisabledTitle={(idx) => {
+                    if (isNewRm && idx === 0 && !canAdvancePastPrimary) {
+                      return 'Complete required primary fields (category, sub-category when applicable, INCI, trade/commercial name, and function in formula).';
+                    }
+                    if (isNewRm && idx === 1 && !canAdvancePastUnitsTax) {
+                      return 'Complete Units & Taxes (primary UoM, returnable item, tax preference, and HSN/GST when taxable).';
+                    }
+                    return undefined;
+                  }}
                   isStageDisabled={(idx) =>
                     isNewRm &&
                     ((idx > 0 && !canAdvancePastPrimary) || (idx > 1 && !canAdvancePastUnitsTax))
@@ -2528,6 +1441,8 @@ const RawMaterialRefactored: React.FC = () => {
                 >
                   {renderStageContent()}
                 </MasterFormBase>
+                </MasterCustomFieldsProvider>
+                </MasterDropdownOptionsProvider>
               )}
             </div>
           </div>
@@ -2558,7 +1473,6 @@ const RawMaterialRefactored: React.FC = () => {
         generatedCode={saveSuccessCode}
         codeLabel={saveSuccessIsEdit ? 'Internal RM code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
-        zohoNote={saveSuccessZohoNote}
       />
     </div>
   );
@@ -2598,7 +1512,16 @@ function getCategoryStyle(category: string): { bg: string; text: string; border:
  return CATEGORY_STYLE_PALETTE[index];
 }
 
-type RmListSortColumn = 'code' | 'name' | 'subCategory' | 'type' | 'uom' | 'category' | 'status' | 'products';
+type RmListSortColumn = 'code' | 'name' | 'subCategory' | 'uom' | 'category' | 'status' | 'products';
+
+function rmListCategoryLabel(rm: RawMaterialRecord): string {
+  const cats = resolveRmEditCategories(rm);
+  return cats.subCategory.trim() || String(rm.category ?? '').trim();
+}
+
+function rmListSubCategoryLabel(rm: RawMaterialRecord): string {
+  return resolveRmEditCategories(rm).optionalRmSubCategory.trim();
+}
 
 const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey = 0, onSwitchToForm, onEditRm, onDeleteRm }) => {
  const { canAssignApprover, canApproveAtStatus } = useMasterApprovalPermission('RM');
@@ -2711,12 +1634,12 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       rows = rows.filter((r) => matchesMasterApprovalStatusTab(r.status, statusTab));
     }
     if (statFilter) {
-      rows = rows.filter((r) => (r.category ?? '').trim() === statFilter);
+      rows = rows.filter((r) => rmListCategoryLabel(r) === statFilter);
     }
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
-      [r.code, r.name, r.inci, r.category, r.rmType, r.zohoSkuCode].some((s) => (s ?? '').toLowerCase().includes(q))
+      [r.code, r.name, r.inci, r.category, r.zohoSkuCode].some((s) => (s ?? '').toLowerCase().includes(q))
     );
   }, [allRows, search, statFilter, statusTab]);
 
@@ -2743,11 +1666,10 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             `${b.name ?? ''} ${b.inci ?? ''}`.trim(),
             dir
           );
-        case 'subCategory':
         case 'category':
-          return compareMasterTableSort(a.category ?? '', b.category ?? '', dir);
-        case 'type':
-          return compareMasterTableSort(a.rmType ?? '', b.rmType ?? '', dir);
+          return compareMasterTableSort(rmListCategoryLabel(a), rmListCategoryLabel(b), dir);
+        case 'subCategory':
+          return compareMasterTableSort(rmListSubCategoryLabel(a), rmListSubCategoryLabel(b), dir);
         case 'uom':
           return compareMasterTableSort(a.uom ?? '', b.uom ?? '', dir);
         case 'status':
@@ -2773,7 +1695,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   }, [search, pageSize, refreshKey, sortColumn, sortDirection, statFilter, statusTab]);
 
   const categoryBuckets = useMemo(
-    () => buildMasterStatBuckets(allRows, (r) => (r as RawMaterialRecord).category ?? '', statCardSort),
+    () => buildMasterStatBuckets(allRows, (r) => rmListCategoryLabel(r), statCardSort),
     [allRows, statCardSort]
   );
 
@@ -3019,6 +1941,15 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           thClassName="py-4"
          />
          <SortableTableTh
+          label="Category"
+          column="category"
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={toggleRmSort}
+          accent="teal"
+          thClassName="py-4"
+         />
+         <SortableTableTh
           label="Sub-category"
           column="subCategory"
           sortColumn={sortColumn}
@@ -3028,26 +1959,8 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           thClassName="py-4"
          />
          <SortableTableTh
-          label="Type"
-          column="type"
-          sortColumn={sortColumn}
-          sortDirection={sortDirection}
-          onSort={toggleRmSort}
-          accent="teal"
-          thClassName="py-4"
-         />
-         <SortableTableTh
           label="UOM"
           column="uom"
-          sortColumn={sortColumn}
-          sortDirection={sortDirection}
-          onSort={toggleRmSort}
-          accent="teal"
-          thClassName="py-4"
-         />
-         <SortableTableTh
-          label="Category"
-          column="category"
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSort={toggleRmSort}
@@ -3079,7 +1992,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        <tbody className="divide-y divide-gray-50">
         {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
            <div className="flex flex-col items-center gap-2">
             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -3089,7 +2002,9 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           </td>
          </tr>
        ) : rows.map((rm, _idx) => {
-         const catStyle = getCategoryStyle(rm.category);
+         const categoryLabel = rmListCategoryLabel(rm);
+         const subCategoryLabel = rmListSubCategoryLabel(rm);
+         const catStyle = getCategoryStyle(categoryLabel);
          return (
           <tr key={rm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
            {/* code */}
@@ -3099,18 +2014,16 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">{rm.name}</p>
             <p className="text-gray-400 text-[10px] mt-0.5 italic">{rm.inci}</p>
            </td>
-           {/* category badge */}
+           {/* category */}
            <td className="px-4 py-3.5">
             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all group-hover:shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border} whitespace-nowrap`}>
-             {rm.category}
+             {categoryLabel || '—'}
             </span>
            </td>
-           {/* type */}
-           <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.rmType}</td>
+           {/* sub-category */}
+           <td className="px-4 py-3.5 text-gray-700 font-medium">{subCategoryLabel || '—'}</td>
            {/* uom */}
            <td className="px-4 py-3.5 text-gray-700 font-semibold">{rm.uom}</td>
-           {/* category (replaces GST column in masters table view) */}
-           <td className="px-4 py-3.5 text-gray-700 font-medium">{rm.category || '—'}</td>
            {/* status */}
            <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
             <MasterApprovalStatusCell
@@ -3290,7 +2203,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
 const InputField: React.FC<{
  label: string;
  id: string;
- value: any;
+ value: string;
  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
  type?: string;
  placeholder?: string;
@@ -3326,13 +2239,14 @@ type SelectOption = string | { value: string; label: string };
 const SelectField: React.FC<{
  label: string;
  id: string;
- value: any;
- onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
- options: SelectOption[];
+ value: string;
+ onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+ options: readonly SelectOption[];
  disabled?: boolean;
  requiredMark?: boolean;
  error?: string;
-}> = ({ label, id, value, onChange, options, disabled, requiredMark, error }) => (
+ emptyLabel?: string;
+}> = ({ label, id, value, onChange, options, disabled, requiredMark, error, emptyLabel }) => (
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
    {label}
@@ -3348,7 +2262,7 @@ const SelectField: React.FC<{
     error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
    } ${disabled ? 'bg-slate-100' : ''}`}
   >
-   <option value="">Select...</option>
+   <option value="">{emptyLabel ?? 'Select...'}</option>
    {options.map((opt) => {
     const v = typeof opt === 'string' ? opt : opt.value;
     const l = typeof opt === 'string' ? opt : opt.label;
@@ -3386,24 +2300,6 @@ const TextareaField: React.FC<{
    }`}
   />
   {error ? <p className="mt-1 text-xs text-red-600" role="alert">{error}</p> : null}
- </div>
-);
-
-const CheckboxField: React.FC<{
- label: string;
- id: string;
- checked: boolean;
- onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}> = ({ label, id, checked, onChange }) => (
- <div className="flex items-center text-sm">
-  <input
-   type="checkbox"
-   id={id}
-   checked={checked}
-   onChange={onChange}
-   className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-  />
-  <label htmlFor={id} className="ml-2 text-gray-700">{label}</label>
  </div>
 );
 

@@ -8,7 +8,6 @@ const base: RawMaterialRecord = {
   name: 'Cucumber',
   inci: 'Cucumber',
   category: 'Actives',
-  rmType: '',
   uom: 'KG',
   pricePerKg: 0,
   gst: 0,
@@ -40,6 +39,6 @@ describe('isClubItemsRawMaterial', () => {
   });
 
   it('rejects non-club bulk RM', () => {
-    expect(isClubItemsRawMaterial({ ...base, category: 'Bulk raw materials', rmType: 'Surfactant' })).toBe(false);
+    expect(isClubItemsRawMaterial({ ...base, category: 'Bulk raw materials' })).toBe(false);
   });
 });

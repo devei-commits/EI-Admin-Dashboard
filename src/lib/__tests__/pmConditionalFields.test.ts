@@ -1,62 +1,68 @@
 import { describe, expect, it } from 'vitest';
 import { getPmConditionalVisibility } from '../pmConditionalFields';
+import { isPmMasterFieldVisible, visiblePmFieldsForModule } from '../pmMasterFieldVisibility';
+import { PM_MASTER_FIELDS } from '../../constants/pmMasterFieldSchema';
 
 describe('getPmConditionalVisibility', () => {
   it('shows PPM primary fields for ppm category', () => {
-    const v = getPmConditionalVisibility({
+    const ctx = {
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'BOTTLES',
       optionalPmSubSubCategory: 'PET',
-    });
-    expect(v.primaryAssemblyCode).toBe(true);
-    expect(v.technicalEmptyWeight).toBe(true);
-    expect(v.regulatoryFoodCosmeticCompliance).toBe(true);
+    };
+    const v = getPmConditionalVisibility(ctx);
+    expect(v.pmAssemblyCode).toBe(true);
+    expect(v.specWeight).toBe(true);
+    expect(v.regFoodCosmeticCompliance).toBe(true);
   });
 
-  it('shows bottle-specific technical fields', () => {
-    const v = getPmConditionalVisibility({
+  it('shows bottle-specific dimension fields', () => {
+    const ctx = {
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'BOTTLES',
       optionalPmSubSubCategory: 'PET',
-    });
-    expect(v.technicalNominalVolume).toBe(true);
-    expect(v.technicalShoulderHeight).toBe(true);
-    expect(v.technicalBrimfulVolume).toBe(true);
-    expect(v.technicalClosureType).toBe(false);
+    };
+    const dims = visiblePmFieldsForModule('dimensions', ctx);
+    expect(dims.some((f) => f.key === 'specNominal')).toBe(true);
+    expect(dims.some((f) => f.key === 'pmShoulderHeightMm')).toBe(true);
+    expect(dims.some((f) => f.key === 'specBrimful')).toBe(true);
+    expect(dims.some((f) => f.key === 'pmClosureType')).toBe(false);
   });
 
   it('supports legacy bottle detail sub-category', () => {
-    const v = getPmConditionalVisibility({
+    const ctx = {
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'Bottles',
       optionalPmSubSubCategory: '',
-    });
-    expect(v.technicalNominalVolume).toBe(true);
+    };
+    expect(isPmMasterFieldVisible(PM_MASTER_FIELDS.find((f) => f.key === 'specNominal')!, ctx)).toBe(
+      true
+    );
   });
 
-  it('shows caps/lids diameter fields', () => {
-    const caps = getPmConditionalVisibility({
+  it('shows caps diameter fields without nominal volume', () => {
+    const capsCtx = {
       pmSkuCategory: 'ppm',
       optionalPmSubCategory: 'CAPS',
-    });
-    expect(caps.technicalOuterDiameter).toBe(true);
-    expect(caps.technicalNominalVolume).toBe(false);
-    expect(caps.aestheticsCapOvercapColour).toBe(true);
+    };
+    const capsDims = visiblePmFieldsForModule('dimensions', capsCtx);
+    expect(capsDims.some((f) => f.key === 'pmOuterDiameterMm')).toBe(true);
+    expect(capsDims.some((f) => f.key === 'specNominal')).toBe(false);
+    const aesthetics = visiblePmFieldsForModule('aesthetics', capsCtx);
+    expect(aesthetics.some((f) => f.key === 'pmCapOvercapColour')).toBe(true);
   });
 
-  it('limits adhesive compatibility to labels and other secondary', () => {
-    const labels = getPmConditionalVisibility({
+  it('shows label adhesive fields for SPM labels only', () => {
+    const labels = visiblePmFieldsForModule('material', {
       pmSkuCategory: 'spm-labels',
       optionalPmSubCategory: 'SHEET FORM',
     });
-    const mono = getPmConditionalVisibility({
+    const mono = visiblePmFieldsForModule('material', {
       pmSkuCategory: 'spm-monocarton',
       optionalPmSubCategory: 'LOCK BOTTOM',
     });
-    expect(labels.compatAdhesiveCompatibility).toBe(true);
-    expect(labels.compatContainerSurface).toBe(true);
-    expect(mono.compatSuitableContainerType).toBe(true);
-    expect(mono.compatAdhesiveCompatibility).toBe(false);
-    expect(mono.compatContainerSurface).toBe(false);
+    expect(labels.some((f) => f.key === 'adhesiveType')).toBe(true);
+    expect(mono.some((f) => f.key === 'adhesiveType')).toBe(false);
+    expect(mono.some((f) => f.key === 'pmBoardPaperType')).toBe(true);
   });
 });

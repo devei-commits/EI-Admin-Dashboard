@@ -204,6 +204,8 @@ function parseQualitySpecRow(raw: unknown, idx: number): QualitySpecTableRow | n
     sample: String(row.sample ?? '').trim(),
     acceptance: String(row.acceptance ?? '').trim(),
     attachments: parseQualitySpecAttachments(row.attachments, row),
+    dataType: String(row.dataType ?? row.data_type ?? '').trim() || undefined,
+    custom: row.custom === true || row._custom === true,
   });
 }
 

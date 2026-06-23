@@ -9,7 +9,6 @@ export interface PackMaterialFromApi {
   id: string;
   code: string;
   description: string;
-  type: string;
   level: string;
   group: string | null;
   material: string;
@@ -44,7 +43,6 @@ export interface PackMaterialRecord {
   id: string;
   code: string;
   description: string;
-  type: string;
   level: string;
   group: string | null;
   material: string;
@@ -81,7 +79,6 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     id: row.id ?? '',
     code: row.code ?? '',
     description: row.description ?? '',
-    type: row.type ?? '',
     level: row.level ?? '',
     group: row.group ?? null,
     material: row.material ?? '',
@@ -178,8 +175,6 @@ export interface CreatePackMaterialPayload {
   itemCode?: string;
   description?: string;
   name?: string;
-  type?: string;
-  itemCategory?: string;
   level?: string;
   group?: string;
   material?: string;

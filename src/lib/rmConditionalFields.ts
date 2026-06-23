@@ -1,5 +1,5 @@
-import { buildRmConditionalVisibility } from '../constants/eiMastersUnifiedSchema';
 import { hasRmQualitySpecFields } from './rmQualitySpecVisibility';
+import { buildRmMasterFieldVisibility } from './rmMasterFieldVisibility';
 
 export type RmCategoryContext = {
   subCategory: string;
@@ -8,14 +8,21 @@ export type RmCategoryContext = {
   rmState: string;
 };
 
-export type RmConditionalVisibility = ReturnType<typeof buildRmConditionalVisibility> & {
+export type RmConditionalVisibility = ReturnType<typeof buildRmMasterFieldVisibility> & {
   showRegulatoryConditional: boolean;
   showTechnicalConditional: boolean;
   showQualityConditional: boolean;
+  regMaxUseLevelPct: boolean;
+  regAllergenDeclarationEu26: boolean;
+  regIfraCategoryLimit: boolean;
+  regCiNumber: boolean;
+  regApprovedArea: boolean;
+  rmPhysicalFormSolid: boolean;
+  rmPhysicalFormLiquid: boolean;
 };
 
 export function getRmConditionalVisibility(ctx: RmCategoryContext): RmConditionalVisibility {
-  const flags = buildRmConditionalVisibility(ctx);
+  const flags = buildRmMasterFieldVisibility(ctx);
   const showQualityConditional = hasRmQualitySpecFields({
     subCategory: ctx.subCategory,
     optionalRmSubCategory: ctx.optionalRmSubCategory,
@@ -24,13 +31,21 @@ export function getRmConditionalVisibility(ctx: RmCategoryContext): RmConditiona
 
   return {
     ...flags,
+    regMaxUseLevelPct: flags.regMaxUseLevelPct ?? false,
+    regAllergenDeclarationEu26: flags.regAllergenDeclarationEu26 ?? false,
+    regIfraCategoryLimit: flags.regIfraCategoryLimit ?? false,
+    regCiNumber: flags.regCiNumber ?? false,
+    regApprovedArea: flags.regApprovedArea ?? false,
+    rmPhysicalFormSolid: flags.physicalFormSolid ?? false,
+    rmPhysicalFormLiquid: flags.physicalFormLiquid ?? false,
     showRegulatoryConditional:
-      flags.regMaxUseLevelPct ||
-      flags.regAllergenDeclarationEu26 ||
-      flags.regIfraCategoryLimit ||
-      flags.regCiNumber ||
-      flags.regApprovedArea,
-    showTechnicalConditional: flags.rmPhysicalFormSolid || flags.rmPhysicalFormLiquid,
+      Boolean(flags.regMaxUseLevelPct) ||
+      Boolean(flags.regAllergenDeclarationEu26) ||
+      Boolean(flags.regIfraCategoryLimit) ||
+      Boolean(flags.regCiNumber) ||
+      Boolean(flags.regApprovedArea),
+    showTechnicalConditional:
+      Boolean(flags.physicalFormSolid) || Boolean(flags.physicalFormLiquid),
     showQualityConditional,
   };
 }

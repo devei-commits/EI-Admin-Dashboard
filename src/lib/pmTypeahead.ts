@@ -23,7 +23,7 @@ export function buildPmTypeaheadOptions(
     const desc = String(pm.description || '').trim();
     const labelBase = code ? `${code} — ${desc || code}` : desc || id;
     const label = `${labelBase}${masterPickerLabelSuffix(pm.status)}`;
-    const haystack = `${code} ${desc} ${pm.type || ''} ${pm.level || ''} ${id}`.trim().toLowerCase();
+    const haystack = `${code} ${desc} ${pm.level || ''} ${id}`.trim().toLowerCase();
     const disabled = Boolean(exclude?.has(id) && id !== allowId);
     return { id, code, label, haystack, disabled };
   });

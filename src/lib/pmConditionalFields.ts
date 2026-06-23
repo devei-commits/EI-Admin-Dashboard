@@ -1,13 +1,11 @@
 import { buildPmConditionalVisibility } from '../constants/eiMastersUnifiedSchema';
+import { buildPmMasterFieldVisibility, visiblePmFieldsForModule, type PmMasterFieldContext } from './pmMasterFieldVisibility';
 
-export type PmCategoryContext = {
-  pmSkuCategory: string;
+export type PmCategoryContext = PmMasterFieldContext & {
   subCategory?: string;
-  optionalPmSubCategory: string;
-  optionalPmSubSubCategory?: string;
 };
 
-export type PmConditionalVisibility = ReturnType<typeof buildPmConditionalVisibility> & {
+export type PmConditionalVisibility = ReturnType<typeof buildPmMasterFieldVisibility> & {
   showPrimaryConditional: boolean;
   showTechnicalConditional: boolean;
   showAestheticsConditional: boolean;
@@ -15,57 +13,32 @@ export type PmConditionalVisibility = ReturnType<typeof buildPmConditionalVisibi
   showRegulatoryConditional: boolean;
 };
 
-const PM_TECHNICAL_KEYS = [
-  'technicalNominalVolume',
-  'technicalShoulderHeight',
-  'technicalOverallHeight',
-  'technicalOuterDiameter',
-  'technicalInnerDiameterNeck',
-  'technicalCircumference',
-  'technicalBrimfulVolume',
-  'technicalEmptyWeight',
-  'technicalOrifice',
-  'technicalClosureType',
-  'technicalPumpCcDosage',
-  'technicalPipetteLength',
-  'technicalSleeveHeight',
-  'technicalFillVolume',
-  'technicalPackWidth',
-  'technicalPackHeight',
-  'technicalOpenClosedSize',
-  'technicalSealLaminateWidth',
-  'technicalCartonLength',
-  'technicalCartonWidth',
-  'technicalCartonHeight',
-  'technicalBoardPaperType',
-  'technicalGsm',
-  'technicalMaterialThickness',
-  'technicalLamination',
-  'technicalStickerType',
-  'technicalPrinting',
-] as const;
-
-const PM_AESTHETICS_KEYS = [
-  'aestheticsShoulderColour',
-  'aestheticsCapOvercapColour',
-  'aestheticsActuatorColourStyle',
-  'aestheticsCollarFinish',
-  'aestheticsTeatColour',
-] as const;
+const PM_TECHNICAL_MODULE_SLUGS = ['dimensions', 'material'] as const;
+const PM_AESTHETICS_MODULE_SLUG = 'aesthetics' as const;
+const PM_PRIMARY_SKIP = new Set(['itemCode', 'tradeCommercialName']);
 
 export function getPmConditionalVisibility(ctx: PmCategoryContext): PmConditionalVisibility {
-  const flags = buildPmConditionalVisibility(ctx);
+  const fieldVis = buildPmMasterFieldVisibility(ctx);
+  const legacy = buildPmConditionalVisibility(ctx);
+
+  const technicalKeys = Object.keys(fieldVis).filter((k) =>
+    ['specNominal', 'pmOverallHeightMm', 'matBody', 'storeLoc'].includes(k)
+  );
 
   return {
-    ...flags,
-    showPrimaryConditional:
-      flags.primaryAssemblyCode || flags.primaryComponentBreakdown || flags.primarySkuVolume,
-    showTechnicalConditional: PM_TECHNICAL_KEYS.some((k) => flags[k]),
-    showAestheticsConditional: PM_AESTHETICS_KEYS.some((k) => flags[k]),
+    ...fieldVis,
+    ...legacy,
+    showPrimaryConditional: ['pmAssemblyCode', 'pmComponentBreakdown', 'pmSkuVolume'].some(
+      (k) => fieldVis[k]
+    ),
+    showTechnicalConditional: technicalKeys.some((k) => fieldVis[k]),
+    showAestheticsConditional: fieldVis.pmShoulderColour || fieldVis.pmCapOvercapColour || false,
     showCompatibilityConditional:
-      flags.compatSuitableContainerType ||
-      flags.compatContainerSurface ||
-      flags.compatAdhesiveCompatibility,
-    showRegulatoryConditional: flags.regulatoryFoodCosmeticCompliance,
+      legacy.compatSuitableContainerType ||
+      legacy.compatContainerSurface ||
+      legacy.compatAdhesiveCompatibility,
+    showRegulatoryConditional: Boolean(fieldVis.regFoodCosmeticCompliance),
   };
 }
+
+export { visiblePmFieldsForModule, PM_TECHNICAL_MODULE_SLUGS, PM_AESTHETICS_MODULE_SLUG, PM_PRIMARY_SKIP };

@@ -4476,7 +4476,7 @@ const Planning = () => {
               : undefined;
           const category =
             line.type === 'RM'
-              ? rm?.category || rm?.rmType || involved.category
+              ? rm?.category || involved.category
               : involved.category;
           const vendor = getQuotationSlabsForItem(involved)[0]?.vendorName;
           return [category, vendor].filter((s) => String(s ?? '').trim()).join(' · ');

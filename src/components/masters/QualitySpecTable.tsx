@@ -13,6 +13,8 @@ export type QualitySpecTableProps = {
   /** When false, inputs and add are disabled (section still visible). */
   enabled?: boolean;
   disabledHint?: string;
+  /** When false, hides inline “+ Add …” controls (use external modal add instead). */
+  showAddButton?: boolean;
 };
 
 const inputCls =
@@ -28,6 +30,7 @@ export function QualitySpecTable({
   idPrefix = 'qs',
   enabled = true,
   disabledHint,
+  showAddButton = true,
 }: QualitySpecTableProps): React.ReactElement {
   const updateRow = (id: string, patch: Partial<QualitySpecTableRow>): void => {
     if (!enabled) return;
@@ -51,14 +54,16 @@ export function QualitySpecTable({
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-0.5">{title}</h3>
           {subtitle ? <p className="text-sm font-semibold text-gray-800">{subtitle}</p> : null}
         </div>
-        <button
-          type="button"
-          onClick={addRow}
-          disabled={!enabled}
-          className="shrink-0 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {addButtonLabel}
-        </button>
+        {showAddButton ? (
+          <button
+            type="button"
+            onClick={addRow}
+            disabled={!enabled}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {addButtonLabel}
+          </button>
+        ) : null}
       </div>
       {!enabled && disabledHint ? (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
@@ -85,12 +90,12 @@ export function QualitySpecTable({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
-                  <p className="mb-3">{emptyMessage}</p>
-                  {enabled ? (
+                  <p>{emptyMessage}</p>
+                  {enabled && showAddButton ? (
                     <button
                       type="button"
                       onClick={addRow}
-                      className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      className="mt-3 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
                     >
                       {addButtonLabel}
                     </button>

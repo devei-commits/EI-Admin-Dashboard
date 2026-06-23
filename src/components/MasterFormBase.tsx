@@ -25,8 +25,12 @@ interface MasterFormBaseProps {
  primaryFields?: string[];
  /** When true, disables the Next button (e.g. Zoho sync gate on step 0). */
  nextDisabled?: boolean;
+ /** Per-stage Next disable (overrides nextDisabled when provided). */
+ isNextDisabled?: (stageIndex: number) => boolean;
  /** Optional title for disabled Next (tooltip). */
  nextDisabledTitle?: string;
+ /** Per-stage tooltip when Next is disabled. */
+ getNextDisabledTitle?: (stageIndex: number) => string | undefined;
  /** When true, disables clicking a stage in the sidebar. */
  isStageDisabled?: (stageIndex: number) => boolean;
 }
@@ -56,6 +60,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  primaryFields = [],
  nextDisabled = false,
  nextDisabledTitle,
+ isNextDisabled,
+ getNextDisabledTitle,
  isStageDisabled
 }) => {
  // Utility functions that may be used by child components
@@ -76,6 +82,15 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  // Export utility functions for potential use
  void _isPrimaryField;
  void _handleInputWithAutoPopulate;
+
+ const nextButtonDisabled =
+  currentStage === stages.length - 1 ||
+  (isNextDisabled ? isNextDisabled(currentStage) : nextDisabled && currentStage === 0);
+ const nextButtonTitle = isNextDisabled
+  ? getNextDisabledTitle?.(currentStage)
+  : nextDisabled && currentStage === 0
+    ? nextDisabledTitle
+    : undefined;
 
  return (
   <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -174,9 +189,9 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         </button>
         <button
          type="button"
-         title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
+         title={nextButtonTitle}
          onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
-         disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
+         disabled={nextButtonDisabled}
          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
          Next
@@ -238,9 +253,9 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
          )}
          <button
           type="button"
-          title={nextDisabled && nextDisabledTitle ? nextDisabledTitle : undefined}
+          title={nextButtonTitle}
           onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
-          disabled={currentStage === stages.length - 1 || (nextDisabled && currentStage === 0)}
+          disabled={nextButtonDisabled}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
          >
           Next

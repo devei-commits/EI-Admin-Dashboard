@@ -48,6 +48,7 @@ type PrListSortColumn =
   | 'record'
   | 'product'
   | 'category'
+  | 'subCategory'
   | 'form'
   | 'packSize'
   | 'batchKg'
@@ -55,7 +56,6 @@ type PrListSortColumn =
   | 'rmIngs'
   | 'packItems'
   | 'status'
-  | 'version'
   | 'openSos';
 
 const STATUS_OPTIONS = ['Draft', 'Under Review', 'Under Approval', 'Active', 'Discontinued'];
@@ -857,6 +857,8 @@ const BOMDashboard: React.FC = () => {
           return compareMasterTableSort(a.product_name ?? '', b.product_name ?? '', dir);
         case 'category':
           return compareMasterTableSort(a.category ?? '', b.category ?? '', dir);
+        case 'subCategory':
+          return compareMasterTableSort(a.pr_sub_category ?? '', b.pr_sub_category ?? '', dir);
         case 'form':
           return compareMasterTableSort(a.form ?? '', b.form ?? '', dir);
         case 'packSize':
@@ -882,9 +884,11 @@ const BOMDashboard: React.FC = () => {
             dir
           );
         case 'status':
-          return compareMasterTableSort(a.status ?? '', b.status ?? '', dir);
-        case 'version':
-          return compareMasterTableSort(a.version ?? '', b.version ?? '', dir);
+          return compareMasterTableSort(
+            normalizeMasterApprovalStatus(a.status),
+            normalizeMasterApprovalStatus(b.status),
+            dir
+          );
         case 'openSos':
           return compareMasterTableSort(
             Number(a.open_sos_count ?? 0),
@@ -1095,6 +1099,14 @@ const BOMDashboard: React.FC = () => {
                       accent="cyan"
                     />
                     <SortableTableTh
+                      label="Sub-category"
+                      column="subCategory"
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={togglePrSort}
+                      accent="cyan"
+                    />
+                    <SortableTableTh
                       label="Form"
                       column="form"
                       sortColumn={sortColumn}
@@ -1152,14 +1164,6 @@ const BOMDashboard: React.FC = () => {
                     />
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Assign</th>
                     <SortableTableTh
-                      label="Ver."
-                      column="version"
-                      sortColumn={sortColumn}
-                      sortDirection={sortDirection}
-                      onSort={togglePrSort}
-                      accent="cyan"
-                    />
-                    <SortableTableTh
                       label="Open SOs"
                       column="openSos"
                       sortColumn={sortColumn}
@@ -1201,6 +1205,7 @@ const BOMDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.category || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{p.pr_sub_category || '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{p.form ?? '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">
                           {formatSkuBomLimitAsPack(p.skuBomLimitQty, p.skuBomLimitUom)}
@@ -1209,7 +1214,6 @@ const BOMDashboard: React.FC = () => {
                         <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.shelf_life_months != null ? `${p.shelf_life_months}M` : '—'}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">{p.rm_ingredients_count ?? 0}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-amber-600 text-center">{p.pack_items_count ?? 0}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">{p.mrp_price != null ? `Rs.${p.mrp_price}` : '—'}</td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <MasterApprovalStatusCell
                             kind="PR"
@@ -1243,7 +1247,6 @@ const BOMDashboard: React.FC = () => {
                             }}
                           />
                         </td>
-                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.version ?? '—'}</td>
                         <td className="px-4 py-3 text-center">
                           {(p.open_sos_count ?? 0) > 0 ? (
                             <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold font-mono bg-indigo-100 text-indigo-700 border border-indigo-200">{p.open_sos_count}</span>

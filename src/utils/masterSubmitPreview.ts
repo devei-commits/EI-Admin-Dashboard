@@ -14,7 +14,7 @@ export type MasterPreviewSectionDef = {
   includeEmpty?: boolean;
 };
 
-const SKIP_PREVIEW_KEYS = new Set(['id', 'seriesPrefix']);
+const SKIP_PREVIEW_KEYS = new Set(['id', 'seriesPrefix', 'rmType', 'rm_type', 'itemCategory']);
 
 function humanizeKey(key: string): string {
   return key

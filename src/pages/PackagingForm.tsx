@@ -5,13 +5,13 @@ import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAs
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
+import { derivePmVendorFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
-import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
   findVendorClientByName,
@@ -19,7 +19,7 @@ import VendorCommercialEditor, {
   type VendorTierDraft,
 } from '../components/VendorCommercialEditor';
 import { syncMasterVendorsToPriceList } from '../utils/syncVendorMasterToPriceList';
-import { validateStagedPercents } from '../lib/stagedPaymentTerms';
+import { validateStagedPercents, serializeStagedPaymentTerms } from '../lib/stagedPaymentTerms';
 import {
   buildMasterApprovalStatusCounts,
   matchesMasterApprovalStatusTab,
@@ -54,23 +54,34 @@ import {
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 import { getPmConditionalVisibility } from '../lib/pmConditionalFields';
-import { PmQualitySpecTable } from '../components/masters/PmQualitySpecTable';
 import { MasterLinkedPrProductsPanel } from '../components/masters/MasterLinkedPrProductsPanel';
 import { parseMasterLinkedProductCodes } from '../lib/masterLinkedPrProducts';
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
-  canEditPmQualityCategorySpecs,
   flattenPmQualitySpecRowsForPayload,
   flattenPmQualitySubSpecRowsByPathForPayload,
-  getDefaultPmQualitySpecRows,
-  getDefaultPmQualitySubSpecRows,
   hydratePmQualitySpecRows,
   hydratePmQualitySubSpecRowsByPath,
   resolvePmQualitySpecContext,
+  canEditPmQualityCategorySpecs,
   shouldShowPmQualitySpecTable,
   shouldShowPmQualitySubSpecTable,
 } from '../lib/pmQualitySpecVisibility';
-import PmConditionalFieldBlocks from '../components/packaging/PmConditionalFieldBlocks';
+import PmMasterSectionContent from '../components/packaging/PmMasterSectionContent';
+import { MasterDropdownOptionsProvider } from '../context/MasterDropdownOptionsContext';
+import { MasterCustomFieldsProvider } from '../context/MasterCustomFieldsContext';
+import {
+  loadEntityCustomDropdownOptions,
+  mergeEntityCustomDropdownOptions,
+} from '../lib/masterDropdownCustomOptions';
+import {
+  buildMasterCustomFieldsTaxonomyKey,
+  loadEntityCustomFields,
+  mergeEntityCustomFields,
+  type MasterCustomFieldDef,
+} from '../lib/masterCustomFields';
+import { PM_MASTER_FIELD_KEYS, PM_MASTER_MODULE_ORDER, emptyPmMasterScalarDefaults } from '../constants/pmMasterFieldSchema';
+import { buildPmMasterFieldContext, type PmMasterFieldContext } from '../lib/pmMasterFieldVisibility';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
 const PM_CATEGORIES: Record<string, { label: string; prefix: string }> = {
   PRI: { label: 'Primary Container (Bottle/Jar/Tube)', prefix: 'EI-PM-PRI' },
@@ -91,59 +102,12 @@ const PM_QC_TESTING_GROUP_OPTIONS = ['Packaging QC only'] as const;
 const STORAGE_TYPES = ['Ambient – Dry', 'Ambient – Cool', 'Refrigerated (2–8°C)', 'Frozen', 'Flammable Store'];
 
 const PM_REUSABILITY_OPTIONS = [
-  { value: 'Single use', label: 'Single use' },
+  { value: 'Single-use', label: 'Single-use' },
   { value: 'Reusable', label: 'Reusable' },
   { value: 'Refillable', label: 'Refillable' },
 ] as const;
 
-const PM_DECORATION_OPTIONS = [
-  'None',
-  'Printed',
-  'Hot foil',
-  'Cold foil',
-  'Metalised',
-  'Frosted',
-  'Etched',
-  'Sticker',
-] as const;
-
-const PM_DECORATION_METHOD_OPTIONS = [
-  'Silk screen',
-  'Pad print',
-  'UV print',
-  'Offset',
-  'Flexo',
-  'Gravure',
-  'Hot stamp',
-] as const;
-
-const PM_SURFACE_FINISH_OPTIONS = ['Gloss', 'Matte', 'Velvet', 'Satin', 'Soft-touch'] as const;
-
-const PM_SURFACE_TEXTURE_OPTIONS = ['Smooth', 'Embossed', 'Debossed', 'Textured'] as const;
-
-const PM_TRANSPARENCY_LEVEL_OPTIONS = ['Transparent', 'Translucent', 'Opaque'] as const;
-
-const PM_VARIANT_STATUS_OPTIONS = [
-  { value: 'Active', label: 'Active' },
-  { value: 'Discontinued', label: 'Discontinued' },
-  { value: 'Sample only', label: 'Sample only' },
-] as const;
-
-const PM_TOOLING_OWNERSHIP_OPTIONS = ['EI', 'Vendor', 'Shared'] as const;
-
-const PM_APPLICATION_METHOD_OPTIONS = ['Manual', 'Automatic', 'Both'] as const;
-
-const PM_PRODUCT_ENVIRONMENT_OPTIONS = ['Oil', 'Water', 'Chemical', 'Mixed', 'Dry'] as const;
-
 const PM_COA_REQUIRED_OPTIONS = ['Yes', 'No'] as const;
-
-const PM_LISTED_IN_CATALOGUE_OPTIONS = ['Yes', 'No', 'Internal Only'] as const;
-
-const PM_CATALOGUE_VISIBILITY_OPTIONS = ['Public', 'Client-locked', 'Internal'] as const;
-
-const PM_MIGRATION_TEST_STATUS_OPTIONS = ['Pass', 'Fail', 'NA'] as const;
-
-const PM_BPA_PHTHALATE_OPTIONS = ['Declared', 'NA'] as const;
 
 const PM_LIFECYCLE_STATUS_OPTIONS = [
   'Active',
@@ -152,8 +116,6 @@ const PM_LIFECYCLE_STATUS_OPTIONS = [
   'Phase-Out',
   'Discontinued',
 ] as const;
-
-const PM_CLIENT_SCOPE_OPTIONS = ['Generic', 'Client-locked'] as const;
 
 const PM_MATERIAL_OPTIONS = [
   'PET',
@@ -177,15 +139,6 @@ const PM_MATERIAL_OPTIONS = [
   'Silica gel',
 ] as const;
 
-type PmVariantRow = {
-  id: string;
-  name: string;
-  moq: number;
-  status: string;
-  leadTimeDays: number;
-  notes: string;
-};
-
 const PM_REQUIRED_FIELDS: Array<{
   id: string;
   label: string;
@@ -199,7 +152,6 @@ const PM_REQUIRED_FIELDS: Array<{
     section: 0,
     toastMessage: 'Step 1 — PM Name / description is required',
   },
-  { id: 'intendedUse', label: 'Intended use', section: 0, toastMessage: 'Step 1 — Intended use is required' },
   { id: 'pkgUnit', label: 'Primary UoM', section: 1, toastMessage: 'Step 2 — Primary UoM is required' },
 ];
 
@@ -220,185 +172,100 @@ function safeParseMaybeJsonObject(input: unknown): Record<string, unknown> | nul
   return null;
 }
 
+type PackagingFormData = {
+  status: string;
+  masterApprovalStatus: string;
+  version: string;
+  pmLifecycleStatus: string;
+  pmSkuCategory: string;
+  optionalPmSubCategory: string;
+  optionalPmSubSubCategory: string;
+  subCategory: string;
+  level: string;
+  itemCode: string;
+  tradeCommercialName: string;
+  name: string;
+  pkgUnit: string;
+  pkgHsn: string;
+  pkgGst: string;
+  pkgTaxPreference: string;
+  pkgReturnable: string;
+  pkgUnitsPerShipperRoll: string;
+  pkgAssociateItems: string;
+  preferredVendor: string;
+  alternateVendor: string;
+  preferredVendorClientId: string;
+  alternateVendorClientId: string;
+  pmSupplyLocation: string;
+  zohoId: string;
+  pkgSku: string;
+  matBody: string;
+  specNominal: string;
+  pmOverallHeightMm: string;
+  decorationMethod: string;
+  vendors: PmCommercialVendor[];
+  pmQualitySpecRows: QualitySpecTableRow[];
+  pmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+  products: string[];
+  tests: Array<{ name: string; result: string; date: string; by: string; remarks: string }>;
+  [key: string]:
+    | string
+    | boolean
+    | PmCommercialVendor[]
+    | QualitySpecTableRow[]
+    | Record<string, QualitySpecTableRow[]>
+    | string[]
+    | Array<{ name: string; result: string; date: string; by: string; remarks: string }>
+    | undefined;
+};
+
 /** Fresh PM form state when opening a new item or after closing the onboarding overlay. */
-function createEmptyPackagingFormData() {
-  return {
-    itemCode: '',
+function createEmptyPackagingFormData(): PackagingFormData {
+  const base: PackagingFormData = {
+    ...emptyPmMasterScalarDefaults(),
     status: 'Draft',
-    masterApprovalStatus: 'Draft' as const,
+    masterApprovalStatus: 'Draft',
     version: 'v1.0',
     pmLifecycleStatus: 'Active',
-    pmClientScope: '',
-    pmOwner: '',
-    pmCategory: '',
     pmSkuCategory: '',
     optionalPmSubCategory: '',
     optionalPmSubSubCategory: '',
-    qcGroup: 'Packaging QC only',
     subCategory: '',
-    storeLoc: '',
-    pkgUnitsPerShipperRoll: '',
+    level: '',
+    itemCode: '',
     zohoId: '',
     pkgSku: '',
     pkgUnit: 'PCS',
     pkgHsn: '',
     pkgGst: '',
     pkgTaxPreference: '',
-    pkgReturnable: '' as '' | 'Yes' | 'No',
+    pkgReturnable: '',
+    pkgUnitsPerShipperRoll: '',
     pkgAssociateItems: '',
-    products: [] as string[],
-    inciName: '',
-    tradeCommercialName: '',
+    products: [],
     name: '',
-    level: '',
-    itemCategory: '',
-    intendedUse: '',
-    reusability: '',
-    matBody: '',
-    matClosure: '',
-    matInner: '',
-    matRecycle: false,
-    matBpa: false,
-    matGrade: '',
-    specNominal: '',
-    specBrimful: '',
-    specHeight: '',
-    specDia: '',
-    specNeck: '',
-    specWeight: '',
-    specWall: '',
-    specLink: '',
-    assayPurity: '',
-    appearanceSpec: '',
-    phSpec: '',
-    moistureLod: '',
-    heavyMetalsSpec: '',
-    microbialSpec: '',
-    odorColorSpec: '',
-    otherSpecs: '',
-    colorType: '',
-    colorCode: '',
-    finish: '',
-    deco: '',
-    decorationMethod: '',
-    surfaceEffects: '',
-    surfaceTexture: '',
-    printCoverage: '',
-    numberOfColours: '',
-    printColours: '',
-    transparencyLevel: '',
-    foilColour: '',
-    uvFinishing: '',
-    embossingDebossing: '',
-    premiumLookFeel: '',
-    images: '',
-    cusApprovedVendorCustom: '',
-    cusCustomisedMoq: '',
-    cusCustomisationLeadTimeDays: '',
-    cusCustomUnitCost: '',
-    cusSampleLeadTimeDays: '',
-    cusPrintingCylinderCost: '',
-    cusPrintingPlateDieCost: '',
-    cusToolingCost: '',
-    cusToolingOwnership: '',
-    cusPaymentTermsCustom: '',
-    cusSupplyLocationCustom: '',
-    compApplicationMethod: '',
-    compProductEnvironment: '',
-    compCompatibilityPmSkus: '',
-    secLabelType: '',
-    secLabelSize: '',
-    secAdhesive: '',
-    secLabelCompat: '',
-    secGsm: '',
-    secCartonFinish: '',
-    secFit: '',
-    secArtLink: '',
-    secNotes: '',
-    terShipType: '',
-    terUnits: '',
-    terDrop: '',
-    terStack: '',
-    terNotes: '',
-    qaQcTestPlanRef: '',
-    qaCoaRequired: '' as '' | 'Yes' | 'No',
-    pmQualitySpecRows: [] as QualitySpecTableRow[],
-    pmQualitySubSpecRowsByPath: {} as Record<string, QualitySpecTableRow[]>,
-    apprPack: false,
-    apprRd: false,
-    apprFin: false,
-    apprLock: false,
-    catListedInCatalogue: '',
-    catCataloguePhoto: '',
-    catCatalogueCustomNotes: '',
-    catCatalogueVisibility: '',
-    regMigrationTestStatus: '',
-    regBpaPhthalateFree: '',
-    regRecyclabilityCode: '',
-    regEprRegistration: '',
-    regFoodCosmeticCompliance: '',
-    pmAssemblyCode: '',
-    pmComponentBreakdown: '',
-    pmSkuVolume: '',
-    pmShoulderHeightMm: '',
-    pmOverallHeightMm: '',
-    pmOuterDiameterMm: '',
-    pmInnerDiameterNeckMm: '',
-    pmCircumferenceMm: '',
-    pmOrificeMm: '',
-    pmClosureType: '',
-    pmPumpCcDosage: '',
-    pmPipetteLengthMm: '',
-    pmSleeveHeightMm: '',
-    pmFillVolumeMl: '',
-    pmPackWidthMm: '',
-    pmPackHeightMm: '',
-    pmOpenClosedSizeMm: '',
-    pmSealLaminateWidthMm: '',
-    pmCartonLengthMm: '',
-    pmCartonWidthMm: '',
-    pmCartonHeightMm: '',
-    pmBoardPaperType: '',
-    pmGsm: '',
-    pmMaterialThicknessMicron: '',
-    pmLamination: '',
-    pmStickerType: '',
-    pmPrintingCmykPantones: '',
-    pmShoulderColour: '',
-    pmCapOvercapColour: '',
-    pmActuatorColourStyle: '',
-    pmCollarFinish: '',
-    pmTeatColour: '',
-    pmSuitableContainerType: '',
-    pmContainerSurface: '',
-    pmAdhesiveCompatibility: '',
-    variants: [] as PmVariantRow[],
+    tradeCommercialName: '',
     preferredVendor: '',
-    preferredVendorClientId: '',
     alternateVendor: '',
+    preferredVendorClientId: '',
     alternateVendorClientId: '',
     pmSupplyLocation: '',
-    vendors: [] as PmCommercialVendor[],
-    tests: [] as Array<{ name: string; result: string; date: string; by: string; remarks: string }>,
+    matBody: '',
+    specNominal: '',
+    pmOverallHeightMm: '',
+    decorationMethod: '',
+    pmQualitySpecRows: [],
+    pmQualitySubSpecRowsByPath: {},
+    vendors: [],
+    tests: [],
   };
+  for (const key of PM_MASTER_FIELD_KEYS) {
+    if (base[key] === undefined) base[key] = '';
+  }
+  return base;
 }
 
-const SECTIONS = [
-  'Primary info',
-  'Units & Taxes',
-  'Technical, material & procurement',
-  'Aesthetics',
-  'Variants Matrix',
-  'Customization & Tooling',
-  'Compatibility (R&D / QA)',
-  'Vendors & Commercial',
-  'Secondary Packaging',
-  'Tertiary Packaging',
-  'QA Testing & Documents',
-  'Catalogue / Website',
-  'Regulatory',
-  'Lifecycle & Ownership',
-];
+const SECTIONS = PM_MASTER_MODULE_ORDER.map((m) => m.title);
 
 function parsePmVendorTierPrice(raw: string): number {
   const n = parseFloat(String(raw ?? '').replace(/[^\d.]/g, ''));
@@ -426,7 +293,6 @@ const PackagingRefactored: React.FC = () => {
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
   const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
-  const [saveSuccessZohoNote, setSaveSuccessZohoNote] = useState<string | null>(null);
   const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
   const focusPmField = useCallback((fieldId: string) => {
     window.setTimeout(() => {
@@ -532,50 +398,6 @@ const PackagingRefactored: React.FC = () => {
     [pmQualitySpecResolved.subSpecPathKey]
   );
 
-  useEffect(() => {
-    if (!pmQualitySpecResolved.functionalCategory) return;
-    setFormData((prev) => {
-      if (prev.pmQualitySpecRows.length > 0) return prev;
-      const defaults = getDefaultPmQualitySpecRows(pmQualitySpecCtx);
-      if (defaults.length === 0) return prev;
-      return {
-        ...prev,
-        pmQualitySpecRows: defaults,
-      };
-    });
-  }, [
-    pmQualitySpecResolved.functionalCategory,
-    pmQualitySpecCtx.optionalPmSubCategory,
-    pmQualitySpecCtx.pmSkuCategory,
-    pmQualitySpecCtx.subCategory,
-  ]);
-
-  useEffect(() => {
-    if (!showPmQualitySubSpecTable) return;
-    const pathKey = pmQualitySpecResolved.subSpecPathKey;
-    if (!pathKey) return;
-    setFormData((prev) => {
-      const existing = prev.pmQualitySubSpecRowsByPath[pathKey];
-      if (existing && existing.length > 0) return prev;
-      const defaults = getDefaultPmQualitySubSpecRows(pmQualitySpecCtx);
-      if (defaults.length === 0) return prev;
-      return {
-        ...prev,
-        pmQualitySubSpecRowsByPath: {
-          ...prev.pmQualitySubSpecRowsByPath,
-          [pathKey]: defaults,
-        },
-      };
-    });
-  }, [
-    showPmQualitySubSpecTable,
-    pmQualitySpecResolved.subSpecPathKey,
-    pmQualitySpecCtx.optionalPmSubCategory,
-    pmQualitySpecCtx.optionalPmSubSubCategory,
-    pmQualitySpecCtx.pmSkuCategory,
-    pmQualitySpecCtx.subCategory,
-  ]);
-
   const pmSubSubCategoryOptions = useMemo(() => {
     const base = pmSubSubCategoryOptionsForDetailSubCategory(
       formData.optionalPmSubCategory,
@@ -597,8 +419,7 @@ const PackagingRefactored: React.FC = () => {
     Boolean(
       isCanonicalPmSkuCategory(formData.pmSkuCategory || formData.subCategory) &&
         pmLevelForSubCategory(formData.pmSkuCategory || formData.subCategory) &&
-        (formData.tradeCommercialName?.trim() || formData.name?.trim()) &&
-        formData.intendedUse?.trim()
+        (formData.tradeCommercialName?.trim() || formData.name?.trim())
     );
   const canAdvancePastUnitsTaxes =
     !isNewPm ||
@@ -616,14 +437,6 @@ const PackagingRefactored: React.FC = () => {
   };
   /** On edit: internal code and level stay fixed; identity, UoM, returnable, and tax remain editable. */
 
-  const [tempVariant, setTempVariant] = useState({
-    id: '',
-    name: '',
-    moq: '',
-    status: 'Active',
-    leadTimeDays: '',
-    notes: '',
-  });
   const [tempVendor, setTempVendor] = useState({
     name: '',
     location: '',
@@ -651,27 +464,8 @@ const PackagingRefactored: React.FC = () => {
   });
   const vendorClientList = vendorClientData ?? [];
 
-  const preferredVendorSelectedId = useMemo(() => {
-    if (formData.preferredVendorClientId) return formData.preferredVendorClientId;
-    const row = findVendorClientByName(vendorClientList, formData.preferredVendor);
-    return row?.id ?? '';
-  }, [formData.preferredVendorClientId, formData.preferredVendor, vendorClientList]);
-
-  const alternateVendorSelectedId = useMemo(() => {
-    if (formData.alternateVendorClientId) return formData.alternateVendorClientId;
-    const row = findVendorClientByName(vendorClientList, formData.alternateVendor);
-    return row?.id ?? '';
-  }, [formData.alternateVendorClientId, formData.alternateVendor, vendorClientList]);
-
-  const alternateVendorDisabledIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (preferredVendorSelectedId) ids.add(preferredVendorSelectedId);
-    return ids;
-  }, [preferredVendorSelectedId]);
-
   const resetPmFormToEmpty = useCallback(() => {
     setFormData(createEmptyPackagingFormData());
-    setTempVariant({ id: '', name: '', moq: '', status: 'Active', leadTimeDays: '', notes: '' });
     setTempVendor({
       name: '',
       location: '',
@@ -792,50 +586,6 @@ const PackagingRefactored: React.FC = () => {
     }));
   };
 
-  // Variant ops
-  const handleAddVariant = () => {
-    const nameTrim = tempVariant.name.trim();
-    if (!nameTrim) {
-      setErrors((prev) => ({ ...prev, varName: 'Variants Matrix — Variant name is required' }));
-      addToast('error', 'Variants Matrix — Variant name is required');
-      return;
-    }
-    const moqNum = tempVariant.moq.trim() ? Number(tempVariant.moq) : 0;
-    const leadNum = tempVariant.leadTimeDays.trim() ? Number(tempVariant.leadTimeDays) : 0;
-    if (tempVariant.moq.trim() && (Number.isNaN(moqNum) || moqNum < 0)) {
-      addToast('error', 'Variants Matrix — Variant MOQ must be a valid number');
-      return;
-    }
-    if (tempVariant.leadTimeDays.trim() && (Number.isNaN(leadNum) || leadNum < 0)) {
-      addToast('error', 'Variants Matrix — Lead time must be a valid number of days');
-      return;
-    }
-    const statusVal = PM_VARIANT_STATUS_OPTIONS.some((o) => o.value === tempVariant.status)
-      ? tempVariant.status
-      : 'Active';
-    setFormData((prev) => ({
-      ...prev,
-      variants: [
-        ...prev.variants,
-        {
-          id: tempVariant.id.trim() || `V${prev.variants.length + 1}`,
-          name: nameTrim,
-          moq: moqNum,
-          status: statusVal,
-          leadTimeDays: leadNum,
-          notes: tempVariant.notes.trim(),
-        },
-      ],
-    }));
-    setTempVariant({ id: '', name: '', moq: '', status: 'Active', leadTimeDays: '', notes: '' });
-    setErrors((prev) => {
-      const next = { ...prev };
-      delete next.varName;
-      return next;
-    });
-  };
-  const handleRemoveVariant = (idx: number) => setFormData(prev => ({ ...prev, variants: prev.variants.filter((_, i) => i !== idx) }));
-
   // Vendor ops
   const handleAddVendor = () => {
     if (!tempVendor.name.trim()) {
@@ -866,30 +616,39 @@ const PackagingRefactored: React.FC = () => {
       return;
     }
     const first = tierRows[0];
-    setFormData((prev) => ({
-      ...prev,
-      vendors: [
-        ...prev.vendors,
-        {
-          id: Date.now().toString(),
-          name: tempVendor.name,
-          location: tempVendor.location,
-          moq: Number(tempVendor.moq) || Number(first.moq) || 0,
-          price: Number(tempVendor.price) || Number(first.price) || 0,
-          leadTime: Number(tempVendor.leadTime),
-          approved: tempVendor.approved,
-          priceType: tempVendor.priceType,
-          validTill: tempVendor.validTill,
-          sampleCost: Number(tempVendor.sampleCost),
-          currency: tempVendor.currency || 'INR',
-          advancePct: tempVendor.advancePct,
-          preShipmentPct: tempVendor.preShipmentPct,
-          postShipmentPct: tempVendor.postShipmentPct,
-          creditDays: tempVendor.creditDays,
-          tiers: tierRows.map((t) => ({ ...t })),
-        },
-      ],
-    }));
+    const paymentTerms = serializeStagedPaymentTerms({
+      advance_pct: Number(tempVendor.advancePct) || 0,
+      pre_shipment_pct: Number(tempVendor.preShipmentPct) || 0,
+      post_shipment_pct: Number(tempVendor.postShipmentPct) || 0,
+      credit_days: Number(tempVendor.creditDays) || 0,
+    });
+    const newVendor = {
+      id: Date.now().toString(),
+      name: tempVendor.name,
+      location: tempVendor.location,
+      moq: Number(tempVendor.moq) || Number(first.moq) || 0,
+      price: Number(tempVendor.price) || Number(first.price) || 0,
+      leadTime: Number(tempVendor.leadTime),
+      approved: tempVendor.approved,
+      priceType: tempVendor.priceType,
+      validTill: tempVendor.validTill,
+      sampleCost: Number(tempVendor.sampleCost),
+      currency: tempVendor.currency || 'INR',
+      advancePct: tempVendor.advancePct,
+      preShipmentPct: tempVendor.preShipmentPct,
+      postShipmentPct: tempVendor.postShipmentPct,
+      creditDays: tempVendor.creditDays,
+      tiers: tierRows.map((t) => ({ ...t })),
+    };
+    setFormData((prev) => {
+      const vendors = [...prev.vendors, newVendor];
+      return {
+        ...prev,
+        vendors,
+        ...derivePmVendorFieldsFromVendors(vendors, paymentTerms),
+        pmSupplyLocation: prev.pmSupplyLocation?.trim() || newVendor.location?.trim() || prev.pmSupplyLocation,
+      };
+    });
     setTempVendor({
       name: '',
       location: '',
@@ -969,7 +728,6 @@ const PackagingRefactored: React.FC = () => {
         .toLowerCase();
     return {
       description: descBase,
-      type: formData.itemCategory || undefined,
       level: formData.level || undefined,
       group: skuCat || undefined,
       material: formData.matBody?.trim() || undefined,
@@ -980,7 +738,7 @@ const PackagingRefactored: React.FC = () => {
       price_per_pc: firstVendor?.price != null ? Number(firstVendor.price) : undefined,
       moq: firstVendor?.moq != null ? Number(firstVendor.moq) : undefined,
       lead_time_days: firstVendor?.leadTime != null ? Number(firstVendor.leadTime) : undefined,
-      print_status: formData.deco || undefined,
+      print_status: formData.decorationMethod || undefined,
       zohoId: formData.zohoId?.trim() ? formData.zohoId.trim() : undefined,
       zoho_sku_code: skuForZoho,
       hsnCode: formData.pkgHsn?.trim() ? formData.pkgHsn.trim() : undefined,
@@ -1005,12 +763,24 @@ const PackagingRefactored: React.FC = () => {
           pmSkuCategory: _pmSku,
           optionalPmSubCategory: _optSub,
           optionalPmSubSubCategory: _optSubSub,
+          itemCategory: _itemCategory,
           ...formRest
         } = formData as Record<string, unknown>;
         return {
           ...formRest,
+          ...derivePmVendorFieldsFromVendors(
+            formData.vendors,
+            serializeStagedPaymentTerms({
+              advance_pct: Number(firstVendor?.advancePct) || 0,
+              pre_shipment_pct: Number(firstVendor?.preShipmentPct) || 0,
+              post_shipment_pct: Number(firstVendor?.postShipmentPct) || 0,
+              credit_days: Number(firstVendor?.creditDays) || 0,
+            })
+          ),
           pmQualitySpecRows: qcSpecRows,
           pmQualitySubSpecRowsByPath: qcSubSpecRowsByPath,
+          masterCustomDropdownOptions: loadEntityCustomDropdownOptions('PM'),
+          masterCustomFields: loadEntityCustomFields('PM'),
           ...(codeTrim ? { itemCode: codeTrim } : {}),
           ...(skuCat
             ? {
@@ -1033,8 +803,8 @@ const PackagingRefactored: React.FC = () => {
     () =>
       buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS, {
         omitKeys: isNewPm
-          ? ['itemCode', 'pkgSku', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath']
-          : ['pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
+          ? ['itemCode', 'pkgSku', 'itemCategory', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath']
+          : ['itemCategory', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
       }),
     [pmPreviewFormData, isNewPm]
   );
@@ -1134,7 +904,6 @@ const PackagingRefactored: React.FC = () => {
     setSaveSuccessOpen(false);
     setSaveSuccessCode('');
     setSaveSuccessRows([]);
-    setSaveSuccessZohoNote(null);
     setExistingPmId(null);
     resetPmFormToEmpty();
     setPageTab('bpr');
@@ -1159,7 +928,6 @@ const PackagingRefactored: React.FC = () => {
             ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
             : []),
         ]);
-        setSaveSuccessZohoNote(null);
       } else {
         const saved = await createPackMaterial({ ...payload });
         const newPmId = parseInt(String(saved.id), 10);
@@ -1174,7 +942,6 @@ const PackagingRefactored: React.FC = () => {
             ? [{ label: 'Items List', value: `${syncCreated} vendor rate(s) synced` }]
             : []),
         ]);
-        setSaveSuccessZohoNote(null);
       }
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
@@ -1192,1126 +959,98 @@ const PackagingRefactored: React.FC = () => {
     }
   };
 
+  const pmFieldContext = useMemo<PmMasterFieldContext>(
+    () => ({
+      pmSkuCategory: formData.pmSkuCategory || formData.subCategory,
+      optionalPmSubCategory: formData.optionalPmSubCategory,
+      optionalPmSubSubCategory: formData.optionalPmSubSubCategory,
+    }),
+    [
+      formData.pmSkuCategory,
+      formData.subCategory,
+      formData.optionalPmSubCategory,
+      formData.optionalPmSubSubCategory,
+    ]
+  );
+  const pmCondContext = useMemo(() => buildPmMasterFieldContext(pmFieldContext), [pmFieldContext]);
+  const pmCustomFieldsTaxonomyKey = useMemo(
+    () => buildMasterCustomFieldsTaxonomyKey(pmCondContext.cat, pmCondContext.sub, pmCondContext.subsub),
+    [pmCondContext]
+  );
+  const pmCustomFieldsTaxonomyLabel = useMemo(() => {
+    const parts = [pmCondContext.cat, pmCondContext.sub, pmCondContext.subsub].filter(Boolean);
+    return parts.length > 0 ? parts.join(' → ') : 'PM master';
+  }, [pmCondContext]);
+
+  const handleRemoveCustomFieldValue = useCallback((formKey: string) => {
+    setFormData((prev) => {
+      const next = { ...prev } as Record<string, unknown>;
+      delete next[formKey];
+      return next as typeof prev;
+    });
+    setErrors((prev) => {
+      if (!prev[formKey]) return prev;
+      const next = { ...prev };
+      delete next[formKey];
+      return next;
+    });
+  }, []);
+
   // ── Section Content ──────────────────────────────────────────────────────────
-  const renderSection = () => {
-    switch (currentSection) {
-      case 0:
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            {/* PM Category — Industry Buckets */}
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-                {pmUsesFunctionalTaxonomy
-                  ? 'SKU series, category & sub-category'
-                  : 'Category, sub-category & sub-sub category'}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <SelectField
-                  label={pmUsesFunctionalTaxonomy ? 'SKU series' : 'Category'}
-                  id="pmSkuCategory"
-                  value={formData.pmSkuCategory}
-                  onChange={handleInputChange}
-                  options={[...PM_SKU_CATEGORY_SELECT_OPTIONS]}
-                  requiredMark
-                  error={errors.pmSkuCategory}
-                  disabled={false}
-                />
-                {formData.pmSkuCategory &&
-                !PM_SKU_CATEGORY_OPTIONS.includes(formData.pmSkuCategory as (typeof PM_SKU_CATEGORY_OPTIONS)[number]) ? (
-                  <p className="text-[10px] text-amber-800 mt-1 col-span-2">
-                    Legacy category &quot;{formData.pmSkuCategory}&quot; — pick a PPM / SPM / TPM option to align level and SKU rules.
-                  </p>
-                ) : null}
-                {pmDetailSubCategoryRequired ? (
-                  <SelectField
-                    label={pmFunctionalCategoryLabel}
-                    id="optionalPmSubCategory"
-                    value={formData.optionalPmSubCategory}
-                    onChange={handleInputChange}
-                    options={pmDetailSubCategoryOptions}
-                    error={errors.optionalPmSubCategory}
-                    disabled={!formData.pmSkuCategory?.trim()}
-                    emptyLabel="Select sub-category…"
-                  />
-                ) : (
-                  <InputField
-                    label={pmFunctionalCategoryLabel}
-                    id="optionalPmSubCategory"
-                    value={formData.optionalPmSubCategory}
-                    onChange={handleInputChange}
-                    placeholder="Select a category first"
-                    error={errors.optionalPmSubCategory}
-                    readOnly={!formData.pmSkuCategory?.trim()}
-                  />
-                )}
-                {pmSubSubCategoryRequired ? (
-                  <SelectField
-                    label={pmFunctionalSubCategoryLabel}
-                    id="optionalPmSubSubCategory"
-                    value={formData.optionalPmSubSubCategory}
-                    onChange={handleInputChange}
-                    options={pmSubSubCategoryOptions}
-                    error={errors.optionalPmSubSubCategory}
-                    disabled={!formData.optionalPmSubCategory?.trim()}
-                    emptyLabel="Select sub-sub category…"
-                  />
-                ) : (
-                  <InputField
-                    label={pmFunctionalSubCategoryLabel}
-                    id="optionalPmSubSubCategory"
-                    value={formData.optionalPmSubSubCategory}
-                    onChange={handleInputChange}
-                    placeholder={
-                      formData.optionalPmSubCategory?.trim()
-                        ? pmUsesFunctionalTaxonomy
-                          ? 'No sub-categories for this category'
-                          : 'No sub-sub options for this sub-category'
-                        : pmUsesFunctionalTaxonomy
-                          ? 'Select category first'
-                          : 'Select sub-category first'
-                    }
-                    error={errors.optionalPmSubSubCategory}
-                    readOnly
-                  />
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                SKU series sets the code prefix: PPM <span className="font-mono">4XXXXX</span>, SPM Labels{' '}
-                <span className="font-mono">5LXXXXX</span>, Monocartons <span className="font-mono">5MXXXXX</span>, Other Secondary{' '}
-                <span className="font-mono">5OXXXXX</span>, TPM Tertiary <span className="font-mono">6TXXXXX</span>, Ancillary{' '}
-                <span className="font-mono">6AXXXX</span>. Pick category (
-                <strong>Closures &amp; Pumps</strong>, <strong>Secondary Pack</strong>, <strong>Primary Pack</strong>,{' '}
-                <strong>Tertiary Pack</strong>, <strong>Ancillary</strong>) and sub-category (Bottle, Front Label, …).
-                Quality specifications follow your category and sub-category — use Add when no template exists.
-              </p>
-            </div>
-
-            {!isNewPm ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Internal PM code (SKU)</label>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
-                  {formData.itemCode || '—'}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="border-t border-gray-200 pt-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Identity</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="PM Name / description"
-                  id="tradeCommercialName"
-                  value={formData.tradeCommercialName}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData((prev) => ({ ...prev, tradeCommercialName: v, name: v }));
-                    setErrors((prev) => {
-                      if (!prev.tradeCommercialName && !prev.name) return prev;
-                      const next = { ...prev };
-                      delete next.tradeCommercialName;
-                      delete next.name;
-                      return next;
-                    });
-                  }}
-                  placeholder="Packaging item name and short description"
-                  requiredMark
-                  error={errors.tradeCommercialName ?? errors.name}
-                  readOnly={false}
-                />
-                <InputField
-                  label="Intended use"
-                  id="intendedUse"
-                  value={formData.intendedUse}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Face serum bottle, outer shipper"
-                  requiredMark
-                  error={errors.intendedUse}
-                />
-                <SelectField
-                  label="Reusability"
-                  id="reusability"
-                  value={formData.reusability}
-                  onChange={handleInputChange}
-                  options={[...PM_REUSABILITY_OPTIONS]}
-                  emptyLabel="Select reusability…"
-                />
-                <div>
-                  <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
-                    Level
-                  </label>
-                  <input
-                    id="level"
-                    type="text"
-                    readOnly
-                    value={formData.level || '—'}
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-slate-800 cursor-default"
-                    title="Set automatically from category (PPM / SPM / TPM)"
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Auto: PPM → Primary, SPM → Secondary, TPM → Tertiary
-                  </p>
-                </div>
-                {!isNewPm ? (
-                  <InputField
-                    label="Item type (optional)"
-                    id="itemCategory"
-                    value={formData.itemCategory}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Bottle, Carton, Label, Shipper"
-                    error={errors.itemCategory}
-                  />
-                ) : null}
-              </div>
-            </div>
-
-            <PmConditionalFieldBlocks
-              section="primary"
-              visibility={pmConditionalVisibility}
-              formData={formData}
-              errors={errors}
-              onChange={handleInputChange}
-            />
-          </div>
-        );
-
-      case 1: // Units & Taxes
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Units</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
-                <SelectField
-                  label="Primary UoM"
-                  id="pkgUnit"
-                  value={formData.pkgUnit}
-                  onChange={handleInputChange}
-                  options={['PCS', 'GM', 'ML', 'L', 'KG']}
-                  requiredMark
-                  error={errors.pkgUnit}
-                />
-                <InputField
-                  label="Units per shipper / roll"
-                  id="pkgUnitsPerShipperRoll"
-                  value={formData.pkgUnitsPerShipperRoll}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 24, 48"
-                />
-              </div>
-            </div>
-
-            <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Tax classification</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField
-                  label="Returnable Item"
-                  id="pkgReturnable"
-                  value={formData.pkgReturnable}
-                  onChange={handleInputChange}
-                  options={['Yes', 'No']}
-                  disabled={false}
-                  requiredMark
-                  error={errors.pkgReturnable}
-                />
-                <SelectField
-                  label="Tax Preference"
-                  id="pkgTaxPreference"
-                  value={formData.pkgTaxPreference}
-                  onChange={handleInputChange}
-                  options={['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST']}
-                  requiredMark
-                  error={errors.pkgTaxPreference}
-                />
-                {taxIsTaxable ? (
-                  <>
-                    <InputField
-                      label="HSN Code"
-                      id="pkgHsn"
-                      value={formData.pkgHsn}
-                      onChange={handleInputChange}
-                      placeholder="e.g. 3923, 4819, 7010"
-                      error={errors.pkgHsn}
-                      requiredMark
-                    />
-                    <SelectField
-                      label="GST %"
-                      id="pkgGst"
-                      value={formData.pkgGst}
-                      onChange={handleInputChange}
-                      options={GST_RATE_OPTIONS.map((v) => ({ value: v, label: `${v}%` }))}
-                      requiredMark
-                      error={errors.pkgGst}
-                    />
-                  </>
-                ) : null}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Taxable: HSN and GST % are required on this step. Exempted / NonGST: HSN / GST not needed.
-              </p>
-            </div>
-          </div>
-        );
-
-      case 2: // Material & Specs
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho Books</h3>
-              <p className="text-xs text-gray-500 mb-3">
-                {isNewPm
-                  ? 'Saved to Esthetic Insights and synced to Zoho Books with your tax preferences (or both roll back if Books fails). The internal code appears in the confirmation dialog after save.'
-                  : 'Internal PM code is fixed; Zoho item ID is read-only.'}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Zoho Item ID"
-                  id="zohoId"
-                  value={formData.zohoId ?? ''}
-                  onChange={() => {}}
-                  placeholder="Populated from the server after save (when Books sync is on)"
-                  readOnly
-                />
-              </div>
-              <div className="mt-3">
-                {pmLinkedProductCodes.length > 0 ? (
-                  <>
-                    <p className="mb-1 text-sm font-medium text-gray-700">Associate Items</p>
-                    <p className="mb-2 text-xs text-gray-500">
-                      Products linked via BOM. Open a PR master to view or edit the finished product.
-                    </p>
-                    <MasterLinkedPrProductsPanel codes={pmLinkedProductCodes} accent="violet" />
-                  </>
-                ) : (
-                  <TextareaField
-                    label="Associate Items"
-                    id="pkgAssociateItems"
-                    value={formData.pkgAssociateItems}
-                    onChange={handleInputChange}
-                    placeholder="Link related BOM / RM / packaging codes if any"
-                  />
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Zoho Item ID is read-only — returned by the API after a successful save.</p>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">QC, storage & material</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField
-                  label="QC testing Group"
-                  id="qcGroup"
-                  value={formData.qcGroup}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_QC_TESTING_GROUP_OPTIONS,
-                    ...(formData.qcGroup &&
-                    !PM_QC_TESTING_GROUP_OPTIONS.some((o) => o === formData.qcGroup)
-                      ? [{ value: formData.qcGroup, label: `${formData.qcGroup} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select QC testing group…"
-                />
-                <SelectField
-                  label="Storage condition"
-                  id="storeLoc"
-                  value={formData.storeLoc}
-                  onChange={handleInputChange}
-                  options={STORAGE_TYPES}
-                  error={errors.storeLoc}
-                  emptyLabel="Select storage condition…"
-                />
-                <SelectField
-                  label="Material"
-                  id="matBody"
-                  value={formData.matBody}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_MATERIAL_OPTIONS,
-                    ...(formData.matBody &&
-                    !PM_MATERIAL_OPTIONS.some((o) => o === formData.matBody)
-                      ? [{ value: formData.matBody, label: `${formData.matBody} (legacy)` }]
-                      : []),
-                  ]}
-                  error={errors.matBody}
-                  emptyLabel="Select material…"
-                />
-              </div>
-            </div>
-            <PmConditionalFieldBlocks
-              section="technical"
-              visibility={pmConditionalVisibility}
-              formData={formData}
-              errors={errors}
-              onChange={handleInputChange}
-            />
-          </div>
-        );
-
-      case 3: // Aesthetics
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Color &amp; body</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Body / component color"
-                  id="colorType"
-                  value={formData.colorType}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Natural, White, Amber"
-                />
-                <SelectField
-                  label="Transparency level"
-                  id="transparencyLevel"
-                  value={formData.transparencyLevel}
-                  onChange={handleInputChange}
-                  options={[...PM_TRANSPARENCY_LEVEL_OPTIONS]}
-                  emptyLabel="Select transparency…"
-                />
-                <InputField
-                  label="Colour code (Pantone)"
-                  id="colorCode"
-                  value={formData.colorCode}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Pantone 877 C, HEX #FFFFFF"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Decoration &amp; print</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField
-                  label="Decoration"
-                  id="deco"
-                  value={formData.deco}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_DECORATION_OPTIONS,
-                    ...(formData.deco && !PM_DECORATION_OPTIONS.some((o) => o === formData.deco)
-                      ? [{ value: formData.deco, label: `${formData.deco} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select decoration…"
-                />
-                <SelectField
-                  label="Decoration method"
-                  id="decorationMethod"
-                  value={formData.decorationMethod}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_DECORATION_METHOD_OPTIONS,
-                    ...(formData.decorationMethod &&
-                    !PM_DECORATION_METHOD_OPTIONS.some((o) => o === formData.decorationMethod)
-                      ? [{ value: formData.decorationMethod, label: `${formData.decorationMethod} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select decoration method…"
-                />
-                <InputField
-                  label="Print coverage"
-                  id="printCoverage"
-                  value={formData.printCoverage}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 40% panel, full wrap"
-                />
-                <InputField
-                  label="Number of colours"
-                  id="numberOfColours"
-                  value={formData.numberOfColours}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 4"
-                />
-                <InputField
-                  label="Print colours"
-                  id="printColours"
-                  value={formData.printColours}
-                  onChange={handleInputChange}
-                  placeholder="e.g. CMYK + white, Pantone 185 C"
-                />
-                <InputField
-                  label="Foil colour"
-                  id="foilColour"
-                  value={formData.foilColour}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Gold, Silver, Holographic"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Surface &amp; finish</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField
-                  label="Surface finish"
-                  id="finish"
-                  value={formData.finish}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_SURFACE_FINISH_OPTIONS,
-                    ...(formData.finish && !PM_SURFACE_FINISH_OPTIONS.some((o) => o === formData.finish)
-                      ? [{ value: formData.finish, label: `${formData.finish} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select surface finish…"
-                />
-                <SelectField
-                  label="Surface texture"
-                  id="surfaceTexture"
-                  value={formData.surfaceTexture}
-                  onChange={handleInputChange}
-                  options={[...PM_SURFACE_TEXTURE_OPTIONS]}
-                  emptyLabel="Select surface texture…"
-                />
-                <InputField
-                  label="Surface effects"
-                  id="surfaceEffects"
-                  value={formData.surfaceEffects}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Pearlescent, Gradient, Spot UV"
-                />
-                <InputField
-                  label="UV finishing"
-                  id="uvFinishing"
-                  value={formData.uvFinishing}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Spot UV, Full UV coat"
-                />
-                <InputField
-                  label="Embossing / debossing"
-                  id="embossingDebossing"
-                  value={formData.embossingDebossing}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Logo emboss, panel deboss"
-                />
-                <InputField
-                  label="Premium look &amp; feel"
-                  id="premiumLookFeel"
-                  value={formData.premiumLookFeel}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Luxury matte, Tactile soft-touch"
-                />
-              </div>
-            </div>
-
-            <PmConditionalFieldBlocks
-              section="aesthetics"
-              visibility={pmConditionalVisibility}
-              formData={formData}
-              errors={errors}
-              onChange={handleInputChange}
-            />
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Reference</h3>
-              <TextareaField
-                label="Reference image / mockup"
-                id="images"
-                value={formData.images}
-                onChange={handleInputChange}
-                placeholder="Links or notes for reference artwork, mock-ups, or sample packs"
-              />
-            </div>
-          </div>
-        );
-
-      case 4: // Variants Matrix
-        return (
-          <ArrayItemManager
-            masterType="packaging"
-            itemType="variant"
-            items={formData.variants}
-            tempFields={tempVariant}
-            onTempFieldChange={(field, value) => setTempVariant(prev => ({ ...prev, [field]: value }))}
-            onAdd={handleAddVariant}
-            onRemove={handleRemoveVariant}
-            errors={errors}
-            itemLabel="Variant"
-            columns={[
-              { key: 'id', label: 'Variant ID' },
-              { key: 'name', label: 'Variant name', required: true },
-              { key: 'moq', label: 'Variant MOQ', type: 'number' },
-              {
-                key: 'status',
-                label: 'Variant status',
-                type: 'select',
-                options: [...PM_VARIANT_STATUS_OPTIONS],
-              },
-              { key: 'leadTimeDays', label: 'Variant lead time (days)', type: 'number' },
-              { key: 'notes', label: 'Variant notes' },
-            ]}
-          />
-        );
-
-      case 5: // Customization & Tooling
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Vendor &amp; MOQ</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Approved vendor (custom)"
-                  id="cusApprovedVendorCustom"
-                  value={formData.cusApprovedVendorCustom}
-                  onChange={handleInputChange}
-                  placeholder="Vendor approved for custom runs"
-                />
-                <InputField
-                  label="Customised MOQ"
-                  id="cusCustomisedMoq"
-                  value={formData.cusCustomisedMoq}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 5000"
-                />
-                <InputField
-                  label="Customisation lead time (days)"
-                  id="cusCustomisationLeadTimeDays"
-                  value={formData.cusCustomisationLeadTimeDays}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 45"
-                />
-                <InputField
-                  label="Custom unit cost"
-                  id="cusCustomUnitCost"
-                  value={formData.cusCustomUnitCost}
-                  onChange={handleInputChange}
-                  placeholder="e.g. INR per piece"
-                />
-                <InputField
-                  label="Sample lead time (days)"
-                  id="cusSampleLeadTimeDays"
-                  value={formData.cusSampleLeadTimeDays}
-                  onChange={handleInputChange}
-                  placeholder="e.g. 14"
-                />
-                <InputField
-                  label="Supply location (custom)"
-                  id="cusSupplyLocationCustom"
-                  value={formData.cusSupplyLocationCustom}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Mumbai, Guangzhou"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Printing &amp; tooling costs</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="Printing cylinder cost"
-                  id="cusPrintingCylinderCost"
-                  value={formData.cusPrintingCylinderCost}
-                  onChange={handleInputChange}
-                  placeholder="e.g. INR lump sum"
-                />
-                <InputField
-                  label="Printing plate / die cost"
-                  id="cusPrintingPlateDieCost"
-                  value={formData.cusPrintingPlateDieCost}
-                  onChange={handleInputChange}
-                  placeholder="e.g. INR per design"
-                />
-                <InputField
-                  label="Tooling cost"
-                  id="cusToolingCost"
-                  value={formData.cusToolingCost}
-                  onChange={handleInputChange}
-                  placeholder="e.g. mould / die cost"
-                />
-                <SelectField
-                  label="Tooling ownership"
-                  id="cusToolingOwnership"
-                  value={formData.cusToolingOwnership}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_TOOLING_OWNERSHIP_OPTIONS,
-                    ...(formData.cusToolingOwnership &&
-                    !PM_TOOLING_OWNERSHIP_OPTIONS.some((o) => o === formData.cusToolingOwnership)
-                      ? [{ value: formData.cusToolingOwnership, label: `${formData.cusToolingOwnership} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select tooling ownership…"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Commercial (custom)</h3>
-              <InputField
-                label="Payment terms (custom)"
-                id="cusPaymentTermsCustom"
-                value={formData.cusPaymentTermsCustom}
-                onChange={handleInputChange}
-                placeholder="e.g. 30% advance, balance on dispatch"
-              />
-            </div>
-          </div>
-        );
-
-      case 6: // Compatibility (R&D / QA)
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <SelectField
-                label="Application method"
-                id="compApplicationMethod"
-                value={formData.compApplicationMethod}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_APPLICATION_METHOD_OPTIONS,
-                  ...(formData.compApplicationMethod &&
-                  !PM_APPLICATION_METHOD_OPTIONS.some((o) => o === formData.compApplicationMethod)
-                    ? [{ value: formData.compApplicationMethod, label: `${formData.compApplicationMethod} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select application method…"
-              />
-              <SelectField
-                label="Product environment"
-                id="compProductEnvironment"
-                value={formData.compProductEnvironment}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_PRODUCT_ENVIRONMENT_OPTIONS,
-                  ...(formData.compProductEnvironment &&
-                  !PM_PRODUCT_ENVIRONMENT_OPTIONS.some((o) => o === formData.compProductEnvironment)
-                    ? [{ value: formData.compProductEnvironment, label: `${formData.compProductEnvironment} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select product environment…"
-              />
-            </div>
-            <InputField
-              label="Compatibility PM SKUs"
-              id="compCompatibilityPmSkus"
-              value={formData.compCompatibilityPmSkus}
-              onChange={handleInputChange}
-              placeholder="Comma-separated PM codes this item is compatible with"
-            />
-            <p className="text-xs text-gray-500">
-              List related packaging SKUs (e.g. closures, labels) that are validated for use with this PM.
-            </p>
-            <PmConditionalFieldBlocks
-              section="compatibility"
-              visibility={pmConditionalVisibility}
-              formData={formData}
-              errors={errors}
-              onChange={handleInputChange}
-            />
-          </div>
-        );
-
-      case 7: // Vendors & Commercial
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Sourcing</h3>
-              <p className="text-xs text-gray-500 mb-3">
-                Pick preferred and alternate suppliers from vendor master suggestions, then add commercial pricing rows below.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="preferredVendor" className="block text-sm font-medium text-gray-700 mb-1">
-                    Preferred vendor
-                  </label>
-                  <VendorClientNameTypeahead
-                    inputId="preferredVendor"
-                    parties={vendorClientList}
-                    partyKind="vendor"
-                    loading={vendorClientsLoading}
-                    selectedId={preferredVendorSelectedId}
-                    placeholder="Search vendor by name, code, city…"
-                    allowFreeText
-                    freeTextValue={formData.preferredVendor}
-                    onFreeTextChange={(name) => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        preferredVendor: name,
-                        preferredVendorClientId:
-                          name.trim() === prev.preferredVendor.trim() ? prev.preferredVendorClientId : '',
-                      }));
-                      if (errors.preferredVendor) {
-                        setErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.preferredVendor;
-                          return next;
-                        });
-                      }
-                    }}
-                    onSelect={(party) => {
-                      if (!party) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          preferredVendor: '',
-                          preferredVendorClientId: '',
-                        }));
-                        return;
-                      }
-                      const loc = [party.city, party.country].filter(Boolean).join(', ').trim();
-                      setFormData((prev) => ({
-                        ...prev,
-                        preferredVendor: party.name?.trim() ?? '',
-                        preferredVendorClientId: party.id,
-                        pmSupplyLocation: prev.pmSupplyLocation?.trim() || loc || prev.pmSupplyLocation,
-                      }));
-                      if (errors.preferredVendor) {
-                        setErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.preferredVendor;
-                          return next;
-                        });
-                      }
-                    }}
-                  />
-                  {errors.preferredVendor ? (
-                    <p className="mt-1 text-xs text-red-600" role="alert">
-                      {errors.preferredVendor}
-                    </p>
-                  ) : null}
-                </div>
-                <div>
-                  <label htmlFor="alternateVendor" className="block text-sm font-medium text-gray-700 mb-1">
-                    Alternate vendor
-                  </label>
-                  <VendorClientNameTypeahead
-                    inputId="alternateVendor"
-                    parties={vendorClientList}
-                    partyKind="vendor"
-                    loading={vendorClientsLoading}
-                    selectedId={alternateVendorSelectedId}
-                    disabledIds={alternateVendorDisabledIds}
-                    placeholder="Search alternate vendor…"
-                    allowFreeText
-                    freeTextValue={formData.alternateVendor}
-                    onFreeTextChange={(name) => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        alternateVendor: name,
-                        alternateVendorClientId:
-                          name.trim() === prev.alternateVendor.trim() ? prev.alternateVendorClientId : '',
-                      }));
-                    }}
-                    onSelect={(party) => {
-                      if (!party) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          alternateVendor: '',
-                          alternateVendorClientId: '',
-                        }));
-                        return;
-                      }
-                      setFormData((prev) => ({
-                        ...prev,
-                        alternateVendor: party.name?.trim() ?? '',
-                        alternateVendorClientId: party.id,
-                      }));
-                    }}
-                  />
-                </div>
-                <InputField
-                  label="Supply location"
-                  id="pmSupplyLocation"
-                  value={formData.pmSupplyLocation}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Mumbai, Guangzhou"
-                />
-              </div>
-            </div>
-
-            <VendorCommercialEditor
-              variant="pm"
-              vendors={formData.vendors}
-              tempFields={tempVendor}
-              tempTiers={tempVendorTiers}
-              vendorClientList={vendorClientList}
-              onTempFieldChange={handlePmVendorTempFieldChange}
-              onTempTierChange={handleTempVendorTierChange}
-              onAddTempTierRow={handleAddTempVendorTierRow}
-              onAddVendor={handleAddVendor}
-              onRemoveVendor={handleRemoveVendor}
-              onVendorsChange={handleVendorsChange}
-              errors={errors}
-            />
-          </div>
-        );
-
-      case 8: // Secondary Packaging
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Label Type" id="secLabelType" value={formData.secLabelType} onChange={handleInputChange} />
-              <InputField label="Label Size" id="secLabelSize" value={formData.secLabelSize} onChange={handleInputChange} />
-              <InputField label="Adhesive Type" id="secAdhesive" value={formData.secAdhesive} onChange={handleInputChange} />
-              <InputField label="Label Compatibility" id="secLabelCompat" value={formData.secLabelCompat} onChange={handleInputChange} />
-              <InputField label="Paper GSM" id="secGsm" value={formData.secGsm} onChange={handleInputChange} />
-              <InputField label="Carton Finish" id="secCartonFinish" value={formData.secCartonFinish} onChange={handleInputChange} />
-              <InputField label="Fit & Finish" id="secFit" value={formData.secFit} onChange={handleInputChange} />
-              <InputField label="Art Link" id="secArtLink" value={formData.secArtLink} onChange={handleInputChange} />
-            </div>
-            <TextareaField label="Secondary Packaging Notes" id="secNotes" value={formData.secNotes} onChange={handleInputChange} />
-          </div>
-        );
-
-      case 9: // Tertiary Packaging
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InputField label="Shipper Type" id="terShipType" value={formData.terShipType} onChange={handleInputChange} />
-              <InputField label="Units per Shipper" id="terUnits" value={formData.terUnits} onChange={handleInputChange} />
-              <InputField label="Drop Test (m)" id="terDrop" value={formData.terDrop} onChange={handleInputChange} />
-              <InputField label="Stack Height (units)" id="terStack" value={formData.terStack} onChange={handleInputChange} />
-            </div>
-            <TextareaField label="Tertiary Packaging Notes" id="terNotes" value={formData.terNotes} onChange={handleInputChange} />
-          </div>
-        );
-
-      case 10: // QA Testing & Documents
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">References</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField
-                  label="QC test plan reference"
-                  id="qaQcTestPlanRef"
-                  value={formData.qaQcTestPlanRef}
-                  onChange={handleInputChange}
-                  placeholder="Plan ID or document link"
-                />
-                <SelectField
-                  label="COA required"
-                  id="qaCoaRequired"
-                  value={formData.qaCoaRequired}
-                  onChange={handleInputChange}
-                  options={[...PM_COA_REQUIRED_OPTIONS]}
-                  error={errors.qaCoaRequired}
-                  emptyLabel="Select…"
-                />
-              </div>
-            </div>
-
-            {showPmQualitySpecTable ? (
-              <PmQualitySpecTable
-                categoryLabel={
-                  pmQualitySpecResolved.categoryDisplayLabel ||
-                  (formData.optionalPmSubCategory ? String(formData.optionalPmSubCategory) : '—')
-                }
-                commonRows={formData.pmQualitySpecRows ?? []}
-                onCommonChange={handlePmQualitySpecRowsChange}
-                categoryTableEnabled={canEditPmQualityCategory}
-                categoryDisabledHint={
-                  canEditPmQualityCategory
-                    ? undefined
-                    : 'Select PM category in Primary info to add common specs.'
-                }
-                showSubTable
-                subCategoryLabel={pmQualitySpecResolved.functionalSub || '—'}
-                subRows={currentPmSubSpecRows}
-                onSubChange={handlePmQualitySubSpecRowsChange}
-                subTableEnabled={showPmQualitySubSpecTable}
-                subTableDisabledHint={
-                  showPmQualitySubSpecTable
-                    ? undefined
-                    : 'Select PM sub-category in Primary info to add sub-category specs.'
-                }
-              />
-            ) : (
-              <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
-                Complete <strong>Primary info</strong> and pick a category (
-                <strong>Closures &amp; Pumps</strong>, <strong>Secondary Pack</strong>, <strong>Primary Pack</strong>,{' '}
-                <strong>Tertiary Pack</strong>, or <strong>Ancillary</strong>) to add common and sub-category quality
-                specifications.
-              </p>
-            )}
-          </div>
-        );
-
-      case 11: // Catalogue / Website
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Catalogue</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SelectField
-                  label="Listed in catalogue"
-                  id="catListedInCatalogue"
-                  value={formData.catListedInCatalogue}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_LISTED_IN_CATALOGUE_OPTIONS,
-                    ...(formData.catListedInCatalogue &&
-                    !PM_LISTED_IN_CATALOGUE_OPTIONS.some((o) => o === formData.catListedInCatalogue)
-                      ? [{ value: formData.catListedInCatalogue, label: `${formData.catListedInCatalogue} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select…"
-                />
-                <SelectField
-                  label="Catalogue visibility"
-                  id="catCatalogueVisibility"
-                  value={formData.catCatalogueVisibility}
-                  onChange={handleInputChange}
-                  options={[
-                    ...PM_CATALOGUE_VISIBILITY_OPTIONS,
-                    ...(formData.catCatalogueVisibility &&
-                    !PM_CATALOGUE_VISIBILITY_OPTIONS.some((o) => o === formData.catCatalogueVisibility)
-                      ? [{ value: formData.catCatalogueVisibility, label: `${formData.catCatalogueVisibility} (legacy)` }]
-                      : []),
-                  ]}
-                  emptyLabel="Select visibility…"
-                />
-                <div className="sm:col-span-2">
-                  <InputField
-                    label="Catalogue photo"
-                    id="catCataloguePhoto"
-                    value={formData.catCataloguePhoto}
-                    onChange={handleInputChange}
-                    placeholder="Image URL, asset ID, or file name"
-                  />
-                  <div className="mt-2">
-                    <PmFileNameCaptureField
-                      label="Or pick image file"
-                      id="catCataloguePhotoPick"
-                      value={formData.catCataloguePhoto}
-                      accept="image/*"
-                      onFileSelect={(file) => handlePmFileNameCapture('catCataloguePhoto', file)}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4">
-                <TextareaField
-                  label="Catalogue custom notes"
-                  id="catCatalogueCustomNotes"
-                  value={formData.catCatalogueCustomNotes}
-                  onChange={handleInputChange}
-                  placeholder="Client-facing notes, listing restrictions, or merchandising guidance"
-                />
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Approvals</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <CheckboxField label="Approved by Packaging" id="apprPack" checked={formData.apprPack} onChange={handleInputChange} />
-                <CheckboxField label="Approved by R&D" id="apprRd" checked={formData.apprRd} onChange={handleInputChange} />
-                <CheckboxField label="Approved by Finance" id="apprFin" checked={formData.apprFin} onChange={handleInputChange} />
-                <CheckboxField label="Lock for Modification" id="apprLock" checked={formData.apprLock} onChange={handleInputChange} />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 12: // Regulatory
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <SelectField
-                label="Migration test status"
-                id="regMigrationTestStatus"
-                value={formData.regMigrationTestStatus}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_MIGRATION_TEST_STATUS_OPTIONS,
-                  ...(formData.regMigrationTestStatus &&
-                  !PM_MIGRATION_TEST_STATUS_OPTIONS.some((o) => o === formData.regMigrationTestStatus)
-                    ? [{ value: formData.regMigrationTestStatus, label: `${formData.regMigrationTestStatus} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select migration test status…"
-              />
-              <SelectField
-                label="BPA free / phthalate free"
-                id="regBpaPhthalateFree"
-                value={formData.regBpaPhthalateFree}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_BPA_PHTHALATE_OPTIONS,
-                  ...(formData.regBpaPhthalateFree &&
-                  !PM_BPA_PHTHALATE_OPTIONS.some((o) => o === formData.regBpaPhthalateFree)
-                    ? [{ value: formData.regBpaPhthalateFree, label: `${formData.regBpaPhthalateFree} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select declaration…"
-              />
-              <InputField
-                label="Recyclability code"
-                id="regRecyclabilityCode"
-                value={formData.regRecyclabilityCode}
-                onChange={handleInputChange}
-                placeholder="e.g. SPI resin ID, MRF code"
-              />
-              <InputField
-                label="EPR registration"
-                id="regEprRegistration"
-                value={formData.regEprRegistration}
-                onChange={handleInputChange}
-                placeholder="EPR / PRO registration number"
-              />
-            </div>
-            <PmConditionalFieldBlocks
-              section="regulatory"
-              visibility={pmConditionalVisibility}
-              formData={formData}
-              errors={errors}
-              onChange={handleInputChange}
-            />
-          </div>
-        );
-
-      case 13: // Lifecycle & Ownership
-        return (
-          <div className="min-w-0 space-y-5 sm:space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <SelectField
-                label="Lifecycle status"
-                id="pmLifecycleStatus"
-                value={formData.pmLifecycleStatus}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_LIFECYCLE_STATUS_OPTIONS,
-                  ...(formData.pmLifecycleStatus &&
-                  !PM_LIFECYCLE_STATUS_OPTIONS.some((o) => o === formData.pmLifecycleStatus)
-                    ? [{ value: formData.pmLifecycleStatus, label: `${formData.pmLifecycleStatus} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select lifecycle status…"
-              />
-              <SelectField
-                label="Client specific / generic"
-                id="pmClientScope"
-                value={formData.pmClientScope}
-                onChange={handleInputChange}
-                options={[
-                  ...PM_CLIENT_SCOPE_OPTIONS,
-                  ...(formData.pmClientScope &&
-                  !PM_CLIENT_SCOPE_OPTIONS.some((o) => o === formData.pmClientScope)
-                    ? [{ value: formData.pmClientScope, label: `${formData.pmClientScope} (legacy)` }]
-                    : []),
-                ]}
-                emptyLabel="Select scope…"
-              />
-              <InputField
-                label="Owner"
-                id="pmOwner"
-                value={formData.pmOwner}
-                onChange={handleInputChange}
-                placeholder="e.g. Packaging team, SKU owner name"
-              />
-              <InputField
-                label="Version"
-                id="version"
-                value={formData.version}
-                onChange={handleInputChange}
-                placeholder="e.g. v1.0"
-              />
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
+  const renderSection = () => (
+    <PmMasterSectionContent
+      sectionIndex={currentSection}
+      moduleSlug={PM_MASTER_MODULE_ORDER[currentSection]?.slug ?? 'primary'}
+      fieldContext={pmFieldContext}
+      formData={formData}
+      errors={errors}
+      onChange={handleInputChange}
+      isNewPm={isNewPm}
+      pmUsesFunctionalTaxonomy={pmUsesFunctionalTaxonomy}
+      pmDetailSubCategoryRequired={pmDetailSubCategoryRequired}
+      pmSubSubCategoryRequired={pmSubSubCategoryRequired}
+      pmFunctionalCategoryLabel={pmFunctionalCategoryLabel}
+      pmFunctionalSubCategoryLabel={pmFunctionalSubCategoryLabel}
+      pmDetailSubCategoryOptions={pmDetailSubCategoryOptions}
+      pmSubSubCategoryOptions={pmSubSubCategoryOptions}
+      pmSkuCategorySelectOptions={[...PM_SKU_CATEGORY_SELECT_OPTIONS]}
+      pmSkuCategoryOptions={PM_SKU_CATEGORY_OPTIONS}
+      pmLinkedProductCodes={pmLinkedProductCodes}
+      taxIsTaxable={taxIsTaxable}
+      showPmQualitySpecTable={showPmQualitySpecTable}
+      canEditPmQualityCategory={canEditPmQualityCategory}
+      showPmQualitySubSpecTable={showPmQualitySubSpecTable}
+      pmQualitySpecResolved={pmQualitySpecResolved}
+      currentPmSubSpecRows={currentPmSubSpecRows}
+      onPmQualitySpecRowsChange={handlePmQualitySpecRowsChange}
+      onPmQualitySubSpecRowsChange={handlePmQualitySubSpecRowsChange}
+      customFieldsTaxonomyLabel={pmCustomFieldsTaxonomyLabel}
+      onTradeCommercialNameChange={(value) => {
+        setFormData((prev) => ({ ...prev, tradeCommercialName: value, name: value }));
+        setErrors((prev) => {
+          if (!prev.tradeCommercialName && !prev.name) return prev;
+          const next = { ...prev };
+          delete next.tradeCommercialName;
+          delete next.name;
+          return next;
+        });
+      }}
+      vendorClientList={vendorClientList}
+      tempVendor={tempVendor}
+      tempVendorTiers={tempVendorTiers}
+      onPmVendorTempFieldChange={handlePmVendorTempFieldChange}
+      onTempVendorTierChange={handleTempVendorTierChange}
+      onAddTempVendorTierRow={handleAddTempVendorTierRow}
+      onAddVendor={handleAddVendor}
+      onRemoveVendor={handleRemoveVendor}
+      onVendorsChange={handleVendorsChange}
+      InputField={InputField}
+      SelectField={SelectField}
+      TextareaField={TextareaField}
+      customFieldsTaxonomyLabel={pmCustomFieldsTaxonomyLabel}
+      onRemoveCustomFieldValue={handleRemoveCustomFieldValue}
+    />
+  );
 
   // Load existing PM when editing — show loading until data is in, then fill form
   useEffect(() => {
@@ -2329,12 +1068,23 @@ const PackagingRefactored: React.FC = () => {
       if (cancelled) return;
       setEditPmLoading(false);
       const fdObj = safeParseMaybeJsonObject(pm.form_data);
+      mergeEntityCustomDropdownOptions(
+        'PM',
+        (fdObj as Record<string, unknown> | null)?.masterCustomDropdownOptions as
+          | Record<string, string[]>
+          | undefined
+      );
+      mergeEntityCustomFields(
+        'PM',
+        (fdObj as Record<string, unknown> | null)?.masterCustomFields as
+          | Record<string, Partial<Record<'TECH' | 'QUAL' | 'ART', MasterCustomFieldDef[]>>>
+          | undefined
+      );
       const fdNormalizedRaw: any = fdObj ?? null;
       const resolvedPmCats = resolvePmEditCategories({
         code: pm.code,
         group: pm.group,
         material: pm.material,
-        type: pm.type,
         form_data: fdObj,
       });
 
@@ -2365,7 +1115,6 @@ const PackagingRefactored: React.FC = () => {
         pmOwner: String((fdObj as { pmOwner?: string }).pmOwner ?? '').trim(),
         intendedUse: String((fdObj as { intendedUse?: string }).intendedUse ?? '').trim(),
         reusability: String((fdObj as { reusability?: string }).reusability ?? '').trim(),
-        itemCategory: pm.type || '',
         level: pmLevelForSubCategory(skuCatResolved) || pm.level || '',
         pmSkuCategory: skuCatResolved,
         subCategory: skuCatResolved || resolvedPmCats.subCategory,
@@ -2375,7 +1124,7 @@ const PackagingRefactored: React.FC = () => {
           String((fdObj as { matBody?: string }).matBody ?? pm.material ?? '').trim()
         ),
         specNominal: pm.sizeSpec || '',
-        deco: pm.printStatus || '',
+        decorationMethod: pm.printStatus || '',
         zohoId: pm.zohoId ?? '',
         pkgSku: pm.zohoSkuCode ?? '',
         pkgHsn: pm.hsnCode ?? '',
@@ -2389,7 +1138,6 @@ const PackagingRefactored: React.FC = () => {
       };
 
       const vendorsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).vendors : undefined;
-      const variantsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).variants : undefined;
       const testsVal = fdNormalizedRaw ? (fdNormalizedRaw as any).tests : undefined;
 
       const vendorsNormalized = normalizePmVendors(vendorsVal);
@@ -2399,7 +1147,6 @@ const PackagingRefactored: React.FC = () => {
         ? {
           ...(fdNormalizedRaw as typeof formData),
           vendors: vendorsMerged,
-          variants: normalizePmVariants(variantsVal),
           tests: normalizePmTests(testsVal),
         }
         : null;
@@ -2447,9 +1194,6 @@ const PackagingRefactored: React.FC = () => {
           merged.matBody = normalizePmMaterial(pm.material);
         } else if (String(merged.matBody ?? '').trim()) {
           merged.matBody = normalizePmMaterial(merged.matBody);
-        }
-        if (!String(merged.qcGroup ?? '').trim()) {
-          merged.qcGroup = 'Packaging QC only';
         }
         merged.optionalPmSubSubCategory =
           normalizePmSubSubCategoryForSelect(
@@ -2596,6 +1340,8 @@ const PackagingRefactored: React.FC = () => {
             </button>
           </div>
 
+          <MasterDropdownOptionsProvider entity="PM">
+          <MasterCustomFieldsProvider entity="PM" taxonomyKey={pmCustomFieldsTaxonomyKey}>
           <div className="max-h-[88vh] overflow-y-auto">
             {/* Toolbar — mirrors MasterFormBase (Raw Material master) */}
             <div className="bg-white border-b border-gray-200">
@@ -2690,7 +1436,6 @@ const PackagingRefactored: React.FC = () => {
 
                   <div className="px-4 py-3 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-2">
                     {[
-                      { label: 'Variants', value: formData.variants.length },
                       { label: 'Vendors', value: formData.vendors.length },
                       { label: 'QC Specs', value: formData.pmQualitySpecRows?.length ?? 0 },
                       { label: 'Last Saved', value: lastSaved },
@@ -2726,7 +1471,7 @@ const PackagingRefactored: React.FC = () => {
                           }
                           title={
                             isNewPm && currentSection === 0 && !canAdvancePastPrimary
-                              ? 'Complete required primary fields (category, PM name, intended use).'
+                              ? 'Complete required primary fields (category and PM name).'
                               : isNewPm && currentSection === 1 && !canAdvancePastUnitsTaxes
                                 ? 'Complete Units & Taxes (UoM, returnable item, tax preference, and HSN/GST when taxable).'
                                 : undefined
@@ -2750,6 +1495,8 @@ const PackagingRefactored: React.FC = () => {
               </div>
             </div>
           </div>
+          </MasterCustomFieldsProvider>
+          </MasterDropdownOptionsProvider>
         </div>
       </div>
       <MasterSubmitPreviewModal
@@ -2777,7 +1524,6 @@ const PackagingRefactored: React.FC = () => {
         generatedCode={saveSuccessCode}
         codeLabel={saveSuccessIsEdit ? 'Internal PM code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
-        zohoNote={saveSuccessZohoNote}
       />
     </>
   );
@@ -2878,15 +1624,16 @@ function pmSubtitleLine(pm: PackMaterialRecord): string {
   return z || '—';
 }
 
-/** Sub-category label for list stat cards / table badge (aligned with RM masters `category`). */
+/** Category label (PPM / SPM / TPM / …) for masters list table. */
+function pmListCategoryLabel(pm: PackMaterialRecord): string {
+  return resolvePmEditCategories(pm).subCategory.trim();
+}
+
+/** Sub-category label for list stat cards / table (Tubes, Bottles, …). */
 function pmListSubCategoryLabel(pm: PackMaterialRecord): string {
   const cats = resolvePmEditCategories(pm);
   const fromForm = cats.optionalPmSubCategory.trim();
   if (fromForm) return fromForm;
-  const fromType = String(pm.type ?? '').trim();
-  if (fromType) {
-    return normalizePmDetailSubCategoryForSelect(cats.subCategory, fromType) || fromType;
-  }
   return '';
 }
 
@@ -3029,8 +1776,19 @@ function applyPmVendorSourcingLegacyFields(merged: Record<string, unknown>): voi
   const row = merged as Record<string, string | PmCommercialVendor[] | undefined>;
   const vendors = Array.isArray(row.vendors) ? row.vendors : [];
   const first = vendors[0];
-  if (!String(row.preferredVendor ?? '').trim() && first?.name) {
-    row.preferredVendor = String(first.name).trim();
+  const paymentTerms = first
+    ? serializeStagedPaymentTerms({
+        advance_pct: Number(first.advancePct) || 0,
+        pre_shipment_pct: Number(first.preShipmentPct) || 0,
+        post_shipment_pct: Number(first.postShipmentPct) || 0,
+        credit_days: Number(first.creditDays) || 0,
+      })
+    : '';
+  const derived = derivePmVendorFieldsFromVendors(vendors, paymentTerms);
+  for (const [key, value] of Object.entries(derived)) {
+    if (!String(row[key] ?? '').trim() && value.trim()) {
+      row[key] = value;
+    }
   }
   if (!String(row.pmSupplyLocation ?? '').trim() && first?.location) {
     row.pmSupplyLocation = String(first.location).trim();
@@ -3055,37 +1813,6 @@ function applyPmCustomizationLegacyFields(merged: Record<string, unknown>): void
   }
 }
 
-function normalizePmVariantStatus(raw: unknown): string {
-  const s = String(raw ?? '').trim();
-  if (PM_VARIANT_STATUS_OPTIONS.some((o) => o.value === s)) return s;
-  if (/^discontinued$/i.test(s)) return 'Discontinued';
-  if (/^sample/i.test(s)) return 'Sample only';
-  return s || 'Active';
-}
-
-function normalizePmVariants(input: unknown): PmVariantRow[] {
-  if (!Array.isArray(input)) return [];
-  return input.map((row: unknown, idx: number) => {
-    const r = row as Record<string, unknown>;
-    const legacyVolume = r?.volume ?? r?.varVolume;
-    const legacyMold = r?.sameMold ?? r?.varSameMold;
-    let name = String(r?.name ?? r?.variantName ?? r?.varName ?? '').trim();
-    if (!name && legacyVolume != null && String(legacyVolume).trim() !== '') {
-      const vol = String(legacyVolume).trim();
-      const mold = String(legacyMold ?? '').trim();
-      name = mold ? `Vol ${vol} ml (${mold})` : `Vol ${vol} ml`;
-    }
-    return {
-      id: String(r?.id ?? r?.varId ?? `V${idx + 1}`),
-      name,
-      moq: Number(r?.moq ?? r?.varMoq ?? 0),
-      status: normalizePmVariantStatus(r?.status ?? r?.varStatus),
-      leadTimeDays: Number(r?.leadTimeDays ?? r?.leadTime ?? r?.varLeadTime ?? 0),
-      notes: String(r?.notes ?? r?.variantNotes ?? r?.varNotes ?? ''),
-    };
-  });
-}
-
 function normalizePmTests(input: any): Array<{ name: string; result: string; date: string; by: string; remarks: string }> {
   if (!Array.isArray(input)) return [];
   return input.map((t: any, idx: number) => ({
@@ -3097,7 +1824,7 @@ function normalizePmTests(input: any): Array<{ name: string; result: string; dat
   }));
 }
 
-type PmListSortColumn = 'code' | 'name' | 'subCategory' | 'type' | 'uom' | 'category' | 'status' | 'products';
+type PmListSortColumn = 'code' | 'name' | 'subCategory' | 'uom' | 'category' | 'status' | 'products';
 
 const BprDashboard: React.FC<{
   refreshKey?: number;
@@ -3229,7 +1956,7 @@ const BprDashboard: React.FC<{
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((p) =>
-      [p.code, p.description, p.type, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode, p.unit].some((s) =>
+      [p.code, p.description, p.level, p.group, p.material, p.sizeSpec, p.printStatus, p.zohoSkuCode, p.unit].some((s) =>
         (s ?? '').toLowerCase().includes(q)
       )
     );
@@ -3254,11 +1981,10 @@ const BprDashboard: React.FC<{
           return compareMasterTableSort(a.code ?? '', b.code ?? '', dir);
         case 'name':
           return compareMasterTableSort(a.description ?? '', b.description ?? '', dir);
-        case 'subCategory':
         case 'category':
-          return compareMasterTableSort(a.type ?? '', b.type ?? '', dir);
-        case 'type':
-          return compareMasterTableSort(a.level ?? '', b.level ?? '', dir);
+          return compareMasterTableSort(pmListCategoryLabel(a), pmListCategoryLabel(b), dir);
+        case 'subCategory':
+          return compareMasterTableSort(pmListSubCategoryLabel(a), pmListSubCategoryLabel(b), dir);
         case 'uom':
           return compareMasterTableSort(a.unit ?? 'PCS', b.unit ?? 'PCS', dir);
         case 'status':
@@ -3526,6 +2252,15 @@ const BprDashboard: React.FC<{
                         thClassName="py-4"
                       />
                       <SortableTableTh
+                        label="Category"
+                        column="category"
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSort={togglePmSort}
+                        accent="violet"
+                        thClassName="py-4"
+                      />
+                      <SortableTableTh
                         label="Sub-category"
                         column="subCategory"
                         sortColumn={sortColumn}
@@ -3535,26 +2270,8 @@ const BprDashboard: React.FC<{
                         thClassName="py-4"
                       />
                       <SortableTableTh
-                        label="Type"
-                        column="type"
-                        sortColumn={sortColumn}
-                        sortDirection={sortDirection}
-                        onSort={togglePmSort}
-                        accent="violet"
-                        thClassName="py-4"
-                      />
-                      <SortableTableTh
                         label="UOM"
                         column="uom"
-                        sortColumn={sortColumn}
-                        sortDirection={sortDirection}
-                        onSort={togglePmSort}
-                        accent="violet"
-                        thClassName="py-4"
-                      />
-                      <SortableTableTh
-                        label="Category"
-                        column="category"
                         sortColumn={sortColumn}
                         sortDirection={sortDirection}
                         onSort={togglePmSort}
@@ -3586,7 +2303,7 @@ const BprDashboard: React.FC<{
                   <tbody className="divide-y divide-gray-50">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
                           <div className="flex flex-col items-center gap-2">
                             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -3596,8 +2313,9 @@ const BprDashboard: React.FC<{
                         </td>
                       </tr>
                     ) : rows.map((pm) => {
+                      const categoryLabel = pmListCategoryLabel(pm);
                       const subCategoryLabel = pmListSubCategoryLabel(pm);
-                      const catStyle = getCategoryStyle(subCategoryLabel);
+                      const catStyle = getCategoryStyle(categoryLabel || subCategoryLabel);
                       const uom = (pm.unit || 'PCS').trim() || 'PCS';
                       const statusLabel = pmApprovalStatusLabel(pm);
                       return (
@@ -3609,12 +2327,11 @@ const BprDashboard: React.FC<{
                           </td>
                           <td className="px-4 py-3.5">
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-all group-hover:shadow-sm ${catStyle.bg} ${catStyle.text} ${catStyle.border} whitespace-nowrap`}>
-                              {subCategoryLabel || '—'}
+                              {categoryLabel || '—'}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 text-gray-700 font-medium">{pm.level || '—'}</td>
-                          <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
                           <td className="px-4 py-3.5 text-gray-700 font-medium">{subCategoryLabel || '—'}</td>
+                          <td className="px-4 py-3.5 text-gray-700 font-semibold">{uom}</td>
                           <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                             <MasterApprovalStatusCell
                               kind="PM"

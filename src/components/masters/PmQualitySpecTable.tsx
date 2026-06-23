@@ -14,6 +14,7 @@ type PmQualitySpecTableProps = {
   categoryDisabledHint?: string;
   subTableEnabled?: boolean;
   subTableDisabledHint?: string;
+  showAddButton?: boolean;
 };
 
 export function PmQualitySpecTable({
@@ -28,6 +29,7 @@ export function PmQualitySpecTable({
   categoryDisabledHint,
   subTableEnabled = true,
   subTableDisabledHint,
+  showAddButton = true,
 }: PmQualitySpecTableProps): React.ReactElement {
   return (
     <div className="space-y-1">
@@ -35,12 +37,13 @@ export function PmQualitySpecTable({
         title="Common Specs"
         subtitle={categoryLabel ? `${categoryLabel} — applies to all` : 'applies to all'}
         addButtonLabel="+ Add Common Spec"
-        emptyMessage="No common specs yet. Use “Add Common Spec” to define parameters that apply to all sub-categories."
+        emptyMessage="No common specs yet. Use “+ Add Custom Quality Spec” above to add parameters."
         rows={commonRows}
         onChange={onCommonChange}
         idPrefix="pm-qs-common"
         enabled={categoryTableEnabled}
         disabledHint={categoryDisabledHint}
+        showAddButton={showAddButton}
       />
       {showSubTable && onSubChange ? (
         <QualitySpecTable
@@ -51,12 +54,13 @@ export function PmQualitySpecTable({
               : 'Select sub-category in Primary info'
           }
           addButtonLabel="+ Add Specific Spec"
-          emptyMessage="No sub-category specs yet. Use “Add Specific Spec” to add parameters for this sub-category path."
+          emptyMessage="No sub-category specs yet. Use “+ Add Custom Quality Spec” above to add parameters."
           rows={subRows}
           onChange={onSubChange}
           idPrefix="pm-qs-sub"
           enabled={subTableEnabled}
           disabledHint={subTableDisabledHint}
+          showAddButton={showAddButton}
         />
       ) : null}
     </div>

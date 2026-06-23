@@ -15,6 +15,7 @@ type RmQualitySpecTableProps = {
   categoryDisabledHint?: string;
   subTableEnabled?: boolean;
   subTableDisabledHint?: string;
+  showAddButton?: boolean;
 };
 
 export function RmQualitySpecTable({
@@ -29,6 +30,7 @@ export function RmQualitySpecTable({
   categoryDisabledHint,
   subTableEnabled = true,
   subTableDisabledHint,
+  showAddButton = true,
 }: RmQualitySpecTableProps): React.ReactElement {
   return (
     <div className="space-y-1">
@@ -36,24 +38,26 @@ export function RmQualitySpecTable({
         title="Category specs (common)"
         subtitle={categoryLabel || '—'}
         addButtonLabel="+ Add Category Spec"
-        emptyMessage="No category specs yet. Use “Add Category Spec” to define parameters even when no template exists."
+        emptyMessage="No category specs yet. Use “+ Add Custom Quality Spec” above to add parameters."
         rows={commonRows}
         onChange={onCommonChange}
         idPrefix="qs-common"
         enabled={categoryTableEnabled}
         disabledHint={categoryDisabledHint}
+        showAddButton={showAddButton}
       />
       {showSubTable && onSubChange ? (
         <QualitySpecTable
           title="Sub-category specs"
           subtitle={subCategoryLabel || '—'}
           addButtonLabel="+ Add Sub-category Spec"
-          emptyMessage="No sub-category specs yet. Use “Add Sub-category Spec” to add parameters for this sub-category path."
+          emptyMessage="No sub-category specs yet. Use “+ Add Custom Quality Spec” above to add parameters."
           rows={subRows}
           onChange={onSubChange}
           idPrefix="qs-sub"
           enabled={subTableEnabled}
           disabledHint={subTableDisabledHint}
+          showAddButton={showAddButton}
         />
       ) : null}
     </div>
