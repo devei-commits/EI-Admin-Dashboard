@@ -128,6 +128,7 @@ export interface PRProductDetail extends PRProductListItem {
   pr_quality_bulk_sub_spec_rows_by_path?: Record<string, unknown>;
   pr_quality_final_sub_spec_rows_by_path?: Record<string, unknown>;
   pr_quality_dispatch_sub_spec_rows_by_path?: Record<string, unknown>;
+  pr_facility_licences?: Array<Record<string, unknown>>;
   pr_sub_category?: string;
   pr_qc_group?: string;
   brand_client?: string;

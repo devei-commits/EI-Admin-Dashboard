@@ -536,4 +536,10 @@ export const PR_PREVIEW_SECTIONS: MasterPreviewSectionDef[] = [
       }
     ),
   },
+  {
+    title: 'Licensing',
+    fields: fieldDefs(['prFacilityLicences'], {
+      prFacilityLicences: 'ML1 / ML2 facility licence records',
+    }),
+  },
 ];

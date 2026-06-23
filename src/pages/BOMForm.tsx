@@ -58,6 +58,13 @@ import {
 } from '../constants/materialMasterSkuRules';
 import { resolvePmEditCategories } from '../utils/masterImportCategoryResolve';
 import { PrQualitySpecTable } from '../components/masters/PrQualitySpecTable';
+import { PrFacilityLicenceStep } from '../components/masters/PrFacilityLicenceStep';
+import type { PrFacilityLicenceRecord } from '../types/prFacilityLicence';
+import {
+  flattenPrFacilityLicenceRecordsForPayload,
+  hydratePrFacilityLicenceRecords,
+  seedPrFacilityLicencesIfEmpty,
+} from '../lib/prFacilityLicence';
 import type { PrQualitySpecSectionKey } from '../constants/prQualitySpecSections';
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
@@ -172,6 +179,7 @@ interface BOMFormState {
   crueltyFreeVegan: string;
   approvedMarketingClaims: string;
   claimsSubstantiation: string;
+  prFacilityLicences: PrFacilityLicenceRecord[];
 }
 
 function emptyBomForm(): BOMFormState {
@@ -210,6 +218,7 @@ function emptyBomForm(): BOMFormState {
     crueltyFreeVegan: '',
     approvedMarketingClaims: '',
     claimsSubstantiation: '',
+    prFacilityLicences: hydratePrFacilityLicenceRecords([]),
   };
 }
 
@@ -363,6 +372,9 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   const prQualityDispatchSubSpecRowsByPath = flattenPrQualityDispatchSubSpecRowsByPathForPayload(
     fd.prQualityDispatchSubSpecRowsByPath ?? hydratePrQualityDispatchSubSpecRowsByPath({})
   );
+  const pr_facility_licences = flattenPrFacilityLicenceRecordsForPayload(
+    fd.prFacilityLicences ?? hydratePrFacilityLicenceRecords([])
+  );
   const internalCode = fd.skuCode.trim();
   return {
     product_name: fd.productName.trim(),
@@ -386,6 +398,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
     pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
     pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
+    pr_facility_licences,
     cosmos_natural_certification: fd.cosmosNaturalCertification || null,
     dermatologically_tested: fd.dermatologicallyTested || null,
     cruelty_free_vegan: fd.crueltyFreeVegan || null,
@@ -420,6 +433,9 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
   const prQualityDispatchSubSpecRowsByPath = flattenPrQualityDispatchSubSpecRowsByPathForPayload(
     fd.prQualityDispatchSubSpecRowsByPath ?? hydratePrQualityDispatchSubSpecRowsByPath({})
   );
+  const pr_facility_licences = flattenPrFacilityLicenceRecordsForPayload(
+    fd.prFacilityLicences ?? hydratePrFacilityLicenceRecords([])
+  );
   const mrp = parseMrpNumber(fd.mrp);
   return {
     product_name: fd.productName.trim(),
@@ -441,6 +457,7 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
     pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
     pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
     pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
+    pr_facility_licences,
     cosmos_natural_certification: fd.cosmosNaturalCertification || null,
     dermatologically_tested: fd.dermatologicallyTested || null,
     cruelty_free_vegan: fd.crueltyFreeVegan || null,
@@ -463,6 +480,7 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       pr_quality_bulk_sub_spec_rows_by_path: prQualityBulkSubSpecRowsByPath,
       pr_quality_final_sub_spec_rows_by_path: prQualityFinalSubSpecRowsByPath,
       pr_quality_dispatch_sub_spec_rows_by_path: prQualityDispatchSubSpecRowsByPath,
+      pr_facility_licences,
       cosmos_natural_certification: fd.cosmosNaturalCertification || null,
       dermatologically_tested: fd.dermatologicallyTested || null,
       cruelty_free_vegan: fd.crueltyFreeVegan || null,
@@ -657,6 +675,9 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     dermatologicallyTested: (p as unknown as { dermatologically_tested?: string | null }).dermatologically_tested || '',
     crueltyFreeVegan: (p as unknown as { cruelty_free_vegan?: string | null }).cruelty_free_vegan || '',
     approvedMarketingClaims: p.approved_claims || '',
+    prFacilityLicences: hydratePrFacilityLicenceRecords(
+      (p as unknown as { pr_facility_licences?: unknown }).pr_facility_licences
+    ),
   };
 }
 
@@ -734,6 +755,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     'Pack BOM',
     'Process Steps',
     'Specs & Regulatory',
+    'Licensing',
   ];
 
   const isNewProduct = !productIdFromRoute;
@@ -1104,6 +1126,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       };
     });
   }, [currentStage, formData.category, formData.prSubCategory]);
+
+  useEffect(() => {
+    if (currentStage !== 6) return;
+    setFormData((prev) => {
+      const seeded = seedPrFacilityLicencesIfEmpty(prev.prFacilityLicences);
+      if (seeded === prev.prFacilityLicences) return prev;
+      return { ...prev, prFacilityLicences: seeded };
+    });
+  }, [currentStage]);
 
   const handleInputChange = (field: keyof BOMFormState, value: unknown) => {
     if (field === 'zohoId') return;
@@ -3144,6 +3175,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
               </div>
             </div>
+        );
+      case 6:
+        return (
+          <div className="min-w-0 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
+            <PrFacilityLicenceStep
+              records={formData.prFacilityLicences}
+              onChange={(records) => setFormData((prev) => ({ ...prev, prFacilityLicences: records }))}
+              productLabel={formData.productName.trim() || formData.skuCode.trim() || undefined}
+            />
+          </div>
         );
       default:
         return null;
