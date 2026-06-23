@@ -4,7 +4,7 @@
  * manual fallback, full config panel, and save.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calculator, ArrowLeft, Save, AlertTriangle, Loader2, FlaskConical, Package, X, Search, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, FormField, inputClassName, selectClassName } from '../../components/ui';
@@ -33,6 +33,8 @@ const emptyPm = (): PmRow => ({ pm_code: '', description: '', qty_per_unit: '1',
 export default function QuoteBuilder() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const [preQuoteId, setPreQuoteId] = useState<number | null>(null);
 
   const [mode, setMode] = useState<Mode>('bom');
   const [grades, setGrades] = useState<QuoteGrade[]>([]);
@@ -66,15 +68,21 @@ export default function QuoteBuilder() {
   const [creditDays, setCreditDays] = useState('30');
   const [annualRatePct, setAnnualRatePct] = useState('14');
   const [targetPrice, setTargetPrice] = useState('');
+  const [batchYieldPct, setBatchYieldPct] = useState('100');
   const [sgOverrides, setSgOverrides] = useState<Record<string, string>>({});
   const [pricingSource, setPricingSource] = useState<'master' | 'vendor'>('master');
+  const [quoteScope, setQuoteScope] = useState<'full' | 'rm_only' | 'pm_only'>('full');
+  const [quoteCategory, setQuoteCategory] = useState<'pre_production' | 'post_production'>('pre_production');
+  const [jobRef, setJobRef] = useState('');
 
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [savingSg, setSavingSg] = useState(false);
+  const [priceWarnings, setPriceWarnings] = useState<import('../../services/quotations.service').PriceWarning[]>([]);
   const [editMeta, setEditMeta] = useState<{ quote_name: string; customer_name: string; client_id: number | null; gst_pct: number; valid_until: string | null; notes: string } | null>(null);
+  const [loadingFromQuote, setLoadingFromQuote] = useState(false);
 
   useEffect(() => {
     quotesApi.fetchGrades().then((r) => {
@@ -95,6 +103,7 @@ export default function QuoteBuilder() {
       if (p.monocarton != null) setMonocarton(!!p.monocarton);
       if (p.useBatchLead != null) setUseBatchLead(!!p.useBatchLead);
       if (p.pricingSource) setPricingSource(p.pricingSource);
+      if (p.quoteScope) setQuoteScope(p.quoteScope as 'full' | 'rm_only' | 'pm_only');
       if (p.rmWastage != null) setRmWastagePct(s(p.rmWastage * 100));
       if (p.pmWastage != null) setPmWastagePct(s(p.pmWastage * 100));
       if (p.rmLogistics != null) setRmLogistics(s(p.rmLogistics));
@@ -105,6 +114,7 @@ export default function QuoteBuilder() {
       if (p.creditDays != null) setCreditDays(s(p.creditDays));
       if (p.annualRate != null) setAnnualRatePct(s(p.annualRate * 100));
       if (p.targetPrice) setTargetPrice(s(p.targetPrice));
+      if (p.batchYieldPct != null) setBatchYieldPct(s(p.batchYieldPct));
       if (p.volumeMl != null) setVolumeMl(s(p.volumeMl));
       if (p.sg != null) setSgManual(s(p.sg));
       if (p.bom_id && d.bom_code) {
@@ -117,9 +127,77 @@ export default function QuoteBuilder() {
         setAdhocPm((p.pmLines || []).map((l) => ({ pm_code: s(l.pm_code), description: s(l.description), qty_per_unit: s(l.qty_per_unit) || '1', price_per_pc: s(l.price_per_pc), material: s(l.material) || 'Packaging - Primary' })));
       }
       setEditMeta({ quote_name: d.quote_name, customer_name: d.customer_name || '', client_id: d.client_id, gst_pct: d.gst_pct, valid_until: d.valid_until, notes: d.notes || '' });
+      if (d.quote_category) setQuoteCategory(d.quote_category as 'pre_production' | 'post_production');
+      if (d.job_ref) setJobRef(d.job_ref);
+      if (d.pre_quote_id) setPreQuoteId(d.pre_quote_id);
       setResult(d.result);
+      setPriceWarnings(d.price_warnings || []);
     });
   }, [id]);
+
+  useEffect(() => {
+    if (id) return;
+    const fromId = searchParams.get('fromQuoteId');
+    if (!fromId) return;
+    setLoadingFromQuote(true);
+    quotesApi.fetchSavedQuote(Number(fromId)).then((r) => {
+      if (!r.success || !r.data) return;
+      const d = r.data;
+      const p = (d.payload || {}) as CalculatePayload & { rmLines?: Record<string, unknown>[]; pmLines?: Record<string, unknown>[] };
+      const s = (v: unknown) => (v == null ? '' : String(v));
+      if (p.grade) setGradeId(p.grade);
+      if (p.packagingType) setPackagingType(p.packagingType);
+      if (p.volumeKey) setVolumeKey(p.volumeKey);
+      if (p.monocarton != null) setMonocarton(!!p.monocarton);
+      if (p.useBatchLead != null) setUseBatchLead(!!p.useBatchLead);
+      if (p.pricingSource) setPricingSource(p.pricingSource);
+      if (p.quoteScope) setQuoteScope(p.quoteScope as 'full' | 'rm_only' | 'pm_only');
+      if (p.rmWastage != null) setRmWastagePct(s(p.rmWastage * 100));
+      if (p.pmWastage != null) setPmWastagePct(s(p.pmWastage * 100));
+      if (p.rmLogistics != null) setRmLogistics(s(p.rmLogistics));
+      if (p.pmLogistics != null) setPmLogistics(s(p.pmLogistics));
+      if (p.freightPct != null) setFreightPct(s(p.freightPct * 100));
+      if (p.insurancePct != null) setInsurancePct(s(p.insurancePct * 100));
+      if (p.handlingPct != null) setHandlingPct(s(p.handlingPct * 100));
+      if (p.creditDays != null) setCreditDays(s(p.creditDays));
+      if (p.annualRate != null) setAnnualRatePct(s(p.annualRate * 100));
+      if (p.targetPrice) setTargetPrice(s(p.targetPrice));
+      if (p.batchYieldPct != null) setBatchYieldPct(s(p.batchYieldPct));
+      if (p.volumeMl != null) setVolumeMl(s(p.volumeMl));
+      if (p.sg != null) setSgManual(s(p.sg));
+      if (p.bom_id && d.bom_code) {
+        setMode('bom');
+        setSelectedBom({ id: String(p.bom_id), bomCode: d.bom_code, name: d.bom_code } as BOMRecord);
+      } else if (Array.isArray(p.rmLines)) {
+        setMode('adhoc');
+        setAdhocName(`${d.quote_name || 'Adhoc Quote'} (Post-Prod)`);
+        setAdhocRm(p.rmLines.map((l) => ({ rm_code: s(l.rm_code), inci_name: s(l.inci_name), pct_w_w: s(l.pct_w_w), price_per_kg: s(l.price_per_kg), specific_gravity: l.specific_gravity != null ? s(l.specific_gravity) : '', category: s(l.category) || 'Bulk Raw Materials' })));
+        setAdhocPm((p.pmLines || []).map((l) => ({ pm_code: s(l.pm_code), description: s(l.description), qty_per_unit: s(l.qty_per_unit) || '1', price_per_pc: s(l.price_per_pc), material: s(l.material) || 'Packaging - Primary' })));
+      }
+      setQuoteCategory('post_production');
+      if (d.job_ref) setJobRef(d.job_ref);
+      setPreQuoteId(Number(fromId));
+      setEditMeta({ quote_name: `${d.quote_name || 'Quote'} (Actuals)`, customer_name: d.customer_name || '', client_id: d.client_id ?? null, gst_pct: d.gst_pct ?? 18, valid_until: null, notes: d.notes || '' });
+      toast.info(`Loaded from ${d.quote_ref} — update actuals then save as Post-Production Bill.`);
+    }).finally(() => setLoadingFromQuote(false));
+  }, [id, searchParams]);
+
+  useEffect(() => {
+    if (id) return;
+    const bomCodeParam = searchParams.get('bomCode');
+    const scopeParam = searchParams.get('quoteScope');
+    if (!bomCodeParam) return;
+    if (scopeParam && ['full', 'rm_only', 'pm_only'].includes(scopeParam)) {
+      setQuoteScope(scopeParam as 'full' | 'rm_only' | 'pm_only');
+    }
+    setMode('bom');
+    fetchBOMs(bomCodeParam).then((r) => {
+      if (r.success && r.data.length) {
+        const match = r.data.find((b) => b.bomCode === bomCodeParam) || r.data[0];
+        setSelectedBom(match);
+      }
+    });
+  }, [id, searchParams]);
 
   useEffect(() => {
     if (!bomOpen) return;
@@ -133,27 +211,30 @@ export default function QuoteBuilder() {
     const sgOv: Record<string, number> = {};
     for (const [k, v] of Object.entries(sgOverrides)) if (v.trim() !== '') sgOv[k] = Number(v);
     const base: CalculatePayload = {
-      grade: gradeId, packagingType, volumeKey, monocarton, useBatchLead,
+      grade: gradeId, packagingType, volumeKey, monocarton, useBatchLead, batchYieldPct: Number(batchYieldPct) || 100,
       rmWastage: Number(rmWastagePct) / 100, pmWastage: Number(pmWastagePct) / 100,
       rmLogistics: Number(rmLogistics), pmLogistics: Number(pmLogistics),
       freightPct: Number(freightPct) / 100, insurancePct: Number(insurancePct) / 100, handlingPct: Number(handlingPct) / 100,
       creditDays: Number(creditDays), annualRate: Number(annualRatePct) / 100,
-      targetPrice: num(targetPrice) ?? 0, sgOverrides: sgOv, pricingSource,
+      targetPrice: num(targetPrice) ?? 0, sgOverrides: sgOv, pricingSource, quoteScope,
       volumeMl: num(volumeMl), sg: num(sgManual),
     };
     if (mode === 'bom') return selectedBom ? { ...base, bom_id: Number(selectedBom.id) } : null;
     // adhoc
     const rm = adhocRm.filter((r) => r.inci_name.trim() || r.pct_w_w.trim());
-    if (rm.length === 0) return null;
+    if (quoteScope !== 'pm_only' && rm.length === 0) return null;
     return {
       ...base, name: adhocName || 'Adhoc Quote',
       rmLines: rm.map((r) => ({ rm_code: r.rm_code, inci_name: r.inci_name, pct_w_w: Number(r.pct_w_w) || 0, price_per_kg: Number(r.price_per_kg) || 0, specific_gravity: r.specific_gravity.trim() === '' ? null : Number(r.specific_gravity), category: r.category || null })),
       pmLines: adhocPm.filter((p) => p.description.trim()).map((p) => ({ pm_code: p.pm_code, description: p.description, qty_per_unit: Number(p.qty_per_unit) || 0, price_per_pc: Number(p.price_per_pc) || 0, material: p.material || null })),
     };
-  }, [mode, gradeId, packagingType, volumeKey, monocarton, useBatchLead, rmWastagePct, pmWastagePct, rmLogistics, pmLogistics, freightPct, insurancePct, handlingPct, creditDays, annualRatePct, targetPrice, sgOverrides, pricingSource, volumeMl, sgManual, selectedBom, adhocName, adhocRm, adhocPm]);
+  }, [mode, gradeId, packagingType, volumeKey, monocarton, useBatchLead, rmWastagePct, pmWastagePct, rmLogistics, pmLogistics, freightPct, insurancePct, handlingPct, creditDays, annualRatePct, targetPrice, sgOverrides, pricingSource, quoteScope, volumeMl, sgManual, selectedBom, adhocName, adhocRm, adhocPm]);
 
   const reqIdRef = useRef(0);
+  const syncingRef = useRef(false);
+  const lastAutoDetect = useRef('');
   useEffect(() => {
+    if (syncingRef.current) { syncingRef.current = false; return; }
     const payload = buildPayload();
     if (!payload) { setResult(null); return; }
     const myReq = ++reqIdRef.current;
@@ -162,10 +243,28 @@ export default function QuoteBuilder() {
       const r = await quotesApi.calculateQuote(payload);
       if (myReq !== reqIdRef.current) return;
       setCalcLoading(false);
-      if (r.success && r.data) { setResult(r.data); setCalcError(null); } else setCalcError(r.error ? String(r.error) : 'Calculation failed');
+      if (r.success && r.data) {
+        setResult(r.data);
+        setCalcError(null);
+        if (mode === 'bom' && r.data.auto_detected) {
+          const ad = r.data.auto_detected;
+          const key = `${ad.packaging_type}|${ad.volume_key}|${ad.has_monocarton}`;
+          if (key !== lastAutoDetect.current) {
+            lastAutoDetect.current = key;
+            syncingRef.current = true;
+            setPackagingType(ad.packaging_type);
+            setVolumeKey(ad.volume_key);
+            setMonocarton(ad.has_monocarton);
+            if (r.data.volume_ml > 0 && volumeMl === '') setVolumeMl(String(r.data.volume_ml));
+          }
+        }
+      } else setCalcError(r.error ? String(r.error) : 'Calculation failed');
     }, 400);
     return () => clearTimeout(t);
-  }, [buildPayload]);
+  }, [buildPayload, mode, volumeMl]);
+
+  // Reset auto-detect tracking when BOM changes so new BOM's config is applied
+  useEffect(() => { if (mode === 'bom') lastAutoDetect.current = ''; }, [selectedBom, mode]);
 
   const volKeyOptions = VOLUME_KEYS[packagingType] || ['<=100'];
   useEffect(() => { if (!volKeyOptions.includes(volumeKey)) setVolumeKey(volKeyOptions[0]); }, [packagingType]); // eslint-disable-line
@@ -201,6 +300,13 @@ export default function QuoteBuilder() {
           </>
         }
       />
+
+      {loadingFromQuote && (
+        <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-700 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+          <span>Loading pre-production quote data…</span>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* LEFT: config */}
@@ -247,6 +353,18 @@ export default function QuoteBuilder() {
                 {grades.map((g) => <option key={g.id} value={g.id}>{g.name}{g.zero_pm ? ' (no PM)' : ''}</option>)}
               </select>
             </FormField>
+            <FormField label="Quote Scope">
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                {([['full', 'Full (RM + PM)'], ['rm_only', 'RM / Filling Only'], ['pm_only', 'PM Only']] as const).map(([s, label]) => (
+                  <button key={s} onClick={() => setQuoteScope(s)} className={`flex-1 py-1 rounded-md text-xs font-medium transition-all text-center ${quoteScope === s ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                {quoteScope === 'rm_only' ? 'PM cost excluded — use when client supplies their own packaging.' : quoteScope === 'pm_only' ? 'RM & filling excluded — use when quoting packaging supply only.' : 'Full product + packaging quotation.'}
+              </p>
+            </FormField>
             {mode === 'bom' && (
               <FormField label="Pricing Source">
                 <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
@@ -260,23 +378,30 @@ export default function QuoteBuilder() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Packaging</h3>
-            <FormField label="Packaging Type"><select className={selectClassName} value={packagingType} onChange={(e) => setPackagingType(e.target.value)}>{PACKAGING_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></FormField>
+          {quoteScope !== 'pm_only' && <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{quoteScope === 'rm_only' ? 'Filling Config' : 'Packaging'}</h3>
+              {mode === 'bom' && result?.auto_detected && <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">auto-detected from BOM</span>}
+            </div>
+            <FormField label="Packaging Type"><select className={selectClassName} value={packagingType} onChange={(e) => { setPackagingType(e.target.value); lastAutoDetect.current = ''; }}>{PACKAGING_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></FormField>
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Volume Bracket"><select className={selectClassName} value={volumeKey} onChange={(e) => setVolumeKey(e.target.value)}>{volKeyOptions.map((v) => <option key={v} value={v}>{v} ML</option>)}</select></FormField>
-              <FormField label="Fill Volume (ML)"><input className={inputClassName} type="number" placeholder={result ? String(result.volume_ml) : 'auto'} value={volumeMl} onChange={(e) => setVolumeMl(e.target.value)} /></FormField>
+              <FormField label="Fill Volume (ML)"><input className={inputClassName} type="number" placeholder="auto" value={volumeMl} onChange={(e) => setVolumeMl(e.target.value)} /></FormField>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={monocarton} onChange={(e) => setMonocarton(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Includes monocarton</label>
-          </div>
+            {quoteScope !== 'rm_only' && <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={monocarton} onChange={(e) => setMonocarton(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Includes monocarton</label>}
+          </div>}
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Commercials</h3>
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="RM Wastage %"><input className={inputClassName} type="number" value={rmWastagePct} onChange={(e) => setRmWastagePct(e.target.value)} /></FormField>
-              <FormField label="PM Wastage %"><input className={inputClassName} type="number" value={pmWastagePct} onChange={(e) => setPmWastagePct(e.target.value)} /></FormField>
-              <FormField label="RM Logistics ₹/kg"><input className={inputClassName} type="number" value={rmLogistics} onChange={(e) => setRmLogistics(e.target.value)} /></FormField>
-              <FormField label="PM Logistics ₹/unit"><input className={inputClassName} type="number" value={pmLogistics} onChange={(e) => setPmLogistics(e.target.value)} /></FormField>
+              {quoteScope !== 'pm_only' && <FormField label="RM Wastage %"><input className={inputClassName} type="number" value={rmWastagePct} onChange={(e) => setRmWastagePct(e.target.value)} /></FormField>}
+              {quoteScope !== 'rm_only' && <FormField label="PM Wastage %"><input className={inputClassName} type="number" value={pmWastagePct} onChange={(e) => setPmWastagePct(e.target.value)} /></FormField>}
+              {quoteScope !== 'pm_only' && <FormField label="Batch Yield %">
+                <input className={inputClassName} type="number" step="0.1" min="50" max="100" value={batchYieldPct} onChange={(e) => setBatchYieldPct(e.target.value)} />
+                <p className="text-xs text-gray-400 mt-1">{'<'}100% increases RM cost proportionally.</p>
+              </FormField>}
+              {quoteScope !== 'pm_only' && <FormField label="RM Logistics ₹/kg"><input className={inputClassName} type="number" value={rmLogistics} onChange={(e) => setRmLogistics(e.target.value)} /></FormField>}
+              {quoteScope !== 'rm_only' && <FormField label="PM Logistics ₹/unit"><input className={inputClassName} type="number" value={pmLogistics} onChange={(e) => setPmLogistics(e.target.value)} /></FormField>}
               <FormField label="Freight %"><input className={inputClassName} type="number" value={freightPct} onChange={(e) => setFreightPct(e.target.value)} /></FormField>
               <FormField label="Insurance %"><input className={inputClassName} type="number" value={insurancePct} onChange={(e) => setInsurancePct(e.target.value)} /></FormField>
               <FormField label="Handling %"><input className={inputClassName} type="number" value={handlingPct} onChange={(e) => setHandlingPct(e.target.value)} /></FormField>
@@ -292,7 +417,7 @@ export default function QuoteBuilder() {
         <div className="w-full flex-1 min-w-0 space-y-6">
           {mode === 'adhoc' && (
             <>
-              <LineEditor title="Raw Materials" cols={['Code', 'Ingredient', '% w/w', '₹/kg', 'SG', 'Category']}>
+              {quoteScope !== 'pm_only' && <LineEditor title="Raw Materials" cols={['Code', 'Ingredient', '% w/w', '₹/kg', 'SG', 'Category']}>
                 {adhocRm.map((r, i) => (
                   <tr key={i}>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20`} value={r.rm_code} onChange={(e) => setRm(i, 'rm_code', e.target.value)} /></td>
@@ -305,9 +430,9 @@ export default function QuoteBuilder() {
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocRm((p) => [...p, emptyRm()])} span={7} label="Add RM line" />
-              </LineEditor>
+              </LineEditor>}
 
-              <LineEditor title="Pack Materials" cols={['Code', 'Description', 'Qty', '₹/pc', 'Material']}>
+              {quoteScope !== 'rm_only' && <LineEditor title="Pack Materials" cols={['Code', 'Description', 'Qty', '₹/pc', 'Material']}>
                 {adhocPm.map((p, i) => (
                   <tr key={i}>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20`} value={p.pm_code} onChange={(e) => setPm(i, 'pm_code', e.target.value)} /></td>
@@ -319,7 +444,7 @@ export default function QuoteBuilder() {
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocPm((p) => [...p, emptyPm()])} span={6} label="Add PM line" />
-              </LineEditor>
+              </LineEditor>}
             </>
           )}
 
@@ -366,13 +491,39 @@ export default function QuoteBuilder() {
                   <ul className="list-disc list-inside text-sm text-amber-700 space-y-0.5">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
                 </div>
               )}
+              {priceWarnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-sm font-semibold text-amber-800">Price changes detected since this quote was saved</span>
+                  </div>
+                  <ul className="space-y-1 ml-6">
+                    {priceWarnings.map((w, i) => (
+                      <li key={i} className="text-xs text-amber-700">
+                        <span className="font-medium">{w.name}</span> ({w.type}): was ₹{w.was.toFixed(2)} → now ₹{w.now.toFixed(2)}
+                        <span className={`ml-1 font-semibold ${w.pct_change > 0 ? 'text-red-600' : 'text-emerald-600'}`}>({w.pct_change > 0 ? '+' : ''}{w.pct_change.toFixed(1)}%)</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-amber-600 mt-2 ml-6">Recalculate to use current prices, then save a new version.</p>
+                </div>
+              )}
               {calcError && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">{calcError}</div>}
 
               <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3>
                   {calcLoading && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
-                  {result && <span className="text-xs text-gray-400">{result.product_type} · OH: {result.overhead_category}</span>}
+                  {result && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-400">{result.product_type} · OH: {result.overhead_category}</span>
+                      {result.effective_rm_wastage_pct != null && result.effective_rm_wastage_pct !== Number(rmWastagePct) && (
+                        <span className="text-xs bg-violet-50 text-violet-700 px-2.5 py-1 rounded-full font-medium">
+                          Blended RM Wastage: {result.effective_rm_wastage_pct.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -438,12 +589,95 @@ export default function QuoteBuilder() {
               )}
 
               {result && (mode === 'bom' ? (
-                <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
-                  <PriceBreakdown title={`RM Breakdown (${result.rm_detail.length})`} qtyHeader="% w/w" lastHeader="Landed/kg"
-                    rows={result.rm_detail.map((r) => ({ name: r.name, qty: String(r.pct_w_w), master: r.db_price, vendor: r.vendor_price, used: r.price_per_kg, source: r.price_source, last: r.landed_per_kg, missing: r.missing_price }))} />
-                  <PriceBreakdown title={`PM Breakdown (${result.pm_detail.length})`} qtyHeader="Qty" lastHeader="Line"
-                    rows={result.pm_detail.map((p) => ({ name: p.name, qty: String(p.qty_per_unit), master: p.db_price, vendor: p.vendor_price, used: p.price_per_pc, source: p.price_source, last: p.line_total, missing: p.missing_price }))} />
-                </div>
+                <>
+                  {/* Master price table — raw_materials.price_per_kg / pack_materials.price_per_pc */}
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Master Prices</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">From <span className="font-mono">raw_materials.price_per_kg</span> / <span className="font-mono">pack_materials.price_per_pc</span> — updated via the RM/PM master records</p>
+                      </div>
+                      {pricingSource === 'master' && <span className="px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-700 rounded-full">Active source</span>}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                          <th className="py-2.5 px-4">Ingredient / Component</th>
+                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th className="py-2.5 px-3 text-right">Master ₹</th>
+                          <th className="py-2.5 px-3 text-right">Type</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {result.rm_detail.map((r, i) => (
+                            <tr key={i} className={r.missing_price ? 'bg-red-50/40' : ''}>
+                              <td className="py-2 px-4 text-gray-800 truncate max-w-[22rem]" title={r.name}>{r.name}{r.missing_price && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
+                              <td className="py-2 px-3 text-right text-gray-500">{r.pct_w_w}%</td>
+                              <td className="py-2 px-3 text-right font-semibold text-slate-900">{r.db_price != null ? `₹${r.db_price.toFixed(2)}/kg` : <span className="text-gray-300">—</span>}</td>
+                              <td className="py-2 px-3 text-right"><span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded">RM</span></td>
+                            </tr>
+                          ))}
+                          {result.pm_detail.map((p, i) => (
+                            <tr key={`pm-${i}`} className={p.missing_price ? 'bg-red-50/40' : 'bg-slate-50/30'}>
+                              <td className="py-2 px-4 text-gray-700 truncate max-w-[22rem]" title={p.name}>{p.name}{p.missing_price && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
+                              <td className="py-2 px-3 text-right text-gray-500">{p.qty_per_unit} pc</td>
+                              <td className="py-2 px-3 text-right font-semibold text-slate-900">{p.db_price != null ? `₹${p.db_price.toFixed(2)}/pc` : <span className="text-gray-300">—</span>}</td>
+                              <td className="py-2 px-3 text-right"><span className="text-xs text-violet-500 bg-violet-50 px-2 py-0.5 rounded">PM</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Vendor price table — item_list_tiers.price_per_unit via item_list_vendor_rates */}
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Vendor / Price-List Prices</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">From <span className="font-mono">item_list_tiers.price_per_unit</span> (cheapest tier) — updated via Price Lists section</p>
+                      </div>
+                      {pricingSource === 'vendor' && <span className="px-2 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-full">Active source</span>}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                          <th className="py-2.5 px-4">Ingredient / Component</th>
+                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
+                          <th className="py-2.5 px-3 text-right">vs Master</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {result.rm_detail.map((r, i) => {
+                            const diff = r.vendor_price != null && r.db_price != null ? r.vendor_price - r.db_price : null;
+                            return (
+                              <tr key={i}>
+                                <td className="py-2 px-4 text-gray-800 truncate max-w-[22rem]" title={r.name}>{r.name}</td>
+                                <td className="py-2 px-3 text-right text-gray-500">{r.pct_w_w}%</td>
+                                <td className="py-2 px-3 text-right font-semibold text-emerald-700">{r.vendor_price != null ? `₹${r.vendor_price.toFixed(2)}/kg` : <span className="text-gray-300 font-normal">Not in Price Lists</span>}</td>
+                                <td className="py-2 px-3 text-right text-xs">
+                                  {diff != null ? <span className={diff <= 0 ? 'text-emerald-600 font-medium' : 'text-red-500'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {result.pm_detail.map((p, i) => {
+                            const diff = p.vendor_price != null && p.db_price != null ? p.vendor_price - p.db_price : null;
+                            return (
+                              <tr key={`pm-${i}`} className="bg-slate-50/30">
+                                <td className="py-2 px-4 text-gray-700 truncate max-w-[22rem]" title={p.name}>{p.name}</td>
+                                <td className="py-2 px-3 text-right text-gray-500">{p.qty_per_unit} pc</td>
+                                <td className="py-2 px-3 text-right font-semibold text-emerald-700">{p.vendor_price != null ? `₹${p.vendor_price.toFixed(2)}/pc` : <span className="text-gray-300 font-normal">Not in Price Lists</span>}</td>
+                                <td className="py-2 px-3 text-right text-xs">
+                                  {diff != null ? <span className={diff <= 0 ? 'text-emerald-600 font-medium' : 'text-red-500'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
                   <BreakdownCard title={`RM Breakdown (${result.rm_detail.length})`} headers={['Ingredient', '% w/w', '₹/kg', 'Landed']} rows={result.rm_detail.map((r) => [r.name, String(r.pct_w_w), f2(r.price_per_kg), f2(r.landed_per_kg), r.missing_price])} />
@@ -455,7 +689,7 @@ export default function QuoteBuilder() {
         </div>
       </div>
 
-      {saveOpen && result && <SaveQuoteModal result={result} payload={buildPayload()} editId={id ? Number(id) : null} initial={editMeta} onClose={() => setSaveOpen(false)} onSaved={(savedId, ref) => { toast.success(`Quote ${id ? 'updated' : 'saved'}: ${ref}`); navigate(`/quotations/${savedId}`); }} />}
+      {saveOpen && result && <SaveQuoteModal result={result} payload={buildPayload()} editId={id ? Number(id) : null} initial={editMeta} quoteScope={quoteScope} quoteCategory={quoteCategory} jobRef={jobRef} initialPreQuoteId={preQuoteId} onClose={() => setSaveOpen(false)} onSaved={(savedId, ref) => { toast.success(`Quote ${id ? 'updated' : 'saved'}: ${ref}`); navigate(`/quotations/${savedId}`); }} />}
     </div>
   );
 }
@@ -531,7 +765,7 @@ function BreakdownCard({ title, headers, rows }: { title: string; headers: strin
   );
 }
 
-function SaveQuoteModal({ result, payload, editId, initial, onClose, onSaved }: { result: QuoteResult; payload: CalculatePayload | null; editId: number | null; initial: { quote_name: string; customer_name: string; client_id: number | null; gst_pct: number; valid_until: string | null; notes: string } | null; onClose: () => void; onSaved: (id: number, ref: string) => void }) {
+function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCategory: initialQuoteCategory, jobRef: initialJobRef, initialPreQuoteId, onClose, onSaved }: { result: QuoteResult; payload: CalculatePayload | null; editId: number | null; initial: { quote_name: string; customer_name: string; client_id: number | null; gst_pct: number; valid_until: string | null; notes: string } | null; quoteScope?: string; quoteCategory?: string; jobRef?: string; initialPreQuoteId?: number | null; onClose: () => void; onSaved: (id: number, ref: string) => void }) {
   const [quoteName, setQuoteName] = useState(initial?.quote_name || result.bom_name || 'Untitled Quote');
   const [customerName, setCustomerName] = useState(initial?.customer_name || '');
   const [clientId, setClientId] = useState<number | null>(initial?.client_id ?? null);
@@ -541,6 +775,19 @@ function SaveQuoteModal({ result, payload, editId, initial, onClose, onSaved }: 
   const [gst, setGst] = useState(String(initial?.gst_pct ?? 18));
   const [validUntil, setValidUntil] = useState(initial?.valid_until || '');
   const [saving, setSaving] = useState(false);
+  const [qCategory, setQCategory] = useState<string>(initialQuoteCategory || 'pre_production');
+  const [qJobRef, setQJobRef] = useState(initialJobRef || '');
+  const [linkedPreId, setLinkedPreId] = useState<number | string>(initialPreQuoteId ?? '');
+  const [preQuotes, setPreQuotes] = useState<quotesApi.SavedQuoteListItem[]>([]);
+
+  useEffect(() => {
+    if (qCategory !== 'post_production') { setPreQuotes([]); return; }
+    const bomCode = result?.bom_code;
+    if (!bomCode) return;
+    quotesApi.fetchSavedQuotes('', 50, 0, undefined, undefined, undefined, 'pre_production', bomCode).then((r) => {
+      if (r.success && r.data) setPreQuotes(r.data.quotes.filter((q) => q.id !== editId));
+    });
+  }, [qCategory, result?.bom_code, editId]);
 
   useEffect(() => {
     if (!clientOpen) return;
@@ -550,7 +797,7 @@ function SaveQuoteModal({ result, payload, editId, initial, onClose, onSaved }: 
 
   const submit = async () => {
     setSaving(true);
-    const body = { quote_name: quoteName, customer_name: customerName || undefined, client_id: clientId ?? undefined, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined };
+    const body = { quote_name: quoteName, customer_name: customerName || undefined, client_id: clientId ?? undefined, notes, payload: (payload || {}) as Record<string, unknown>, result, gst_pct: Number(gst) || 18, valid_until: validUntil || undefined, quote_type: quoteScope || 'full', quote_category: qCategory, job_ref: qJobRef || undefined, pre_quote_id: linkedPreId ? Number(linkedPreId) : undefined };
     const r = editId ? await quotesApi.updateSavedQuote(editId, body) : await quotesApi.saveQuote(body);
     setSaving(false);
     if (r.success && r.data) onSaved(r.data.id, r.data.quote_ref); else toast.error(r.error ? String(r.error) : 'Failed to save');
@@ -583,6 +830,28 @@ function SaveQuoteModal({ result, payload, editId, initial, onClose, onSaved }: 
             <FormField label="Valid Until"><input className={inputClassName} type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></FormField>
           </div>
           <FormField label="Notes"><textarea className={inputClassName} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="optional" /></FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Quote Category">
+              <select className={selectClassName} value={qCategory} onChange={(e) => setQCategory(e.target.value)}>
+                <option value="pre_production">Pre-Production (Estimate)</option>
+                <option value="post_production">Post-Production (Actual Bill)</option>
+              </select>
+            </FormField>
+            <FormField label="Job Reference">
+              <input className={inputClassName} placeholder="e.g. May 2026 Run — ABC Brands" value={qJobRef} onChange={(e) => setQJobRef(e.target.value)} />
+            </FormField>
+          </div>
+          {qCategory === 'post_production' && (
+            <FormField label="Linked Pre-Production Estimate">
+              <select className={selectClassName} value={linkedPreId} onChange={(e) => setLinkedPreId(e.target.value)}>
+                <option value="">— none —</option>
+                {preQuotes.map((q) => (
+                  <option key={q.id} value={q.id}>{q.quote_ref} · {q.quote_name}{q.headline_sell != null ? ` (₹${Number(q.headline_sell).toFixed(2)})` : ''}</option>
+                ))}
+              </select>
+              {preQuotes.length === 0 && result?.bom_code && <p className="text-xs text-gray-400 mt-1">No pre-production quotes found for BOM {result.bom_code}.</p>}
+            </FormField>
+          )}
         </div>
         <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
           <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>

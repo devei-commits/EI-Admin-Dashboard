@@ -48,6 +48,7 @@ const QuoteSettings = lazy(() => import('./pages/quotations/QuoteSettings'))
 const QuoteGuide = lazy(() => import('./pages/quotations/QuoteGuide'))
 const QuoteDashboard = lazy(() => import('./pages/quotations/QuoteDashboard'))
 const QuoteCompare = lazy(() => import('./pages/quotations/QuoteCompare'))
+const QuoteBomHub = lazy(() => import('./pages/quotations/QuoteBomHub'))
 const TaskManagement = lazy(() => import('./pages/TaskManagement'))
 const PIS = lazy(() => import('./pages/PIS'))
 const Procurement = lazy(() => import('./pages/procurement/index'))
@@ -463,6 +464,11 @@ const AppLayout = () => {
                                                  <Route path="/quotations/compare" element={
                                                         <SuperAdminRoute>
                                                                <QuoteCompare />
+                                                        </SuperAdminRoute>
+                                                 } />
+                                                 <Route path="/quotations/bom/:bom_code" element={
+                                                        <SuperAdminRoute>
+                                                               <QuoteBomHub />
                                                         </SuperAdminRoute>
                                                  } />
                                                  <Route path="/quotations/:id/edit" element={

@@ -1,6 +1,7 @@
 /**
  * Quotation Settings — tabbed hub for Grade Manager, Overhead Management,
- * and Timeline Configuration. All CRUD against /api/v1/quotes/* (super_admin).
+ * Timeline Configuration, Conversion Rates, Category Wastage, and Audit Log.
+ * All CRUD against /api/v1/quotes/* (super_admin).
  */
 import { useState } from 'react';
 import { Settings, Layers, Wallet, Clock, History } from 'lucide-react';
@@ -9,13 +10,17 @@ import GradeManager from './settings/GradeManager';
 import OverheadManager from './settings/OverheadManager';
 import TimelineConfig from './settings/TimelineConfig';
 import AuditLog from './settings/AuditLog';
+import ConversionRateManager from './settings/ConversionRateManager';
+import CategoryRateManager from './settings/CategoryRateManager';
 import QuotationsNav from './QuotationsNav';
 
-type Tab = 'grades' | 'overheads' | 'timeline' | 'audit';
+type Tab = 'grades' | 'overheads' | 'timeline' | 'conversion' | 'categories' | 'audit';
 const TABS: { key: Tab; label: string; icon: typeof Layers }[] = [
   { key: 'grades', label: 'Grade Manager', icon: Layers },
   { key: 'overheads', label: 'Overhead Management', icon: Wallet },
   { key: 'timeline', label: 'Timeline Configuration', icon: Clock },
+  { key: 'conversion', label: 'Conversion Rates', icon: Settings },
+  { key: 'categories', label: 'Category Wastage', icon: Layers },
   { key: 'audit', label: 'Audit Log', icon: History },
 ];
 
@@ -50,6 +55,8 @@ export default function QuoteSettings() {
           {tab === 'grades' && <GradeManager />}
           {tab === 'overheads' && <OverheadManager />}
           {tab === 'timeline' && <TimelineConfig />}
+          {tab === 'conversion' && <ConversionRateManager />}
+          {tab === 'categories' && <CategoryRateManager />}
           {tab === 'audit' && <AuditLog />}
         </div>
       </div>

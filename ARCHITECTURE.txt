@@ -1,0 +1,639 @@
+================================================================================
+              EI-ADMIN-DASHBOARD — FRONTEND ARCHITECTURE DOCUMENT
+================================================================================
+Repository  : EI-Admin-Dashboard
+Type        : Single-Page Application (SPA)
+Language    : TypeScript
+Entry Point : src/main.tsx
+Root Config : vite.config.ts | tsconfig.json | tailwind.config.js
+================================================================================
+
+
+================================================================================
+1. TECH STACK
+================================================================================
+
+  Core Framework     : React 19
+  Language           : TypeScript 5.9
+  Build Tool         : Vite 7  (ESBuild minifier, ESNext target)
+  Styling            : Tailwind CSS 4 (via @tailwindcss/vite plugin)
+  Routing            : React Router DOM 7
+  Server State       : TanStack React Query 5
+  UI Primitives      : Radix UI (Dialog, Select, Tabs, Checkbox, Switch, etc.)
+  Icons              : Lucide React
+  Charts             : Recharts 3
+  Toasts             : Sonner 2
+  Theming            : next-themes
+  Excel Export       : xlsx + file-saver
+  Testing            : Vitest 2
+  Linting            : ESLint 9 + TypeScript-ESLint
+  Git Hooks          : Husky (pre-commit lint)
+  Containerization   : Docker (Node 20 build → nginx:alpine serve)
+  Deployment Options : Docker/EC2, Netlify, Vercel
+
+
+================================================================================
+2. PROJECT DIRECTORY STRUCTURE
+================================================================================
+
+  EI-Admin-Dashboard/
+  ├── src/
+  │   ├── main.tsx                   # React DOM entry point (StrictMode)
+  │   ├── App.tsx                    # Root component: providers, routing, layouts
+  │   ├── index.css                  # Global Tailwind CSS styles
+  │   ├── vite-env.d.ts              # Vite environment type declarations
+  │   │
+  │   ├── pages/                     # Page-level route components (lazy-loaded)
+  │   │   ├── Dashboard.tsx
+  │   │   ├── Login.tsx
+  │   │   ├── Planning.tsx
+  │   │   ├── Production.tsx
+  │   │   ├── Fulfillment.tsx
+  │   │   ├── Warehouse.tsx / WarehousePage.tsx / WarehouseInventory.tsx
+  │   │   ├── TreasuryApp.tsx
+  │   │   ├── PIS.tsx
+  │   │   ├── BOMDashboard.tsx / BOMForm.tsx
+  │   │   ├── RawMaterialForm.tsx
+  │   │   ├── PackagingForm.tsx / PackagingManagement.tsx
+  │   │   ├── VendorClient.tsx / VendorForm.tsx / ClientForm.tsx
+  │   │   ├── ClientHub.tsx
+  │   │   ├── EnquiryManagement.tsx
+  │   │   ├── RoleManagement.tsx / UserManagement.tsx
+  │   │   ├── TaskManagement.tsx
+  │   │   ├── CatalogueManagement.tsx / ActiveIngredients.tsx
+  │   │   ├── UniversalSwap.tsx / UniversalSwapPage.tsx
+  │   │   ├── ItemGroups.tsx / ItemsList.tsx
+  │   │   ├── FacilityManagement.tsx
+  │   │   ├── DoctorAppointments.tsx / ContactEnquiry.tsx
+  │   │   ├── NewDevelopments.tsx / ProductSamples.tsx
+  │   │   ├── procurement/           # Procurement sub-pages + types + tests
+  │   │   ├── salesPurchase/         # SalesTab + PurchaseTab
+  │   │   └── warehouse/             # Inbound, Outbound, Inventory, Locations,
+  │   │                              #   GRNModal, LogisticsSchedule, Overview, etc.
+  │   │
+  │   ├── components/
+  │   │   ├── ui/                    # Generic reusable UI primitives
+  │   │   │   ├── DataTable.tsx
+  │   │   │   ├── FormField.tsx
+  │   │   │   ├── PageHeader.tsx
+  │   │   │   ├── Pagination.tsx
+  │   │   │   ├── SearchInput.tsx
+  │   │   │   ├── SortableTableTh.tsx
+  │   │   │   ├── StatCard.tsx
+  │   │   │   ├── StatusBadge.tsx
+  │   │   │   ├── ConfirmDialog.tsx
+  │   │   │   ├── UnifiedComponents.tsx
+  │   │   │   └── theme.ts
+  │   │   │
+  │   │   ├── Sidebar.tsx            # Admin sidebar navigation
+  │   │   ├── StandaloneModuleLayout.tsx  # Layout wrapper for standalone modules
+  │   │   ├── ProtectedModuleRoute.tsx    # RBAC route guard
+  │   │   ├── ErrorBoundary.tsx      # React error boundary for route crash recovery
+  │   │   ├── SessionExpiredNotifier.tsx  # Listens for session-expiry events
+  │   │   ├── MasterFormBase.tsx     # Shared base form for master data entries
+  │   │   │
+  │   │   ├── orders/                # Sales order components (SOCard, OrderTable,
+  │   │   │                          #   InvoiceModal, BMR/BPRPrint, PickModal, etc.)
+  │   │   ├── procurement/           # GRN monitor, PO views, inventory audit
+  │   │   ├── planning/              # Items-Involved panels, batch split, filters
+  │   │   ├── warehouse/             # GRN QC inspection panel
+  │   │   ├── packaging/             # PM conditional field blocks
+  │   │   ├── masters/               # Quality spec tables, save/submit modals
+  │   │   ├── treasury/              # Treasury PO detail modal
+  │   │   │
+  │   │   ├── pis/                   # PIS module (self-contained sub-app)
+  │   │   │   ├── App.tsx
+  │   │   │   ├── context/PISContext.tsx
+  │   │   │   ├── hooks/useScrollToTop.ts
+  │   │   │   ├── types/pis.ts
+  │   │   │   ├── utils/api.ts | permissions.ts
+  │   │   │   ├── data/              # Mock data (customers, PIS, products)
+  │   │   │   └── components/        # Auth, Layout, Views, PIS-specific UI,
+  │   │   │                          #   Shadcn-style UI primitives
+  │   │   │
+  │   │   ├── enquirymanagementcomp/ # Ticket dashboard, modals, cross-team tickets
+  │   │   ├── rolemanagementcomp/    # Role CRUD, permission matrix, permission types
+  │   │   └── taskmanagementcomp/    # TaskApp, GlobalTaskOverview
+  │   │
+  │   ├── context/                   # Global React Contexts
+  │   │   ├── AuthContext.tsx        # Auth state, login/logout/OTP flow
+  │   │   ├── ToastContext.tsx        # App-wide toast notifications
+  │   │   ├── VendorClientContext.tsx # Vendor & client data cache
+  │   │   ├── ItemsContext.tsx        # Items/products global cache
+  │   │   ├── GlobalStateContext.tsx  # Misc shared state
+  │   │   └── AdminSidebarContext.tsx # Sidebar open/close state
+  │   │
+  │   ├── hooks/                     # Custom React hooks
+  │   │   ├── usePermissions.ts      # RBAC hook (module/sub-module/column level)
+  │   │   ├── useAutoSave.ts
+  │   │   ├── useBOM.ts
+  │   │   ├── useDebounce.ts
+  │   │   ├── useDraftLoader.ts
+  │   │   ├── useGRN.ts / useMRN.ts
+  │   │   ├── useProducts.ts / useRawMaterials.ts
+  │   │   ├── useRoles.ts
+  │   │   ├── useSearchFilter.ts
+  │   │   ├── useSidebarViewport.ts
+  │   │   ├── useVendorClient.ts
+  │   │   ├── useWarehouseInventory.ts / useWarehouseLocations.ts
+  │   │   └── usePermissions.ts
+  │   │
+  │   ├── services/                  # API service layer (one file per domain)
+  │   │   ├── auth.service.ts
+  │   │   ├── order.service.ts
+  │   │   ├── procurement.service.ts / procurementQuotations.service.ts
+  │   │   ├── planning.service.ts / planningExtracted.service.ts
+  │   │   ├── production.service.ts
+  │   │   ├── fulfillment.service.ts
+  │   │   ├── grn.service.ts / mrn.service.ts
+  │   │   ├── bom.service.ts
+  │   │   ├── rawMaterials.service.ts
+  │   │   ├── packaging.service.ts / packMaterials.service.ts
+  │   │   ├── master.service.ts / masterAttachments.service.ts
+  │   │   ├── itemsList.service.ts / itemsMaster.service.ts / itemGroups.service.ts
+  │   │   ├── vendorClient.service.ts
+  │   │   ├── clientHub.service.ts
+  │   │   ├── treasury.service.ts
+  │   │   ├── role.service.ts / user.service.ts
+  │   │   ├── dashboard.service.ts
+  │   │   ├── warehouseInventory.service.ts / warehouseLocations.service.ts
+  │   │   ├── warehouseOverview.service.ts / logisticsSchedule.service.ts
+  │   │   ├── task.service.ts / ticket.service.ts
+  │   │   ├── salesPurchase.service.ts
+  │   │   ├── universalSwap.service.ts
+  │   │   ├── department.service.ts
+  │   │   ├── facilityAreas.service.ts
+  │   │   ├── productsMaster.service.ts
+  │   │   ├── customizations.service.ts
+  │   │   ├── customizationPackagingCatalog.service.ts
+  │   │   ├── poTracking.service.ts
+  │   │   └── planningQuotationAsks.service.ts
+  │   │
+  │   ├── lib/                       # Business logic utilities & infrastructure
+  │   │   ├── apiClient.ts           # Central fetch wrapper (auth, session expiry)
+  │   │   ├── queryClient.ts         # TanStack QueryClient config + query keys
+  │   │   ├── queryHooksFactory.ts   # Factory for generating TanStack query hooks
+  │   │   ├── errorHandler.ts
+  │   │   ├── exportUtils.ts
+  │   │   ├── performanceOptimization.ts  # Network connection monitoring
+  │   │   ├── preloadRoutes.ts
+  │   │   ├── isoWeek.ts             # ISO week date utilities
+  │   │   ├── formulaBomExcelParse.ts
+  │   │   ├── fulfillmentExecutionPct.ts
+  │   │   ├── procurementRequestMerge.ts / procurementRequestItemLines.ts
+  │   │   ├── procurementNav.ts
+  │   │   ├── paymentTermsStructured.ts / stagedPaymentTerms.ts
+  │   │   ├── planningFormulaBom.ts / planningQuotationAskDisplay.ts
+  │   │   ├── plannedReleaseTargets.ts
+  │   │   ├── productionScheduleMath.ts / productionBatchReserve.ts
+  │   │   ├── skuBomDisplay.ts / skuBomMath.ts
+  │   │   ├── itemGroupBom.ts / masterLinkedPrProducts.ts / masterTableSort.ts
+  │   │   ├── grnQcSpecs.ts / issuedPoGrnLineStatus.ts
+  │   │   ├── inventoryAuditGap.ts / inventoryAuditGapApproval.ts
+  │   │   ├── inventoryAuditLines.ts
+  │   │   ├── stockCheckGapDisplay.ts / stockCheckNotes.ts
+  │   │   ├── weekVendorConsolidation.ts
+  │   │   ├── releaseBatchSiblingItems.ts / itemsInvolvedPipelineDisplay.ts
+  │   │   ├── planningItemsInvolvedProductFilter.ts
+  │   │   ├── pm/rm/prQualitySpecVisibility.ts  # Quality spec visibility logic
+  │   │   ├── pmConditionalFields.ts / rmConditionalFields.ts
+  │   │   ├── pmTypeahead.ts / rmTypeahead.ts
+  │   │   ├── pmDisplayUnit.ts / rmClubItems.ts / rmUnitConversion.ts
+  │   │   └── __tests__/             # Unit tests for lib utilities
+  │   │
+  │   ├── types/                     # Shared TypeScript type definitions
+  │   │   ├── api.types.ts
+  │   │   ├── common.types.ts
+  │   │   ├── order.types.ts / orderFulfillment.ts
+  │   │   ├── procurement.types.ts
+  │   │   ├── salesPurchase.types.ts
+  │   │   ├── task.types.ts / ticket.types.ts
+  │   │   ├── user.types.ts
+  │   │   └── qualitySpecTable.ts
+  │   │
+  │   ├── constants/                 # App-wide static constants
+  │   │   ├── routes.ts              # MODULE_ROUTE_MAP, ROUTE_MODULE_MAP
+  │   │   ├── statusMaps.ts
+  │   │   ├── orderFulfillment.ts
+  │   │   ├── warehouseItemLocations.ts
+  │   │   ├── masterSubmitPreviewFields.ts
+  │   │   ├── materialMasterSkuRules.ts
+  │   │   ├── pm/rm/prQualitySpec*.ts  # Quality spec table defaults & fields
+  │   │   └── prMasterCategoryOptions.ts / prProductFormOptions.ts
+  │   │
+  │   ├── utils/                     # Pure utility functions
+  │   │   ├── dateRangeFilter.ts
+  │   │   ├── formatQty.ts
+  │   │   ├── manufacturing.ts
+  │   │   ├── masterFormUtils.ts / masterImportCategoryResolve.ts
+  │   │   ├── masterSubmitPreview.ts
+  │   │   ├── materialQtyCompare.ts
+  │   │   ├── mergeVendorsFromItemsList.ts
+  │   │   ├── moqQuantity.ts
+  │   │   ├── orderFulfillmentUtils.ts
+  │   │   ├── planningSlaDates.ts
+  │   │   ├── qtyInput.ts
+  │   │   ├── suggestPanelPosition.ts
+  │   │   └── syncVendorMasterToPriceList.ts
+  │   │
+  │   ├── mocks/                     # Static mock data (dev/test only)
+  │   │   ├── zohoClients.mock.ts
+  │   │   ├── zohoItems.mock.ts
+  │   │   ├── zohoRawMaterials.mock.ts
+  │   │   ├── zohoVendors.mock.ts
+  │   │   └── procurement-data.json
+  │   │
+  │   └── assets/                    # Static assets (logos, images)
+  │       ├── logo/eilogofull.svg
+  │       └── logos/Logo.tsx | ei_logo.png
+  │
+  ├── public/                        # Static files served as-is
+  │   ├── eilogo.svg
+  │   └── robots.txt
+  │
+  ├── .env.example                   # Environment variable template
+  ├── vite.config.ts                 # Vite build & dev config
+  ├── tailwind.config.js             # Tailwind theme config
+  ├── tsconfig.json / tsconfig.app.json / tsconfig.node.json
+  ├── eslint.config.js
+  ├── .husky/pre-commit              # Pre-commit lint hook
+  ├── Dockerfile                     # Multi-stage Docker build
+  ├── nginx.conf                     # Nginx config for SPA serving
+  ├── netlify.toml                   # Netlify deployment config
+  └── vercel.json                    # Vercel deployment config
+
+
+================================================================================
+3. APPLICATION ENTRY & PROVIDER TREE
+================================================================================
+
+  main.tsx
+    └── <StrictMode>
+          └── <App>
+                └── <QueryClientProvider>        ← TanStack Query
+                      └── <BrowserRouter>        ← React Router
+                            └── <AuthProvider>   ← Auth state + JWT
+                                  ├── <NetworkStatus />
+                                  └── <ToastProvider>
+                                        ├── <SessionExpiredNotifier />
+                                        └── <VendorClientProvider>
+                                              └── <ItemsProvider>
+                                                    └── <GlobalStateProvider>
+                                                          └── <ErrorBoundary>
+                                                                └── <AppLayout />
+
+
+================================================================================
+4. ROUTING & LAYOUT SYSTEM
+================================================================================
+
+  The app uses TWO distinct layout modes:
+
+  A) STANDALONE MODULE LAYOUT (StandaloneModuleLayout)
+     These modules render WITHOUT the admin sidebar — they have their own
+     internal navigation:
+       /pis/*             → PIS (Product Info Sheet) module
+       /treasury/*        → Treasury module
+       /procurement       → Procurement module
+       /warehouse/*       → Warehouse module
+       /planning/*        → Planning module
+       /production        → Production module
+       /fulfillment       → Fulfillment module
+       /client-hub        → Client Hub module
+
+  B) ADMIN SIDEBAR LAYOUT
+     All other routes render inside the main admin shell with Sidebar:
+       /                  → Dashboard
+       /role-management   → Role Management
+       /user-management   → User Management
+       /catalogue-management
+       /active-ingredients / /customization-catalog
+       /enquiry-management / /doctor-appointments / /contact-enquiry
+       /new-developments / /product-samples
+       /packaging-management / /customization-packaging-catalog
+       /packaging / /raw-material
+       /bom / /bom/new / /bom/:id
+       /universal-swap / /universal-swap-page
+       /item-groups / /items-list
+       /vendor-client
+       /task-management
+       /facility-management
+
+  All pages are lazy-loaded with React.lazy() + Suspense, showing a spinner
+  while the JS chunk is being fetched.
+
+  The /login route renders standalone with no layout wrapper.
+  A catch-all route (*) redirects to Dashboard.
+
+
+================================================================================
+5. AUTHENTICATION & SESSION MANAGEMENT
+================================================================================
+
+  Flow:
+    1. User submits email + password → POST /api/v1/auth/login
+    2a. If MFA enabled:  backend returns OTP_SENT → user enters OTP
+                         → POST /api/v1/otp/verifyotp
+    2b. If no MFA:       backend returns user + JWT token
+    3. Token stored in   localStorage key: "ei_admin_token"
+    4. User object stored in localStorage key: "eisthetic_auth_user"
+    5. On app load, existing token is verified via GET /api/v1/auth/me
+
+  Session Expiry Detection:
+    - apiClient.ts detects 401/403 responses or "SESSION_EXPIRED" code
+    - Dispatches custom DOM event: "ei:session-expired"
+    - AuthContext + SessionExpiredNotifier listen and clear state / redirect
+
+  AuthUser shape:
+    { id, email, name, roleId, roleName, roleLevel, allowedModules, loginTime }
+
+  Token lifecycle:
+    - setAuthToken()  → stores to localStorage
+    - getAuthToken()  → reads from localStorage
+    - clearAuthToken() → removes from localStorage
+    - All API requests attach:  Authorization: Bearer <token>
+
+
+================================================================================
+6. API CLIENT
+================================================================================
+
+  File: src/lib/apiClient.ts
+
+  Central fetch wrapper used by all service files. Provides:
+    api.get<T>(path)
+    api.post<T>(path, data)
+    api.put<T>(path, data)
+    api.patch<T>(path, data)
+    api.delete<T>(path)
+
+  Base URL resolution:
+    - Development: empty string → Vite dev proxy forwards /api → localhost:3000
+    - Production:  VITE_API_BASE_URL env var (set to backend origin)
+
+  Features:
+    - Automatically attaches Bearer token header
+    - Handles FormData (skips Content-Type header so browser sets boundary)
+    - On 4xx/5xx: parses JSON/text body, extracts server error message
+    - On session expiry: clears token + dispatches "ei:session-expired" event
+    - 204 No Content → returns undefined
+    - Returns parsed JSON for all other success responses
+
+
+================================================================================
+7. SERVER STATE MANAGEMENT (TanStack Query)
+================================================================================
+
+  File: src/lib/queryClient.ts
+
+  QueryClient configuration:
+    staleTime          : 30 seconds
+    gcTime (cacheTime) : 30 minutes
+    retry              : up to 3 times (skips 404s and client errors)
+    retryDelay         : exponential backoff (max 30 seconds)
+    refetchOnWindowFocus: false
+    refetchOnReconnect  : false
+    refetchOnMount     : 'always'  (picks up backend cache invalidations)
+
+  Query Key Registry (queryKeys):
+    orders, order(id), reviewOrders, users, roles, products, enquiries,
+    dashboard, analytics, warehouseLocations, warehouseInventory
+
+  Data flow:
+    Component → custom hook (e.g. useGRN) → service function → apiClient
+             ↓
+    TanStack Query caches response, handles loading/error states
+
+
+================================================================================
+8. ROLE-BASED ACCESS CONTROL (RBAC)
+================================================================================
+
+  Hook: src/hooks/usePermissions.ts
+  Guard: src/components/ProtectedModuleRoute.tsx
+
+  Permission levels:
+    1. MODULE level    → can user access this module at all?
+    2. SUB-MODULE level → can user view/create/edit/delete/approve/export?
+    3. COLUMN level    → can user view/edit a specific data column?
+
+  Admin bypass:
+    Users with roleName "admin" / "super admin" OR roleLevel "admin"
+    get full access to everything — no backend fetch needed.
+
+  Non-admin flow:
+    On login, role ID from /me is used to fetch
+    GET /api/v1/roles/:roleId → returns permissions JSON
+    This is parsed into a RolePermissions object used throughout the app.
+
+  ProtectedModuleRoute usage:
+    <ProtectedModuleRoute moduleId="inventory" subModuleId="raw-materials">
+      <RawMaterialForm />
+    </ProtectedModuleRoute>
+
+  allowedModules (from /me):
+    Fallback when role permissions haven't loaded yet.
+    '*' means full access.
+
+
+================================================================================
+9. MODULE OVERVIEW
+================================================================================
+
+  MODULE ID              ROUTE(s)                         LAYOUT TYPE
+  ─────────────────────────────────────────────────────────────────────────────
+  dashboard              /                                Admin Sidebar
+  pis                    /pis/*                           Standalone
+  order-management       /procurement                     Standalone
+                         /warehouse/*                     Standalone
+                         /planning/*                      Standalone
+                         /production                      Standalone
+                         /fulfillment                     Standalone
+                         /client-hub                      Standalone
+                         /facility-management             Admin Sidebar
+  inventory              /raw-material                    Admin Sidebar
+                         /packaging                       Admin Sidebar
+                         /bom  /bom/new  /bom/:id         Admin Sidebar
+                         /universal-swap                  Admin Sidebar
+                         /item-groups  /items-list        Admin Sidebar
+  vendor-client          /vendor-client                   Admin Sidebar
+  treasury               /treasury/*                      Standalone
+  enquiry-management     /enquiry-management              Admin Sidebar
+  doctor-appointments    /doctor-appointments             Admin Sidebar
+  contact-enquiry        /contact-enquiry                 Admin Sidebar
+  new-developments       /new-developments                Admin Sidebar
+  product-samples        /product-samples                 Admin Sidebar
+  catalogue-management   /catalogue-management            Admin Sidebar
+  active-ingredients     /active-ingredients              Admin Sidebar
+                         /customization-catalog           Admin Sidebar
+  packaging-management   /packaging-management            Admin Sidebar
+                         /customization-packaging-catalog Admin Sidebar
+  task-management        /task-management                 Admin Sidebar
+  user-management        /user-management                 Admin Sidebar
+  role-management        /role-management                 Admin Sidebar
+
+
+================================================================================
+10. PIS MODULE (SELF-CONTAINED SUB-APP)
+================================================================================
+
+  The PIS (Product Info Sheet) module is a self-contained sub-application
+  living inside src/components/pis/. It has its own:
+
+    - App.tsx           → root component for the PIS module
+    - context/          → PISContext (state management)
+    - hooks/            → useScrollToTop
+    - types/            → pis.ts type definitions
+    - utils/            → api.ts (PIS-specific API calls), permissions.ts
+    - data/             → mock data (customers, PIS records, products)
+    - components/
+        auth/           → Login, RoleSelector, WaitingForRole
+        layout/         → Header, Sidebar, Logo, ScrollToTopButton
+        pis/            → PISCodeSidebar
+        views/          → various view components
+        ui/             → Shadcn-style primitives (alert, badge, button,
+                           card, checkbox, dialog, dropdown, input, etc.)
+        AnalyticsView, DashboardStats, EnhancedPISTable
+        CreatePISDialog, PISDetailsDialog, PISChat
+        AdvancedFilters, ImprovedDashboard, ImprovedPISManagement
+        CustomersView, ProductsView, TasksView, SettingsView
+        StageTemplatesForm, NewPISView
+
+
+================================================================================
+11. BUILD & DEPLOYMENT
+================================================================================
+
+  Development:
+    npm run dev           → Vite dev server on port 5174
+                            /api proxied to http://127.0.0.1:3000 (local backend)
+                            Override: VITE_DEV_API_PROXY=<url> npm run dev
+
+  Production Build:
+    npm run build         → Vite + ESBuild → /dist
+    npm run build:check   → TypeScript type check + build
+
+  Code Splitting (manualChunks):
+    react-vendor          → react, react-dom, react-router-dom
+    ui-vendor             → @radix-ui/*
+    query-vendor          → @tanstack/*
+    chart-vendor          → recharts
+    xlsx-vendor           → xlsx
+    file-saver-vendor     → file-saver
+    icons-vendor          → lucide-react
+    sonner-vendor         → sonner
+    theme-vendor          → next-themes
+    + Individual lazy-loaded page chunks (one per page)
+
+  Docker (EC2/self-hosted):
+    Stage 1: node:20-bookworm-slim → npm ci → npm run build
+    Stage 2: nginx:alpine serves /dist, nginx.conf handles SPA fallback
+
+  Netlify:
+    netlify.toml → build command + publish directory
+
+  Vercel:
+    vercel.json → rewrites for SPA routing
+
+  Environment Variables:
+    VITE_API_BASE_URL   → backend origin for production API calls
+                          (leave empty in dev; Vite proxy handles /api)
+
+
+================================================================================
+12. TESTING
+================================================================================
+
+  Framework: Vitest 2
+
+  Test locations:
+    src/lib/__tests__/              → unit tests for lib utilities
+    src/components/__tests__/       → component tests
+    src/pages/procurement/__tests__ → procurement-specific tests
+    src/lib/*.test.ts               → co-located tests in lib/
+
+  Coverage areas (based on test files):
+    - Date range filters
+    - Formula BOM Excel parsing (RM and PM variants)
+    - Fulfillment execution percentage
+    - Issued PO / GRN line status logic
+    - Payment terms (structured + staged)
+    - PM/RM/PR quality spec visibility rules
+    - PM/RM conditional fields
+    - PM/RM typeahead logic
+    - Planning formula BOM + quotation ask display
+    - Planned release targets
+    - Production schedule math
+    - Procurement data mappers (dates, draft PO sync/delete)
+    - Procurement lead time + ETA
+    - Stock check gap display
+    - Week-vendor consolidation
+    - RM club items, sub-sub-category, unit conversion
+
+  Run tests:
+    npm run test          → watch mode
+    npm run test:run      → single run (CI)
+
+
+================================================================================
+13. KEY ARCHITECTURAL PATTERNS
+================================================================================
+
+  1. SERVICE LAYER
+     All backend calls go through dedicated service files (src/services/).
+     Components never call apiClient directly — they call service functions.
+     Service functions return typed results or throw on error.
+
+  2. TANSTACK QUERY FOR SERVER STATE
+     All async data is managed by TanStack Query via custom hooks.
+     Components read from query cache; mutations invalidate relevant keys.
+     This eliminates manual loading/error state management.
+
+  3. LAZY LOADING FOR PERFORMANCE
+     Every page component is lazy-loaded. The Vite build produces separate
+     JS chunks per page + vendor chunks. Users only download what they visit.
+
+  4. DUAL LAYOUT ARCHITECTURE
+     Complex operational modules (Procurement, Warehouse, Planning, etc.)
+     render in StandaloneModuleLayout with their own internal nav.
+     Simpler admin modules render inside the shared Admin Sidebar layout.
+
+  5. RBAC VIA HOOK + ROUTE GUARD
+     usePermissions() is the single source of truth for what a user can do.
+     ProtectedModuleRoute wraps routes to block unauthorized access at the
+     router level. Individual components use usePermissions() for fine-grained
+     action/column-level control.
+
+  6. EVENT-DRIVEN SESSION EXPIRY
+     Session expiry is handled via a custom DOM event ("ei:session-expired")
+     rather than prop drilling. Any part of the app can detect and react to
+     an expired session without needing to be aware of sibling components.
+
+  7. ERROR BOUNDARIES
+     ErrorBoundary components wrap all route subtrees. If a page throws during
+     render, the boundary catches it and shows a fallback UI instead of a
+     white screen crash.
+
+  8. CENTRALIZED CONSTANTS & TYPES
+     Route-to-module mappings, quality spec defaults, status maps, and order
+     fulfillment constants live in src/constants/ so they are single-sourced.
+     TypeScript types in src/types/ are shared across services and components.
+
+
+================================================================================
+14. ENVIRONMENT CONFIGURATION
+================================================================================
+
+  File: .env.example (copy to .env.local for development)
+
+  VITE_API_BASE_URL=
+    # Leave empty in development — Vite proxies /api → localhost:3000
+    # In production set to: https://your-backend-domain.com
+
+  Dev API proxy can be overridden per-session:
+    VITE_DEV_API_PROXY=https://staging-api.example.com npm run dev
+
+
+================================================================================
+END OF ARCHITECTURE DOCUMENT
+================================================================================

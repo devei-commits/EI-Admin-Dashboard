@@ -94,7 +94,10 @@ export interface QuoteResult {
   sg_info: SgInfo | null;
   bands: QuoteBand[];
   target_calc?: TargetCalc[];
+  batch_yield_pct?: number;
+  effective_rm_wastage_pct?: number;
   warnings: string[];
+  auto_detected?: { packaging_type: string; volume_key: string; has_monocarton: boolean } | null;
 }
 
 export interface TargetCalc { moq: string; required_rm_kg_landed: number; required_rm_kg_exworks: number; current_rm_kg_landed: number; gap: number; feasible: boolean; }
@@ -111,7 +114,7 @@ export interface CalculatePayload {
   creditDays?: number; annualRate?: number;
   grade?: number; customMargins?: number[] | null; targetPrice?: number;
   rmOverrides?: Record<string, number>; pmOverrides?: Record<string, number>; sgOverrides?: Record<string, number>;
-  useBatchLead?: boolean; productSubtype?: string; pricingSource?: 'master' | 'vendor';
+  useBatchLead?: boolean; productSubtype?: string; pricingSource?: 'master' | 'vendor'; quoteScope?: 'full' | 'rm_only' | 'pm_only'; batchYieldPct?: number;
 }
 
 export interface StatusEvent { from: string; to: string; by: number | null; by_name: string | null; note: string | null; at: string; }
@@ -119,7 +122,7 @@ export interface StatusEvent { from: string; to: string; by: number | null; by_n
 export interface SavedQuoteListItem {
   id: number; quote_ref: string; quote_name: string; customer_name: string | null;
   bom_id: number | null; bom_code: string | null; grade: number | null; mode: string | null;
-  status: string; sales_order_ref: string | null; headline_sell: number | null; headline_moq: string | null; notes: string | null; created_at: string;
+  status: string; sales_order_ref: string | null; headline_sell: number | null; headline_moq: string | null; notes: string | null; quote_type: string | null; quote_category: string | null; job_ref: string | null; pre_quote_id: number | null; actuals_count?: number; created_at: string;
 }
 
 export interface SavedQuoteFull extends SavedQuoteListItem {
@@ -127,7 +130,11 @@ export interface SavedQuoteFull extends SavedQuoteListItem {
   sales_order_id: number | null;
   version: number; root_quote_id: number | null; superseded_by: number | null;
   gst_pct: number; valid_until: string | null; client_id: number | null; prepared_by: string | null;
+  updated_at: string;
+  price_warnings?: PriceWarning[];
 }
+
+export interface PriceWarning { type: 'RM' | 'PM'; material_id: number; name: string; was: number; now: number; pct_change: number; }
 
 export interface VersionItem { id: number; quote_ref: string; version: number; status: string; headline_sell: number | null; superseded_by: number | null; created_at: string; }
 
@@ -258,6 +265,7 @@ export async function saveQuote(payload: {
   quote_name?: string; customer_name?: string; notes?: string;
   payload: Record<string, unknown>; result: QuoteResult;
   gst_pct?: number; valid_until?: string; client_id?: number; prepared_by?: string;
+  quote_type?: string; quote_category?: string; job_ref?: string; pre_quote_id?: number;
 }): Promise<ServiceResult<{ id: number; quote_ref: string; created_at: string }>> {
   try { const d = await api.post<{ id: number; quote_ref: string; created_at: string }>('/api/v1/quotes/save', payload); return { data: d, error: null, success: true }; }
   catch (e) { return fail(e, null as unknown as { id: number; quote_ref: string; created_at: string }, 'Failed to save quote'); }
@@ -294,12 +302,16 @@ export async function fetchQuoteStats(): Promise<ServiceResult<QuoteStats>> {
   } catch (e) { return fail(e, { total: 0, by_status: {}, converted: 0 }, 'Failed to load stats'); }
 }
 
-export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string, clientId?: number): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
+export async function fetchSavedQuotes(search?: string, limit = 50, offset = 0, status?: string, clientId?: number, quoteType?: string, quoteCategory?: string, bomCode?: string, noActuals?: boolean): Promise<ServiceResult<{ quotes: SavedQuoteListItem[]; total: number }>> {
   try {
     const params = new URLSearchParams();
     if (search?.trim()) params.set('search', search.trim());
     if (status) params.set('status', status);
     if (clientId) params.set('client_id', String(clientId));
+    if (quoteType) params.set('quote_type', quoteType);
+    if (quoteCategory) params.set('quote_category', quoteCategory);
+    if (bomCode) params.set('bom_code', bomCode);
+    if (noActuals) params.set('no_actuals', 'true');
     params.set('limit', String(limit)); params.set('offset', String(offset));
     const d = await api.get<{ quotes: SavedQuoteListItem[]; total: number }>(`/api/v1/quotes/saved?${params.toString()}`);
     return { data: d, error: null, success: true };
@@ -336,6 +348,7 @@ export async function fetchVersions(id: number): Promise<ServiceResult<VersionIt
 export async function updateSavedQuote(id: number, payload: {
   quote_name?: string; customer_name?: string; client_id?: number | null; notes?: string;
   payload: Record<string, unknown>; result: QuoteResult; gst_pct?: number; valid_until?: string;
+  quote_type?: string; quote_category?: string; job_ref?: string; pre_quote_id?: number | null;
 }): Promise<ServiceResult<{ id: number; quote_ref: string }>> {
   try {
     const d = await api.put<{ id: number; quote_ref: string }>(`/api/v1/quotes/saved/${id}`, payload);
@@ -350,6 +363,36 @@ export async function fetchSavedQuote(id: number): Promise<ServiceResult<SavedQu
 export async function deleteSavedQuote(id: number): Promise<ServiceResult<null>> {
   try { await api.delete(`/api/v1/quotes/saved/${id}`); return { data: null, error: null, success: true }; }
   catch (e) { return fail(e, null, 'Failed to delete quote'); }
+}
+
+// ─────────────── BOM-level quote hub ───────────────
+export interface BomQuoteJob {
+  job_ref: string | null;
+  quotes: SavedQuoteListItem[];
+}
+export interface BomQuoteHubData {
+  quotes: SavedQuoteListItem[];
+  total: number;
+  jobs: BomQuoteJob[];
+}
+export async function fetchQuotesByBom(bomCode: string): Promise<ServiceResult<BomQuoteHubData>> {
+  try {
+    const d = await api.get<BomQuoteHubData>(`/api/v1/quotes/by-bom/${encodeURIComponent(bomCode)}`);
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, { quotes: [], total: 0, jobs: [] }, 'Failed to load BOM quotes'); }
+}
+
+export interface BomQuoteStats {
+  bom_code: string; total: number; converted: number; win_rate: number | null;
+  min_price: number | null; max_price: number | null; avg_price: number | null;
+  by_type: Record<string, number>; by_category: Record<string, number>;
+  top_clients: { customer_name: string; c: number }[];
+}
+export async function fetchBomQuoteStats(bomCode: string): Promise<ServiceResult<BomQuoteStats>> {
+  try {
+    const d = await api.get<BomQuoteStats>(`/api/v1/quotes/bom-stats/${encodeURIComponent(bomCode)}`);
+    return { data: d, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as BomQuoteStats, 'Failed to load BOM stats'); }
 }
 
 // ─────────────── Audit log ───────────────
@@ -390,4 +433,110 @@ export async function saveRmSg(updates: { raw_material_id: number; specific_grav
     const d = await api.post<{ updated: number }>('/api/v1/quotes/rm-sg', { updates });
     return { data: d, error: null, success: true };
   } catch (e) { return fail(e, { updated: 0 }, 'Failed to save SG to master'); }
+}
+
+// ─────────────── Conversion Rates ───────────────
+export interface ConversionRate {
+  id: number;
+  packaging_type: string;
+  moq_band: string;
+  volume_key: string;
+  rate: number;
+}
+
+export async function fetchConversionRates(): Promise<ServiceResult<ConversionRate[]>> {
+  try {
+    const d = await api.get<{ rates: ConversionRate[] }>('/api/v1/quotes/conversion-rates');
+    return { data: d.rates, error: null, success: true };
+  } catch (e) { return fail(e, [], 'Failed to load conversion rates'); }
+}
+
+export async function upsertConversionRate(payload: { packaging_type: string; moq_band: string; volume_key: string; rate: number }): Promise<ServiceResult<ConversionRate>> {
+  try {
+    const d = await api.put<{ rate: ConversionRate }>('/api/v1/quotes/conversion-rates', payload);
+    return { data: d.rate, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as ConversionRate, 'Failed to save conversion rate'); }
+}
+
+// ─────────────── Category Wastage Rates ───────────────
+export interface CategoryRate {
+  id: number;
+  category: string;
+  wastage_pct: number;
+  notes: string | null;
+}
+
+export async function fetchCategoryRates(): Promise<ServiceResult<CategoryRate[]>> {
+  try {
+    const d = await api.get<{ rates: CategoryRate[] }>('/api/v1/quotes/category-rates');
+    return { data: d.rates, error: null, success: true };
+  } catch (e) { return fail(e, [], 'Failed to load category rates'); }
+}
+
+export async function upsertCategoryRate(payload: { category: string; wastage_pct: number; notes?: string | null }): Promise<ServiceResult<CategoryRate>> {
+  try {
+    const d = await api.put<{ rate: CategoryRate }>('/api/v1/quotes/category-rates', payload);
+    return { data: d.rate, error: null, success: true };
+  } catch (e) { return fail(e, null as unknown as CategoryRate, 'Failed to save category rate'); }
+}
+
+export async function deleteCategoryRate(id: number): Promise<ServiceResult<null>> {
+  try {
+    await api.delete(`/api/v1/quotes/category-rates/${id}`);
+    return { data: null, error: null, success: true };
+  } catch (e) { return fail(e, null, 'Failed to delete category rate'); }
+}
+
+// ─────────────── Quote Actuals (v0.9.0) ───────────────
+export interface ActualsVarianceItem { diff: number; pct: number | null; }
+export interface ActualsVariance {
+  rm: ActualsVarianceItem | null; pm: ActualsVarianceItem | null;
+  conversion: ActualsVarianceItem | null; overhead: ActualsVarianceItem | null;
+  total: ActualsVarianceItem | null;
+}
+export interface QuoteDashboardStats {
+  total_quotes: number; quotes_this_month: number;
+  actuals_count: number; pending_actuals: number;
+  avg_accuracy_pct: number | null;
+  by_scope: Record<string, number>;
+  by_category: Record<string, number>;
+  top_boms: { bom_code: string; count: number }[];
+  recent: { id: number; quote_ref: string; quote_name: string; status: string; created_at: string }[];
+}
+export interface QuoteActuals {
+  id: number; bom_code: string; job_ref: string | null;
+  pre_quote_id: number | null; post_quote_id: number | null;
+  batch_size: number | null; yield_pct: number | null;
+  actual_rm: number | null; actual_pm: number | null;
+  actual_conversion: number | null; actual_overhead: number | null; actual_total: number | null;
+  est_rm: number | null; est_pm: number | null;
+  est_conversion: number | null; est_overhead: number | null; est_total: number | null;
+  notes: string | null; entered_by_name: string | null;
+  variance: ActualsVariance;
+  created_at: string; updated_at: string;
+}
+
+export async function fetchActualsByQuote(quoteId: number): Promise<ServiceResult<QuoteActuals[]>> {
+  try { const d = await api.get<{ actuals: QuoteActuals[] }>(`/api/v1/quotes/actuals/by-quote/${quoteId}`); return { data: d.actuals, error: null, success: true }; }
+  catch (e) { return fail(e, [], 'Failed to load actuals'); }
+}
+export async function fetchActualsByBom(bomCode: string): Promise<ServiceResult<QuoteActuals[]>> {
+  try { const d = await api.get<{ actuals: QuoteActuals[] }>(`/api/v1/quotes/actuals/by-bom/${encodeURIComponent(bomCode)}`); return { data: d.actuals, error: null, success: true }; }
+  catch (e) { return fail(e, [], 'Failed to load BOM actuals'); }
+}
+export async function createActuals(payload: Omit<QuoteActuals, 'id' | 'variance' | 'entered_by_name' | 'created_at' | 'updated_at'>): Promise<ServiceResult<QuoteActuals>> {
+  try { const d = await api.post<QuoteActuals>('/api/v1/quotes/actuals', payload); return { data: d, error: null, success: true }; }
+  catch (e) { return fail(e, null as unknown as QuoteActuals, 'Failed to save actuals'); }
+}
+export async function updateActuals(id: number, payload: Partial<QuoteActuals>): Promise<ServiceResult<QuoteActuals>> {
+  try { const d = await api.put<QuoteActuals>(`/api/v1/quotes/actuals/${id}`, payload); return { data: d, error: null, success: true }; }
+  catch (e) { return fail(e, null as unknown as QuoteActuals, 'Failed to update actuals'); }
+}
+export async function deleteActuals(id: number): Promise<ServiceResult<void>> {
+  try { await api.delete(`/api/v1/quotes/actuals/${id}`); return { data: undefined, error: null, success: true }; }
+  catch (e) { return fail(e, undefined, 'Failed to delete actuals'); }
+}
+export async function fetchQuoteDashboardStats(): Promise<ServiceResult<QuoteDashboardStats>> {
+  try { const d = await api.get<QuoteDashboardStats>('/api/v1/quotes/dashboard-stats'); return { data: d, error: null, success: true }; }
+  catch (e) { return fail(e, null as unknown as QuoteDashboardStats, 'Failed to load quote stats'); }
 }
