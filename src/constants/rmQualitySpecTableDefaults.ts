@@ -1,108 +1,44 @@
+import { RM_QC_COMMON_BY_CATEGORY } from './eiMastersQualityCheckSpecs';
+import { RM_QUALITY_SPEC_FIELD_DEFS } from './rmQualitySpecFields';
 import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../types/qualitySpecTable';
 
-/** Default common-spec rows for bulk RM masters (cosmetic / skin-care template). */
-export const RM_QUALITY_SPEC_TABLE_DEFAULTS: readonly Omit<QualitySpecTableRow, 'id'>[] = [
-  {
-    parameter: 'Appearance',
-    specLimit: 'Per Master',
-    method: 'Visual',
-    mandatory: false,
-    tolerance: 'Match',
-    frequency: 'Per batch',
-    sample: '10g',
-    acceptance: 'Match',
-    attachments: [],
-  },
-  {
-    parameter: 'Color',
-    specLimit: 'Per Master',
-    method: 'Visual vs standard',
-    mandatory: false,
-    tolerance: 'Match',
-    frequency: 'Per batch',
-    sample: '10g',
-    acceptance: 'Match',
-    attachments: [],
-  },
-  {
-    parameter: 'Odor',
-    specLimit: 'Per Master',
-    method: 'Olfactory',
-    mandatory: false,
-    tolerance: 'Match',
-    frequency: 'Per batch',
-    sample: '10g',
-    acceptance: 'Match',
-    attachments: [],
-  },
-  {
-    parameter: 'pH',
-    specLimit: 'Per Master',
-    method: 'pH meter @25°C',
-    mandatory: false,
-    tolerance: '±0.3',
-    frequency: 'Per batch',
-    sample: '100g',
-    acceptance: 'Within range',
-    attachments: [],
-  },
-  {
-    parameter: 'Viscosity',
-    specLimit: 'Per Master (cps)',
-    method: 'Brookfield @25°C',
-    mandatory: false,
-    tolerance: '±20%',
-    frequency: 'Per batch',
-    sample: '250g',
-    acceptance: 'Within range',
-    attachments: [],
-  },
-  {
-    parameter: 'TAMC / TYMC',
-    specLimit: '≤ 100 / 10 CFU/g',
-    method: 'IS 14648',
-    mandatory: false,
-    tolerance: '≤ Limit',
-    frequency: 'Per batch',
-    sample: '1g',
-    acceptance: 'Pass',
-    attachments: [],
-  },
-  {
-    parameter: 'Pathogens (E.coli/Salmonella/P.aeruginosa/S.aureus)',
-    specLimit: 'Absent',
-    method: 'IS 14648',
-    mandatory: false,
-    tolerance: 'Absent',
-    frequency: 'Per batch',
-    sample: '1g/10g',
-    acceptance: 'Absent',
-    attachments: [],
-  },
-  {
-    parameter: 'Bulk Yield',
-    specLimit: '≥ 95% of theoretical',
-    method: 'Weigh',
-    mandatory: false,
-    tolerance: '≥ 95%',
-    frequency: 'Per batch',
-    sample: 'Full bulk',
-    acceptance: '≥ 95%',
-    attachments: [],
-  },
-  {
-    parameter: 'Hold Time (bulk)',
-    specLimit: '≤ 24 hr',
-    method: 'BMR timestamp',
-    mandatory: false,
-    tolerance: '≤ 24 hr',
-    frequency: 'Per batch',
-    sample: 'BMR',
-    acceptance: 'Within hold',
-    attachments: [],
-  },
-];
+type CommonSpecTemplate = Omit<QualitySpecTableRow, 'id'>;
 
-export function cloneRmQualitySpecTableDefaults(): QualitySpecTableRow[] {
-  return RM_QUALITY_SPEC_TABLE_DEFAULTS.map((row) => createEmptyQualitySpecRow(row));
+function buildFallbackCommonTemplates(): Record<string, CommonSpecTemplate[]> {
+  const map: Record<string, CommonSpecTemplate[]> = {};
+  for (const def of RM_QUALITY_SPEC_FIELD_DEFS) {
+    if (def.subCategory) continue;
+    const key = def.category;
+    if (!map[key]) map[key] = [];
+    map[key].push({
+      parameter: def.label,
+      specLimit: '',
+      method: '',
+      mandatory: def.mandatory,
+      tolerance: '',
+      frequency: '',
+      sample: '',
+      acceptance: '',
+      attachments: [],
+    });
+  }
+  return map;
+}
+
+const FALLBACK_COMMON_TEMPLATES = buildFallbackCommonTemplates();
+
+export function hasRmQualitySpecDefaults(category: string): boolean {
+  const key = category.trim();
+  return Boolean(RM_QC_COMMON_BY_CATEGORY[key]?.length || FALLBACK_COMMON_TEMPLATES[key]?.length);
+}
+
+export function cloneRmQualitySpecTableDefaults(category: string): QualitySpecTableRow[] {
+  const key = category.trim();
+  const templates = RM_QC_COMMON_BY_CATEGORY[key] ?? FALLBACK_COMMON_TEMPLATES[key] ?? [];
+  return templates.map((row) => createEmptyQualitySpecRow(row));
+}
+
+/** @deprecated Use cloneRmQualitySpecTableDefaults(category) — kept for legacy imports. */
+export function cloneRmQualitySpecTableDefaultsLegacy(): QualitySpecTableRow[] {
+  return cloneRmQualitySpecTableDefaults('Surfactant');
 }

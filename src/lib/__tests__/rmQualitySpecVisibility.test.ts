@@ -44,7 +44,7 @@ describe('rmQualitySpecVisibility', () => {
     })).toBe(false);
   });
 
-  it('only auto-seeds bulk common defaults', () => {
+  it('auto-seeds category-specific common defaults for bulk RM', () => {
     expect(getDefaultRmQualitySpecRows(bulkCtx).length).toBeGreaterThan(0);
     expect(
       getDefaultRmQualitySpecRows({
@@ -54,11 +54,12 @@ describe('rmQualitySpecVisibility', () => {
     ).toEqual([]);
   });
 
-  it('seeds skin-care style default common rows', () => {
+  it('seeds surfactant GRN common rows from EI masters template', () => {
     const defaults = getDefaultRmQualitySpecRows(bulkCtx);
     expect(defaults.length).toBeGreaterThan(0);
-    expect(defaults.some((r) => r.parameter === 'Appearance')).toBe(true);
-    expect(defaults.some((r) => r.parameter === 'Bulk Yield')).toBe(true);
+    expect(defaults.some((r) => r.parameter === 'COA from Vendor')).toBe(true);
+    expect(defaults.some((r) => r.parameter === 'TAMC')).toBe(true);
+    expect(defaults.some((r) => r.parameter === 'Bulk Yield')).toBe(false);
   });
 
   it('seeds anionic sub-category default rows', () => {

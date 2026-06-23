@@ -8,7 +8,7 @@ import {
   rmUnifiedToLegacyQualityCategory,
   rmUnifiedToLegacyQualitySub,
 } from '../constants/eiMastersUnifiedSchema';
-import { cloneRmQualitySpecTableDefaults } from '../constants/rmQualitySpecTableDefaults';
+import { cloneRmQualitySpecTableDefaults, hasRmQualitySpecDefaults } from '../constants/rmQualitySpecTableDefaults';
 import {
   cloneRmQualitySubSpecTableDefaults,
   hasRmQualitySubSpecDefaults,
@@ -100,8 +100,10 @@ export function hasRmQualitySpecFields(ctx: RmQualitySpecContext): boolean {
 }
 
 export function getDefaultRmQualitySpecRows(ctx: RmQualitySpecContext): QualitySpecTableRow[] {
-  if (!resolveRmQualitySpecContext(ctx).isBulkFunctional) return [];
-  return cloneRmQualitySpecTableDefaults();
+  const resolved = resolveRmQualitySpecContext(ctx);
+  if (!resolved.isBulkFunctional || !resolved.functionalCategory) return [];
+  if (!hasRmQualitySpecDefaults(resolved.functionalCategory)) return [];
+  return cloneRmQualitySpecTableDefaults(resolved.functionalCategory);
 }
 
 export function getDefaultRmQualitySubSpecRows(ctx: RmQualitySpecContext): QualitySpecTableRow[] {

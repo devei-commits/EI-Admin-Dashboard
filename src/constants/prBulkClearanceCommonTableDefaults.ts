@@ -1,8 +1,109 @@
 import { normalizePrCategoryForSelect } from './prMasterCategoryOptions';
-import { RM_QUALITY_SPEC_TABLE_DEFAULTS } from './rmQualitySpecTableDefaults';
 import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../types/qualitySpecTable';
 
 type CommonTemplate = Omit<QualitySpecTableRow, 'id'>;
+
+const SKIN_CARE_BULK_COMMON: readonly CommonTemplate[] = [
+  {
+    parameter: 'Appearance',
+    specLimit: 'Per Master',
+    method: 'Visual',
+    mandatory: false,
+    tolerance: 'Match',
+    frequency: 'Per batch',
+    sample: '10g',
+    acceptance: 'Match',
+    attachments: [],
+  },
+  {
+    parameter: 'Color',
+    specLimit: 'Per Master',
+    method: 'Visual vs standard',
+    mandatory: false,
+    tolerance: 'Match',
+    frequency: 'Per batch',
+    sample: '10g',
+    acceptance: 'Match',
+    attachments: [],
+  },
+  {
+    parameter: 'Odor',
+    specLimit: 'Per Master',
+    method: 'Olfactory',
+    mandatory: false,
+    tolerance: 'Match',
+    frequency: 'Per batch',
+    sample: '10g',
+    acceptance: 'Match',
+    attachments: [],
+  },
+  {
+    parameter: 'pH',
+    specLimit: 'Per Master',
+    method: 'pH meter @25°C',
+    mandatory: false,
+    tolerance: '±0.3',
+    frequency: 'Per batch',
+    sample: '100g',
+    acceptance: 'Within range',
+    attachments: [],
+  },
+  {
+    parameter: 'Viscosity',
+    specLimit: 'Per Master (cps)',
+    method: 'Brookfield @25°C',
+    mandatory: false,
+    tolerance: '±20%',
+    frequency: 'Per batch',
+    sample: '250g',
+    acceptance: 'Within range',
+    attachments: [],
+  },
+  {
+    parameter: 'TAMC / TYMC',
+    specLimit: '≤ 100 / 10 CFU/g',
+    method: 'IS 14648',
+    mandatory: false,
+    tolerance: '≤ Limit',
+    frequency: 'Per batch',
+    sample: '1g',
+    acceptance: 'Pass',
+    attachments: [],
+  },
+  {
+    parameter: 'Pathogens (E.coli/Salmonella/P.aeruginosa/S.aureus)',
+    specLimit: 'Absent',
+    method: 'IS 14648',
+    mandatory: false,
+    tolerance: 'Absent',
+    frequency: 'Per batch',
+    sample: '1g/10g',
+    acceptance: 'Absent',
+    attachments: [],
+  },
+  {
+    parameter: 'Bulk Yield',
+    specLimit: '≥ 95% of theoretical',
+    method: 'Weigh',
+    mandatory: false,
+    tolerance: '≥ 95%',
+    frequency: 'Per batch',
+    sample: 'Full bulk',
+    acceptance: '≥ 95%',
+    attachments: [],
+  },
+  {
+    parameter: 'Hold Time (bulk)',
+    specLimit: '≤ 24 hr',
+    method: 'BMR timestamp',
+    mandatory: false,
+    tolerance: '≤ 24 hr',
+    frequency: 'Per batch',
+    sample: 'BMR',
+    acceptance: 'Within hold',
+    attachments: [],
+  },
+];
 
 const HAIR_CARE_BULK_COMMON: readonly CommonTemplate[] = [
   {
@@ -238,7 +339,7 @@ const BABY_SENSITIVE_BULK_COMMON: readonly CommonTemplate[] = [
 
 /** Category-specific bulk-clearance common spec templates. */
 const COMMON_BY_CATEGORY: Record<string, readonly CommonTemplate[]> = {
-  'Skin Care': RM_QUALITY_SPEC_TABLE_DEFAULTS,
+  'Skin Care': SKIN_CARE_BULK_COMMON,
   'Hair Care': HAIR_CARE_BULK_COMMON,
   Cleansing: CLEANSING_BULK_COMMON,
   'Color Cosmetics': COLOR_COSMETICS_BULK_COMMON,
@@ -252,6 +353,6 @@ export function hasPrBulkClearanceCommonDefaults(category: string): boolean {
 
 export function clonePrBulkClearanceCommonDefaults(category: string): QualitySpecTableRow[] {
   const key = normalizePrCategoryForSelect(category) || category.trim();
-  const templates = (key && COMMON_BY_CATEGORY[key]) || RM_QUALITY_SPEC_TABLE_DEFAULTS;
+  const templates = (key && COMMON_BY_CATEGORY[key]) || SKIN_CARE_BULK_COMMON;
   return templates.map((row) => createEmptyQualitySpecRow(row));
 }

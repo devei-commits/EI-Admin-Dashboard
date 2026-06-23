@@ -66,7 +66,7 @@ describe('prQualitySpecVisibility', () => {
     );
     expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Appearance')).toBe(true);
     expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Hold Time (bulk)')).toBe(true);
-    expect(seeded.bulkSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Centrifuge Test')).toBe(
+    expect(seeded.bulkSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Active Assay (HPLC)')).toBe(
       true
     );
   });
@@ -107,26 +107,26 @@ describe('prQualitySpecVisibility', () => {
         'Skin Care::Cream': [
           {
             id: 's1',
-            parameter: 'Cap Torque (Jar Lid)',
-            specLimit: 'Per Master kgf-cm',
+            parameter: 'Cap Torque',
+            specLimit: '8–12 in-lbs',
             method: 'Torque meter',
             mandatory: true,
-            tolerance: '±10%',
-            frequency: 'Every 30 min',
-            sample: '5/check',
-            acceptance: 'Within range',
+            tolerance: '8–12 in-lbs',
+            frequency: '',
+            sample: '',
+            acceptance: 'Pass',
             attachments: [],
           },
           {
             id: 's2',
-            parameter: 'Centrifuge Test',
-            specLimit: 'No separation @3000 rpm × 30 min',
-            method: 'Centrifuge',
-            mandatory: false,
-            tolerance: 'No separation',
-            frequency: 'Per batch',
-            sample: '10mL',
-            acceptance: 'Stable',
+            parameter: 'Appearance',
+            specLimit: 'White homogeneous cream',
+            method: 'Visual',
+            mandatory: true,
+            tolerance: 'Match',
+            frequency: '',
+            sample: '',
+            acceptance: 'Match',
             attachments: [],
           },
         ],
@@ -135,10 +135,8 @@ describe('prQualitySpecVisibility', () => {
     );
     expect(reconciled.bySection.bulkClearance.map((r) => r.parameter)).toEqual(['pH']);
     expect(reconciled.bySection.finalClearance.map((r) => r.parameter)).toEqual(['Fill Volume / Weight']);
-    expect(reconciled.bulkSubByPath['Skin Care::Cream']?.map((r) => r.parameter)).toEqual(['Centrifuge Test']);
-    expect(reconciled.finalSubByPath['Skin Care::Cream']?.map((r) => r.parameter)).toEqual([
-      'Cap Torque (Jar Lid)',
-    ]);
+    expect(reconciled.bulkSubByPath['Skin Care::Cream']?.map((r) => r.parameter)).toEqual(['Appearance']);
+    expect(reconciled.finalSubByPath['Skin Care::Cream']?.map((r) => r.parameter)).toEqual(['Cap Torque']);
   });
 
   it('seeds Cleansing / Facewash dispatch common defaults when empty', () => {
@@ -167,7 +165,7 @@ describe('prQualitySpecVisibility', () => {
       seeded.bySection.dispatchSpecs.some((r) => r.parameter === 'Tax Invoice + E-way Bill + Packing List + COA')
     ).toBe(true);
     expect(
-      seeded.dispatchSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Storage Temp Indicator')
+      seeded.dispatchSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Packs per Shipper')
     ).toBe(true);
   });
 
@@ -181,10 +179,10 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Fill Volume / Weight')).toBe(true);
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'COA + Retain Sample')).toBe(true);
     expect(
-      seeded.finalSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Cap Torque (Jar Lid)')
+      seeded.finalSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Cap Torque')
     ).toBe(true);
     expect(
-      seeded.finalSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'No Air Pockets in Jar')
+      seeded.finalSubByPath['Skin Care::Cream']?.some((r) => r.parameter === 'Net Weight')
     ).toBe(true);
   });
 
@@ -212,7 +210,8 @@ describe('prQualitySpecVisibility', () => {
 
   it('provides Cream final sub-category default template', () => {
     const rows = getDefaultPrFinalClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Cream' });
-    expect(rows.some((r) => r.parameter === 'Cap Torque (Jar Lid)')).toBe(true);
+    expect(rows.some((r) => r.parameter === 'Cap Torque')).toBe(true);
+    expect(rows.some((r) => r.parameter === 'Net Weight')).toBe(true);
   });
 
   it('seeds Color Cosmetics / Lipstick final clearance common and sub defaults when empty', () => {
@@ -240,13 +239,14 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Fill Volume')).toBe(true);
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Coding + Labels + Carton')).toBe(true);
     expect(
-      seeded.finalSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Squeeze Bottle Function')
+      seeded.finalSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Net Volume')
     ).toBe(true);
   });
 
   it('provides Cream sub-category default template', () => {
     const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Cream' });
-    expect(rows.some((r) => r.parameter.startsWith('Phase Stability'))).toBe(true);
+    expect(rows.some((r) => r.parameter === 'Appearance')).toBe(true);
+    expect(rows.some((r) => r.parameter === 'Active Assay (HPLC)')).toBe(true);
   });
 
   it('seeds Hair Care / Shampoo bulk common and sub defaults when empty', () => {
@@ -259,7 +259,7 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Active Matter (surfactants)')).toBe(
       true
     );
-    expect(seeded.bulkSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Foam Stability')).toBe(
+    expect(seeded.bulkSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Foam Volume (Ross-Miles)')).toBe(
       true
     );
   });
@@ -317,6 +317,21 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Patch Test (HRIPT)')).toBe(true);
     expect(seeded.bySection.bulkClearance.some((r) => r.specLimit === '≤ stricter limit (baby)')).toBe(true);
     expect(seeded.bulkSubByPath['Baby / Sensitive::Baby Lotion']).toBeUndefined();
+  });
+
+  it('provides Sunscreen bulk sub-category defaults from FG clearance HTML', () => {
+    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Sunscreen' });
+    expect(rows.some((r) => r.parameter === 'In-vitro SPF (test patch)')).toBe(true);
+  });
+
+  it('returns empty sub defaults for Toner (HTML category without templates — user adds specs)', () => {
+    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Toner' });
+    expect(rows).toEqual([]);
+  });
+
+  it('returns empty sub defaults for Face Mask / Bar Soap until user adds specs', () => {
+    expect(getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Face Mask' })).toEqual([]);
+    expect(getDefaultPrBulkClearanceSubRows({ category: 'Cleansing', prSubCategory: 'Bar Soap' })).toEqual([]);
   });
 
   it('flattens empty parameters out of save payload', () => {

@@ -93,6 +93,8 @@ const PR_SUB_CATEGORY_ALIASES: Record<string, string> = {
   'body wash': 'Body Wash',
   'hand wash': 'Hand Wash',
   'bar soap': 'Bar Soap',
+  'bath bar': 'Bar Soap',
+  masque: 'Face Mask',
   soap: 'Bar Soap',
   'cleansing balm': 'Cleansing Balm',
   balm: 'Cleansing Balm',

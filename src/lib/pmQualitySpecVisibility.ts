@@ -226,13 +226,27 @@ export function hydratePmQualitySpecRows(source: Record<string, unknown>): Quali
   return common;
 }
 
+const PM_LEGACY_FUNCTIONAL_CATEGORIES = new Set<PmFunctionalCategory>([
+  'Primary Pack',
+  'Closures & Pumps',
+  'Secondary Pack',
+  'Tertiary Pack',
+  'Ancillary',
+]);
+
 function migratePmQualitySubSpecPathKey(pathKey: string): string {
   const parts = pathKey.split('::');
   if (parts.length < 2) return pathKey;
-  const category = normalizePmDetailSubCategoryKey(parts[0] ?? '') || (parts[0] ?? '').trim();
-  const subRaw = parts.slice(1).join('::');
-  const subCategory = normalizePmFunctionalSubCategoryKey(subRaw) || subRaw.trim();
-  if (!category || !subCategory) return pathKey;
+  const categoryRaw = (parts[0] ?? '').trim();
+  const subRaw = parts.slice(1).join('::').trim();
+  if (!categoryRaw || !subRaw) return pathKey;
+
+  if (PM_LEGACY_FUNCTIONAL_CATEGORIES.has(categoryRaw as PmFunctionalCategory)) {
+    return pmQualitySubSpecPathKey(categoryRaw, subRaw);
+  }
+
+  const category = normalizePmDetailSubCategoryKey(categoryRaw) || categoryRaw;
+  const subCategory = normalizePmFunctionalSubCategoryKey(subRaw) || subRaw;
   return pmQualitySubSpecPathKey(category, subCategory);
 }
 
