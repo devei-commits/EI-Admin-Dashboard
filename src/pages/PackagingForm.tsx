@@ -1047,7 +1047,6 @@ const PackagingRefactored: React.FC = () => {
       InputField={InputField}
       SelectField={SelectField}
       TextareaField={TextareaField}
-      customFieldsTaxonomyLabel={pmCustomFieldsTaxonomyLabel}
       onRemoveCustomFieldValue={handleRemoveCustomFieldValue}
     />
   );

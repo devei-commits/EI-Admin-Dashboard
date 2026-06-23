@@ -125,7 +125,6 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     InputField,
     SelectField,
     TextareaField,
-    customFieldsTaxonomyLabel,
     onRemoveCustomFieldValue,
   } = props;
 
