@@ -94,7 +94,8 @@ export function MasterApprovalStatusHistoryPanel({
                 <th className="py-1.5 pr-3 font-semibold">When</th>
                 <th className="py-1.5 pr-3 font-semibold">From</th>
                 <th className="py-1.5 pr-3 font-semibold">To</th>
-                <th className="py-1.5 font-semibold">By</th>
+                <th className="py-1.5 pr-3 font-semibold">By</th>
+                <th className="py-1.5 font-semibold">Comment</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -123,6 +124,9 @@ export function MasterApprovalStatusHistoryPanel({
                   </td>
                   <td className="py-2 text-gray-700">
                     {entry.changedByDisplayName?.trim() || '—'}
+                  </td>
+                  <td className="py-2 text-gray-600 max-w-xs whitespace-pre-wrap break-words">
+                    {entry.note?.trim() || '—'}
                   </td>
                 </tr>
               ))}

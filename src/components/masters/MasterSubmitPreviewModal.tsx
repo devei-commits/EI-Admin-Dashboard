@@ -1,17 +1,21 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from '../orders/Modal';
 import type { MasterPreviewSection } from '../../utils/masterSubmitPreview';
 
 export type MasterSubmitPreviewModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (comment: string) => void;
   title: string;
   subtitle?: string;
   sections: MasterPreviewSection[];
   confirmLabel?: string;
   confirming?: boolean;
   isEdit?: boolean;
+  /** When true, shows an optional comment field (default: true). */
+  showComment?: boolean;
+  commentLabel?: string;
+  commentPlaceholder?: string;
 };
 
 export function MasterSubmitPreviewModal({
@@ -24,7 +28,16 @@ export function MasterSubmitPreviewModal({
   confirmLabel = 'Confirm & save',
   confirming = false,
   isEdit = false,
+  showComment = true,
+  commentLabel = 'Comment',
+  commentPlaceholder = 'Optional note for the approval status history…',
 }: MasterSubmitPreviewModalProps) {
+  const [comment, setComment] = useState('');
+
+  useEffect(() => {
+    if (isOpen) setComment('');
+  }, [isOpen]);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -44,7 +57,7 @@ export function MasterSubmitPreviewModal({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(comment.trim())}
             disabled={confirming}
             className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
           >
@@ -54,9 +67,7 @@ export function MasterSubmitPreviewModal({
       }
     >
       <div className="space-y-6">
-        {sections.length === 0 ? (
-          <p className="text-sm text-gray-500">No fields to preview.</p>
-        ) : (
+        {sections.length > 0 ? (
           sections.map((section) => (
             <section key={section.title} className="border border-gray-200 rounded-lg overflow-hidden">
               <h3 className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-indigo-800 bg-indigo-50 border-b border-indigo-100">
@@ -77,7 +88,24 @@ export function MasterSubmitPreviewModal({
               </dl>
             </section>
           ))
-        )}
+        ) : null}
+
+        {showComment ? (
+          <div>
+            <label htmlFor="master-submit-comment" className="block text-sm font-medium text-gray-700 mb-1.5">
+              {commentLabel}
+            </label>
+            <textarea
+              id="master-submit-comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={3}
+              placeholder={commentPlaceholder}
+              disabled={confirming}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+            />
+          </div>
+        ) : null}
       </div>
     </Modal>
   );

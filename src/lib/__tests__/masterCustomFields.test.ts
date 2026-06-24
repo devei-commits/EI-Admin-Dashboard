@@ -82,7 +82,10 @@ describe('masterCustomFields', () => {
     expect(pmCustomFieldsModuleCode('aesthetics')).toBe('ART');
     expect(pmCustomFieldsModuleCode('quality')).toBe('QUAL');
     expect(pmCustomFieldsModuleCode('technical')).toBe('TECH');
+    expect(pmCustomFieldsModuleCode('regulatory')).toBe('REG');
     expect(supportsCustomFieldButton('TECH')).toBe(true);
+    expect(supportsCustomFieldButton('REG')).toBe(true);
+    expect(supportsCustomFieldButton('SPEC')).toBe(true);
     expect(supportsCustomFieldButton('QUAL')).toBe(false);
   });
 });

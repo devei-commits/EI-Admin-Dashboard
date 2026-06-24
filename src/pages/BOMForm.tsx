@@ -5,18 +5,20 @@ import { Plus, Trash2, Pencil, Check, ArrowUpFromLine } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
-import { MasterApprovalStatusHistoryPanel } from '../components/masters/MasterApprovalStatusHistoryPanel';
 import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import {
-  advanceMasterApprovalStatus,
+  advanceMasterApprovalAfterSave,
+  getMasterApprovalRevertAction,
   getMasterApprovalSubmitAction,
+  revertMasterApprovalStatus,
   withMasterDraftApprovalStatus,
 } from '../utils/masterSaveSubmit';
 import {
   emptyStageAssignees,
   normalizeMasterApprovalStatus,
   normalizeStageAssignees,
+  readSavedMasterApprovalStatus,
   type MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
@@ -96,6 +98,16 @@ import {
   shouldShowPrDispatchSubSpecTable,
   shouldShowPrFinalSubSpecTable,
 } from '../lib/prQualitySpecVisibility';
+import { MasterCustomFieldsProvider } from '../context/MasterCustomFieldsContext';
+import { MasterCustomFieldsBlock } from '../components/masters/MasterCustomFieldsBlock';
+import {
+  buildMasterCustomFieldsPersistPayload,
+  buildMasterCustomFieldsTaxonomyKey,
+  mergeEntityCustomFields,
+  mergeMasterCustomFieldValuesIntoForm,
+  type MasterCustomFieldDef,
+  type MasterCustomFieldModuleCode,
+} from '../lib/masterCustomFields';
 
 /** Legacy alphanumeric PR codes only — used to infer composite when editing old rows. */
 const COMPOSITE_ITEM_PREFIX_BASE = 'EI-CI';
@@ -431,6 +443,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     approved_claims: fd.approvedMarketingClaims || null,
     regulatory: fd.applicableRegulation || null,
     desc: fd.claimsSubstantiation || null,
+    form_data: buildMasterCustomFieldsPersistPayload('PR', fd as unknown as Record<string, unknown>),
   };
 }
 
@@ -500,6 +513,7 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       cruelty_free_vegan: fd.crueltyFreeVegan || null,
       bom_composite_item: fd.bomCompositeItem === 'Yes',
     },
+    form_data: buildMasterCustomFieldsPersistPayload('PR', fd as unknown as Record<string, unknown>),
   };
 }
 
@@ -638,7 +652,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     resolvedCats.prSubCategory ||
     normalizePrSubCategoryForSelect(category, prSubRaw) ||
     prSubRaw;
-  return {
+  const base: BOMFormState = {
     ...emptyBomForm(),
     bomCompositeItem,
     productName: p.product_name || '',
@@ -698,6 +712,10 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
       'Draft'
     ),
   };
+  return mergeMasterCustomFieldValuesIntoForm(
+    base,
+    (p as { form_data?: Record<string, unknown> | null }).form_data ?? undefined
+  );
 }
 
 const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, onSaved }) => {
@@ -705,7 +723,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const { id: productIdFromParams } = useParams<{ id: string }>();
   const productIdFromRoute = productIdProp ?? productIdFromParams;
   const [localProductId, setLocalProductId] = useState<string | null>(null);
-  const effectiveProductId = productIdFromRoute ?? localProductId ?? undefined;
+  const [skipEditProductId, setSkipEditProductId] = useState(false);
+  const baseProductId = productIdFromRoute ?? localProductId ?? undefined;
+  const effectiveProductId = skipEditProductId ? undefined : baseProductId;
   const { addToast } = useToast();
   const [currentStage, setCurrentStage] = useState(0);
   const [formData, setFormData] = useState<BOMFormState>(emptyBomForm());
@@ -759,19 +779,60 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [skuExcelUploading, setSkuExcelUploading] = useState(false);
   const [skuBomClearing, setSkuBomClearing] = useState(false);
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [revertPreviewOpen, setRevertPreviewOpen] = useState(false);
   const [pendingPrSubmit, setPendingPrSubmit] = useState<
     { mode: 'create' | 'update'; body: Record<string, unknown> } | null
   >(null);
+  const [pendingApprovalIntentStatus, setPendingApprovalIntentStatus] = useState<string | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
     useState<MasterApprovalStageAssignees>(emptyStageAssignees);
-  const [approvalHistoryRefreshKey, setApprovalHistoryRefreshKey] = useState(0);
   const { canApproveAtStatus } = useMasterApprovalPermission('PR');
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
   const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
   const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
+
+  const resetPrFormToEmpty = useCallback(() => {
+    setFormData(emptyBomForm());
+    setTempIngredient({
+      inciName: '',
+      phase: '',
+      percentWW: '',
+      uom: 'KG',
+      specificGravity: '1',
+    });
+    setTempSkuLine({ inciName: '', qtyPerUnit: '', uom: 'GM' });
+    setEditingSkuLineId(null);
+    setSelectedSkuRmId('');
+    setSkuRmQuery('');
+    setTempComponent(emptyPackComponentDraft());
+    setEditingIngredientId(null);
+    setEditingComponentId(null);
+    setTempStep({ stepNumber: '', instruction: '', duration: '' });
+    setSelectedRmId('');
+    setSelectedItemGroupId('');
+    setFormulaLineKind('rm');
+    setSelectedPmId('');
+    setIngredientRmQuery('');
+    setPackPmQuery('');
+    setZohoCompositeFetchId('');
+    setErrors({});
+    setCurrentStage(0);
+    setEditApprovalStageAssignees(emptyStageAssignees());
+  }, []);
+
+  const handleReset = () => {
+    if (!window.confirm('Reset all form data? This cannot be undone.')) return;
+    setSkipEditProductId(true);
+    setLocalProductId(null);
+    resetPrFormToEmpty();
+    if (productIdFromParams && !productIdProp) {
+      navigate('/bom/new');
+    }
+    addToast('info', 'Form reset');
+  };
 
   const stages = [
     'Primary info (details)',
@@ -784,10 +845,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     'Licensing',
   ];
 
+  useEffect(() => {
+    setSkipEditProductId(false);
+  }, [productIdFromRoute]);
+
   const isNewProduct = !effectiveProductId;
   const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
+  const approvalRevertAction = getMasterApprovalRevertAction(formData.masterApprovalStatus);
   const canShowApprovalSubmit =
     approvalSubmitAction != null &&
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+  const canShowApprovalRevert =
+    !!effectiveProductId &&
+    approvalRevertAction != null &&
     canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
   const canAdvancePastPrimary =
     !isNewProduct ||
@@ -1024,6 +1094,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           window.alert(`PR edit populate looks empty for id=${effectiveProductId}. See console log [PR Edit Populate Debug].`);
         }
         const next = productDetailToBomForm(d);
+        mergeEntityCustomFields(
+          'PR',
+          (d.form_data as { masterCustomFields?: Record<string, Partial<Record<MasterCustomFieldModuleCode, MasterCustomFieldDef[]>>> } | null)
+            ?.masterCustomFields
+        );
         setFormData(next);
         setEditApprovalStageAssignees(normalizeStageAssignees(d.approval_stage_assignees));
       }
@@ -1039,6 +1114,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       prSubCategory: formData.prSubCategory,
     }),
     [formData.category, formData.prSubCategory]
+  );
+  const prCustomFieldsTaxonomyKey = useMemo(
+    () => buildMasterCustomFieldsTaxonomyKey(formData.category, formData.prSubCategory, ''),
+    [formData.category, formData.prSubCategory]
+  );
+  const prCustomFieldsTaxonomyLabel = useMemo(() => {
+    const parts = [formData.category, formData.prSubCategory].map((v) => String(v ?? '').trim()).filter(Boolean);
+    return parts.length > 0 ? parts.join(' → ') : 'PR master';
+  }, [formData.category, formData.prSubCategory]);
+  const prCustomFieldFormData = useMemo(
+    () => formData as unknown as Record<string, string | undefined>,
+    [formData]
   );
   const prQualitySpecResolved = useMemo(
     () => resolvePrQualitySpecContext(prQualitySpecCtx),
@@ -1223,6 +1310,36 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
   };
 
+  const handleCustomFieldChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ): void => {
+    const { id, value, type } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [id]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+    }));
+    setErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handleRemoveCustomFieldValue = useCallback((formKey: string) => {
+    setFormData((prev) => {
+      const next = { ...(prev as unknown as Record<string, unknown>) };
+      delete next[formKey];
+      return next as BOMFormState;
+    });
+    setErrors((prev) => {
+      if (!prev[formKey]) return prev;
+      const next = { ...prev };
+      delete next[formKey];
+      return next;
+    });
+  }, []);
+
   const beginEditIngredient = (id: string) => {
     if (editingIngredientId && editingIngredientId !== id) {
       cancelIngredientEdit();
@@ -1294,6 +1411,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     const rm = selectedRmId ? rawMaterialById.get(String(selectedRmId)) : undefined;
     const manualInci = tempIngredient.inciName.trim() || ingredientRmQuery.trim();
     if (!rm && !manualInci) return null;
+    if (!tempIngredient.percentWW.trim()) {
+      addToast('error', 'Enter % w/w before adding this ingredient');
+      return null;
+    }
+    const pct = parseFloat(String(tempIngredient.percentWW).replace(/[^\d.-]/g, ''));
+    if (Number.isNaN(pct) || pct <= 0) {
+      addToast('error', 'Enter a positive % w/w before adding this ingredient');
+      return null;
+    }
     return {
       id: editingIngredientId ?? Date.now().toString(),
       rawMaterialId: rm ? String(rm.id) : undefined,
@@ -1748,11 +1874,42 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const pending = validatePrForSubmit();
     if (!pending) return;
-    setPendingPrSubmit(pending);
+
+    let intentStatus = readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
+    if (effectiveProductId) {
+      const fresh = await fetchPRProductDetail(effectiveProductId);
+      if (fresh?.success && fresh.data) {
+        intentStatus = readSavedMasterApprovalStatus({
+          status: fresh.data.status,
+          lifecycleStatus: fresh.data.lifecycle_status,
+        });
+        setFormData((prev) => ({ ...prev, masterApprovalStatus: intentStatus }));
+        setEditApprovalStageAssignees(normalizeStageAssignees(fresh.data.approval_stage_assignees));
+      }
+    }
+
+    if (!getMasterApprovalSubmitAction(intentStatus)) {
+      addToast('info', 'This record is already at the final approval status.');
+      return;
+    }
+
+    setPendingApprovalIntentStatus(intentStatus);
+    setPendingPrSubmit({
+      mode: pending.mode,
+      body: withMasterDraftApprovalStatus(pending.body, intentStatus),
+    });
     setSubmitPreviewOpen(true);
+  };
+
+  const handleRevert = () => {
+    if (!effectiveProductId) {
+      addToast('error', 'Save a draft first before sending the form back to a previous status.');
+      return;
+    }
+    setRevertPreviewOpen(true);
   };
 
   const closeSaveSuccessAndExit = () => {
@@ -1764,7 +1921,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     else navigate('/bom');
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleConfirmSubmit = async (comment: string) => {
     const pending = pendingPrSubmit;
     if (!pending) return;
     setSubmitConfirming(true);
@@ -1800,25 +1957,39 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees));
       }
 
-      if (recordId && getMasterApprovalSubmitAction(approvalStatus)) {
+      if (recordId) {
+        approvalStatus = freshAfterSave?.success && freshAfterSave.data
+          ? readSavedMasterApprovalStatus({
+              status: freshAfterSave.data.status,
+              lifecycleStatus: freshAfterSave.data.lifecycle_status,
+            })
+          : readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
         const assigneesForAdvance =
           freshAfterSave?.success && freshAfterSave.data
             ? normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees)
             : editApprovalStageAssignees;
-        if (!canApproveAtStatus(approvalStatus, assigneesForAdvance)) {
-          addToast(
-            'error',
-            'Only the person assigned to this approval stage can submit for the next status. Assign them in the list, then try again.'
-          );
-        } else {
-          const advanced = await advanceMasterApprovalStatus('PR', recordId);
-          if (advanced.ok) {
-            approvalStatus = advanced.status;
-            setFormData((prev) => ({ ...prev, masterApprovalStatus: advanced.status }));
-            setApprovalHistoryRefreshKey((k) => k + 1);
-          } else {
-            addToast('error', advanced.error);
-          }
+        const intentStatus =
+          pendingApprovalIntentStatus ??
+          readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
+        const advancedResult = await advanceMasterApprovalAfterSave({
+          kind: 'PR',
+          itemId: recordId,
+          intentStatus,
+          serverStatusAfterSave: approvalStatus,
+          assignees: assigneesForAdvance as MasterApprovalStageAssignees,
+          canApproveAtStatus,
+          comment,
+        });
+        if (!advancedResult.ok) {
+          addToast('error', advancedResult.error);
+          return;
+        }
+        approvalStatus = advancedResult.status;
+        if (advancedResult.advanced) {
+          setFormData((prev) => ({ ...prev, masterApprovalStatus: advancedResult.status }));
+        } else if (getMasterApprovalSubmitAction(intentStatus)) {
+          addToast('error', 'Approval status did not change. Please refresh and try again.');
+          return;
         }
       }
 
@@ -1846,11 +2017,70 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       ]);
       setSubmitPreviewOpen(false);
       setPendingPrSubmit(null);
+      setPendingApprovalIntentStatus(null);
       setSaveSuccessOpen(true);
       onSaved?.();
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSubmitConfirming(false);
+    }
+  };
+
+  const handleConfirmRevert = async (comment: string) => {
+    if (!effectiveProductId) return;
+    setSubmitConfirming(true);
+    try {
+      const pending = validatePrForDraft();
+      if (!pending) return;
+
+      if (pending.mode === 'update') {
+        const res = await updatePRProduct(effectiveProductId, pending.body);
+        if (!res.success || !res.data) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to save draft');
+          return;
+        }
+      } else {
+        addToast('error', 'Save a draft first before sending the form back to a previous status.');
+        return;
+      }
+
+      const freshAfterSave = await fetchPRProductDetail(effectiveProductId);
+      const assigneesForRevert =
+        freshAfterSave?.success && freshAfterSave.data
+          ? normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees)
+          : editApprovalStageAssignees;
+      if (!canApproveAtStatus(formData.masterApprovalStatus, assigneesForRevert)) {
+        addToast(
+          'error',
+          'Only the person assigned to this approval stage can send the form back. Assign them in the list, then try again.'
+        );
+        return;
+      }
+
+      const reverted = await revertMasterApprovalStatus('PR', effectiveProductId, comment);
+      if (!reverted.ok) {
+        addToast('error', reverted.error);
+        return;
+      }
+
+      if (freshAfterSave?.success && freshAfterSave.data) {
+        const next = productDetailToBomForm({
+          ...freshAfterSave.data,
+          status: reverted.status,
+          lifecycle_status: reverted.status,
+        });
+        setFormData(next);
+      } else {
+        setFormData((prev) => ({ ...prev, masterApprovalStatus: reverted.status }));
+      }
+      addToast('success', `Status moved back to ${reverted.status}`);
+      setRevertPreviewOpen(false);
+      onSaved?.();
+    } catch (err) {
+      console.error(err);
+      addToast('error', err instanceof Error ? err.message : 'Failed to revert approval status');
     } finally {
       setSubmitConfirming(false);
     }
@@ -3188,6 +3418,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     />
                   </div>
                 </div>
+                <MasterCustomFieldsBlock
+                  moduleCode="SPEC"
+                  taxonomyLabel={prCustomFieldsTaxonomyLabel}
+                  formData={prCustomFieldFormData}
+                  errors={errors}
+                  onChange={handleCustomFieldChange}
+                  onRemoveFieldValue={handleRemoveCustomFieldValue}
+                />
               </div>
 
               <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
@@ -3236,6 +3474,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
                 </div>
+                <MasterCustomFieldsBlock
+                  moduleCode="REG"
+                  taxonomyLabel={prCustomFieldsTaxonomyLabel}
+                  formData={prCustomFieldFormData}
+                  errors={errors}
+                  onChange={handleCustomFieldChange}
+                  onRemoveFieldValue={handleRemoveCustomFieldValue}
+                />
               </div>
             </div>
         );
@@ -3303,6 +3549,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   return (
     <>
+      <MasterCustomFieldsProvider entity="PR" taxonomyKey={prCustomFieldsTaxonomyKey}>
       <MasterFormBase
         title={effectiveProductId ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
         stages={stages}
@@ -3312,21 +3559,15 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData={formData as unknown as Record<string, unknown>}
         onInputChange={() => {}}
         onSave={() => void handleSave()}
+        onReset={handleReset}
+        onRevert={canShowApprovalRevert ? handleRevert : undefined}
+        revertLabel={approvalRevertAction?.revertLabel}
         onSubmit={canShowApprovalSubmit ? handleSubmit : undefined}
         submitLabel={approvalSubmitAction?.submitLabel ?? 'Submit'}
         nextDisabled={isNewProduct && !canAdvancePastPrimary}
         nextDisabledTitle="Complete PR category, sub-category, composite item, and product name on this step before continuing."
         isStageDisabled={(idx) => isNewProduct && idx > 0 && !canAdvancePastPrimary}
       >
-        {effectiveProductId ? (
-          <div className="mb-4">
-            <MasterApprovalStatusHistoryPanel
-              kind="PR"
-              itemId={effectiveProductId}
-              refreshKey={approvalHistoryRefreshKey}
-            />
-          </div>
-        ) : null}
         {renderStageContent()}
       </MasterFormBase>
       <MasterSubmitPreviewModal
@@ -3335,6 +3576,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           if (submitConfirming) return;
           setSubmitPreviewOpen(false);
           setPendingPrSubmit(null);
+          setPendingApprovalIntentStatus(null);
         }}
         onConfirm={handleConfirmSubmit}
         title={
@@ -3349,6 +3591,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         confirming={submitConfirming}
         isEdit={!!effectiveProductId}
       />
+      <MasterSubmitPreviewModal
+        isOpen={revertPreviewOpen}
+        onClose={() => {
+          if (submitConfirming) return;
+          setRevertPreviewOpen(false);
+        }}
+        onConfirm={handleConfirmRevert}
+        title={approvalRevertAction?.revertLabel ?? 'Send back to previous status'}
+        subtitle={
+          approvalRevertAction?.previewSubtitle ??
+          'Optionally add a comment, then confirm to save and move this master to the previous status.'
+        }
+        sections={[]}
+        confirmLabel={approvalRevertAction?.confirmLabel ?? 'Confirm & send back'}
+        confirming={submitConfirming}
+        isEdit
+        commentPlaceholder="Why is this being sent back? (optional)"
+      />
       <MasterSaveSuccessModal
         isOpen={saveSuccessOpen}
         onClose={closeSaveSuccessAndExit}
@@ -3362,6 +3622,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         codeLabel={saveSuccessIsEdit ? 'Internal PR code (SKU)' : 'Generated internal code (SKU)'}
         rows={saveSuccessRows}
       />
+      </MasterCustomFieldsProvider>
     </>
   );
 };

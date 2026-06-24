@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
-import { MasterApprovalStatusHistoryPanel } from '../components/masters/MasterApprovalStatusHistoryPanel';
+import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
@@ -27,12 +27,15 @@ import {
   matchesMasterApprovalStatusTab,
   normalizeMasterApprovalStatus,
   normalizeStageAssignees,
+  readSavedMasterApprovalStatus,
   type MasterApprovalStageAssignees,
   type MasterApprovalStatusTab,
 } from '../constants/masterApprovalStatus';
 import {
-  advanceMasterApprovalStatus,
+  advanceMasterApprovalAfterSave,
+  getMasterApprovalRevertAction,
   getMasterApprovalSubmitAction,
+  revertMasterApprovalStatus,
   withMasterDraftApprovalStatus,
 } from '../utils/masterSaveSubmit';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
@@ -67,6 +70,7 @@ import { MasterLinkedPrProductsPanel } from '../components/masters/MasterLinkedP
 import { parseMasterLinkedProductCodes } from '../lib/masterLinkedPrProducts';
 import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
+  applyPmQualitySpecTaxonomyDisplay,
   flattenPmQualitySpecRowsForPayload,
   flattenPmQualitySubSpecRowsByPathForPayload,
   hydratePmQualitySpecRows,
@@ -89,6 +93,15 @@ import {
   mergeEntityCustomFields,
   type MasterCustomFieldDef,
 } from '../lib/masterCustomFields';
+import {
+  loadEntitySharedQualitySpecs,
+  mergeEntitySharedQualitySpecs,
+} from '../lib/masterSharedQualitySpecs';
+import {
+  appendHiddenParameters,
+  appendHiddenParametersForPath,
+  collectNewlyHiddenSharedParameters,
+} from '../lib/qualitySpecSharedMerge';
 import { PM_MASTER_FIELD_KEYS, PM_MASTER_MODULE_ORDER, emptyPmMasterScalarDefaults } from '../constants/pmMasterFieldSchema';
 import { buildPmMasterFieldContext, type PmMasterFieldContext } from '../lib/pmMasterFieldVisibility';
 // ─── PM Category Code Series ─────────────────────────────────────────────────
@@ -215,6 +228,8 @@ type PackagingFormData = {
   vendors: PmCommercialVendor[];
   pmQualitySpecRows: QualitySpecTableRow[];
   pmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+  pmQualitySpecHiddenParameters: string[];
+  pmQualitySubSpecHiddenByPath: Record<string, string[]>;
   products: string[];
   tests: Array<{ name: string; result: string; date: string; by: string; remarks: string }>;
   [key: string]:
@@ -265,6 +280,8 @@ function createEmptyPackagingFormData(): PackagingFormData {
     decorationMethod: '',
     pmQualitySpecRows: [],
     pmQualitySubSpecRowsByPath: {},
+    pmQualitySpecHiddenParameters: [],
+    pmQualitySubSpecHiddenByPath: {},
     vendors: [],
     tests: [],
   };
@@ -297,12 +314,13 @@ const PackagingRefactored: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<string>('—');
   const [generatedCode, setGeneratedCode] = useState('');
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [revertPreviewOpen, setRevertPreviewOpen] = useState(false);
   const [pendingPmPayload, setPendingPmPayload] = useState<CreatePackMaterialPayload | null>(null);
+  const [pendingApprovalIntentStatus, setPendingApprovalIntentStatus] = useState<string | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
     useState<MasterApprovalStageAssignees>(emptyStageAssignees);
-  const [approvalHistoryRefreshKey, setApprovalHistoryRefreshKey] = useState(0);
   const { canApproveAtStatus } = useMasterApprovalPermission('PM');
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
@@ -390,24 +408,47 @@ const PackagingRefactored: React.FC = () => {
     return formData.pmQualitySubSpecRowsByPath[pathKey] ?? [];
   }, [formData.pmQualitySubSpecRowsByPath, pmQualitySpecResolved.subSpecPathKey]);
 
-  const handlePmQualitySpecRowsChange = useCallback((rows: QualitySpecTableRow[]) => {
-    setFormData((prev) => ({
-      ...prev,
-      pmQualitySpecRows: rows,
-    }));
-  }, []);
+  const handlePmQualitySpecRowsChange = useCallback(
+    (rows: QualitySpecTableRow[]) => {
+      setFormData((prev) => {
+        const categoryKey = pmQualitySpecResolved.functionalCategory;
+        const prevRows = prev.pmQualitySpecRows ?? [];
+        const addedHidden = categoryKey
+          ? collectNewlyHiddenSharedParameters('PM', 'common', categoryKey, prevRows, rows)
+          : [];
+        return {
+          ...prev,
+          pmQualitySpecRows: rows,
+          pmQualitySpecHiddenParameters: appendHiddenParameters(
+            prev.pmQualitySpecHiddenParameters ?? [],
+            addedHidden
+          ),
+        };
+      });
+    },
+    [pmQualitySpecResolved.functionalCategory]
+  );
 
   const handlePmQualitySubSpecRowsChange = useCallback(
     (rows: QualitySpecTableRow[]) => {
       const pathKey = pmQualitySpecResolved.subSpecPathKey;
       if (!pathKey) return;
-      setFormData((prev) => ({
-        ...prev,
-        pmQualitySubSpecRowsByPath: {
-          ...prev.pmQualitySubSpecRowsByPath,
-          [pathKey]: rows,
-        },
-      }));
+      setFormData((prev) => {
+        const prevRows = prev.pmQualitySubSpecRowsByPath[pathKey] ?? [];
+        const addedHidden = collectNewlyHiddenSharedParameters('PM', 'sub', pathKey, prevRows, rows);
+        return {
+          ...prev,
+          pmQualitySubSpecRowsByPath: {
+            ...prev.pmQualitySubSpecRowsByPath,
+            [pathKey]: rows,
+          },
+          pmQualitySubSpecHiddenByPath: appendHiddenParametersForPath(
+            prev.pmQualitySubSpecHiddenByPath ?? {},
+            pathKey,
+            addedHidden
+          ),
+        };
+      });
     },
     [pmQualitySpecResolved.subSpecPathKey]
   );
@@ -590,16 +631,30 @@ const PackagingRefactored: React.FC = () => {
     if (id === 'pmSkuCategory' || id === 'subCategory') {
       const canon = normalizePmSkuCategoryForSelect(value) || '';
       const level = pmLevelForSubCategory(canon);
-      setFormData((prev) => ({
-        ...prev,
-        pmSkuCategory: canon || prev.pmSkuCategory,
-        subCategory: canon || prev.subCategory,
-        optionalPmSubCategory: normalizePmDetailSubCategoryForSelect(canon, prev.optionalPmSubCategory),
-        optionalPmSubSubCategory: '',
-        pmQualitySpecRows: [],
-        pmQualitySubSpecRowsByPath: {},
-        ...(level ? { level } : {}),
-      }));
+      setFormData((prev) => {
+        const optionalPmSubCategory = normalizePmDetailSubCategoryForSelect(canon, prev.optionalPmSubCategory);
+        const nextCtx = {
+          optionalPmSubCategory,
+          optionalPmSubSubCategory: '',
+          pmSkuCategory: canon || prev.pmSkuCategory,
+          subCategory: canon || prev.subCategory,
+        };
+        const stripped = {
+          ...prev,
+          pmSkuCategory: canon || prev.pmSkuCategory,
+          subCategory: canon || prev.subCategory,
+          optionalPmSubCategory,
+          optionalPmSubSubCategory: '',
+          pmQualitySpecRows: [],
+          pmQualitySubSpecRowsByPath: {},
+          ...(level ? { level } : {}),
+        };
+        const display = applyPmQualitySpecTaxonomyDisplay(
+          stripped as Record<string, unknown>,
+          nextCtx
+        );
+        return { ...stripped, ...display };
+      });
       setErrors((prev) => {
         const next = { ...prev };
         delete next.pmSkuCategory;
@@ -614,17 +669,31 @@ const PackagingRefactored: React.FC = () => {
         formData.pmSkuCategory || formData.subCategory,
         value
       ) || value;
-      setFormData((prev) => ({
-        ...prev,
-        optionalPmSubCategory: detail,
-        optionalPmSubSubCategory: normalizePmSubSubCategoryForSelect(
+      setFormData((prev) => {
+        const optionalPmSubSubCategory = normalizePmSubSubCategoryForSelect(
           detail,
           prev.optionalPmSubSubCategory,
           formData.pmSkuCategory || formData.subCategory
-        ),
-        pmQualitySpecRows: [],
-        pmQualitySubSpecRowsByPath: {},
-      }));
+        );
+        const nextCtx = {
+          optionalPmSubCategory: detail,
+          optionalPmSubSubCategory,
+          pmSkuCategory: prev.pmSkuCategory || prev.subCategory,
+          subCategory: prev.subCategory,
+        };
+        const stripped = {
+          ...prev,
+          optionalPmSubCategory: detail,
+          optionalPmSubSubCategory,
+          pmQualitySpecRows: [],
+          pmQualitySubSpecRowsByPath: {},
+        };
+        const display = applyPmQualitySpecTaxonomyDisplay(
+          stripped as Record<string, unknown>,
+          nextCtx
+        );
+        return { ...stripped, ...display };
+      });
       setErrors((prev) => {
         if (!prev.optionalPmSubCategory && !prev.optionalPmSubSubCategory) return prev;
         const next = { ...prev };
@@ -635,11 +704,27 @@ const PackagingRefactored: React.FC = () => {
       return;
     }
     if (id === 'optionalPmSubSubCategory') {
-      setFormData((prev) => ({
-        ...prev,
-        optionalPmSubSubCategory: value,
-        pmQualitySubSpecRowsByPath: {},
-      }));
+      setFormData((prev) => {
+        const nextCtx = {
+          optionalPmSubCategory: prev.optionalPmSubCategory,
+          optionalPmSubSubCategory: value,
+          pmSkuCategory: prev.pmSkuCategory || prev.subCategory,
+          subCategory: prev.subCategory,
+        };
+        const stripped = {
+          ...prev,
+          optionalPmSubSubCategory: value,
+          pmQualitySubSpecRowsByPath: {},
+        };
+        const display = applyPmQualitySpecTaxonomyDisplay(
+          stripped as Record<string, unknown>,
+          nextCtx
+        );
+        return {
+          ...stripped,
+          pmQualitySubSpecRowsByPath: display.pmQualitySubSpecRowsByPath,
+        };
+      });
       setErrors((prev) => {
         if (!prev.optionalPmSubSubCategory) return prev;
         const next = { ...prev };
@@ -859,8 +944,11 @@ const PackagingRefactored: React.FC = () => {
           ),
           pmQualitySpecRows: qcSpecRows,
           pmQualitySubSpecRowsByPath: qcSubSpecRowsByPath,
+          pmQualitySpecHiddenParameters: formData.pmQualitySpecHiddenParameters ?? [],
+          pmQualitySubSpecHiddenByPath: formData.pmQualitySubSpecHiddenByPath ?? {},
           masterCustomDropdownOptions: loadEntityCustomDropdownOptions('PM'),
           masterCustomFields: loadEntityCustomFields('PM'),
+          masterSharedQualitySpecs: { PM: loadEntitySharedQualitySpecs('PM') },
           ...(codeTrim ? { itemCode: codeTrim } : {}),
           ...(skuCat
             ? {
@@ -973,16 +1061,51 @@ const PackagingRefactored: React.FC = () => {
     return buildPayload();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const payload = validatePmForSubmit();
     if (!payload) return;
+
+    let intentStatus = readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
+    if (existingPmId) {
+      const fresh = await fetchPackMaterialById(existingPmId);
+      if (fresh) {
+        intentStatus = readSavedMasterApprovalStatus({
+          status: fresh.status,
+          formData:
+            fresh.form_data && typeof fresh.form_data === 'object'
+              ? (fresh.form_data as Record<string, unknown>)
+              : null,
+        });
+        setFormData((prev) => ({
+          ...prev,
+          masterApprovalStatus: intentStatus,
+          status: intentStatus,
+        }));
+        setEditApprovalStageAssignees(normalizeStageAssignees(fresh.approvalStageAssignees));
+      }
+    }
+
+    if (!getMasterApprovalSubmitAction(intentStatus)) {
+      addToast('info', 'This record is already at the final approval status.');
+      return;
+    }
+
+    setPendingApprovalIntentStatus(intentStatus);
     setPendingPmPayload(
       withMasterDraftApprovalStatus(
         payload as Record<string, unknown>,
-        formData.masterApprovalStatus
+        intentStatus
       ) as CreatePackMaterialPayload
     );
     setSubmitPreviewOpen(true);
+  };
+
+  const handleRevert = () => {
+    if (!existingPmId) {
+      addToast('error', 'Save a draft first before sending the form back to a previous status.');
+      return;
+    }
+    setRevertPreviewOpen(true);
   };
 
   const closeSaveSuccessAndExit = () => {
@@ -994,7 +1117,7 @@ const PackagingRefactored: React.FC = () => {
     setPageTab('bpr');
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleConfirmSubmit = async (comment: string) => {
     const payload = pendingPmPayload;
     if (!payload) return;
     setSubmitConfirming(true);
@@ -1033,31 +1156,45 @@ const PackagingRefactored: React.FC = () => {
         setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.approvalStageAssignees));
       }
 
-      let approvalStatus = formData.masterApprovalStatus;
-      if (recordId && getMasterApprovalSubmitAction(approvalStatus)) {
-        const assigneesForAdvance =
-          freshAfterSave?.approvalStageAssignees != null
-            ? normalizeStageAssignees(freshAfterSave.approvalStageAssignees)
-            : editApprovalStageAssignees;
-        if (!canApproveAtStatus(approvalStatus, assigneesForAdvance)) {
-          addToast(
-            'error',
-            'Only the person assigned to this approval stage can submit for the next status. Assign them in the list, then try again.'
-          );
-        } else {
-          const advanced = await advanceMasterApprovalStatus('PM', recordId);
-          if (advanced.ok) {
-            approvalStatus = advanced.status;
-            setFormData((prev) => ({
-              ...prev,
-              masterApprovalStatus: advanced.status,
-              status: advanced.status,
-            }));
-            setApprovalHistoryRefreshKey((k) => k + 1);
-          } else {
-            addToast('error', advanced.error);
-          }
-        }
+      let approvalStatus: string = freshAfterSave
+        ? readSavedMasterApprovalStatus({
+            status: freshAfterSave.status,
+            formData:
+              freshAfterSave.form_data && typeof freshAfterSave.form_data === 'object'
+                ? (freshAfterSave.form_data as Record<string, unknown>)
+                : null,
+          })
+        : readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
+      const assigneesForAdvance =
+        freshAfterSave?.approvalStageAssignees != null
+          ? normalizeStageAssignees(freshAfterSave.approvalStageAssignees)
+          : editApprovalStageAssignees;
+      const intentStatus =
+        pendingApprovalIntentStatus ??
+        readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
+      const advancedResult = await advanceMasterApprovalAfterSave({
+        kind: 'PM',
+        itemId: recordId!,
+        intentStatus,
+        serverStatusAfterSave: approvalStatus,
+        assignees: assigneesForAdvance as MasterApprovalStageAssignees,
+        canApproveAtStatus,
+        comment,
+      });
+      if (advancedResult.ok === false) {
+        addToast('error', advancedResult.error);
+        return;
+      }
+      approvalStatus = advancedResult.status;
+      if (advancedResult.advanced) {
+        setFormData((prev) => ({
+          ...prev,
+          masterApprovalStatus: advancedResult.status,
+          status: advancedResult.status,
+        }));
+      } else if (getMasterApprovalSubmitAction(intentStatus)) {
+        addToast('error', 'Approval status did not change. Please refresh and try again.');
+        return;
       }
 
       setSaveSuccessIsEdit(isEdit);
@@ -1074,14 +1211,58 @@ const PackagingRefactored: React.FC = () => {
       localStorage.removeItem('packaging_draft_new');
       queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
       setMasterRefreshKey((k) => k + 1);
-      if (isEdit) {
-        setPmReloadToken((t) => t + 1);
-      }
       setSubmitPreviewOpen(false);
       setPendingPmPayload(null);
+      setPendingApprovalIntentStatus(null);
       setSaveSuccessOpen(true);
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'Failed to save pack material');
+    } finally {
+      setSubmitConfirming(false);
+    }
+  };
+
+  const handleConfirmRevert = async (comment: string) => {
+    if (!existingPmId) return;
+    setSubmitConfirming(true);
+    try {
+      const payload = validatePmForDraft();
+      if (!payload) return;
+      const savePayload = withMasterDraftApprovalStatus(
+        payload as Record<string, unknown>,
+        formData.masterApprovalStatus
+      ) as CreatePackMaterialPayload;
+      await updatePackMaterial(existingPmId, savePayload);
+      const freshAfterSave = await fetchPackMaterialById(existingPmId);
+      const assigneesForRevert = freshAfterSave?.approvalStageAssignees != null
+        ? normalizeStageAssignees(freshAfterSave.approvalStageAssignees)
+        : editApprovalStageAssignees;
+      if (!canApproveAtStatus(formData.masterApprovalStatus, assigneesForRevert)) {
+        addToast(
+          'error',
+          'Only the person assigned to this approval stage can send the form back. Assign them in the list, then try again.'
+        );
+        return;
+      }
+
+      const reverted = await revertMasterApprovalStatus('PM', existingPmId, comment);
+      if (reverted.ok === false) {
+        addToast('error', reverted.error);
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        masterApprovalStatus: reverted.status,
+        status: reverted.status,
+      }));
+      setPmReloadToken((t) => t + 1);
+      queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      setMasterRefreshKey((k) => k + 1);
+      setRevertPreviewOpen(false);
+      addToast('success', `Status moved back to ${reverted.status}`);
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to revert approval status');
     } finally {
       setSubmitConfirming(false);
     }
@@ -1208,6 +1389,12 @@ const PackagingRefactored: React.FC = () => {
           | Record<string, Partial<Record<'TECH' | 'QUAL' | 'ART', MasterCustomFieldDef[]>>>
           | undefined
       );
+      const sharedRoot = (fdObj as Record<string, unknown> | null)?.masterSharedQualitySpecs as
+        | { PM?: import('../lib/masterSharedQualitySpecs').MasterSharedQualitySpecsEntityStore }
+        | undefined;
+      if (sharedRoot?.PM) {
+        mergeEntitySharedQualitySpecs('PM', sharedRoot.PM);
+      }
       const fdNormalizedRaw: any = fdObj ?? null;
       const resolvedPmCats = resolvePmEditCategories({
         code: pm.code,
@@ -1355,6 +1542,15 @@ const PackagingRefactored: React.FC = () => {
         merged.pmQualitySubSpecRowsByPath = hydratePmQualitySubSpecRowsByPath(
           merged as Record<string, unknown>
         );
+        const pmQcCtx = {
+          optionalPmSubCategory: String(merged.optionalPmSubCategory ?? ''),
+          optionalPmSubSubCategory: String(merged.optionalPmSubSubCategory ?? ''),
+          pmSkuCategory: String(merged.pmSkuCategory ?? merged.subCategory ?? ''),
+          subCategory: String(merged.subCategory ?? ''),
+        };
+        const qcDisplay = applyPmQualitySpecTaxonomyDisplay(merged as Record<string, unknown>, pmQcCtx);
+        merged.pmQualitySpecRows = qcDisplay.pmQualitySpecRows;
+        merged.pmQualitySubSpecRowsByPath = qcDisplay.pmQualitySubSpecRowsByPath;
         return merged;
       });
 
@@ -1367,8 +1563,13 @@ const PackagingRefactored: React.FC = () => {
 
   const isEditingPm = !!existingPmId;
   const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
+  const approvalRevertAction = getMasterApprovalRevertAction(formData.masterApprovalStatus);
   const canShowApprovalSubmit =
     approvalSubmitAction != null &&
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+  const canShowApprovalRevert =
+    !!existingPmId &&
+    approvalRevertAction != null &&
     canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
   const closePmFormPopup = () => {
     resetPmFormToEmpty();
@@ -1482,16 +1683,6 @@ const PackagingRefactored: React.FC = () => {
             </button>
           </div>
 
-          {isEditingPm && existingPmId && !editPmLoading ? (
-            <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
-              <MasterApprovalStatusHistoryPanel
-                kind="PM"
-                itemId={existingPmId}
-                refreshKey={approvalHistoryRefreshKey}
-              />
-            </div>
-          ) : null}
-
           <MasterDropdownOptionsProvider entity="PM">
           <MasterCustomFieldsProvider entity="PM" taxonomyKey={pmCustomFieldsTaxonomyKey}>
           <div className="max-h-[88vh] overflow-y-auto">
@@ -1529,6 +1720,15 @@ const PackagingRefactored: React.FC = () => {
                   >
                     Reset Form
                   </button>
+                  {canShowApprovalRevert ? (
+                    <button
+                      type="button"
+                      onClick={handleRevert}
+                      className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+                    >
+                      {approvalRevertAction?.revertLabel ?? 'Send back'}
+                    </button>
+                  ) : null}
                   {canShowApprovalSubmit ? (
                     <button
                       type="button"
@@ -1660,6 +1860,7 @@ const PackagingRefactored: React.FC = () => {
           if (submitConfirming) return;
           setSubmitPreviewOpen(false);
           setPendingPmPayload(null);
+          setPendingApprovalIntentStatus(null);
         }}
         onConfirm={handleConfirmSubmit}
         title={isEditingPm ? 'Preview — update packaging material' : 'Preview — new packaging material'}
@@ -1671,6 +1872,24 @@ const PackagingRefactored: React.FC = () => {
         confirmLabel={approvalSubmitAction?.confirmLabel ?? 'Confirm & submit'}
         confirming={submitConfirming}
         isEdit={isEditingPm}
+      />
+      <MasterSubmitPreviewModal
+        isOpen={revertPreviewOpen}
+        onClose={() => {
+          if (submitConfirming) return;
+          setRevertPreviewOpen(false);
+        }}
+        onConfirm={handleConfirmRevert}
+        title={approvalRevertAction?.revertLabel ?? 'Send back to previous status'}
+        subtitle={
+          approvalRevertAction?.previewSubtitle ??
+          'Optionally add a comment, then confirm to save and move this master to the previous status.'
+        }
+        sections={[]}
+        confirmLabel={approvalRevertAction?.confirmLabel ?? 'Confirm & send back'}
+        confirming={submitConfirming}
+        isEdit
+        commentPlaceholder="Why is this being sent back? (optional)"
       />
       <MasterSaveSuccessModal
         isOpen={saveSuccessOpen}
@@ -2457,13 +2676,14 @@ const BprDashboard: React.FC<{
                         accent="violet"
                         thClassName="py-4"
                       />
+                      <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Logs</th>
                       <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-12 text-center text-gray-400 text-sm">
+                        <td colSpan={10} className="px-4 py-12 text-center text-gray-400 text-sm">
                           <div className="flex flex-col items-center gap-2">
                             <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -2524,6 +2744,15 @@ const BprDashboard: React.FC<{
                                 View SKU ({pm.products.length})
                               </button>
                             )}
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <MasterApprovalLogsCell
+                              kind="PM"
+                              itemId={pm.id}
+                              itemCode={pm.code}
+                              itemLabel={pm.description}
+                              currentStatus={statusLabel}
+                            />
                           </td>
                           <td className="px-4 py-3.5 text-right whitespace-nowrap">
                             <button

@@ -6,6 +6,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import {
   buildMasterApprovalStatusCounts,
@@ -1171,13 +1172,14 @@ const BOMDashboard: React.FC = () => {
                       onSort={togglePrSort}
                       accent="cyan"
                     />
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Logs</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={16} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -1245,6 +1247,15 @@ const BOMDashboard: React.FC = () => {
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterApprovalLogsCell
+                            kind="PR"
+                            itemId={p.product_id}
+                            itemCode={p.product_code || String(p.product_id)}
+                            itemLabel={p.product_name}
+                            currentStatus={p.status ?? 'Draft'}
+                          />
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <button

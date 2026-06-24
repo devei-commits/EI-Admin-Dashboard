@@ -138,6 +138,7 @@ export interface PRProductDetail extends PRProductListItem {
   cosmos_natural_certification?: string;
   dermatologically_tested?: string;
   cruelty_free_vegan?: string;
+  form_data?: Record<string, unknown> | null;
   formulaBom: FormulaBomPhase[];
   skuBom: SkuBomRow[];
   /** Net per finished unit; when all SKU lines match the limit UOM kind (mass vs volume), their qtys must sum to this. */

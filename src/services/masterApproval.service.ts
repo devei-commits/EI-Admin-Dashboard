@@ -6,8 +6,9 @@ import type {
 import { normalizeStageAssignees } from '../constants/masterApprovalStatus';
 
 export type PatchMasterApprovalPayload =
-  | { status: string }
-  | { advance: true }
+  | { status: string; note?: string }
+  | { advance: true; note?: string }
+  | { revert: true; note?: string }
   | { approval_stage_assignees: MasterApprovalStageAssignees }
   | {
       approval_assigned_user_id: number | null;
@@ -96,6 +97,16 @@ function readStatusFromResponse(kind: MasterApprovalKind, body: Record<string, u
     if (fd && typeof fd === 'object' && !Array.isArray(fd)) {
       const fdObj = fd as { masterApprovalStatus?: string; status?: string };
       return String(fdObj.masterApprovalStatus ?? fdObj.status ?? body.status ?? 'Draft');
+    }
+  }
+  if (kind === 'RM') {
+    const fd = body.form_data;
+    if (fd && typeof fd === 'object' && !Array.isArray(fd)) {
+      const fdObj = fd as { masterApprovalStatus?: string; status?: string };
+      const fromForm = fdObj.masterApprovalStatus ?? fdObj.status;
+      if (fromForm) {
+        return String(fromForm);
+      }
     }
   }
   return String(body.status ?? body.lifecycle_status ?? 'Draft');

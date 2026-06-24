@@ -1,6 +1,6 @@
-export type MasterCustomFieldsEntity = 'RM' | 'PM';
+export type MasterCustomFieldsEntity = 'RM' | 'PM' | 'PR';
 
-export type MasterCustomFieldModuleCode = 'TECH' | 'QUAL' | 'ART';
+export type MasterCustomFieldModuleCode = 'TECH' | 'QUAL' | 'ART' | 'REG' | 'SPEC';
 
 export type MasterCustomFieldType =
   | 'text'
@@ -29,7 +29,7 @@ export type MasterCustomFieldsStore = Record<
 const STORAGE_KEY = 'ei-master-custom-fields';
 
 function emptyStore(): MasterCustomFieldsStore {
-  return { RM: {}, PM: {} };
+  return { RM: {}, PM: {}, PR: {} };
 }
 
 function readStore(): MasterCustomFieldsStore {
@@ -43,6 +43,7 @@ function readStore(): MasterCustomFieldsStore {
     return {
       RM: { ...(obj.RM ?? {}) },
       PM: { ...(obj.PM ?? {}) },
+      PR: { ...(obj.PR ?? {}) },
     };
   } catch {
     return emptyStore();
@@ -167,7 +168,7 @@ export function mergeEntityCustomFields(
     const mergedModules: Partial<Record<MasterCustomFieldModuleCode, MasterCustomFieldDef[]>> = {
       ...(entityBucket[taxonomyKey] ?? {}),
     };
-    for (const mod of ['TECH', 'QUAL', 'ART'] as const) {
+    for (const mod of ['TECH', 'QUAL', 'ART', 'REG', 'SPEC'] as const) {
       const incomingFields = modules[mod];
       if (!Array.isArray(incomingFields)) continue;
       const byId = new Map<string, MasterCustomFieldDef>();
@@ -191,11 +192,53 @@ export function pmCustomFieldsModuleCode(
   if (slug === 'dimensions' || slug === 'material' || slug === 'technical') return 'TECH';
   if (slug === 'aesthetics') return 'ART';
   if (slug === 'quality') return 'QUAL';
+  if (slug === 'regulatory') return 'REG';
   return null;
 }
 
 export function supportsCustomFieldButton(moduleCode: MasterCustomFieldModuleCode | null): boolean {
-  return moduleCode === 'TECH' || moduleCode === 'ART';
+  return (
+    moduleCode === 'TECH' ||
+    moduleCode === 'ART' ||
+    moduleCode === 'REG' ||
+    moduleCode === 'SPEC'
+  );
+}
+
+/** Values for `masterCustomField__*` keys to persist in master form_data. */
+export function extractMasterCustomFieldValuesFromForm(
+  source: Record<string, unknown>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!key.startsWith('masterCustomField__')) continue;
+    out[key] = String(value ?? '');
+  }
+  return out;
+}
+
+export function mergeMasterCustomFieldValuesIntoForm<T extends Record<string, unknown>>(
+  target: T,
+  formData: Record<string, unknown> | null | undefined
+): T {
+  if (!formData || typeof formData !== 'object') return target;
+  const next = { ...target } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(formData)) {
+    if (key.startsWith('masterCustomField__')) {
+      next[key] = String(value ?? '');
+    }
+  }
+  return next as T;
+}
+
+export function buildMasterCustomFieldsPersistPayload(
+  entity: MasterCustomFieldsEntity,
+  source: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...extractMasterCustomFieldValuesFromForm(source),
+    masterCustomFields: loadEntityCustomFields(entity),
+  };
 }
 
 export function supportsCustomQcSpecButton(moduleCode: MasterCustomFieldModuleCode | null): boolean {

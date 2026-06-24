@@ -22,6 +22,9 @@ interface MasterFormBaseProps {
  /** Label for the submit button (default: Review & submit). */
  submitLabel?: string;
  onReset?: () => void;
+ onRevert?: () => void;
+ /** Label for send-back button (e.g. Send back to Draft). */
+ revertLabel?: string;
  primaryFields?: string[];
  /** When true, disables the Next button (e.g. Zoho sync gate on step 0). */
  nextDisabled?: boolean;
@@ -57,6 +60,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
  onSubmit,
  submitLabel = 'Review & submit',
  onReset,
+ onRevert,
+ revertLabel,
  primaryFields = [],
  nextDisabled = false,
  nextDisabledTitle,
@@ -117,6 +122,15 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
        >
         Save draft
+       </button>
+      )}
+      {onRevert && revertLabel && (
+       <button
+        type="button"
+        onClick={onRevert}
+        className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+       >
+        {revertLabel}
        </button>
       )}
       {onSubmit && (

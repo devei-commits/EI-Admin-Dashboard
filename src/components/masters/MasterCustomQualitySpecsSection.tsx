@@ -2,10 +2,17 @@ import React, { useState } from 'react';
 import { MasterAddCustomQualitySpecModal } from './MasterAddCustomQualitySpecModal';
 import { PmQualitySpecTable } from './PmQualitySpecTable';
 import { RmQualitySpecTable } from './RmQualitySpecTable';
+import {
+  addSharedQualitySpec,
+  type MasterSharedQualitySpecEntity,
+} from '../../lib/masterSharedQualitySpecs';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
 
 export type MasterCustomQualitySpecsSectionProps = {
   variant: 'pm' | 'rm';
+  entity: MasterSharedQualitySpecEntity;
+  categoryScopeKey: string;
+  subScopePathKey: string;
   taxonomyLabel: string;
   categoryLabel: string;
   categoryScopeLabel: string;
@@ -23,6 +30,9 @@ export type MasterCustomQualitySpecsSectionProps = {
 
 export function MasterCustomQualitySpecsSection({
   variant,
+  entity,
+  categoryScopeKey,
+  subScopePathKey,
   taxonomyLabel,
   categoryLabel,
   categoryScopeLabel,
@@ -38,14 +48,40 @@ export function MasterCustomQualitySpecsSection({
   subTableDisabledHint,
 }: MasterCustomQualitySpecsSectionProps): React.ReactElement {
   const [modalOpen, setModalOpen] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const allowScopeSelection = showSubTable && Boolean(subCategoryLabel.trim());
 
   const handleSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+    setAddError(null);
     if (scope === 'common') {
-      onCommonChange([...commonRows, row]);
-    } else {
-      onSubChange([...subRows, row]);
+      const scopeKey = categoryScopeKey.trim();
+      if (!scopeKey) {
+        setAddError('Select a category before adding a shared parameter.');
+        return;
+      }
+      const result = addSharedQualitySpec(entity, 'common', scopeKey, row);
+      if (!result.ok) {
+        if (result.reason === 'duplicate') {
+          setAddError('This parameter already exists for this category.');
+        }
+        return;
+      }
+      onCommonChange([...commonRows, { ...row, custom: true }]);
+      return;
     }
+    const pathKey = subScopePathKey.trim();
+    if (!pathKey) {
+      setAddError('Select a sub-category before adding a shared parameter.');
+      return;
+    }
+    const result = addSharedQualitySpec(entity, 'sub', pathKey, row);
+    if (!result.ok) {
+      if (result.reason === 'duplicate') {
+        setAddError('This parameter already exists for this sub-category.');
+      }
+      return;
+    }
+    onSubChange([...subRows, { ...row, custom: true }]);
   };
 
   const tableProps = {
@@ -69,7 +105,8 @@ export function MasterCustomQualitySpecsSection({
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">Quality specifications</h3>
           <p className="text-xs text-gray-500 mt-1">
-            Add custom QC parameters via the button — they appear in the tables below for review and edit.
+            Custom parameters are shared across all items in the same category or sub-category. Removing a
+            parameter on this item hides it here only — other items keep it.
           </p>
         </div>
         <button
@@ -80,6 +117,11 @@ export function MasterCustomQualitySpecsSection({
           + Add Custom Quality Spec
         </button>
       </div>
+      {addError ? (
+        <p className="text-xs text-red-600" role="alert">
+          {addError}
+        </p>
+      ) : null}
       {variant === 'pm' ? <PmQualitySpecTable {...tableProps} /> : <RmQualitySpecTable {...tableProps} />}
       <MasterAddCustomQualitySpecModal
         isOpen={modalOpen}

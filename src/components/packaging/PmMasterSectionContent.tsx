@@ -340,6 +340,9 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
         {showPmQualitySpecTable ? (
           <MasterCustomQualitySpecsSection
             variant="pm"
+            entity="PM"
+            categoryScopeKey={pmQualitySpecResolved.functionalCategory}
+            subScopePathKey={pmQualitySpecResolved.subSpecPathKey}
             taxonomyLabel={customFieldsTaxonomyLabel}
             categoryLabel={
               pmQualitySpecResolved.categoryDisplayLabel ||

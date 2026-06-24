@@ -296,6 +296,9 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
         {showRmQualitySpecTable ? (
           <MasterCustomQualitySpecsSection
             variant="rm"
+            entity="RM"
+            categoryScopeKey={rmQualitySpecResolved.functionalCategory}
+            subScopePathKey={rmQualitySpecResolved.subSpecPathKey}
             taxonomyLabel={customFieldsTaxonomyLabel}
             categoryLabel={
               rmQualitySpecResolved.categoryDisplayLabel ||

@@ -19,6 +19,11 @@ import {
 } from '../constants/pmQualitySpecFields';
 import { parseGrnOutputType } from './qualitySpecDataType';
 import {
+  mergeDisplayQualitySpecRows,
+  readHiddenQualitySpecParameters,
+  readHiddenQualitySpecParametersByPath,
+} from './qualitySpecSharedMerge';
+import {
   createEmptyQualitySpecRow,
   createQualitySpecAttachment,
   type QualitySpecAttachment,
@@ -228,11 +233,46 @@ function keepCustomQualitySpecRows(rows: QualitySpecTableRow[]): QualitySpecTabl
   return rows.filter((row) => row.custom === true);
 }
 
-/** Load common tabular rows from form_data — only user-added custom specs (no template defaults). */
+/** Load item-persisted common tabular rows — only user-added custom specs (no template defaults). */
 export function hydratePmQualitySpecRows(source: Record<string, unknown>): QualitySpecTableRow[] {
   const nested = source.pmQualitySpecRows;
   if (!Array.isArray(nested) || nested.length === 0) return [];
   return keepCustomQualitySpecRows(parseQualitySpecRows(nested));
+}
+
+/** Merge taxonomy-shared definitions with item rows for the current PM category / sub-category. */
+export function applyPmQualitySpecTaxonomyDisplay(
+  source: Record<string, unknown>,
+  ctx: PmQualitySpecContext
+): {
+  pmQualitySpecRows: QualitySpecTableRow[];
+  pmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+} {
+  const resolved = resolvePmQualitySpecContext(ctx);
+  const itemCommon = hydratePmQualitySpecRows(source);
+  const itemByPath = hydratePmQualitySubSpecRowsByPath(source);
+  const hiddenCommon = readHiddenQualitySpecParameters(source, 'pmQualitySpecHiddenParameters');
+  const hiddenByPath = readHiddenQualitySpecParametersByPath(source, 'pmQualitySubSpecHiddenByPath');
+
+  const categoryKey = resolved.functionalCategory;
+  const pathKey = resolved.subSpecPathKey;
+
+  const pmQualitySpecRows = categoryKey
+    ? mergeDisplayQualitySpecRows('PM', 'common', categoryKey, itemCommon, hiddenCommon)
+    : [];
+
+  const pmQualitySubSpecRowsByPath = { ...itemByPath };
+  if (pathKey) {
+    pmQualitySubSpecRowsByPath[pathKey] = mergeDisplayQualitySpecRows(
+      'PM',
+      'sub',
+      pathKey,
+      itemByPath[pathKey] ?? [],
+      hiddenByPath[pathKey] ?? []
+    );
+  }
+
+  return { pmQualitySpecRows, pmQualitySubSpecRowsByPath };
 }
 
 const PM_LEGACY_FUNCTIONAL_CATEGORIES = new Set<PmFunctionalCategory>([

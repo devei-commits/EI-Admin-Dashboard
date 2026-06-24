@@ -38,6 +38,29 @@ export function getNextMasterApprovalStatus(current: unknown): MasterApprovalSta
   return MASTER_APPROVAL_STATUSES[idx + 1] ?? null;
 }
 
+export function readSavedMasterApprovalStatus(sources: {
+  status?: unknown;
+  lifecycleStatus?: unknown;
+  formData?: Record<string, unknown> | null;
+}): MasterApprovalStatus {
+  const fd = sources.formData;
+  const fromForm =
+    fd && typeof fd === 'object' && !Array.isArray(fd)
+      ? fd.masterApprovalStatus ?? fd.status
+      : undefined;
+  return normalizeMasterApprovalStatus(
+    sources.status ?? fromForm ?? sources.lifecycleStatus,
+    'Draft'
+  );
+}
+
+export function getPreviousMasterApprovalStatus(current: unknown): MasterApprovalStatus | null {
+  const norm = normalizeMasterApprovalStatus(current);
+  const idx = MASTER_APPROVAL_STATUSES.indexOf(norm);
+  if (idx <= 0) return null;
+  return MASTER_APPROVAL_STATUSES[idx - 1] ?? null;
+}
+
 export function masterApprovalStatusBadgeClass(status: unknown): string {
   const s = normalizeMasterApprovalStatus(status);
   switch (s) {
@@ -149,6 +172,10 @@ export function canActAtCurrentStage(
 ): boolean {
   if (isAdmin) return true;
   if (!hasTeamAccess) return false;
+  const stageKey = stageKeyForCurrentStatus(currentStatus);
+  if (!stageKey) return false;
+  const slot = assignees[stageKey];
+  if (!slot?.user_id) return true;
   return isAssignedForCurrentApprovalStage(currentUserId, currentStatus, assignees);
 }
 

@@ -21,6 +21,11 @@ import {
 } from '../constants/rmQualitySpecFields';
 import { parseGrnOutputType } from './qualitySpecDataType';
 import {
+  mergeDisplayQualitySpecRows,
+  readHiddenQualitySpecParameters,
+  readHiddenQualitySpecParametersByPath,
+} from './qualitySpecSharedMerge';
+import {
   createEmptyQualitySpecRow,
   createQualitySpecAttachment,
   type QualitySpecAttachment,
@@ -195,11 +200,46 @@ function keepCustomQualitySpecRows(rows: QualitySpecTableRow[]): QualitySpecTabl
   return rows.filter((row) => row.custom === true);
 }
 
-/** Load common tabular rows from form_data — only user-added custom specs (no template defaults). */
+/** Load item-persisted common tabular rows — only user-added custom specs (no template defaults). */
 export function hydrateRmQualitySpecRows(source: Record<string, unknown>): QualitySpecTableRow[] {
   const nested = source.rmQualitySpecRows;
   if (!Array.isArray(nested) || nested.length === 0) return [];
   return keepCustomQualitySpecRows(parseQualitySpecRows(nested));
+}
+
+/** Merge taxonomy-shared definitions with item rows for the current RM category / sub-category. */
+export function applyRmQualitySpecTaxonomyDisplay(
+  source: Record<string, unknown>,
+  ctx: RmQualitySpecContext
+): {
+  rmQualitySpecRows: QualitySpecTableRow[];
+  rmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
+} {
+  const resolved = resolveRmQualitySpecContext(ctx);
+  const itemCommon = hydrateRmQualitySpecRows(source);
+  const itemByPath = hydrateRmQualitySubSpecRowsByPath(source);
+  const hiddenCommon = readHiddenQualitySpecParameters(source, 'rmQualitySpecHiddenParameters');
+  const hiddenByPath = readHiddenQualitySpecParametersByPath(source, 'rmQualitySubSpecHiddenByPath');
+
+  const categoryKey = resolved.functionalCategory;
+  const pathKey = resolved.subSpecPathKey;
+
+  const rmQualitySpecRows = categoryKey
+    ? mergeDisplayQualitySpecRows('RM', 'common', categoryKey, itemCommon, hiddenCommon)
+    : [];
+
+  const rmQualitySubSpecRowsByPath = { ...itemByPath };
+  if (pathKey) {
+    rmQualitySubSpecRowsByPath[pathKey] = mergeDisplayQualitySpecRows(
+      'RM',
+      'sub',
+      pathKey,
+      itemByPath[pathKey] ?? [],
+      hiddenByPath[pathKey] ?? []
+    );
+  }
+
+  return { rmQualitySpecRows, rmQualitySubSpecRowsByPath };
 }
 
 /** Load sub-category tabular rows keyed by `Category::SubCategory` — custom specs only. */
