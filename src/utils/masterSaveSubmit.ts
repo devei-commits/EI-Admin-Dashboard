@@ -139,7 +139,7 @@ export async function advanceMasterApprovalStatus(
 }
 
 export type MasterApprovalAdvanceAfterSaveResult =
-  | { ok: true; status: string; advanced: boolean; expectedStatus?: string }
+  | { ok: true; status: string; advanced: boolean; expectedStatus?: string; awaitingOtherTeam?: boolean }
   | { ok: false; error: string };
 
 /** After a successful save, advance workflow when the user started submit from a non-final status. */
@@ -151,8 +151,13 @@ export async function advanceMasterApprovalAfterSave(opts: {
   /** Latest status read from the server after save (for mismatch detection). */
   serverStatusAfterSave?: unknown;
   assignees: MasterApprovalStageAssignees;
-  canApproveAtStatus: (currentStatus: unknown, stageAssignees: unknown) => boolean;
+  canApproveAtStatus: (
+    currentStatus: unknown,
+    stageAssignees: unknown,
+    approvalTeamPending?: unknown
+  ) => boolean;
   comment?: string;
+  approvalTeamPending?: unknown;
 }): Promise<MasterApprovalAdvanceAfterSaveResult> {
   const intent = readSavedMasterApprovalStatus({ status: opts.intentStatus });
   const submitAction = getMasterApprovalSubmitAction(intent);
@@ -171,11 +176,13 @@ export async function advanceMasterApprovalAfterSave(opts: {
     };
   }
 
-  if (!opts.canApproveAtStatus(intent, opts.assignees)) {
+  if (!opts.canApproveAtStatus(intent, opts.assignees, opts.approvalTeamPending)) {
     return {
       ok: false,
       error:
-        'Only the person assigned to this approval stage (or a team approver when the stage is open) can submit for the next status. Assign them in the list, then try again.',
+        opts.kind === 'PR'
+          ? 'Only the assigned RM team or Pack team member (who has not yet signed) may submit. Assign them in the list, then try again.'
+          : 'Only the person assigned to this approval stage (or a team approver when the stage is open) can submit for the next status. Assign them in the list, then try again.',
     };
   }
 
@@ -191,6 +198,15 @@ export async function advanceMasterApprovalAfterSave(opts: {
 
   const actual = normalizeMasterApprovalStatus(advanced.status, intent);
   if (actual !== submitAction.nextStatus) {
+    if (opts.kind === 'PR' && actual === intent) {
+      return {
+        ok: true,
+        status: actual,
+        advanced: false,
+        awaitingOtherTeam: true,
+        expectedStatus: submitAction.nextStatus,
+      };
+    }
     return {
       ok: false,
       error: `Expected status "${submitAction.nextStatus}" but server returned "${actual}". Please refresh and try again.`,

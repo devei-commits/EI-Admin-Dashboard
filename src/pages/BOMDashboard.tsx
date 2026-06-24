@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
-import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
+import { MasterPrTeamAssignCell } from '../components/masters/MasterPrTeamAssignCell';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import {
@@ -1163,7 +1163,8 @@ const BOMDashboard: React.FC = () => {
                       onSort={togglePrSort}
                       accent="cyan"
                     />
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Assign</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM assign</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Pack assign</th>
                     <SortableTableTh
                       label="Open SOs"
                       column="openSos"
@@ -1179,7 +1180,7 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={16} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={17} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -1224,17 +1225,45 @@ const BOMDashboard: React.FC = () => {
                           />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <MasterApprovalAssignCell
-                            kind="PR"
+                          <MasterPrTeamAssignCell
+                            team="rm_team"
                             itemId={p.product_id}
                             itemCode={p.product_code || String(p.product_id)}
                             stageAssignees={p.approval_stage_assignees}
+                            approvalTeamPending={p.approval_team_pending}
                             canAssign={canAssignApprover}
                             onSaved={(assignees) => {
                               setList((prev) =>
                                 prev.map((row) =>
                                   row.product_id === p.product_id
-                                    ? { ...row, approval_stage_assignees: assignees }
+                                    ? {
+                                        ...row,
+                                        approval_stage_assignees: assignees,
+                                        approval_team_pending: null,
+                                      }
+                                    : row
+                                )
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterPrTeamAssignCell
+                            team="pack_team"
+                            itemId={p.product_id}
+                            itemCode={p.product_code || String(p.product_id)}
+                            stageAssignees={p.approval_stage_assignees}
+                            approvalTeamPending={p.approval_team_pending}
+                            canAssign={canAssignApprover}
+                            onSaved={(assignees) => {
+                              setList((prev) =>
+                                prev.map((row) =>
+                                  row.product_id === p.product_id
+                                    ? {
+                                        ...row,
+                                        approval_stage_assignees: assignees,
+                                        approval_team_pending: null,
+                                      }
                                     : row
                                 )
                               );

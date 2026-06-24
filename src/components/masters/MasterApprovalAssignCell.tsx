@@ -5,6 +5,11 @@ import {
   type MasterApprovalKind,
   type MasterApprovalStageAssignees,
 } from '../../constants/masterApprovalStatus';
+import {
+  formatPrTeamPendingSummary,
+  normalizePrApprovalTeamPending,
+  prTeamAssigneeSummary,
+} from '../../lib/prMasterTeamApproval';
 import { MasterApprovalAssignModal } from './MasterApprovalAssignModal';
 
 export type MasterApprovalAssignCellProps = {
@@ -12,6 +17,8 @@ export type MasterApprovalAssignCellProps = {
   itemId: string | number;
   itemCode: string;
   stageAssignees?: unknown;
+  /** PR only — dual sign-off progress while waiting for both teams. */
+  approvalTeamPending?: unknown;
   canAssign?: boolean;
   onSaved?: (assignees: MasterApprovalStageAssignees) => void;
   compact?: boolean;
@@ -32,15 +39,41 @@ export function MasterApprovalAssignCell({
   itemId,
   itemCode,
   stageAssignees: rawAssignees,
+  approvalTeamPending: rawPending,
   canAssign = false,
   onSaved,
   compact = false,
 }: MasterApprovalAssignCellProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const assignees = useMemo(() => normalizeStageAssignees(rawAssignees), [rawAssignees]);
-  const summary = useMemo(() => assignmentSummary(assignees), [assignees]);
+  const pending = useMemo(
+    () => (kind === 'PR' ? normalizePrApprovalTeamPending(rawPending) : null),
+    [kind, rawPending]
+  );
+  const summary = useMemo(() => {
+    if (kind === 'PR') {
+      const base = prTeamAssigneeSummary(assignees);
+      const pendingLine = pending ? formatPrTeamPendingSummary(pending) : '';
+      return pendingLine ? `${base} · ${pendingLine}` : base;
+    }
+    return assignmentSummary(assignees);
+  }, [kind, assignees, pending]);
 
   if (!canAssign) {
+    if (kind === 'PR') {
+      return (
+        <div className={`text-[10px] text-gray-600 ${compact ? 'max-w-36' : 'max-w-48'}`}>
+          <p className="truncate" title={prTeamAssigneeSummary(assignees)}>
+            {prTeamAssigneeSummary(assignees)}
+          </p>
+          {pending ? (
+            <p className="truncate text-amber-700 font-semibold" title={formatPrTeamPendingSummary(pending)}>
+              {formatPrTeamPendingSummary(pending)}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
     const lines = (['drafter', 'reviewer', 'approver'] as const)
       .map((key) => assignees[key])
       .filter(Boolean);

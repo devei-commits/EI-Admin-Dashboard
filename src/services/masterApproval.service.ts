@@ -4,6 +4,7 @@ import type {
   MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
 import { normalizeStageAssignees } from '../constants/masterApprovalStatus';
+import { normalizePrApprovalTeamPending, type PrApprovalTeamPending } from '../lib/prMasterTeamApproval';
 
 export type PatchMasterApprovalPayload =
   | { status: string; note?: string }
@@ -22,6 +23,7 @@ export type PatchMasterApprovalResult = {
     approval_stage_assignees: MasterApprovalStageAssignees;
     approval_assigned_user_id: number | null;
     approval_assigned_display_name: string | null;
+    approval_team_pending?: PrApprovalTeamPending | null;
   } | null;
   error: string | null;
 };
@@ -135,6 +137,8 @@ export async function patchMasterApprovalStatus(
         approval_stage_assignees: assignees,
         approval_assigned_user_id: approver?.user_id ?? null,
         approval_assigned_display_name: approver?.display_name ?? null,
+        approval_team_pending:
+          kind === 'PR' ? normalizePrApprovalTeamPending(body?.approval_team_pending) : null,
       },
       error: null,
     };

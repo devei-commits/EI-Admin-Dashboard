@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../orders/Modal';
 import {
   MASTER_APPROVAL_STAGES,
+  PR_MASTER_TEAM_STAGES,
   emptyStageAssignees,
   formatStageAssigneeLabel,
   type MasterApprovalKind,
@@ -12,6 +13,7 @@ import {
 import { patchMasterApprovalStatus } from '../../services/masterApproval.service';
 import { searchUsers, type UserSearchHit } from '../../services/user.service';
 import { useToast } from '../../context/ToastContext';
+import { PrTeamAssignPicker } from './PrTeamAssignPicker';
 
 export type MasterApprovalAssignModalProps = {
   isOpen: boolean;
@@ -35,9 +37,10 @@ function slotFromUser(user: UserSearchHit): MasterApprovalStageSlot {
 
 function toApiPayload(stages: DraftStageState): MasterApprovalStageAssignees {
   const out = emptyStageAssignees();
-  for (const stage of MASTER_APPROVAL_STAGES) {
-    const slot = stages[stage.key];
-    out[stage.key] = slot?.user_id
+  const keys = [...MASTER_APPROVAL_STAGES.map((s) => s.key), ...PR_MASTER_TEAM_STAGES.map((s) => s.key)];
+  for (const key of keys) {
+    const slot = stages[key];
+    out[key] = slot?.user_id
       ? {
           user_id: slot.user_id,
           display_name: slot.display_name,
@@ -261,6 +264,54 @@ export function MasterApprovalAssignModal({
   };
 
   const itemKey = String(itemId);
+
+  if (kind === 'PR') {
+    return (
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={`Assign teams — ${itemCode}`}
+        subtitle="RM and Pack teams must both sign off before approval status advances."
+        size="lg"
+        bodyClassName="overflow-visible"
+        footer={
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void save()}
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+            >
+              {busy ? 'Saving…' : 'Save both assignments'}
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {PR_MASTER_TEAM_STAGES.map((stage) => (
+            <PrTeamAssignPicker
+              key={stage.key}
+              teamKey={stage.key}
+              label={stage.label}
+              emoji={stage.emoji}
+              slot={draft[stage.key]}
+              disabled={busy}
+              fieldId={`assign-${itemKey}-${stage.key}`}
+              onChange={(next) => setDraft((prev) => ({ ...prev, [stage.key]: next }))}
+            />
+          ))}
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal

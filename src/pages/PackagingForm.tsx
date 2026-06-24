@@ -8,6 +8,7 @@ import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { derivePmVendorFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
+import { buildPmPreviewBaselineFromFetch } from '../lib/masterPreviewBaseline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useItems } from '../context/ItemsContext';
@@ -24,6 +25,7 @@ import { validateStagedPercents, serializeStagedPaymentTerms } from '../lib/stag
 import {
   buildMasterApprovalStatusCounts,
   emptyStageAssignees,
+  isMasterApprovalDraft,
   matchesMasterApprovalStatusTab,
   normalizeMasterApprovalStatus,
   normalizeStageAssignees,
@@ -314,6 +316,7 @@ const PackagingRefactored: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<string>('—');
   const [generatedCode, setGeneratedCode] = useState('');
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [submitPreviewBaseline, setSubmitPreviewBaseline] = useState<Record<string, unknown> | null>(null);
   const [revertPreviewOpen, setRevertPreviewOpen] = useState(false);
   const [pendingPmPayload, setPendingPmPayload] = useState<CreatePackMaterialPayload | null>(null);
   const [pendingApprovalIntentStatus, setPendingApprovalIntentStatus] = useState<string | null>(null);
@@ -970,11 +973,12 @@ const PackagingRefactored: React.FC = () => {
   const pmPreviewSections = useMemo(
     () =>
       buildMasterPreviewSections(pmPreviewFormData, PM_PREVIEW_SECTIONS, {
+        baselineFormData: submitPreviewBaseline ?? undefined,
         omitKeys: isNewPm
           ? ['itemCode', 'pkgSku', 'itemCategory', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath']
           : ['itemCategory', 'pmQualitySpecRows', 'pmQualitySubSpecRowsByPath'],
       }),
-    [pmPreviewFormData, isNewPm]
+    [pmPreviewFormData, isNewPm, submitPreviewBaseline]
   );
   const pmLinkedProductCodes = useMemo(
     () =>
@@ -1082,7 +1086,13 @@ const PackagingRefactored: React.FC = () => {
           status: intentStatus,
         }));
         setEditApprovalStageAssignees(normalizeStageAssignees(fresh.approvalStageAssignees));
+        const priceRow = await fetchPriceListRowForMaterial('PM', parseInt(String(existingPmId), 10));
+        setSubmitPreviewBaseline(buildPmPreviewBaselineFromFetch(fresh, priceRow));
+      } else {
+        setSubmitPreviewBaseline(null);
       }
+    } else {
+      setSubmitPreviewBaseline(null);
     }
 
     if (!getMasterApprovalSubmitAction(intentStatus)) {
@@ -1571,6 +1581,7 @@ const PackagingRefactored: React.FC = () => {
     !!existingPmId &&
     approvalRevertAction != null &&
     canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+  const canShowResetForm = isMasterApprovalDraft(formData.masterApprovalStatus);
   const closePmFormPopup = () => {
     resetPmFormToEmpty();
     setPageTab('bpr');
@@ -1713,13 +1724,15 @@ const PackagingRefactored: React.FC = () => {
                   >
                     {draftSaving ? 'Saving…' : 'Save draft'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
-                  >
-                    Reset Form
-                  </button>
+                  {canShowResetForm ? (
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+                    >
+                      Reset Form
+                    </button>
+                  ) : null}
                   {canShowApprovalRevert ? (
                     <button
                       type="button"
@@ -1859,6 +1872,7 @@ const PackagingRefactored: React.FC = () => {
         onClose={() => {
           if (submitConfirming) return;
           setSubmitPreviewOpen(false);
+          setSubmitPreviewBaseline(null);
           setPendingPmPayload(null);
           setPendingApprovalIntentStatus(null);
         }}
@@ -2827,7 +2841,7 @@ const BprDashboard: React.FC<{
                 onClick={() => setLinkedSkusModalPm(null)}
               >
                 <div
-                  className="my-auto w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+                  className="my-auto w-full max-w-6xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="pm-linked-skus-modal-title"

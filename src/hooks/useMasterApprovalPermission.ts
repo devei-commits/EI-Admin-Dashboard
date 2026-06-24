@@ -7,6 +7,7 @@ import type {
   MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
 import { canActAtCurrentStage, normalizeStageAssignees } from '../constants/masterApprovalStatus';
+import { canPrTeamActAtCurrentStage, normalizePrApprovalTeamPending } from '../lib/prMasterTeamApproval';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from './usePermissions';
 
@@ -21,7 +22,11 @@ export interface UseMasterApprovalPermissionReturn {
   hasTeamAccess: boolean;
   /** Can open Assign modal and save drafter / reviewer / approver (requires Assign approval stages → Edit). */
   canAssignApprover: boolean;
-  canApproveAtStatus: (currentStatus: unknown, stageAssignees: unknown) => boolean;
+  canApproveAtStatus: (
+    currentStatus: unknown,
+    stageAssignees: unknown,
+    approvalTeamPending?: unknown
+  ) => boolean;
   /** @deprecated use canApproveAtStatus */
   canApproveItem: (assignedUserId: number | null | undefined) => boolean;
   canUpdateApprovalStatus: boolean;
@@ -44,11 +49,20 @@ export function useMasterApprovalPermission(kind: MasterApprovalKind): UseMaster
   }, [isAdmin, getColumnPermission, subModuleId, assignStageColumnId]);
 
   const canApproveAtStatus = useCallback(
-    (currentStatus: unknown, stageAssignees: unknown): boolean => {
+    (currentStatus: unknown, stageAssignees: unknown, approvalTeamPending?: unknown): boolean => {
       const assignees = normalizeStageAssignees(stageAssignees) as MasterApprovalStageAssignees;
+      if (kind === 'PR') {
+        return canPrTeamActAtCurrentStage(
+          isAdmin,
+          hasTeamAccess,
+          user?.id,
+          assignees,
+          normalizePrApprovalTeamPending(approvalTeamPending)
+        );
+      }
       return canActAtCurrentStage(isAdmin, hasTeamAccess, user?.id, currentStatus, assignees);
     },
-    [isAdmin, hasTeamAccess, user?.id]
+    [isAdmin, hasTeamAccess, user?.id, kind]
   );
 
   const canApproveItem = useCallback(

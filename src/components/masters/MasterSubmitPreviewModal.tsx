@@ -77,11 +77,20 @@ export function MasterSubmitPreviewModal({
                 {section.rows.map((row) => (
                   <div
                     key={`${section.title}-${row.label}`}
-                    className="grid grid-cols-1 sm:grid-cols-[minmax(140px,32%)_1fr] gap-1 sm:gap-4 px-4 py-2.5 text-sm"
+                    className={`grid grid-cols-1 sm:grid-cols-[minmax(140px,32%)_1fr] gap-1 sm:gap-4 px-4 py-2.5 text-sm ${
+                      row.changed ? 'bg-amber-50 border-l-4 border-amber-400' : ''
+                    }`}
                   >
-                    <dt className="font-medium text-gray-600 shrink-0">{row.label}</dt>
+                    <dt className={`font-medium shrink-0 ${row.changed ? 'text-amber-900' : 'text-gray-600'}`}>
+                      {row.label}
+                    </dt>
                     <dd className="text-gray-900 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
-                      {row.value}
+                      <span className={row.changed ? 'font-semibold text-amber-950' : undefined}>{row.value}</span>
+                      {row.changed && row.previousValue ? (
+                        <p className="mt-1.5 text-xs font-sans text-amber-800/90">
+                          Previously — {row.previousValue}
+                        </p>
+                      ) : null}
                     </dd>
                   </div>
                 ))}

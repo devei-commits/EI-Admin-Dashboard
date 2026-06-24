@@ -35,6 +35,7 @@ export interface PRProductListItem {
   pack_items_count: number;
   open_sos_count: number;
   approval_stage_assignees?: unknown;
+  approval_team_pending?: unknown;
   approval_assigned_user_id?: number | null;
   approval_assigned_display_name?: string | null;
 }

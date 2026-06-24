@@ -48,10 +48,14 @@ function mapExitAction(source: string | null | undefined): MasterApprovalExitAct
   if (s === 'revert') return 'reverted';
   if (s === 'advance') return 'advanced';
   if (s === 'current') return 'current';
+  if (s === 'pr_rm_team_signoff' || s === 'pr_pack_team_signoff') return 'set';
   return 'set';
 }
 
-export function exitActionVerb(action: MasterApprovalExitAction): string {
+export function exitActionVerb(action: MasterApprovalExitAction, source?: string | null): string {
+  const src = String(source ?? '').trim().toLowerCase();
+  if (src === 'pr_rm_team_signoff') return 'RM team sign-off by';
+  if (src === 'pr_pack_team_signoff') return 'Pack team sign-off by';
   switch (action) {
     case 'advanced':
       return 'Advanced by';

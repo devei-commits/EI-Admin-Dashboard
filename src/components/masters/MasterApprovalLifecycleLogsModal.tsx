@@ -260,6 +260,11 @@ export function MasterApprovalLifecycleLogsModal({
                             </td>
                             <td className="py-2 px-3 text-gray-700">
                               {entry.changedByDisplayName?.trim() || '—'}
+                              {entry.source === 'pr_rm_team_signoff' ? (
+                                <span className="block text-[10px] text-amber-700 font-semibold">RM team sign-off</span>
+                              ) : entry.source === 'pr_pack_team_signoff' ? (
+                                <span className="block text-[10px] text-violet-700 font-semibold">Pack team sign-off</span>
+                              ) : null}
                             </td>
                             <td className="py-2 px-3 text-gray-600 max-w-xs whitespace-pre-wrap break-words">
                               {entry.note?.trim() || '—'}

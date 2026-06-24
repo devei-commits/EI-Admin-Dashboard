@@ -12,6 +12,7 @@ import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { deriveRmSourcingFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
+import { buildRmPreviewBaselineFromFetch } from '../lib/masterPreviewBaseline';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
   type RmCommercialVendor,
@@ -62,6 +63,7 @@ import type { QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
   buildMasterApprovalStatusCounts,
   emptyStageAssignees,
+  isMasterApprovalDraft,
   matchesMasterApprovalStatusTab,
   normalizeMasterApprovalStatus,
   readSavedMasterApprovalStatus,
@@ -295,6 +297,7 @@ const RawMaterialRefactored: React.FC = () => {
   name: '', result: '', date: '', approvedBy: '', remarks: '' 
  });
  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+ const [submitPreviewBaseline, setSubmitPreviewBaseline] = useState<Record<string, unknown> | null>(null);
  const [revertPreviewOpen, setRevertPreviewOpen] = useState(false);
  const [pendingSavePayload, setPendingSavePayload] = useState<Record<string, unknown> | null>(null);
  const [pendingApprovalIntentStatus, setPendingApprovalIntentStatus] = useState<string | null>(null);
@@ -975,11 +978,12 @@ const RawMaterialRefactored: React.FC = () => {
  const rmPreviewSections = useMemo(
   () =>
    buildMasterPreviewSections(rmPreviewFormData, RM_PREVIEW_SECTIONS, {
+    baselineFormData: submitPreviewBaseline ?? undefined,
     omitKeys: isNewRm
      ? ['rmSku', 'sku', 'rmType', 'rm_type', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath']
      : ['rmType', 'rm_type', 'rmQualitySpecRows', 'rmQualitySubSpecRowsByPath'],
    }),
-  [rmPreviewFormData, isNewRm]
+  [rmPreviewFormData, isNewRm, submitPreviewBaseline]
  );
  const rmLinkedProductCodes = useMemo(
   () =>
@@ -1004,7 +1008,13 @@ const RawMaterialRefactored: React.FC = () => {
     });
     setFormData((prev) => ({ ...prev, masterApprovalStatus: intentStatus }));
     setEditApprovalStageAssignees(fresh.record.approvalStageAssignees ?? emptyStageAssignees());
+    const priceRow = await fetchPriceListRowForMaterial('RM', parseInt(String(existingRmId), 10));
+    setSubmitPreviewBaseline(buildRmPreviewBaselineFromFetch(fresh, priceRow));
+   } else {
+    setSubmitPreviewBaseline(null);
    }
+  } else {
+   setSubmitPreviewBaseline(null);
   }
 
   if (!getMasterApprovalSubmitAction(intentStatus)) {
@@ -1661,6 +1671,7 @@ const RawMaterialRefactored: React.FC = () => {
   !!existingRmId &&
   approvalRevertAction != null &&
   canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+ const canShowResetForm = isMasterApprovalDraft(formData.masterApprovalStatus);
   const closeFormPopup = () => {
     setExistingRmId(null);
     setPageTab('dashboard');
@@ -1732,7 +1743,7 @@ const RawMaterialRefactored: React.FC = () => {
                   onInputChange={handleInputChange}
                   primaryFields={getPrimaryFields('rawMaterial')}
                   onSave={() => void handleSave()}
-                  onReset={handleReset}
+                  onReset={canShowResetForm ? handleReset : undefined}
                   onRevert={canShowApprovalRevert ? handleRevert : undefined}
                   revertLabel={approvalRevertAction?.revertLabel}
                   onSubmit={canShowApprovalSubmit ? handleSubmit : undefined}
@@ -1769,6 +1780,7 @@ const RawMaterialRefactored: React.FC = () => {
         onClose={() => {
           if (submitConfirming) return;
           setSubmitPreviewOpen(false);
+          setSubmitPreviewBaseline(null);
           setPendingSavePayload(null);
           setPendingApprovalIntentStatus(null);
         }}
@@ -2493,7 +2505,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       onClick={() => setLinkedSkusModalRm(null)}
      >
       <div
-       className="my-auto w-full max-w-3xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+       className="my-auto w-full max-w-6xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
        role="dialog"
        aria-modal="true"
        aria-labelledby="linked-skus-modal-title"

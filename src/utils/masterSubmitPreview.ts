@@ -2,7 +2,14 @@
  * Build read-only preview sections for master form submit (RM / PM / PR).
  */
 
-export type MasterPreviewRow = { label: string; value: string };
+export type MasterPreviewRow = {
+  label: string;
+  value: string;
+  /** When true, value differs from the server baseline at submit time. */
+  changed?: boolean;
+  /** Formatted server value shown as "Previously — …" when changed. */
+  previousValue?: string;
+};
 export type MasterPreviewSection = { title: string; rows: MasterPreviewRow[] };
 
 export type MasterPreviewFieldDef = { key: string; label: string };
@@ -234,13 +241,49 @@ export function fieldDefs(keys: string[], labelOverrides: Partial<Record<string,
  * Build preview sections from form data and section definitions.
  * Keys not listed in any section are grouped under "Other fields".
  */
+export function areMasterPreviewValuesEqual(
+  current: unknown,
+  baseline: unknown,
+  key?: string
+): boolean {
+  return formatMasterPreviewValue(current, key) === formatMasterPreviewValue(baseline, key);
+}
+
+function buildPreviewRow(
+  label: string,
+  key: string,
+  raw: unknown,
+  baselineFormData?: Record<string, unknown>
+): MasterPreviewRow {
+  const value = formatMasterPreviewValue(raw, key);
+  if (!baselineFormData) {
+    return { label, value };
+  }
+  const baselineRaw = baselineFormData[key];
+  if (areMasterPreviewValuesEqual(raw, baselineRaw, key)) {
+    return { label, value };
+  }
+  return {
+    label,
+    value,
+    changed: true,
+    previousValue: formatMasterPreviewValue(baselineRaw, key),
+  };
+}
+
 export function buildMasterPreviewSections(
   formData: Record<string, unknown>,
   sectionDefs: MasterPreviewSectionDef[],
-  options?: { includeEmpty?: boolean; omitKeys?: string[] }
+  options?: {
+    includeEmpty?: boolean;
+    omitKeys?: string[];
+    /** Server-side form snapshot for edit submit preview diff highlighting. */
+    baselineFormData?: Record<string, unknown>;
+  }
 ): MasterPreviewSection[] {
   const includeEmpty = options?.includeEmpty ?? true;
   const omitKeys = new Set(options?.omitKeys ?? []);
+  const baselineFormData = options?.baselineFormData;
   const used = new Set<string>();
   const sections: MasterPreviewSection[] = [];
 
@@ -251,10 +294,7 @@ export function buildMasterPreviewSections(
       used.add(field.key);
       const raw = formData[field.key];
       if (!includeEmpty && !def.includeEmpty && isEmptyPreviewValue(raw)) continue;
-      rows.push({
-        label: field.label,
-        value: formatMasterPreviewValue(raw, field.key),
-      });
+      rows.push(buildPreviewRow(field.label, field.key, raw, baselineFormData));
     }
     if (rows.length > 0) sections.push({ title: def.title, rows });
   }
@@ -264,10 +304,7 @@ export function buildMasterPreviewSections(
     if (used.has(key) || SKIP_PREVIEW_KEYS.has(key) || omitKeys.has(key)) continue;
     const raw = formData[key];
     if (!includeEmpty && isEmptyPreviewValue(raw)) continue;
-    otherRows.push({
-      label: humanizeKey(key),
-      value: formatMasterPreviewValue(raw, key),
-    });
+    otherRows.push(buildPreviewRow(humanizeKey(key), key, raw, baselineFormData));
   }
   if (otherRows.length > 0) {
     sections.push({ title: 'Other fields', rows: otherRows });

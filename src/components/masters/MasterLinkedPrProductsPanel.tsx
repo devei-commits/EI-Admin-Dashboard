@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchPRProducts } from '../../services/productsMaster.service';
+import { fetchPRProducts, type PRProductListItem } from '../../services/productsMaster.service';
 import {
   buildPrProductLookup,
   getPrMasterEditPath,
@@ -87,6 +87,24 @@ function CompactLinkedPrList({
   );
 }
 
+function PrRecordTypeBadge({ type }: { type?: PRProductListItem['pr_record_type'] }): React.ReactElement {
+  if (type === 'temporary') {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+        Temporary
+      </span>
+    );
+  }
+  if (type === 'permanent') {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+        Permanent
+      </span>
+    );
+  }
+  return <span className="text-gray-400 text-xs">—</span>;
+}
+
 function TableLinkedPrList({
   rows,
   accent,
@@ -99,39 +117,54 @@ function TableLinkedPrList({
   const styles = ACCENT_STYLES[accent];
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200">
-      <table className="w-full min-w-[480px] text-left text-xs">
-        <thead className="sticky top-0 z-1 border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+      <table className="w-full min-w-[720px]">
+        <thead className="sticky top-0 z-1 bg-gray-50 border-b border-gray-200">
           <tr>
-            <th className="px-3 py-2">#</th>
-            <th className="px-3 py-2">Linked SKU / code</th>
-            <th className="px-3 py-2">Product name</th>
-            <th className="px-3 py-2">Category</th>
-            <th className="px-3 py-2">Subcategory</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2 text-right">PR master</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Code</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Record</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Category</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Sub-category</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">RM ings.</th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">Pack items</th>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 text-gray-800">
+        <tbody className="divide-y divide-gray-200">
           {rows.map(({ sku, product }, i) => (
-            <tr key={`${sku}-${i}`} className={`bg-white ${styles.rowHover}`}>
-              <td className="px-3 py-2 text-gray-500">{i + 1}</td>
-              <td className={`px-3 py-2 font-mono font-semibold break-all ${styles.code}`}>{sku}</td>
-              <td className="px-3 py-2 wrap-break-word">{product?.product_name ?? '—'}</td>
-              <td className="px-3 py-2 text-gray-600">{product?.category ?? '—'}</td>
-              <td className="px-3 py-2 text-gray-600 wrap-break-word">{product?.pr_sub_category?.trim() || '—'}</td>
-              <td className="px-3 py-2 text-gray-600">{product?.status ?? '—'}</td>
-              <td className="px-3 py-2 text-right whitespace-nowrap">
+            <tr key={`${sku}-${i}`} className={`bg-white transition-colors ${styles.rowHover}`}>
+              <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900 break-all">
+                {product?.product_code?.trim() || sku}
+                {!product ? (
+                  <p className="mt-0.5 text-[10px] font-sans font-normal text-gray-400">Not in PR master</p>
+                ) : null}
+              </td>
+              <td className="px-4 py-3 text-sm whitespace-nowrap">
+                {product ? <PrRecordTypeBadge type={product.pr_record_type} /> : '—'}
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-600">{product?.category?.trim() || '—'}</td>
+              <td className="px-4 py-3 text-sm text-gray-600 wrap-break-word">
+                {product?.pr_sub_category?.trim() || '—'}
+              </td>
+              <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">
+                {product ? (product.rm_ingredients_count ?? 0) : '—'}
+              </td>
+              <td className="px-4 py-3 text-sm font-mono font-semibold text-amber-600 text-center">
+                {product ? (product.pack_items_count ?? 0) : '—'}
+              </td>
+              <td className="px-4 py-3 text-right whitespace-nowrap">
                 {product?.product_id ? (
                   <PrMasterLink productId={product.product_id} accent={accent} label="Open PR master" />
                 ) : (
-                  <span className="text-gray-400">—</span>
+                  <span className="text-gray-400 text-xs">—</span>
                 )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {loading ? <p className="border-t border-gray-100 px-3 py-2 text-xs text-gray-500">Loading product master…</p> : null}
+      {loading ? (
+        <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">Loading product master…</p>
+      ) : null}
     </div>
   );
 }

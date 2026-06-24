@@ -31,6 +31,10 @@ export function isMasterApprovalActive(raw: unknown): boolean {
   return normalizeMasterApprovalStatus(raw) === 'Active';
 }
 
+export function isMasterApprovalDraft(raw: unknown): boolean {
+  return normalizeMasterApprovalStatus(raw) === 'Draft';
+}
+
 export function getNextMasterApprovalStatus(current: unknown): MasterApprovalStatus | null {
   const norm = normalizeMasterApprovalStatus(current);
   const idx = MASTER_APPROVAL_STATUSES.indexOf(norm);
@@ -85,7 +89,7 @@ export function masterPickerLabelSuffix(status: unknown): string {
 export type MasterApprovalKind = 'RM' | 'PM' | 'PR';
 
 /** Stage assignee slots aligned with Draft → Under Review → Under Approval. */
-export type MasterApprovalStageKey = 'drafter' | 'reviewer' | 'approver';
+export type MasterApprovalStageKey = 'drafter' | 'reviewer' | 'approver' | 'rm_team' | 'pack_team';
 
 export type MasterApprovalStageSlot = {
   user_id: number;
@@ -106,8 +110,17 @@ export const MASTER_APPROVAL_STAGES: ReadonlyArray<{
   { key: 'approver', label: 'Approver', emoji: '🟣', workflowStatus: 'Under Approval' },
 ];
 
+export const PR_MASTER_TEAM_STAGES: ReadonlyArray<{
+  key: 'rm_team' | 'pack_team';
+  label: string;
+  emoji: string;
+}> = [
+  { key: 'rm_team', label: 'RM team', emoji: '🧪' },
+  { key: 'pack_team', label: 'Pack team', emoji: '📦' },
+];
+
 export function emptyStageAssignees(): MasterApprovalStageAssignees {
-  return { drafter: null, reviewer: null, approver: null };
+  return { drafter: null, reviewer: null, approver: null, rm_team: null, pack_team: null };
 }
 
 export function normalizeStageAssignees(raw: unknown): MasterApprovalStageAssignees {
@@ -115,6 +128,28 @@ export function normalizeStageAssignees(raw: unknown): MasterApprovalStageAssign
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
   for (const stage of MASTER_APPROVAL_STAGES) {
+    const slot = o[stage.key];
+    if (slot == null) {
+      base[stage.key] = null;
+      continue;
+    }
+    if (typeof slot !== 'object' || Array.isArray(slot)) continue;
+    const s = slot as Record<string, unknown>;
+    const id = parseInt(String(s.user_id ?? s.userId ?? ''), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      base[stage.key] = null;
+      continue;
+    }
+    const display_name = String(s.display_name ?? s.displayName ?? `User #${id}`).trim();
+    const role_name =
+      s.role_name != null && String(s.role_name).trim() !== ''
+        ? String(s.role_name).trim()
+        : s.roleName != null && String(s.roleName).trim() !== ''
+          ? String(s.roleName).trim()
+          : null;
+    base[stage.key] = { user_id: id, display_name, role_name };
+  }
+  for (const stage of PR_MASTER_TEAM_STAGES) {
     const slot = o[stage.key];
     if (slot == null) {
       base[stage.key] = null;

@@ -16,12 +16,14 @@ import {
 } from '../utils/masterSaveSubmit';
 import {
   emptyStageAssignees,
+  isMasterApprovalDraft,
   normalizeMasterApprovalStatus,
   normalizeStageAssignees,
   readSavedMasterApprovalStatus,
   type MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
+import { normalizePrApprovalTeamPending } from '../lib/prMasterTeamApproval';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import PmMasterTypeahead from '../components/PmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
@@ -779,6 +781,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [skuExcelUploading, setSkuExcelUploading] = useState(false);
   const [skuBomClearing, setSkuBomClearing] = useState(false);
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [submitPreviewBaseline, setSubmitPreviewBaseline] = useState<Record<string, unknown> | null>(null);
   const [revertPreviewOpen, setRevertPreviewOpen] = useState(false);
   const [pendingPrSubmit, setPendingPrSubmit] = useState<
     { mode: 'create' | 'update'; body: Record<string, unknown> } | null
@@ -788,6 +791,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [draftSaving, setDraftSaving] = useState(false);
   const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
     useState<MasterApprovalStageAssignees>(emptyStageAssignees);
+  const [editApprovalTeamPending, setEditApprovalTeamPending] =
+    useState<import('../lib/prMasterTeamApproval').PrApprovalTeamPending | null>(null);
   const { canApproveAtStatus } = useMasterApprovalPermission('PR');
   const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
@@ -821,6 +826,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setErrors({});
     setCurrentStage(0);
     setEditApprovalStageAssignees(emptyStageAssignees());
+    setEditApprovalTeamPending(null);
   }, []);
 
   const handleReset = () => {
@@ -854,11 +860,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const approvalRevertAction = getMasterApprovalRevertAction(formData.masterApprovalStatus);
   const canShowApprovalSubmit =
     approvalSubmitAction != null &&
-    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees, editApprovalTeamPending);
   const canShowApprovalRevert =
     !!effectiveProductId &&
     approvalRevertAction != null &&
-    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees);
+    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees, editApprovalTeamPending);
+  const canShowResetForm = isMasterApprovalDraft(formData.masterApprovalStatus);
   const canAdvancePastPrimary =
     !isNewProduct ||
     Boolean(
@@ -1065,6 +1072,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   useEffect(() => {
     if (!effectiveProductId) {
       setEditApprovalStageAssignees(emptyStageAssignees());
+    setEditApprovalTeamPending(null);
     }
   }, [effectiveProductId]);
 
@@ -1101,6 +1109,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         );
         setFormData(next);
         setEditApprovalStageAssignees(normalizeStageAssignees(d.approval_stage_assignees));
+        setEditApprovalTeamPending(normalizePrApprovalTeamPending(d.approval_team_pending));
       }
     }).catch(() => {
       if (!cancelled) setEditLoading(false);
@@ -1730,9 +1739,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const prPreviewSections = useMemo(
     () =>
       buildMasterPreviewSections(formData as unknown as Record<string, unknown>, PR_PREVIEW_SECTIONS, {
+        baselineFormData: submitPreviewBaseline ?? undefined,
         omitKeys: isNewProduct ? ['skuCode', 'skuForZoho'] : undefined,
       }),
-    [formData, isNewProduct]
+    [formData, isNewProduct, submitPreviewBaseline]
   );
 
   const validatePrForSubmit = (): { mode: 'create' | 'update'; body: Record<string, unknown> } | null => {
@@ -1840,6 +1850,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+        setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
       } else {
         const res = await createPRRegistration(pending.body);
         if (!res.success || !res.data) {
@@ -1855,6 +1866,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           if (detail.success && detail.data) {
             setFormData(productDetailToBomForm(detail.data));
             setEditApprovalStageAssignees(normalizeStageAssignees(detail.data.approval_stage_assignees));
+            setEditApprovalTeamPending(normalizePrApprovalTeamPending(detail.data.approval_team_pending));
           } else {
             setFormData((prev) => ({
               ...prev,
@@ -1888,7 +1900,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         });
         setFormData((prev) => ({ ...prev, masterApprovalStatus: intentStatus }));
         setEditApprovalStageAssignees(normalizeStageAssignees(fresh.data.approval_stage_assignees));
+        setEditApprovalTeamPending(normalizePrApprovalTeamPending(fresh.data.approval_team_pending));
+        setSubmitPreviewBaseline(productDetailToBomForm(fresh.data) as unknown as Record<string, unknown>);
+      } else {
+        setSubmitPreviewBaseline(null);
       }
+    } else {
+      setSubmitPreviewBaseline(null);
     }
 
     if (!getMasterApprovalSubmitAction(intentStatus)) {
@@ -1937,6 +1955,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+        setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
         setSaveSuccessIsEdit(true);
         setSaveSuccessCode(formData.skuCode.trim() || '');
       } else {
@@ -1955,6 +1974,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       const freshAfterSave = recordId ? await fetchPRProductDetail(recordId) : null;
       if (freshAfterSave?.success && freshAfterSave.data) {
         setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees));
+        setEditApprovalTeamPending(normalizePrApprovalTeamPending(freshAfterSave.data.approval_team_pending));
       }
 
       if (recordId) {
@@ -1968,6 +1988,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           freshAfterSave?.success && freshAfterSave.data
             ? normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees)
             : editApprovalStageAssignees;
+        const pendingForAdvance =
+          freshAfterSave?.success && freshAfterSave.data
+            ? normalizePrApprovalTeamPending(freshAfterSave.data.approval_team_pending)
+            : editApprovalTeamPending;
         const intentStatus =
           pendingApprovalIntentStatus ??
           readSavedMasterApprovalStatus({ status: formData.masterApprovalStatus });
@@ -1979,6 +2003,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           assignees: assigneesForAdvance as MasterApprovalStageAssignees,
           canApproveAtStatus,
           comment,
+          approvalTeamPending: pendingForAdvance,
         });
         if (!advancedResult.ok) {
           addToast('error', advancedResult.error);
@@ -1987,6 +2012,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         approvalStatus = advancedResult.status;
         if (advancedResult.advanced) {
           setFormData((prev) => ({ ...prev, masterApprovalStatus: advancedResult.status }));
+          setEditApprovalTeamPending(null);
+        } else if (advancedResult.awaitingOtherTeam) {
+          const pendingRefresh = await fetchPRProductDetail(recordId);
+          if (pendingRefresh?.success && pendingRefresh.data) {
+            setEditApprovalTeamPending(normalizePrApprovalTeamPending(pendingRefresh.data.approval_team_pending));
+          }
+          addToast(
+            'info',
+            'Your team sign-off was recorded. Waiting for the other team (RM or Pack) before status advances.'
+          );
         } else if (getMasterApprovalSubmitAction(intentStatus)) {
           addToast('error', 'Approval status did not change. Please refresh and try again.');
           return;
@@ -2051,10 +2086,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         freshAfterSave?.success && freshAfterSave.data
           ? normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees)
           : editApprovalStageAssignees;
-      if (!canApproveAtStatus(formData.masterApprovalStatus, assigneesForRevert)) {
+      const pendingForRevert =
+        freshAfterSave?.success && freshAfterSave.data
+          ? normalizePrApprovalTeamPending(freshAfterSave.data.approval_team_pending)
+          : editApprovalTeamPending;
+      if (!canApproveAtStatus(formData.masterApprovalStatus, assigneesForRevert, pendingForRevert)) {
         addToast(
           'error',
-          'Only the person assigned to this approval stage can send the form back. Assign them in the list, then try again.'
+          'Only the assigned RM team or Pack team member may send the form back. Assign them in the list, then try again.'
         );
         return;
       }
@@ -2072,6 +2111,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           lifecycle_status: reverted.status,
         });
         setFormData(next);
+        setEditApprovalTeamPending(null);
       } else {
         setFormData((prev) => ({ ...prev, masterApprovalStatus: reverted.status }));
       }
@@ -3559,7 +3599,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData={formData as unknown as Record<string, unknown>}
         onInputChange={() => {}}
         onSave={() => void handleSave()}
-        onReset={handleReset}
+        onReset={canShowResetForm ? handleReset : undefined}
         onRevert={canShowApprovalRevert ? handleRevert : undefined}
         revertLabel={approvalRevertAction?.revertLabel}
         onSubmit={canShowApprovalSubmit ? handleSubmit : undefined}
@@ -3575,6 +3615,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         onClose={() => {
           if (submitConfirming) return;
           setSubmitPreviewOpen(false);
+          setSubmitPreviewBaseline(null);
           setPendingPrSubmit(null);
           setPendingApprovalIntentStatus(null);
         }}
@@ -3583,8 +3624,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           effectiveProductId ? 'Preview — update product (PR)' : 'Preview — new product registration (PR)'
         }
         subtitle={
-          approvalSubmitAction?.previewSubtitle ??
-          'Review all values below. Confirm to save and advance approval status.'
+          effectiveProductId
+            ? `${approvalSubmitAction?.previewSubtitle ?? 'Review all values below.'} Both RM team and Pack team assignees must sign off before status advances.`
+            : approvalSubmitAction?.previewSubtitle ??
+              'Review all values below. Confirm to save and advance approval status.'
         }
         sections={prPreviewSections}
         confirmLabel={approvalSubmitAction?.confirmLabel ?? 'Confirm & submit'}
