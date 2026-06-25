@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import eiLogo from '../assets/logo/eilogofull.svg';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import {
@@ -37,7 +38,7 @@ interface Appt {
 interface Client {
   id: string; name: string; initials: string; color: string;
   seg: string; priority: 'high' | 'medium' | 'low'; am: string; amId: number | null; rev: string;
-  revenueValue: number;
+  revenueValue: number; entityCode: string;
   contacts: string[]; queries: Query[]; devs: Dev[]; orders: Order[]; appts: Appt[];
 }
 
@@ -66,6 +67,7 @@ function apiClientToLocal(c: ClientRecord): Client {
     amId: c.accountManagerId ?? null,
     rev: formatRevenue(c.revenueValue || 0),
     revenueValue: c.revenueValue || 0,
+    entityCode: c.entityCode || '',
     contacts: (c.contacts || []).map(ct => `${ct.name} (${ct.role})`),
     queries: c.queries,
     devs: c.devs,
@@ -997,6 +999,7 @@ const ClientHub = () => {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<ViewMode>('all');
   const [segFilter, setSegFilter] = useState<string | null>(null);
   const [amFilter, setAmFilter] = useState<string | null>(null);
@@ -1022,6 +1025,34 @@ const ClientHub = () => {
   }, []);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  const clientHubDeepLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (clientHubDeepLinkAppliedRef.current || clients.length === 0) return;
+    const openCode = searchParams.get('open')?.trim();
+    const q = searchParams.get('q')?.trim();
+    if (!openCode && !q) return;
+    clientHubDeepLinkAppliedRef.current = true;
+    if (q) setSearch(q);
+    if (openCode) {
+      const match = clients.find(
+        (c) =>
+          c.entityCode.toLowerCase() === openCode.toLowerCase() ||
+          c.id.toLowerCase() === openCode.toLowerCase(),
+      );
+      if (match) {
+        setActiveClient({ client: match, tab: 'overview' });
+      } else if (!q) {
+        setSearch(openCode);
+      }
+    }
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('open');
+      next.delete('q');
+      return next;
+    }, { replace: true });
+  }, [clients, searchParams, setSearchParams]);
 
   const showToast = useCallback((msg: string, type: ToastState['type'] = 'info') => {
     setToast({ msg, type, visible: true });

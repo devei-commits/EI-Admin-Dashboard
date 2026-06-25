@@ -1,14 +1,49 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
 import { useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { SearchInput } from '../components/ui/SearchInput';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import { parsePlanningSlaTimestamp, planningBomConfirmedAtIso } from '../utils/planningSlaDates';
+import {
+  buildPisPlanStatusView,
+  buildPisSlaView,
+  buildProdByPlanningBatchId,
+  formatPisOrdQty,
+  formatPisTableDate,
+  getBatchesForPisOrder,
+  lookupPisClientCode,
+  pisPlanStatusSortValue,
+} from '../lib/pisExtractedTableDisplay';
+import {
+  buildPlanningBatchFulfillmentView,
+  buildPlanningBatchPmStatusView,
+  buildPlanningBatchProductionView,
+  buildPlanningBatchRmStatusView,
+  computePlanningBatchPlannedQty,
+  findPlanningBatchAvailability,
+  formatPlanningBatchCreatedDate,
+  formatPlanningBatchPlannedQty,
+  formatPlanningBatchSizeKg,
+  formatPlanningBatchSoDate,
+  planningBatchMaterialStatusClass,
+  planningBatchProductionStatusClass,
+  sortValueForPlanningBatchTableRow,
+  type PlanningBatchTableSortColumn,
+} from '../lib/planningBatchesTableDisplay';
+import {
+  buildClientHubPath,
+  buildFulfillmentBatchPath,
+  buildMastersPrPathFromBatch,
+  buildOrderHubSoPath,
+  buildProductionBatchDetailPath,
+} from '../lib/planningBatchesNavigation';
+import type { FFStatus } from '../types/orderFulfillment';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
-import { fetchSoPlanningAvailability } from '../services/fulfillment.service';
+import { fetchSoPlanningAvailability, fetchFulfillmentOrders } from '../services/fulfillment.service';
 import {
   fetchPlanningExtractedList,
   fetchPlanningExtractedById,
@@ -60,6 +95,7 @@ import { fetchBatches, syncBatchesFromPlanning, type BatchRow } from '../service
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchVendorClients, type VendorClientRecord } from '../services/vendorClient.service';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
+import { Pagination } from '../components/ui';
 import PlanningItemsInvolvedProductFilter from '../components/planning/PlanningItemsInvolvedProductFilter';
 import { ItemsInvolvedReleaseInventoryPanel } from '../components/planning/ItemsInvolvedReleaseInventoryPanel';
 import {
@@ -67,6 +103,15 @@ import {
   type ReleaseBatchSplitRow,
 } from '../components/planning/ItemsInvolvedReleaseBatchSplit';
 import { ItemsInvolvedReleaseWeekSummary } from '../components/planning/ItemsInvolvedReleaseWeekSummary';
+import { PlanBatchFeasibilityTables } from '../components/planning/PlanBatchFeasibilityTables';
+import { PlanBatchItemsPanelModal } from '../components/planning/PlanBatchItemsPanelModal';
+import { buildBatchItemsPanelRows } from '../lib/planBatchItemsPanelDisplay';
+import {
+  buildActualLeadTimeByMaterialKey,
+  enrichPlanBatchPmRows,
+  enrichPlanBatchRmRows,
+} from '../lib/planBatchMaterialLeadTime';
+import { fetchGRNList } from '../services/grn.service';
 import { buildReleaseBatchSiblingItemRows } from '../lib/releaseBatchSiblingItems';
 import {
   buildPlannedReleaseTargets,
@@ -96,8 +141,6 @@ import {
 } from '../lib/rmUnitConversion';
 import { parseBulkSpecificGravity } from '../lib/skuBomMath';
 import {
-  badgeToneClass,
-  getItemsInvolvedProcurementDisplay,
   itemHasOpenPlanningQuotationPr,
 } from '../lib/itemsInvolvedPipelineDisplay';
 
@@ -279,6 +322,15 @@ interface ItemsInvolvedDisplayRow {
   totalOnPONum: number;
   totalReceivedNum: number;
   batchAllocatedQtyNum: number;
+  /** % of TOTAL REQ covered by free SIH. */
+  sihCovPct: number;
+  /** % of TOTAL REQ covered by planned (release) qty. */
+  plannedCovPct: number;
+  underGrnStr: string;
+  underGrnNum: number;
+  moqStr: string;
+  moqNum: number;
+  slaGapStr: string;
 }
 
 type PlannedLine = {
@@ -860,13 +912,21 @@ type PisOrderSortColumn =
   | 'soDate'
   | 'soNo'
   | 'client'
-  | 'product'
-  | 'unitsOrdered'
+  | 'productCode'
+  | 'productName'
+  | 'ordQty'
   | 'planStatus'
-  | 'batchStatus'
   | 'planningSla';
 
-function sortValueForPisOrder(order: SalesOrder, col: PisOrderSortColumn, nowMs: number = Date.now()): string | number {
+function sortValueForPisOrder(
+  order: SalesOrder,
+  col: PisOrderSortColumn,
+  nowMs: number = Date.now(),
+  pisSortCtx?: {
+    allBatches: PlanningBatchAllRow[];
+    prodByPlanningBatchId: Map<number, BatchRow>;
+  },
+): string | number {
   switch (col) {
     case 'soDate':
       return order.orderDate ? new Date(order.orderDate).getTime() : 0;
@@ -874,14 +934,23 @@ function sortValueForPisOrder(order: SalesOrder, col: PisOrderSortColumn, nowMs:
       return order.soNumber || '';
     case 'client':
       return order.customerName || '';
-    case 'product':
-      return `${order.productName || ''} ${order.productCode || ''}`;
-    case 'unitsOrdered':
+    case 'productCode':
+      return order.productCode || '';
+    case 'productName':
+      return order.productName || '';
+    case 'ordQty':
       return parseUnitCount(order.orderQty);
-    case 'planStatus':
-      return getCreatedAndRemainingUnits(order).createdUnits;
-    case 'batchStatus':
-      return getPisBatchStatusTag(order).text;
+    case 'planStatus': {
+      const batches = pisSortCtx
+        ? getBatchesForPisOrder(order, pisSortCtx.allBatches)
+        : [];
+      const view = buildPisPlanStatusView(
+        order,
+        batches,
+        pisSortCtx?.prodByPlanningBatchId ?? new Map(),
+      );
+      return pisPlanStatusSortValue(view);
+    }
     case 'planningSla':
       return getPlanningSlaMeta(order, getCreatedAndRemainingUnits(order).remainingUnits, nowMs).elapsedHours;
     default:
@@ -890,40 +959,141 @@ function sortValueForPisOrder(order: SalesOrder, col: PisOrderSortColumn, nowMs:
 }
 
 type ItemsInvolvedSortColumn =
-  | 'item'
-  | 'category'
-  | 'linkedBatches'
-  | 'qtyBalance'
-  | 'pipelineStage'
-  | 'procurement';
+  | 'itemCode'
+  | 'itemName'
+  | 'batches'
+  | 'totalReq'
+  | 'sihCov'
+  | 'plannedCov'
+  | 'poQty'
+  | 'inTransit'
+  | 'underGrn'
+  | 'reserved'
+  | 'avgMo'
+  | 'rop'
+  | 'moq'
+  | 'slaGap';
+
+function itemsInvolvedCoveragePct(qty: number, totalRequired: number): number {
+  if (totalRequired <= 0) return 100;
+  return Math.max(0, Math.min(100, Math.round((qty / totalRequired) * 100)));
+}
+
+function findWarehouseRowForItemsInvolved(
+  item: ItemsInvolvedDisplayRow,
+  warehouseRows: WarehouseInventoryRow[]
+): WarehouseInventoryRow | undefined {
+  const sourceId = item.itemType === 'RM' ? item.raw_material_id : item.pack_material_id;
+  return warehouseRows.find(
+    (r) =>
+      r.type === item.itemType &&
+      (Number(r.sourceId) === Number(sourceId) ||
+        (item.code && String(r.code ?? '').trim() === String(item.code).trim()))
+  );
+}
+
+function underGrnQtyForItemsInvolved(
+  item: ItemsInvolvedDisplayRow,
+  wh: WarehouseInventoryRow | undefined,
+  rm: RawMaterialRecord | undefined
+): number {
+  const raw = Number(wh?.underGrn) || 0;
+  if (raw <= 0) return 0;
+  if (item.itemType === 'PM') return raw;
+  const sg = parseSpecificGravity(rm?.specificGravity);
+  return warehouseQtyToKg(raw, wh, rm, sg);
+}
+
+function minMoqFromItemsList(
+  item: ItemsInvolvedDisplayRow,
+  itemsListRmPage: PriceListItemPage[],
+  itemsListPmPage: PriceListItemPage[]
+): number {
+  const rid = Number(item.raw_material_id);
+  const pid = Number(item.pack_material_id);
+  const page = item.itemType === 'PM' ? itemsListPmPage : itemsListRmPage;
+  const codeNorm = normalizeMaterialCode(String(item.code ?? '').trim().toLowerCase());
+  const row =
+    (item.itemType === 'RM' && Number.isFinite(rid) && rid > 0
+      ? page.find((p) => Number(p.raw_material_id) === rid)
+      : null) ??
+    (item.itemType === 'PM' && Number.isFinite(pid) && pid > 0
+      ? page.find((p) => Number(p.pack_material_id) === pid)
+      : null) ??
+    page.find((p) => normalizeMaterialCode(String(p.code ?? '').trim().toLowerCase()) === codeNorm) ??
+    null;
+  const moqs = (row?.vendorRates ?? [])
+    .flatMap((vr) => (vr.tiers ?? []).map((t) => Number(t.moq_min ?? 0) || 0))
+    .filter((m) => m > 0);
+  return moqs.length ? Math.min(...moqs) : 0;
+}
+
+function enrichItemsInvolvedDisplayRows(
+  rows: ItemsInvolvedDisplayRow[],
+  warehouseRows: WarehouseInventoryRow[],
+  rawMaterialsList: RawMaterialRecord[],
+  itemsListRmPage: PriceListItemPage[],
+  itemsListPmPage: PriceListItemPage[]
+): ItemsInvolvedDisplayRow[] {
+  return rows.map((row) => {
+    const wh = findWarehouseRowForItemsInvolved(row, warehouseRows);
+    const rm =
+      row.itemType === 'RM'
+        ? findRmMasterRecord(row.raw_material_id, row.code, rawMaterialsList)
+        : undefined;
+    const underGrnNum = underGrnQtyForItemsInvolved(row, wh, rm);
+    const moqNum = minMoqFromItemsList(row, itemsListRmPage, itemsListPmPage);
+    const slaGapStr = row.shortStr;
+    return {
+      ...row,
+      sihCovPct: itemsInvolvedCoveragePct(row.sihNum, row.totalRequired),
+      plannedCovPct: itemsInvolvedCoveragePct(row.plannedQtyNum, row.totalRequired),
+      underGrnNum,
+      underGrnStr: formatItemsInvolvedQtyWithUnit(underGrnNum, row.itemType, row.unit),
+      moqNum,
+      moqStr:
+        moqNum > 0 ? formatItemsInvolvedQtyWithUnit(moqNum, row.itemType, row.unit) : '—',
+      slaGapStr,
+    };
+  });
+}
 
 function sortValueForItemsInvolvedRow(row: ItemsInvolvedDisplayRow, col: ItemsInvolvedSortColumn): string | number {
   switch (col) {
-    case 'item':
-      return `${row.name} ${row.code}`;
-    case 'category':
-      return row.itemType;
-    case 'linkedBatches':
+    case 'itemCode':
+      return row.code;
+    case 'itemName':
+      return row.name;
+    case 'batches':
       return row.batchCount || Number.parseInt(row.usedIn, 10) || 0;
-    case 'qtyBalance':
-      return row.netNum;
-    case 'pipelineStage': {
-      const pct = Number.parseInt(String(row.coverage).replace('%', ''), 10);
-      return Number.isFinite(pct) ? pct : 0;
-    }
-    case 'procurement':
-      return row.totalOnPONum + row.plannedQtyNum;
+    case 'totalReq':
+      return row.totalRequired;
+    case 'sihCov':
+      return row.sihNum;
+    case 'plannedCov':
+      return row.plannedQtyNum;
+    case 'poQty':
+      return row.poQtyNum;
+    case 'inTransit':
+      return row.inTransitQtyNum;
+    case 'underGrn':
+      return row.underGrnNum;
+    case 'reserved':
+      return row.reservedNum;
+    case 'avgMo':
+      return parseKgCount(row.avgMo);
+    case 'rop':
+      return parseKgCount(row.reorderPt);
+    case 'moq':
+      return row.moqNum;
+    case 'slaGap':
+      return row.netNum < 0 ? Math.abs(row.netNum) : 0;
     default:
       return '';
   }
 }
 
-type PlanningBatchSortColumn =
-  | 'batchProduct'
-  | 'customer'
-  | 'batchSpecs'
-  | 'timeline'
-  | 'relatedSo';
+type PlanningBatchSortColumn = PlanningBatchTableSortColumn;
 
 /** After removing batch at `removedIndex`, shift sent_batch_indices down for later rows. */
 function remapSentBatchIndicesAfterRemove(sentIndices: number[], removedIndex: number): number[] {
@@ -933,23 +1103,6 @@ function remapSentBatchIndicesAfterRemove(sentIndices: number[], removedIndex: n
       .filter((idx) => idx !== removedIndex)
       .map((idx) => (idx > removedIndex ? idx - 1 : idx))
   )].sort((a, b) => a - b);
-}
-
-function sortValueForPlanningBatchRow(row: PlanningBatchAllRow, col: PlanningBatchSortColumn): string | number {
-  switch (col) {
-    case 'batchProduct':
-      return row.batchCode || '';
-    case 'customer':
-      return row.customerName || '';
-    case 'batchSpecs':
-      return Number(row.sizeKg) || 0;
-    case 'timeline':
-      return row.dueDate ? new Date(row.dueDate).getTime() : Number.POSITIVE_INFINITY;
-    case 'relatedSo':
-      return row.soNumber || '';
-    default:
-      return '';
-  }
 }
 
 function parseUnitCount(value: string | number | null | undefined): number {
@@ -1064,6 +1217,13 @@ function mapItemsInvolvedApiRowsToDisplay(rows: ItemsInvolvedRow[]): ItemsInvolv
       totalOnPONum: Number(row.totalOnPO ?? 0) || 0,
       totalReceivedNum: Number(row.totalReceived ?? 0) || 0,
       batchAllocatedQtyNum: Number(row.batchAllocatedQty ?? 0) || 0,
+      sihCovPct: itemsInvolvedCoveragePct(row.sih, grossDemand),
+      plannedCovPct: itemsInvolvedCoveragePct(plannedQtyNum, grossDemand),
+      underGrnStr: fmtU(0),
+      underGrnNum: 0,
+      moqStr: '—',
+      moqNum: 0,
+      slaGapStr: fmtU(shortQty),
     };
   });
 }
@@ -1463,6 +1623,22 @@ function pisAvailabilityRowClass(tier: PisAvailabilityTier): string {
   }
 }
 
+const PIS_TABLE_LINK_CLASS =
+  'text-left text-indigo-700 hover:text-indigo-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded';
+
+function buildFulfillmentSoPath(soNumber: string): string {
+  const so = String(soNumber || '').trim();
+  return so ? `/fulfillment?so=${encodeURIComponent(so)}` : '/fulfillment';
+}
+
+function buildMastersPrPath(order: Pick<SalesOrder, 'productId' | 'productCode'>): string {
+  if (order.productId != null && Number(order.productId) > 0) {
+    return `/bom?productId=${order.productId}`;
+  }
+  const code = String(order.productCode || '').trim();
+  return code ? `/bom?pr=${encodeURIComponent(code)}` : '/bom';
+}
+
 /** Map API row to SalesOrder shape for Plan Batches / Raise PR modals */
 function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
   return {
@@ -1630,17 +1806,70 @@ function ItemsReleasedSplitBadges({
   );
 }
 
-/** One row on /planning/batches: Edit opens BOM editor; inline size (kg) when editable; row click opens detail. */
+const BATCH_TABLE_LINK_CLASS =
+  'text-left text-indigo-700 hover:text-indigo-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer';
+
+function BatchTableLinkButton({
+  children,
+  onClick,
+  className = '',
+  title,
+}: {
+  children: ReactNode;
+  onClick: (e: React.MouseEvent) => void;
+  className?: string;
+  title?: string;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      data-batch-link="true"
+      title={title}
+      onClick={onClick}
+      className={`${BATCH_TABLE_LINK_CLASS} ${className}`.trim()}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** One row on /planning/batches — column layout matches planning batches spec. */
 function PlanningBatchTableRow({
   row,
+  clientCode,
+  prod,
   onOpenDetail,
   onEditBatch,
-  releaseSplit,
+  onOpenRmPanel,
+  onOpenPmPanel,
+  onNavigateToSo,
+  onNavigateToClient,
+  onNavigateToProduct,
+  onNavigateToProduction,
+  onNavigateToFulfillment,
+  plannedQty,
+  rmStatus,
+  pmStatus,
+  production,
+  fulfillment,
 }: {
   row: PlanningBatchAllRow;
+  clientCode: string;
+  prod?: BatchRow;
   onOpenDetail: (row: PlanningBatchAllRow) => void;
   onEditBatch: (row: PlanningBatchAllRow) => void;
-  releaseSplit?: { rm: ItemsReleasedSplit; pm: ItemsReleasedSplit };
+  onOpenRmPanel: (row: PlanningBatchAllRow) => void;
+  onOpenPmPanel: (row: PlanningBatchAllRow) => void;
+  onNavigateToSo: (soNumber: string) => void;
+  onNavigateToClient: (row: PlanningBatchAllRow, clientCode: string) => void;
+  onNavigateToProduct: (row: PlanningBatchAllRow) => void;
+  onNavigateToProduction: (row: PlanningBatchAllRow, prod?: BatchRow) => void;
+  onNavigateToFulfillment: (row: PlanningBatchAllRow, prod?: BatchRow) => void;
+  plannedQty: number;
+  rmStatus: ReturnType<typeof buildPlanningBatchRmStatusView>;
+  pmStatus: ReturnType<typeof buildPlanningBatchPmStatusView>;
+  production: ReturnType<typeof buildPlanningBatchProductionView>;
+  fulfillment: ReturnType<typeof buildPlanningBatchFulfillmentView>;
 }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
@@ -1653,7 +1882,7 @@ function PlanningBatchTableRow({
 
   const batchEditable = row.editable !== false;
 
-  const handleSave = async (e: React.MouseEvent) => {
+  const handleSaveSize = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!batchEditable) {
       addToast('error', 'Batch is confirmed by Production and cannot be edited.');
@@ -1684,76 +1913,115 @@ function PlanningBatchTableRow({
   };
 
   const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
-    if ((e.target as HTMLElement).closest('input,button,textarea,select')) return;
+    if ((e.target as HTMLElement).closest('input,button,textarea,select,a,[data-batch-link="true"]')) return;
     onOpenDetail(row);
   };
 
-  const totalBatchItems =
-    (Array.isArray(row.rmLines) ? row.rmLines.length : 0) + (Array.isArray(row.pmLines) ? row.pmLines.length : 0);
+  const soNumber = String(row.soNumber ?? '').trim();
+  const batchLabel = row.batchCode?.trim() ? row.batchCode : '—';
+  const productionPath = buildProductionBatchDetailPath(prod);
+  const fulfillmentPath = buildFulfillmentBatchPath({ soNumber, bmrNo: prod?.bmrNo });
+  const canNavigateProduction = Boolean(productionPath);
+  const canNavigateFulfillment = Boolean(fulfillmentPath);
 
   return (
     <tr
       onClick={handleRowClick}
-      className="border-b border-gray-100 hover:bg-emerald-50/80 cursor-pointer transition-colors"
+      className="border-b border-gray-100 hover:bg-emerald-50/80 cursor-pointer transition-colors text-xs"
     >
-      <td className="px-4 py-3 text-sm">
-        <div className="font-mono font-semibold text-gray-900">{row.batchCode?.trim() ? row.batchCode : '—'}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{row.productName ?? row.productCode ?? '—'}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
+      <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+        {formatPlanningBatchCreatedDate(row.createdAt)}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {batchLabel === '—' ? (
+          '—'
+        ) : (
+          <BatchTableLinkButton
             onClick={(e) => {
               e.stopPropagation();
               onEditBatch(row);
             }}
-            title={
-              batchEditable
-                ? 'Edit BOM, size, units, and swap until Production confirms this batch'
-                : 'View only — Production has confirmed this batch'
-            }
-            className={`text-[11px] font-semibold underline ${
-              batchEditable
-                ? 'text-emerald-700 hover:text-emerald-800'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
+            className="font-mono font-semibold text-xs"
+            title="Edit batch"
           >
-            {batchEditable ? 'Edit batch' : 'View BOM'}
-          </button>
-          <button
-            type="button"
+            {batchLabel}
+          </BatchTableLinkButton>
+        )}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {soNumber ? (
+          <BatchTableLinkButton
             onClick={(e) => {
               e.stopPropagation();
-              onOpenDetail(row);
+              onNavigateToSo(soNumber);
             }}
-            className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-800 underline"
+            className="font-mono text-xs"
+            title="Open Order Hub"
           >
-            View items ({totalBatchItems}) →
-          </button>
-        </div>
-        {!batchEditable && row.productionBmrStatus ? (
-          <p className="text-[10px] text-rose-700 mt-1 font-medium">
-            Locked · Production {row.productionBmrStatus.replace(/_/g, ' ')}
-          </p>
-        ) : null}
-        {releaseSplit ? (
-          <ItemsReleasedSplitBadges split={releaseSplit} className="mt-1.5" />
-        ) : null}
+            {soNumber}
+          </BatchTableLinkButton>
+        ) : (
+          '—'
+        )}
       </td>
-      <td className="px-4 py-3 text-gray-700">{row.customerName ?? '—'}</td>
-      <td className="px-4 py-3 text-xs">
-        <span className="inline-flex px-2 py-0.5 rounded bg-slate-50 text-slate-700 border border-slate-200">
-          SO {row.soNumber ?? '—'}
-        </span>
+      <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+        {formatPlanningBatchSoDate(row.orderDate)}
       </td>
-      <td className="px-4 py-3 text-xs text-gray-600">
-        <div className="font-medium text-gray-800">Due {row.dueDate ?? '—'}</div>
-        <div className="text-gray-500 mt-0.5">
-          {row.sent ? 'Sent to Production' : 'Not sent'} · BOM {row.bomStatus ?? 'Planned'}
-        </div>
+      <td className="px-3 py-2.5 text-gray-800 min-w-[120px]">
+        {row.customerName ? (
+          <BatchTableLinkButton
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToClient(row, clientCode);
+            }}
+            title="Open Client Hub"
+          >
+            <span className="font-medium block text-left">{row.customerName}</span>
+            {clientCode ? (
+              <span className="text-[10px] text-indigo-600/80 font-mono block text-left">{clientCode}</span>
+            ) : null}
+          </BatchTableLinkButton>
+        ) : (
+          '—'
+        )}
       </td>
-      <td className="px-4 py-3 text-xs" onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <label className="sr-only" htmlFor={`batch-size-${row.id}`}>Size (kg)</label>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {row.productCode ? (
+          <BatchTableLinkButton
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToProduct(row);
+            }}
+            className="font-mono text-[11px]"
+            title="Open Masters → PR"
+          >
+            {row.productCode}
+          </BatchTableLinkButton>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-gray-900 min-w-[120px]">
+        {row.productName ? (
+          <BatchTableLinkButton
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToProduct(row);
+            }}
+            title="Open Masters → PR"
+          >
+            <span className="font-medium text-left">{row.productName}</span>
+          </BatchTableLinkButton>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-900 whitespace-nowrap">
+        {formatPlanningBatchPlannedQty(plannedQty)}
+      </td>
+      <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1.5">
+          <label className="sr-only" htmlFor={`batch-size-${row.id}`}>Batch size kg</label>
           <input
             id={`batch-size-${row.id}`}
             type="number"
@@ -1762,19 +2030,106 @@ function PlanningBatchTableRow({
             value={sizeKgStr}
             onChange={(e) => setSizeKgStr(e.target.value)}
             disabled={!batchEditable}
-            className="w-20 border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
-            aria-label="Size kg"
+            className="w-[72px] border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
+            aria-label="Batch size kg"
           />
-          <span className="text-gray-500 font-medium">KG</span>
+          <span className="text-gray-500">kg</span>
           <button
             type="button"
-            onClick={handleSave}
+            onClick={handleSaveSize}
             disabled={saving || !batchEditable}
-            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="px-2 py-1 text-[10px] font-semibold rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             {saving ? '…' : 'Save'}
           </button>
         </div>
+        {!batchEditable ? (
+          <div className="text-[10px] text-gray-500 mt-0.5">{formatPlanningBatchSizeKg(row.sizeKg)}</div>
+        ) : null}
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        <BatchTableLinkButton
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenRmPanel(row);
+          }}
+          className="w-full text-right text-[11px]"
+          title="Open RM items panel"
+        >
+          <span className={planningBatchMaterialStatusClass(rmStatus.tone)}>{rmStatus.label}</span>
+          {rmStatus.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{rmStatus.sub}</span> : null}
+        </BatchTableLinkButton>
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        <BatchTableLinkButton
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenPmPanel(row);
+          }}
+          className="w-full text-right text-[11px]"
+          title="Open PM items panel"
+        >
+          <span className={planningBatchMaterialStatusClass(pmStatus.tone)}>{pmStatus.label}</span>
+          {pmStatus.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{pmStatus.sub}</span> : null}
+        </BatchTableLinkButton>
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        {canNavigateProduction ? (
+          <BatchTableLinkButton
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToProduction(row, prod);
+            }}
+            className="w-full text-right text-[11px]"
+            title="Open Production batch detail"
+          >
+            <span className={planningBatchProductionStatusClass(production.tone)}>{production.label}</span>
+            {production.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{production.sub}</span> : null}
+          </BatchTableLinkButton>
+        ) : (
+          <>
+            <div className={`text-[11px] ${planningBatchProductionStatusClass(production.tone)}`}>{production.label}</div>
+            {production.sub ? <div className="text-[10px] text-gray-500 mt-0.5">{production.sub}</div> : null}
+          </>
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        {canNavigateFulfillment ? (
+          <BatchTableLinkButton
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToFulfillment(row, prod);
+            }}
+            className="w-full text-right text-[11px]"
+            title="Open Fulfillment batch"
+          >
+            <span className={planningBatchMaterialStatusClass(fulfillment.tone)}>{fulfillment.label}</span>
+            {fulfillment.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{fulfillment.sub}</span> : null}
+          </BatchTableLinkButton>
+        ) : (
+          <>
+            <div className={`text-[11px] ${planningBatchMaterialStatusClass(fulfillment.tone)}`}>{fulfillment.label}</div>
+            {fulfillment.sub ? <div className="text-[10px] text-gray-500 mt-0.5">{fulfillment.sub}</div> : null}
+          </>
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => onEditBatch(row)}
+          title={
+            batchEditable
+              ? 'Edit BOM, size, units, and swap until Production confirms this batch'
+              : 'View only — Production has confirmed this batch'
+          }
+          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+            batchEditable
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          {batchEditable ? 'Edit' : 'View'}
+        </button>
       </td>
     </tr>
   );
@@ -1784,33 +2139,66 @@ function PlanningBatchTableRow({
 function PlanningBatchesTab({
   onBatchClick,
   onEditBatch,
+  onOpenRmPanel,
+  onOpenPmPanel,
   dateFilter,
   itemsInvolvedAll,
   procurementRequests,
   plannedLinesFromBackend,
   rawMaterialsList,
   packMaterialsList,
+  pisClientRecords,
 }: {
   onBatchClick: (row: PlanningBatchAllRow) => void;
   onEditBatch: (row: PlanningBatchAllRow) => void;
+  onOpenRmPanel: (row: PlanningBatchAllRow) => void;
+  onOpenPmPanel: (row: PlanningBatchAllRow) => void;
   dateFilter: { from: string; to: string };
   itemsInvolvedAll: ItemsInvolvedDisplayRow[];
   procurementRequests: ProcurementRequest[];
   plannedLinesFromBackend: PlannedLine[];
   rawMaterialsList: RawMaterialRecord[];
   packMaterialsList: { id: string; code?: string; description?: string }[];
+  pisClientRecords: VendorClientRecord[];
 }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
-  const [sortColumn, setSortColumn] = useState<PlanningBatchSortColumn | null>('timeline');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [sortColumn, setSortColumn] = useState<PlanningBatchSortColumn | null>('created');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { data: allBatches = [], isLoading } = useQuery({
     queryKey: ['planning-batches-all'],
     queryFn: fetchAllBatches,
     enabled: true,
   });
+  const { data: productionBatches = [] } = useQuery({
+    queryKey: ['production-batches', 'planning-batches-tab'],
+    queryFn: fetchBatches,
+  });
+  const { data: fulfillmentOrders = [] } = useQuery({
+    queryKey: ['fulfillment-orders', 'planning-batches-tab'],
+    queryFn: fetchFulfillmentOrders,
+  });
+
+  const prodByPlanningBatchId = useMemo(
+    () => buildProdByPlanningBatchId(productionBatches as BatchRow[]),
+    [productionBatches],
+  );
+
+  const ffStatusByProductionBatchId = useMemo(() => {
+    const map = new Map<number, FFStatus>();
+    for (const so of fulfillmentOrders) {
+      for (const item of so.items ?? []) {
+        for (const split of item.batchSplits ?? []) {
+          if (split.productionBatchId != null) {
+            map.set(Number(split.productionBatchId), split.ffStatus);
+          }
+        }
+      }
+    }
+    return map;
+  }, [fulfillmentOrders]);
 
   const batchesSearchAppliedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1831,15 +2219,13 @@ function PlanningBatchesTab({
     setSortDirection('asc');
   };
 
-  // Show all sent batches, and always include rework batches so production-raised rework
-  // appears in Planning even if sent flag comes late/out-of-sync.
   const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => {
     const code = String(row.batchCode ?? '').toLowerCase();
     const isRework = code.includes('-rw-');
     return row.sent === true || isRework;
   });
   const dateFilteredRows = rows.filter((row) =>
-    matchesDateRangeFilter(row.dueDate, dateFilter.from, dateFilter.to)
+    matchesDateRangeFilter(row.orderDate || row.createdAt || row.dueDate, dateFilter.from, dateFilter.to),
   );
   const searchedRows = dateFilteredRows.filter((row) => {
     const q = searchTerm.trim().toLowerCase();
@@ -1849,7 +2235,9 @@ function PlanningBatchesTab({
       row.soNumber,
       row.customerName,
       row.productName,
-      row.dueDate,
+      row.productCode,
+      row.orderDate,
+      row.createdAt,
     ]
       .map((v) => String(v ?? '').toLowerCase())
       .join(' ');
@@ -1865,24 +2253,32 @@ function PlanningBatchesTab({
     if (batchTypeFilter === 'on-hold') return st === 'On Hold';
     return true;
   });
-  const sortedRows = !sortColumn
-    ? filteredRows
-    : [...filteredRows].sort((a, b) => {
-        const cmp = compareSortValues(
-          sortValueForPlanningBatchRow(a, sortColumn),
-          sortValueForPlanningBatchRow(b, sortColumn),
-          sortDirection
-        );
-        if (cmp !== 0) return cmp;
-        return `${a.planningExtractedId}-${a.id}`.localeCompare(`${b.planningExtractedId}-${b.id}`, undefined, {
-          numeric: true,
-          sensitivity: 'base',
-        });
-      });
+
+  const uniqueSoNos = useMemo(
+    () => [...new Set(filteredRows.map((row) => String(row.soNumber ?? '').trim()).filter(Boolean))],
+    [filteredRows],
+  );
+
+  const availabilityQueries = useQueries({
+    queries: uniqueSoNos.map((soNo) => ({
+      queryKey: ['so-planning-availability', soNo, 'planning-batches-tab'],
+      queryFn: () => fetchSoPlanningAvailability(soNo),
+      staleTime: 60_000,
+    })),
+  });
+
+  const availabilityBySoNo = useMemo(() => {
+    const map = new Map<string, SoPlanningAvailabilityResponse>();
+    uniqueSoNos.forEach((soNo, index) => {
+      const data = availabilityQueries[index]?.data;
+      if (data) map.set(soNo.trim().toUpperCase(), data);
+    });
+    return map;
+  }, [uniqueSoNos, availabilityQueries]);
 
   const releaseSplitByBatchKey = useMemo(() => {
     const map = new Map<string, { rm: ItemsReleasedSplit; pm: ItemsReleasedSplit }>();
-    for (const row of sortedRows) {
+    for (const row of filteredRows) {
       const peId = Number(row.planningExtractedId);
       const peItems = itemsInvolvedRowsForPlanningExtracted(itemsInvolvedAll, peId);
       const lines = batchMaterialLineRefsFromRow(row, rawMaterialsList, packMaterialsList);
@@ -1893,19 +2289,84 @@ function PlanningBatchesTab({
           peItems,
           procurementRequests,
           plannedLinesFromBackend,
-          rawMaterialsList
-        )
+          rawMaterialsList,
+        ),
       );
     }
     return map;
   }, [
-    sortedRows,
+    filteredRows,
     itemsInvolvedAll,
     procurementRequests,
     plannedLinesFromBackend,
     rawMaterialsList,
     packMaterialsList,
   ]);
+
+  const rowDisplayByKey = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        plannedQty: number;
+        prod?: BatchRow;
+        rmStatus: ReturnType<typeof buildPlanningBatchRmStatusView>;
+        pmStatus: ReturnType<typeof buildPlanningBatchPmStatusView>;
+        production: ReturnType<typeof buildPlanningBatchProductionView>;
+        fulfillment: ReturnType<typeof buildPlanningBatchFulfillmentView>;
+      }
+    >();
+    for (const row of filteredRows) {
+      const key = `${row.planningExtractedId}-${row.id}`;
+      const prod = prodByPlanningBatchId.get(row.id);
+      const availability = availabilityBySoNo.get(String(row.soNumber ?? '').trim().toUpperCase());
+      const batchAvail = findPlanningBatchAvailability(availability, row);
+      const releaseSplit = releaseSplitByBatchKey.get(key);
+      const plannedQty = computePlanningBatchPlannedQty(row);
+      const rmStatus = buildPlanningBatchRmStatusView(batchAvail, releaseSplit?.rm);
+      const pmStatus = buildPlanningBatchPmStatusView(batchAvail, releaseSplit?.pm);
+      const production = buildPlanningBatchProductionView(row, prod);
+      const fulfillment = buildPlanningBatchFulfillmentView(
+        prod,
+        prod?._pk != null ? ffStatusByProductionBatchId.get(Number(prod._pk)) : undefined,
+      );
+      map.set(key, { plannedQty, prod, rmStatus, pmStatus, production, fulfillment });
+    }
+    return map;
+  }, [
+    filteredRows,
+    prodByPlanningBatchId,
+    availabilityBySoNo,
+    releaseSplitByBatchKey,
+    ffStatusByProductionBatchId,
+  ]);
+
+  const sortedRows = !sortColumn
+    ? filteredRows
+    : [...filteredRows].sort((a, b) => {
+        const keyA = `${a.planningExtractedId}-${a.id}`;
+        const keyB = `${b.planningExtractedId}-${b.id}`;
+        const ctxA = rowDisplayByKey.get(keyA);
+        const ctxB = rowDisplayByKey.get(keyB);
+        const cmp = compareSortValues(
+          sortValueForPlanningBatchTableRow(a, sortColumn, {
+            plannedQty: ctxA?.plannedQty ?? 0,
+            rmStatus: ctxA?.rmStatus ?? { label: '', sub: null, tone: 'neutral' },
+            pmStatus: ctxA?.pmStatus ?? { label: '', sub: null, tone: 'neutral' },
+            production: ctxA?.production ?? { label: '', sub: null, tone: 'neutral' },
+            fulfillment: ctxA?.fulfillment ?? { label: '', sub: null, tone: 'neutral' },
+          }),
+          sortValueForPlanningBatchTableRow(b, sortColumn, {
+            plannedQty: ctxB?.plannedQty ?? 0,
+            rmStatus: ctxB?.rmStatus ?? { label: '', sub: null, tone: 'neutral' },
+            pmStatus: ctxB?.pmStatus ?? { label: '', sub: null, tone: 'neutral' },
+            production: ctxB?.production ?? { label: '', sub: null, tone: 'neutral' },
+            fulfillment: ctxB?.fulfillment ?? { label: '', sub: null, tone: 'neutral' },
+          }),
+          sortDirection,
+        );
+        if (cmp !== 0) return cmp;
+        return keyA.localeCompare(keyB, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
   if (isLoading) {
     return (
@@ -1918,21 +2379,16 @@ function PlanningBatchesTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Use <strong>Edit batch</strong> to change BOM, size, units, and swaps for any batch until Production confirms it
-        (sent to Production is fine — only Production confirmation locks edits). Quick-edit size (kg) inline when editable.
-        Click a row to view items, stock, and raise PR for shortfalls.
+        Sent planning batches — click column headers to sort. Use links to jump to Order Hub, Client Hub, Masters, Production, or Fulfillment.
+        Row click opens all batch items; RM/PM status opens the filtered items panel.
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search batch, SO, customer, product..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
-          />
-        </div>
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search batch, SO, client, product…"
+          widthClass="min-w-[240px] flex-1"
+        />
         <select
           value={batchTypeFilter}
           onChange={(e) => setBatchTypeFilter(e.target.value as typeof batchTypeFilter)}
@@ -1948,57 +2404,65 @@ function PlanningBatchesTab({
       </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[900px]">
+          <table className="w-full text-sm min-w-[1440px]">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <SortableTableTh
-                  label="Batch / Product"
-                  column="batchProduct"
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleBatchSort}
-                />
-                <SortableTableTh
-                  label="Customer"
-                  column="customer"
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleBatchSort}
-                />
-                <SortableTableTh
-                  label="Batch Specs"
-                  column="relatedSo"
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleBatchSort}
-                />
-                <SortableTableTh
-                  label="Timeline"
-                  column="timeline"
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleBatchSort}
-                />
-                <SortableTableTh
-                  label="Size (kg)"
-                  column="batchSpecs"
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSort={toggleBatchSort}
-                  align="right"
-                />
+              <tr className="bg-gray-50 border-b border-gray-200 text-[11px]">
+                <SortableTableTh label="Created" column="created" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <SortableTableTh label="Batch #" column="batchNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <SortableTableTh label="SO #" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <SortableTableTh label="SO Date" column="soDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <SortableTableTh label="Client" column="client" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <SortableTableTh label="Product Code" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Product Name</th>
+                <SortableTableTh label="Planned Qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <SortableTableTh label="Batch Size" column="batchSize" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <SortableTableTh label="RM Status" column="rmStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <SortableTableTh label="PM Status" column="pmStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <SortableTableTh label="Production Status" column="production" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <SortableTableTh label="Fulfillment Status" column="fulfillment" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
+                <th className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((row) => (
-                <PlanningBatchTableRow
-                  key={`${row.planningExtractedId}-${row.id}`}
-                  row={row}
-                  onOpenDetail={onBatchClick}
-                  onEditBatch={onEditBatch}
-                  releaseSplit={releaseSplitByBatchKey.get(`${row.planningExtractedId}-${row.id}`)}
-                />
-              ))}
+              {sortedRows.map((row) => {
+                const key = `${row.planningExtractedId}-${row.id}`;
+                const display = rowDisplayByKey.get(key);
+                const clientCode = lookupPisClientCode(row.customerName, pisClientRecords);
+                const prod = display?.prod;
+                return (
+                  <PlanningBatchTableRow
+                    key={key}
+                    row={row}
+                    clientCode={clientCode}
+                    prod={prod}
+                    onOpenDetail={onBatchClick}
+                    onEditBatch={onEditBatch}
+                    onOpenRmPanel={onOpenRmPanel}
+                    onOpenPmPanel={onOpenPmPanel}
+                    onNavigateToSo={(soNumber) => navigate(buildOrderHubSoPath(soNumber))}
+                    onNavigateToClient={(batchRow, code) =>
+                      navigate(buildClientHubPath({ customerName: batchRow.customerName, clientCode: code }))
+                    }
+                    onNavigateToProduct={(batchRow) => navigate(buildMastersPrPathFromBatch(batchRow))}
+                    onNavigateToProduction={(_batchRow, productionBatch) => {
+                      const path = buildProductionBatchDetailPath(productionBatch);
+                      if (path) navigate(path);
+                    }}
+                    onNavigateToFulfillment={(batchRow, productionBatch) => {
+                      const path = buildFulfillmentBatchPath({
+                        soNumber: batchRow.soNumber,
+                        bmrNo: productionBatch?.bmrNo,
+                      });
+                      if (path) navigate(path);
+                    }}
+                    plannedQty={display?.plannedQty ?? computePlanningBatchPlannedQty(row)}
+                    rmStatus={display?.rmStatus ?? buildPlanningBatchRmStatusView(null)}
+                    pmStatus={display?.pmStatus ?? buildPlanningBatchPmStatusView(null)}
+                    production={display?.production ?? buildPlanningBatchProductionView(row, prod)}
+                    fulfillment={display?.fulfillment ?? buildPlanningBatchFulfillmentView(prod, undefined)}
+                  />
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -2089,6 +2553,8 @@ const Planning = () => {
   const [itemsInvolvedSearchTerm, setItemsInvolvedSearchTerm] = useState('');
   const [itemsInvolvedSortColumn, setItemsInvolvedSortColumn] = useState<ItemsInvolvedSortColumn | null>(null);
   const [itemsInvolvedSortDirection, setItemsInvolvedSortDirection] = useState<SortDirection>('asc');
+  const [itemsInvolvedPage, setItemsInvolvedPage] = useState(1);
+  const [itemsInvolvedPageSize, setItemsInvolvedPageSize] = useState(25);
   /** Re-render PIs Extracted SLA column every minute while tab is open. */
   const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
@@ -2125,6 +2591,7 @@ const Planning = () => {
   /** `release` = Add Planned Line / vendor release (updates Items Involved). `quotation` = Procurement quote ask only. */
   const [releaseModalIntent, setReleaseModalIntent] = useState<'release' | 'quotation'>('release');
   const [batchForDetailModal, setBatchForDetailModal] = useState<PlanningBatchAllRow | null>(null);
+  const [batchDetailMaterialFilter, setBatchDetailMaterialFilter] = useState<'RM' | 'PM' | 'ALL'>('ALL');
   /** Raise PR confirmation popup from batch detail: { batch, row } so user can confirm and edit before sending. */
   const [batchPrModal, setBatchPrModal] = useState<{ batch: PlanningBatchAllRow; row: BatchDetailRowForPr } | null>(null);
   const [batchPrQty, setBatchPrQty] = useState(0);
@@ -2158,7 +2625,8 @@ const Planning = () => {
       activeMainTab === 'items-involved' ||
       activeMainTab === 'batches' ||
       releaseToPlanningItem != null ||
-      batchForDetailModal != null,
+      batchForDetailModal != null ||
+      planBatchesModalOpen,
   });
 
   // Used for MFG Records column in "PIs Extracted" list.
@@ -2167,6 +2635,10 @@ const Planning = () => {
     queryFn: fetchBatches,
     enabled: activeMainTab === 'pis-extracted',
   });
+  const prodByPlanningBatchId = useMemo(
+    () => buildProdByPlanningBatchId(productionBatches as BatchRow[]),
+    [productionBatches],
+  );
   const pisRows: SalesOrder[] = useMemo(
     () => planningExtractedList.map(apiRowToSalesOrder),
     [planningExtractedList]
@@ -2231,7 +2703,12 @@ const Planning = () => {
   const { data: rawMaterialsData } = useQuery({
     queryKey: ['raw-materials-list'],
     queryFn: () => fetchRawMaterialsList(),
-    enabled: planBatchesModalOpen || prModalOpen || detailModalOpen || batchForDetailModal != null,
+    enabled:
+      planBatchesModalOpen ||
+      prModalOpen ||
+      detailModalOpen ||
+      batchForDetailModal != null ||
+      activeMainTab === 'items-involved',
   });
   const { data: packMaterialsData } = useQuery({
     queryKey: ['pack-materials-list'],
@@ -2255,6 +2732,16 @@ const Planning = () => {
     [vendorClientsData],
   );
 
+  const { data: pisClientRecords = [] } = useQuery({
+    queryKey: ['vendor-clients', 'client', 'pis-extracted', 'planning-batches'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('client');
+      return res.success && res.data ? res.data : [];
+    },
+    enabled: activeMainTab === 'pis-extracted' || activeMainTab === 'batches',
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: productsList = [] } = useQuery({
     queryKey: ['products-list'],
     queryFn: async () => {
@@ -2277,7 +2764,12 @@ const Planning = () => {
       const r = await fetchWarehouseInventory();
       return r.data ?? null;
     },
-    enabled: planBatchesModalOpen || prModalOpen || detailModalOpen || batchForDetailModal != null,
+    enabled:
+      planBatchesModalOpen ||
+      prModalOpen ||
+      detailModalOpen ||
+      batchForDetailModal != null ||
+      activeMainTab === 'items-involved',
   });
   const warehouseRows = useMemo(() => warehouseResult?.rows ?? [], [warehouseResult?.rows]);
 
@@ -3781,7 +4273,7 @@ const Planning = () => {
   const { data: allPlanningBatches = [] } = useQuery({
     queryKey: ['planning', 'batches', 'all', 'items-involved'],
     queryFn: fetchAllBatches,
-    enabled: activeMainTab === 'items-involved',
+    enabled: activeMainTab === 'items-involved' || activeMainTab === 'pis-extracted',
   });
   // Items List (vendor rates) is the single source of truth for quotations and PO planned stage.
   const { data: itemsListRmPage = [] } = useQuery({
@@ -3790,7 +4282,7 @@ const Planning = () => {
       const res = await fetchPriceListPage('RM');
       return res.success ? (res.data ?? []) : [];
     },
-    enabled: activeMainTab === 'items-involved',
+    enabled: activeMainTab === 'items-involved' || planBatchesModalOpen,
   });
   const { data: itemsListPmPage = [] } = useQuery({
     queryKey: ['items-list-page', 'PM', 'planning-items-involved'],
@@ -3798,8 +4290,44 @@ const Planning = () => {
       const res = await fetchPriceListPage('PM');
       return res.success ? (res.data ?? []) : [];
     },
-    enabled: activeMainTab === 'items-involved',
+    enabled: activeMainTab === 'items-involved' || planBatchesModalOpen,
   });
+
+  const { data: grnListForPlanBatches = [] } = useQuery({
+    queryKey: ['grn-list', 'plan-batches'],
+    queryFn: fetchGRNList,
+    enabled: planBatchesModalOpen,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const actualLeadByMaterialKey = useMemo(
+    () => buildActualLeadTimeByMaterialKey(purchaseOrders, grnListForPlanBatches),
+    [purchaseOrders, grnListForPlanBatches],
+  );
+
+  const planBatchRmDisplayRows = useMemo(
+    () =>
+      enrichPlanBatchRmRows({
+        rows: feasibilityRmRows,
+        itemsList: itemsListRmPage,
+        rawMaterialsList,
+        procurementRequests,
+        actualLeadByKey: actualLeadByMaterialKey,
+      }),
+    [feasibilityRmRows, itemsListRmPage, rawMaterialsList, procurementRequests, actualLeadByMaterialKey],
+  );
+
+  const planBatchPmDisplayRows = useMemo(
+    () =>
+      enrichPlanBatchPmRows({
+        rows: feasibilityPmRows,
+        itemsList: itemsListPmPage,
+        packMaterialsList,
+        procurementRequests,
+        actualLeadByKey: actualLeadByMaterialKey,
+      }),
+    [feasibilityPmRows, itemsListPmPage, packMaterialsList, procurementRequests, actualLeadByMaterialKey],
+  );
 
   const { data: planningQuotationAsks = [] } = useQuery({
     queryKey: ['planning-quotation-asks', 'all', 'items-involved'],
@@ -3917,16 +4445,20 @@ const Planning = () => {
   const sortedFilteredPisOrders = useMemo(() => {
     if (!pisSortColumn) return filteredPisOrders;
     const nowMs = Date.now();
+    const pisSortCtx = {
+      allBatches: allPlanningBatches as PlanningBatchAllRow[],
+      prodByPlanningBatchId,
+    };
     return [...filteredPisOrders].sort((a, b) => {
       const cmp = compareSortValues(
-        sortValueForPisOrder(a, pisSortColumn, nowMs),
-        sortValueForPisOrder(b, pisSortColumn, nowMs),
+        sortValueForPisOrder(a, pisSortColumn, nowMs, pisSortCtx),
+        sortValueForPisOrder(b, pisSortColumn, nowMs, pisSortCtx),
         pisSortDirection
       );
       if (cmp !== 0) return cmp;
       return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
     });
-  }, [filteredPisOrders, pisSortColumn, pisSortDirection, slaClockTick]);
+  }, [filteredPisOrders, pisSortColumn, pisSortDirection, slaClockTick, allPlanningBatches, prodByPlanningBatchId]);
 
   const togglePisSort = (column: PisOrderSortColumn) => {
     if (pisSortColumn === column) {
@@ -3945,20 +4477,47 @@ const Planning = () => {
   }, [sortedFilteredPisOrders, safePisPage, pisPageSize]);
 
   const handleExportPisCsv = useCallback(() => {
-    const header = ['SO Date', 'SO No', 'Client', 'Product', 'Units Ordered', 'Planned', 'Pending', 'Batch Status', 'SLA'];
+    const header = [
+      'SO Date',
+      'SO #',
+      'Client',
+      'Product Code',
+      'Product Name',
+      'Ord Qty',
+      'Plan Status (Batch # · units · % cov · stage)',
+      'Planning SLA',
+      'Action',
+    ];
     const rows = filteredPisOrders.map((order) => {
-      const { createdUnits, remainingUnits } = getCreatedAndRemainingUnits(order);
-      const sla = getPlanningSlaMeta(order, remainingUnits);
+      const batches = getBatchesForPisOrder(order, allPlanningBatches as PlanningBatchAllRow[]);
+      const planView = buildPisPlanStatusView(order, batches, prodByPlanningBatchId);
+      const { remainingUnits } = getCreatedAndRemainingUnits(order);
+      const sla = buildPisSlaView(order, batches.length > 0, remainingUnits);
+      const clientCode = lookupPisClientCode(order.customerName, pisClientRecords);
+      const planStatusText =
+        planView.kind === 'pending'
+          ? 'PLANNING PENDING · no batch yet'
+          : [
+              ...planView.batchLines.map(
+                (line) => `${line.batchLabel} · ${line.units} · ${line.coveragePct}% · ${line.stage}`,
+              ),
+              planView.summary,
+              planView.underCoveredUnits > 0
+                ? `Under-covered · ${planView.underCoveredUnits} units still to plan`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' | ');
       return [
-        order.orderDate || '',
+        formatPisTableDate(order.orderDate),
         order.soNumber || '',
-        order.customerName || '',
-        `${order.productName || ''} (${order.productCode || ''})`,
-        String(Number(order.orderQty) || 0),
-        String(createdUnits),
-        String(remainingUnits),
-        getPisBatchStatusTag(order).text,
-        `${sla.label} - ${sla.sub}`,
+        clientCode ? `${order.customerName || ''} (${clientCode})` : order.customerName || '',
+        order.productCode || '',
+        order.productName || '',
+        formatPisOrdQty(order.orderQty),
+        planStatusText,
+        [sla.icon, sla.text, sla.sub].filter(Boolean).join(' '),
+        batches.length > 0 ? 'Edit Plan' : 'Plan Batches',
       ];
     });
     const csv = [header, ...rows]
@@ -3971,7 +4530,7 @@ const Planning = () => {
     a.download = `planning-pis-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [filteredPisOrders]);
+  }, [filteredPisOrders, allPlanningBatches, prodByPlanningBatchId, pisClientRecords]);
 
   const visiblePisSoNos = useMemo(
     () => Array.from(new Set(pagedPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
@@ -4320,13 +4879,27 @@ const Planning = () => {
   }, [purchaseOrders]);
 
   const itemsInvolvedAll = useMemo(
-    () => mapItemsInvolvedApiRowsToDisplay(itemsInvolvedRows),
-    [itemsInvolvedRows]
+    () =>
+      enrichItemsInvolvedDisplayRows(
+        mapItemsInvolvedApiRowsToDisplay(itemsInvolvedRows),
+        warehouseRows,
+        rawMaterialsList,
+        itemsListRmPage,
+        itemsListPmPage
+      ),
+    [itemsInvolvedRows, warehouseRows, rawMaterialsList, itemsListRmPage, itemsListPmPage]
   );
 
   const itemsInvolved = useMemo(
-    () => mapItemsInvolvedApiRowsToDisplay(activeItemsInvolvedRows),
-    [activeItemsInvolvedRows]
+    () =>
+      enrichItemsInvolvedDisplayRows(
+        mapItemsInvolvedApiRowsToDisplay(activeItemsInvolvedRows),
+        warehouseRows,
+        rawMaterialsList,
+        itemsListRmPage,
+        itemsListPmPage
+      ),
+    [activeItemsInvolvedRows, warehouseRows, rawMaterialsList, itemsListRmPage, itemsListPmPage]
   );
 
   const itemsInvolvedReleaseSplit = useMemo(
@@ -4403,6 +4976,40 @@ const Planning = () => {
       return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [filteredItemsInvolved, itemsInvolvedSortColumn, itemsInvolvedSortDirection]);
+
+  const itemsInvolvedTotalPages = Math.max(
+    1,
+    Math.ceil(sortedFilteredItemsInvolved.length / itemsInvolvedPageSize)
+  );
+  const itemsInvolvedSafePage = Math.min(itemsInvolvedPage, itemsInvolvedTotalPages);
+  const itemsInvolvedPageStart = (itemsInvolvedSafePage - 1) * itemsInvolvedPageSize;
+  const paginatedItemsInvolved = useMemo(
+    () =>
+      sortedFilteredItemsInvolved.slice(
+        itemsInvolvedPageStart,
+        itemsInvolvedPageStart + itemsInvolvedPageSize
+      ),
+    [sortedFilteredItemsInvolved, itemsInvolvedPageStart, itemsInvolvedPageSize]
+  );
+
+  useEffect(() => {
+    setItemsInvolvedPage(1);
+  }, [
+    itemsInvolvedCategoryFilter,
+    itemsInvolvedSearchTerm,
+    itemsInvolvedSelectedProductIds,
+    itemsInvolvedProductFilterMode,
+    dateFilter.from,
+    dateFilter.to,
+    itemsInvolvedSortColumn,
+    itemsInvolvedSortDirection,
+  ]);
+
+  useEffect(() => {
+    if (itemsInvolvedPage > itemsInvolvedTotalPages) {
+      setItemsInvolvedPage(itemsInvolvedTotalPages);
+    }
+  }, [itemsInvolvedPage, itemsInvolvedTotalPages]);
 
   const toggleItemsInvolvedSort = (column: ItemsInvolvedSortColumn) => {
     if (itemsInvolvedSortColumn === column) {
@@ -4975,12 +5582,28 @@ const Planning = () => {
     if (activeMainTab !== 'items-involved') return;
     const rowId = pendingFocusItemsInvolvedRowIdRef.current;
     if (!rowId || activeItemsInvolvedLoading) return;
+
+    const index = sortedFilteredItemsInvolved.findIndex((r) => r.id === rowId);
+    if (index < 0) return;
+
+    const targetPage = Math.floor(index / itemsInvolvedPageSize) + 1;
+    if (itemsInvolvedPage !== targetPage) {
+      setItemsInvolvedPage(targetPage);
+      return;
+    }
+
     const el = document.getElementById(`planning-items-involved-${rowId}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       pendingFocusItemsInvolvedRowIdRef.current = null;
     }
-  }, [activeMainTab, activeItemsInvolvedLoading, filteredItemsInvolved]);
+  }, [
+    activeMainTab,
+    activeItemsInvolvedLoading,
+    sortedFilteredItemsInvolved,
+    itemsInvolvedPage,
+    itemsInvolvedPageSize,
+  ]);
 
   const handlePlanBatches = (order: SalesOrder) => {
     setEditExistingBatchId(null);
@@ -5050,6 +5673,11 @@ const Planning = () => {
     setExpandedBatchIndex(null);
     setPlanBatchesModalOpen(true);
   };
+
+  const openBatchItemsPanel = useCallback((row: PlanningBatchAllRow, filter: 'RM' | 'PM' | 'ALL') => {
+    setBatchDetailMaterialFilter(filter);
+    setBatchForDetailModal(row);
+  }, []);
 
   const handleEditBatchFromTab = (row: PlanningBatchAllRow) => {
     const order = pisRows.find((o) => String(o.id) === String(row.planningExtractedId));
@@ -6497,24 +7125,17 @@ const Planning = () => {
               </div>
 
               {/* Search */}
-              <div className="flex items-center gap-2 mt-4">
-                <Search className="w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search product, SO, client"
+              <div className="flex flex-wrap items-center gap-3 mt-4">
+                <SearchInput
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 outline-none text-sm"
+                  onChange={setSearchTerm}
+                  placeholder="Search product, SO, client…"
+                  widthClass="flex-1 min-w-[220px]"
                 />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm('')}>
-                    <X className="w-4 h-4 text-gray-400" />
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={handleExportPisCsv}
-                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-slate-700 hover:bg-gray-50 transition-colors"
                 >
                   Export CSV
                 </button>
@@ -6530,7 +7151,7 @@ const Planning = () => {
             )}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[1180px]">
+                <table className="w-full text-sm min-w-[1280px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <SortableTableTh
@@ -6541,7 +7162,7 @@ const Planning = () => {
                         onSort={togglePisSort}
                       />
                       <SortableTableTh
-                        label="SO No"
+                        label="SO #"
                         column="soNo"
                         sortColumn={pisSortColumn}
                         sortDirection={pisSortDirection}
@@ -6555,65 +7176,53 @@ const Planning = () => {
                         onSort={togglePisSort}
                       />
                       <SortableTableTh
-                        label="Product"
-                        column="product"
+                        label="Product Code"
+                        column="productCode"
                         sortColumn={pisSortColumn}
                         sortDirection={pisSortDirection}
                         onSort={togglePisSort}
                       />
                       <SortableTableTh
-                        label="Units Ordered"
-                        column="unitsOrdered"
+                        label="Product Name"
+                        column="productName"
+                        sortColumn={pisSortColumn}
+                        sortDirection={pisSortDirection}
+                        onSort={togglePisSort}
+                      />
+                      <SortableTableTh
+                        label="Ord Qty"
+                        column="ordQty"
                         sortColumn={pisSortColumn}
                         sortDirection={pisSortDirection}
                         onSort={togglePisSort}
                         align="right"
                       />
                       <SortableTableTh
-                        label="Plan Status"
+                        label={
+                          <span className="inline-flex flex-col items-start gap-0.5 normal-case tracking-normal">
+                            <span>Plan Status</span>
+                            <span className="text-[10px] font-normal text-gray-500">Batch # · units · % cov · stage</span>
+                          </span>
+                        }
                         column="planStatus"
                         sortColumn={pisSortColumn}
                         sortDirection={pisSortDirection}
                         onSort={togglePisSort}
                       />
                       <SortableTableTh
-                        label="Batch Status"
-                        column="batchStatus"
-                        sortColumn={pisSortColumn}
-                        sortDirection={pisSortDirection}
-                        onSort={togglePisSort}
-                      />
-                      <SortableTableTh
-                        label="Planning SLA (48h)"
+                        label="Planning SLA"
                         column="planningSla"
                         sortColumn={pisSortColumn}
                         sortDirection={pisSortDirection}
                         onSort={togglePisSort}
                       />
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700"></th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {pagedPisOrders.map((order) => {
-                      const orderDateDisplay = (() => {
-                        const d = order.orderDate ? new Date(order.orderDate) : null;
-                        if (!d || Number.isNaN(d.getTime())) return '—';
-                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                      })();
-                      const dueDateDisplay = (() => {
-                        const d = order.dueDate ? new Date(order.dueDate) : null;
-                        if (!d || Number.isNaN(d.getTime())) return order.dueDate ?? '—';
-                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                      })();
-
-                      const batchStatusTag = getPisBatchStatusTag(order);
-
-                      // MFG records from production batches for this SO number.
-                      const prodForSo = (productionBatches as BatchRow[])
-                        .filter((b) => String(b.soNo ?? '').trim() === String(order.soNumber ?? '').trim());
-                      const bmrCount = prodForSo.filter((b) => (b.bmrNo ?? '').toString().trim() !== '').length;
-                      const bprCount = prodForSo.filter((b) => (b.bprNo ?? '').toString().trim() !== '').length;
-
                       const res =
                         planningAvailabilityBySoNo[order.soNumber] ??
                         planningAvailabilityBySoNo[normalizeSoKey(order.soNumber)];
@@ -6623,7 +7232,20 @@ const Planning = () => {
                         availItems.find((it) => String(it.productName || '').trim() === String(order.productName || '').trim()) ??
                         (availItems.length === 1 ? availItems[0] : null);
                       const availabilityTier = getPisAvailabilityTier(availabilityItem, planningAvailabilityLoading);
-                      const { createdUnits, remainingUnits } = getCreatedAndRemainingUnits(order);
+                      const batches = getBatchesForPisOrder(order, allPlanningBatches as PlanningBatchAllRow[]);
+                      const planView = buildPisPlanStatusView(order, batches, prodByPlanningBatchId);
+                      const { remainingUnits } = getCreatedAndRemainingUnits(order);
+                      const slaView = buildPisSlaView(order, batches.length > 0, remainingUnits);
+                      const clientCode = lookupPisClientCode(order.customerName, pisClientRecords);
+                      const hasBatches = batches.length > 0;
+                      const slaToneCls =
+                        slaView.tone === 'ok'
+                          ? 'text-emerald-700'
+                          : slaView.tone === 'warn'
+                            ? 'text-amber-800'
+                            : slaView.tone === 'breach'
+                              ? 'text-red-700'
+                              : 'text-gray-700';
 
                       return (
                         <tr
@@ -6631,87 +7253,120 @@ const Planning = () => {
                           onClick={() => openDetailModal(order)}
                           className={pisAvailabilityRowClass(availabilityTier)}
                         >
-                          <td className="px-4 py-3 text-gray-700 text-xs">
-                            {orderDateDisplay}
+                          <td className="px-4 py-3 text-gray-700 text-xs whitespace-nowrap">
+                            {formatPisTableDate(order.orderDate)}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="font-mono font-semibold text-gray-900">{order.soNumber}</div>
-                            <div className="text-xs text-gray-500">Due {dueDateDisplay}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
-                            <div className="text-xs text-gray-500">{order.soStatus ?? '—'}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-gray-900">{order.productName ?? order.productCode ?? '—'}</div>
-                            <div className="text-xs text-gray-500">{order.productCode ?? '—'}</div>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="font-medium text-gray-900">{order.orderQty}</div>
-                            <div className="text-xs text-gray-500">{order.totalKg} total</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="w-44">
-                              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1.5">
-                                <div
-                                  className={`h-full ${remainingUnits <= 0 ? 'bg-emerald-500' : createdUnits > 0 ? 'bg-indigo-500' : 'bg-gray-400'}`}
-                                  style={{ width: `${Math.min(100, Math.max(0, (createdUnits / Math.max(1, createdUnits + remainingUnits)) * 100))}%` }}
-                                />
-                              </div>
-                              <div className="text-xs text-gray-700">
-                                Planned <span className="font-semibold">{createdUnits.toLocaleString()}</span> · Pending{' '}
-                                <span className="font-semibold">{remainingUnits.toLocaleString()}</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            <div className="flex flex-wrap gap-1.5">
-                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium">
-                                BMR {bmrCount}
-                              </span>
-                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium">
-                                BPR {bprCount}
-                              </span>
-                            </div>
-                            <div className="mt-1">
-                              <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${batchStatusTag.badge}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${batchStatusTag.dot}`} />
-                                {batchStatusTag.text}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            {(() => {
-                              void slaClockTick;
-                              const sla = getPlanningSlaMeta(order, remainingUnits);
-                              const toneCls =
-                                sla.tone === 'green'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : sla.tone === 'amber'
-                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                    : 'bg-red-50 text-red-700 border-red-200';
-                              const dotCls = sla.tone === 'green' ? 'bg-emerald-500' : sla.tone === 'amber' ? 'bg-amber-500' : 'bg-red-500';
-                              return (
-                                <>
-                                  <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded text-[11px] font-semibold border ${toneCls}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
-                                    {sla.label}
-                                  </span>
-                                  <div className="text-xs text-gray-500 mt-1">{sla.sub}</div>
-                                </>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-xs whitespace-nowrap">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                openDetailModal(order);
+                                navigate(buildFulfillmentSoPath(order.soNumber));
                               }}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold"
+                              className={`font-mono font-semibold ${PIS_TABLE_LINK_CLASS}`}
                             >
-                              Open →
+                              {order.soNumber}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-semibold text-gray-900">{order.customerName ?? '—'}</div>
+                            {clientCode ? (
+                              <div className="text-xs text-gray-500 font-mono">{clientCode}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs">
+                            {order.productCode ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(buildMastersPrPath(order));
+                                }}
+                                className={PIS_TABLE_LINK_CLASS}
+                              >
+                                {order.productCode}
+                              </button>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {order.productName ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(buildMastersPrPath(order));
+                                }}
+                                className={`font-semibold ${PIS_TABLE_LINK_CLASS}`}
+                              >
+                                {order.productName}
+                              </button>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-900 text-xs whitespace-nowrap">
+                            {formatPisOrdQty(order.orderQty)}
+                          </td>
+                          <td className="px-4 py-3 min-w-[220px]">
+                            {planView.kind === 'pending' ? (
+                              <div className="space-y-0.5">
+                                <div className="text-[11px] font-bold tracking-wide text-amber-800 uppercase">
+                                  PLANNING PENDING
+                                </div>
+                                <div className="text-xs text-gray-500">no batch yet</div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {planView.batchLines.map((line) => (
+                                  <div key={line.key} className="text-xs text-gray-800 leading-snug">
+                                    <span className="font-mono font-semibold">{line.batchLabel}</span>
+                                    {' · '}
+                                    <span>{line.units.toLocaleString('en-IN')}</span>
+                                    {' · '}
+                                    <span>{line.coveragePct}%</span>
+                                    {' · '}
+                                    <span className="font-semibold text-gray-900">{line.stage}</span>
+                                  </div>
+                                ))}
+                                {planView.summary ? (
+                                  <div className="text-xs text-gray-600">{planView.summary}</div>
+                                ) : null}
+                                {planView.underCoveredUnits > 0 ? (
+                                  <div className="text-xs text-amber-700">
+                                    ⚠ Under-covered · {planView.underCoveredUnits.toLocaleString('en-IN')} units still to plan
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {(() => {
+                              void slaClockTick;
+                              return (
+                                <div className={`text-xs font-medium ${slaToneCls}`}>
+                                  <span>
+                                    {slaView.icon ? `${slaView.icon} ` : ''}
+                                    {slaView.text}
+                                  </span>
+                                  {slaView.sub ? (
+                                    <div className="text-[11px] text-gray-500 mt-0.5">{slaView.sub}</div>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePlanBatches(order);
+                              }}
+                              className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 rounded text-xs font-semibold"
+                            >
+                              {hasBatches ? '✏ Edit Plan' : '➕ Plan Batches'}
                             </button>
                           </td>
                         </tr>
@@ -6934,16 +7589,12 @@ const Planning = () => {
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-gray-400 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Search item, code, INCI..."
-                  value={itemsInvolvedSearchTerm}
-                  onChange={(e) => setItemsInvolvedSearchTerm(e.target.value)}
-                  className="flex-1 outline-none text-sm border border-gray-200 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-300 focus:border-blue-400"
-                />
-              </div>
+              <SearchInput
+                value={itemsInvolvedSearchTerm}
+                onChange={setItemsInvolvedSearchTerm}
+                placeholder="Search item, code, INCI…"
+                widthClass="w-full"
+              />
             </div>
 
             {/* Items Table */}
@@ -6976,58 +7627,130 @@ const Planning = () => {
                 </div>
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length > 0 && (
-                <table className="w-full text-xs border-collapse min-w-[900px]">
+                <>
+                <table className="w-full text-xs border-collapse min-w-[1500px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <SortableTableTh
-                        label="Item"
-                        column="item"
+                        label="Item Code"
+                        column="itemCode"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
                       />
                       <SortableTableTh
-                        label="Category"
-                        column="category"
+                        label="Item Name"
+                        column="itemName"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
                       />
                       <SortableTableTh
-                        label="Linked Batches"
-                        column="linkedBatches"
+                        label="Batches"
+                        column="batches"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        thClassName="text-center"
+                      />
+                      <SortableTableTh
+                        label="Total Req"
+                        column="totalReq"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
                         align="right"
                       />
                       <SortableTableTh
-                        label="Qty Balance"
-                        column="qtyBalance"
+                        label="SIH (% cov)"
+                        column="sihCov"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                        title="Free stock in hand and % of TOTAL REQ it covers"
+                      />
+                      <SortableTableTh
+                        label="Planned (% cov)"
+                        column="plannedCov"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                        title="Release to Planning qty and % of TOTAL REQ it covers"
+                      />
+                      <SortableTableTh
+                        label="PO Qty"
+                        column="poQty"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
                         align="right"
                       />
                       <SortableTableTh
-                        label="Pipeline stage"
-                        column="pipelineStage"
+                        label="In Transit"
+                        column="inTransit"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
+                        align="right"
                       />
                       <SortableTableTh
-                        label="Procurement & PO"
-                        column="procurement"
+                        label="Under GRN"
+                        column="underGrn"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
                         onSort={toggleItemsInvolvedSort}
+                        align="right"
                       />
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Action</th>
+                      <SortableTableTh
+                        label="Reserved"
+                        column="reserved"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                      />
+                      <SortableTableTh
+                        label="Avg/mo"
+                        column="avgMo"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                      />
+                      <SortableTableTh
+                        label="ROP"
+                        column="rop"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                        title="Reorder point"
+                      />
+                      <SortableTableTh
+                        label="MOQ"
+                        column="moq"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                        title="Lowest vendor MOQ from Items List"
+                      />
+                      <SortableTableTh
+                        label="SLA gap"
+                        column="slaGap"
+                        sortColumn={itemsInvolvedSortColumn}
+                        sortDirection={itemsInvolvedSortDirection}
+                        onSort={toggleItemsInvolvedSort}
+                        align="right"
+                        title="Open gap vs TOTAL REQ after SIH + planned + PO + in-transit"
+                      />
+                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedFilteredItemsInvolved.map((item, idx) => (
+                    {paginatedItemsInvolved.map((item, idx) => (
                       (() => {
                         // Release when still short vs full TOTAL REQ (netNum) or vs batch-unallocated supply (planned shortfall).
                         const hasShortfall = item.netNum < 0;
@@ -7048,12 +7771,6 @@ const Planning = () => {
                         const overReleasedQty = Math.max(0, releasedTowardGap - grossReq);
                         const shortageForRelease = hasShortfall || hasPlannedShortfall;
                         const canReleaseToPlanning = shortageForRelease && gapNeed > 1e-6;
-                        const procurementDisp = getItemsInvolvedProcurementDisplay(
-                          item,
-                          procurementRequests,
-                          plannedLinesFromBackend
-                        );
-                        const cs = procurementDisp.currentStatus;
                         const quotationItemTarget = {
                           itemType: item.itemType,
                           code: item.code,
@@ -7102,7 +7819,10 @@ const Planning = () => {
                                   : 'bg-gray-50'
                             }`}
                           >
-                            <td className="px-2 py-2 min-w-[220px]">
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-cyan-700 font-medium font-mono text-xs">{item.code}</div>
+                            </td>
+                            <td className="px-2 py-2 min-w-[160px]">
                               <div className="flex items-start gap-1.5">
                                 {quotationAskUi.status === 'fulfilled_unread' ? (
                                   <span
@@ -7113,19 +7833,19 @@ const Planning = () => {
                                 ) : null}
                                 <div>
                                   <div className="text-gray-900 font-medium text-xs">{item.name}</div>
-                                  <div className="text-xs text-gray-500">{item.code}</div>
+                                  <span
+                                    className={`inline-flex mt-0.5 text-[10px] font-semibold px-1 py-0.5 rounded ${
+                                      item.itemType === 'PM'
+                                        ? 'bg-orange-100 text-orange-700'
+                                        : 'bg-cyan-100 text-cyan-700'
+                                    }`}
+                                  >
+                                    {item.itemType}
+                                  </span>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-2 py-2">
-                              <span className={`text-xs font-semibold px-1 py-0.5 rounded ${item.itemType === 'PM'
-                                ? 'bg-orange-100 text-orange-700'
-                                : 'bg-cyan-100 text-cyan-700'
-                                }`}>
-                                {item.itemType}
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-center min-w-[110px]">
+                            <td className="px-2 py-2 text-center min-w-[72px]">
                               <button
                                 type="button"
                                 onClick={() => setUsedInModalItem(item)}
@@ -7135,58 +7855,44 @@ const Planning = () => {
                                 <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
                               </button>
                             </td>
-                            <td className="px-2 py-2 text-right min-w-[220px] tabular-nums">
-                              <div className="text-gray-900 text-xs font-semibold">Required {item.totalReq}</div>
-                              <div className="text-[11px] text-gray-600 mt-0.5">SIH {item.sih} · Reserved {item.reserved}</div>
-                              <div className="text-[11px] text-blue-700 mt-0.5">
-                                Planned {item.plannedQty} · PO {item.poQtyStr} · In transit {item.inTransitQtyStr}
-                              </div>
-                              <div
-                                className={`text-[11px] font-semibold mt-0.5 ${
-                                  item.netNum < -1e-9 ? 'text-red-600' : 'text-emerald-700'
-                                }`}
-                              >
-                                Short {item.shortStr}
-                              </div>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
+                              <span className="text-gray-900 font-semibold">{item.totalReq}</span>
                             </td>
-                            <td className="px-2 py-2 min-w-[200px]">
-                              <div className="text-[11px] font-semibold text-gray-900">{cs.title}</div>
-                              <div className="text-[10px] text-gray-600 mt-0.5 leading-snug">{cs.detail}</div>
-                              <span
-                                className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${badgeToneClass(cs.badgeTone)}`}
-                              >
-                                {cs.badge}
-                              </span>
-                              <div className="flex flex-wrap gap-0.5 mt-1.5">
-                                {cs.steps.map((s, stepIdx) => (
-                                  <span
-                                    key={`${item.id}-pipeline-${stepIdx}-${s.label}`}
-                                    className={`px-1 py-0.5 rounded text-[9px] font-medium border ${
-                                      s.active
-                                        ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                                        : s.done
-                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                          : 'bg-gray-50 text-gray-400 border-gray-100'
-                                    }`}
-                                    title={s.label}
-                                  >
-                                    {s.label}
-                                  </span>
-                                ))}
-                              </div>
+                            <td className="px-2 py-2 text-right tabular-nums min-w-[88px]">
+                              <div className="text-gray-900">{item.sih}</div>
+                              <div className="text-[10px] text-gray-500">({item.sihCovPct}%)</div>
                             </td>
-                            <td className="px-2 py-2 min-w-[220px]">
-                              <div className="space-y-1">
-                                {procurementDisp.poInfo.lines.map((line, li) => (
-                                  <div key={li} className="text-[10px] text-gray-700 leading-snug">
-                                    {line}
-                                  </div>
-                                ))}
-                                <div className="text-[10px] text-gray-500 pt-0.5 border-t border-gray-100">
-                                  Pipeline: PR {item.plannedQty} · PO bal {item.poQtyStr} · Transit{' '}
-                                  {item.inTransitQtyStr} · WH {item.whQtyStr}
-                                </div>
-                              </div>
+                            <td className="px-2 py-2 text-right tabular-nums min-w-[88px]">
+                              <div className="text-gray-900">{item.plannedQty}</div>
+                              <div className="text-[10px] text-gray-500">({item.plannedCovPct}%)</div>
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                              {item.poQtyStr}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                              {item.inTransitQtyStr}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                              {item.underGrnStr}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                              {item.reserved}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                              {item.avgMo}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                              {item.reorderPt}
+                            </td>
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                              {item.moqStr}
+                            </td>
+                            <td
+                              className={`px-2 py-2 text-right tabular-nums whitespace-nowrap font-semibold ${
+                                item.netNum < -1e-9 ? 'text-red-600' : 'text-emerald-700'
+                              }`}
+                            >
+                              {item.netNum < -1e-9 ? item.slaGapStr : '—'}
                             </td>
                             <td className="px-2 py-2 text-center min-w-[170px]">
                               <div className="flex flex-col items-center gap-1 min-w-[7rem]">
@@ -7286,6 +7992,49 @@ const Planning = () => {
                     ))}
                   </tbody>
                 </table>
+                <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-gray-200 bg-gray-50/60">
+                  <span className="text-xs text-gray-600">
+                    Showing{' '}
+                    <span className="font-semibold text-gray-900">
+                      {sortedFilteredItemsInvolved.length === 0 ? 0 : itemsInvolvedPageStart + 1}
+                    </span>
+                    –
+                    <span className="font-semibold text-gray-900">
+                      {Math.min(
+                        itemsInvolvedPageStart + itemsInvolvedPageSize,
+                        sortedFilteredItemsInvolved.length
+                      )}
+                    </span>{' '}
+                    of{' '}
+                    <span className="font-semibold text-gray-900">{sortedFilteredItemsInvolved.length}</span>
+                  </span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label htmlFor="items-involved-page-size" className="text-xs text-gray-600">
+                      Rows per page
+                    </label>
+                    <select
+                      id="items-involved-page-size"
+                      value={itemsInvolvedPageSize}
+                      onChange={(e) => {
+                        setItemsInvolvedPageSize(Number(e.target.value));
+                        setItemsInvolvedPage(1);
+                      }}
+                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                    <Pagination
+                      currentPage={itemsInvolvedSafePage}
+                      totalPages={itemsInvolvedTotalPages}
+                      onPageChange={setItemsInvolvedPage}
+                      variant="compact"
+                    />
+                  </div>
+                </div>
+                </>
               )}
             </div>
           </div>
@@ -7294,14 +8043,17 @@ const Planning = () => {
         {/* Batches Tab — list all batches we've sent out (batch code, SO, product, sent status, BOM summary) */}
         {activeMainTab === 'batches' && (
           <PlanningBatchesTab
-            onBatchClick={setBatchForDetailModal}
+            onBatchClick={(row) => openBatchItemsPanel(row, 'ALL')}
             onEditBatch={handleEditBatchFromTab}
+            onOpenRmPanel={(row) => openBatchItemsPanel(row, 'RM')}
+            onOpenPmPanel={(row) => openBatchItemsPanel(row, 'PM')}
             dateFilter={dateFilter}
             itemsInvolvedAll={itemsInvolvedAll}
             procurementRequests={procurementRequests}
             plannedLinesFromBackend={plannedLinesFromBackend}
             rawMaterialsList={rawMaterialsList}
             packMaterialsList={packMaterialsList}
+            pisClientRecords={pisClientRecords}
           />
         )}
 
@@ -8346,113 +9098,33 @@ const Planning = () => {
         );
       })()}
 
-      {/* Batch detail modal: items with SIH, Reserved, Available, pipeline qty, Shortfall, Release to Planning */}
+      {/* Batch detail modal: RM/PM items panel (stock, pipeline, status) */}
       {batchForDetailModal && (() => {
         const batch = batchForDetailModal;
-        const sizeKg = Number(batch.sizeKg) || 0;
-        const orderQtyNum = parseInt(String(batch.orderQty || '0').replace(/\D/g, ''), 10) || 0;
-        const totalKg = parseFloat(String(batch.totalKg || '0').replace(/[^\d.]/g, '')) || 0;
-        const kgPerUnit = orderQtyNum > 0 && totalKg > 0 ? totalKg / orderQtyNum : 1;
-        const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
-        const rmByCode = new Map(rawMaterialsList.map((r) => [r.code?.toLowerCase() ?? '', r]));
-        const pmByCode = new Map(packMaterialsList.map((p) => [p.code?.toLowerCase() ?? '', p]));
-        type BatchDetailRow = {
-          id: string;
-          type: 'RM' | 'PM';
-          name: string;
-          code: string;
-          required: number;
-          unit: string;
-          sih: number;
-          reserved: number;
-          available: number;
-          plannedQty: number;
-          poQty: number;
-          inTransit: number;
-          shortfall: number;
-          raw_material_id?: number;
-          pack_material_id?: number;
-        };
-        const rows: BatchDetailRow[] = [];
-        (batch.rmLines || []).forEach((line: BatchRmLine, idx: number) => {
-          const code = line.rm_code || (line as { code?: string }).code || '';
-          const rm = rmByCode.get(code.toLowerCase()) ?? rawMaterialsList.find((r) => r.code === code || r.name === (line.inci_name ?? (line as { name?: string }).name));
-          const raw_material_id = rm?.id != null ? Number(rm.id) : undefined;
-          const pct = line.pct_w_w ?? (line as { pct?: number }).pct ?? 0;
-          const required = (sizeKg * pct) / 100;
-          const lineSg = parseSpecificGravity(specificGravityFromBomLine(line as BOMRmLine));
-          const wh = warehouseRows.find((w) => w.type === 'RM' && (Number(w.sourceId) === Number(raw_material_id) || w.code === code));
-          const sih = warehouseQtyToKg(wh?.stockInHand ?? 0, wh, rm, lineSg);
-          const reserved = warehouseQtyToKg(wh?.reserved ?? 0, wh, rm, lineSg);
-          const available = Math.max(0, sih - reserved);
-          const shortfall = Math.max(0, required - available);
-          const pipeline = pipelineQtyForBatchMaterial(
-            itemsInvolvedForBatchDetailModal,
-            'RM',
-            raw_material_id,
-            code,
-            wh,
-            rm,
-            lineSg
-          );
-          rows.push({
-            id: `rm-${raw_material_id ?? code}-${idx}`,
-            type: 'RM',
-            name: line.inci_name ?? (line as { name?: string }).name ?? rm?.name ?? code,
-            code: code || String(raw_material_id ?? ''),
-            required,
-            unit: line.uom ?? 'KG',
-            sih,
-            reserved,
-            available,
-            plannedQty: pipeline.plannedQty,
-            poQty: pipeline.poQty,
-            inTransit: pipeline.inTransit,
-            shortfall,
-            raw_material_id: raw_material_id ?? undefined,
-          });
-        });
-        (batch.pmLines || []).forEach((line: BatchPmLine, idx: number) => {
-          const code = line.pm_code || (line as { code?: string }).code || '';
-          const pm = pmByCode.get(code.toLowerCase()) ?? packMaterialsList.find((p) => p.code === code || p.description === (line.description ?? (line as { name?: string }).name));
-          const pack_material_id = pm?.id != null ? Number(pm.id) : undefined;
-          const qtyPerUnit = line.qty_per_unit ?? (line as { qty?: number }).qty ?? 1;
-          const required = Math.ceil(unitsForBatch * qtyPerUnit);
-          const wh = warehouseRows.find((w) => w.type === 'PM' && (Number(w.sourceId) === Number(pack_material_id) || w.code === code));
-          const sih = wh?.stockInHand ?? 0;
-          const reserved = wh?.reserved ?? 0;
-          const available = Math.max(0, sih - reserved);
-          const shortfall = Math.max(0, required - available);
-          const pipeline = pipelineQtyForBatchMaterial(
-            itemsInvolvedForBatchDetailModal,
-            'PM',
-            pack_material_id,
-            code,
-            wh,
-            undefined,
-            1
-          );
-          rows.push({
-            id: `pm-${pack_material_id ?? code}-${idx}`,
-            type: 'PM',
-            name: line.description ?? (line as { name?: string }).name ?? pm?.description ?? code,
-            code: code || String(pack_material_id ?? ''),
-            required,
-            unit: 'PCS',
-            sih,
-            reserved,
-            available,
-            plannedQty: pipeline.plannedQty,
-            poQty: pipeline.poQty,
-            inTransit: pipeline.inTransit,
-            shortfall,
-            pack_material_id: pack_material_id ?? undefined,
-          });
+        const involvedForPanel = itemsInvolvedForBatchDetailModal.map((r) => ({
+          itemType: r.itemType,
+          code: r.code,
+          raw_material_id: r.raw_material_id,
+          pack_material_id: r.pack_material_id,
+          totalRequired: r.totalRequired,
+          reservedNum: r.reservedNum,
+          sihNum: r.sihNum,
+          plannedQtyNum: r.plannedQtyNum,
+          poQtyNum: r.poQtyNum,
+          inTransitQtyNum: r.inTransitQtyNum,
+        }));
+        const panelRows = buildBatchItemsPanelRows({
+          batch,
+          warehouseRows,
+          rawMaterials: rawMaterialsList,
+          packMaterials: packMaterialsList,
+          itemsInvolved: involvedForPanel,
+          materialFilter: batchDetailMaterialFilter,
         });
         const batchReleaseSplit = computeBatchReleaseSplit(
-          rows.map((r) => ({
-            type: r.type,
-            code: r.code,
+          panelRows.map((r) => ({
+            type: r.itemType,
+            code: r.itemCode,
             raw_material_id: r.raw_material_id,
             pack_material_id: r.pack_material_id,
           })),
@@ -8462,189 +9134,26 @@ const Planning = () => {
           rawMaterialsList
         );
         return (
-          <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl my-8">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="text-lg font-bold text-gray-900">
-                  Batch — {batch.batchCode ?? `PE-${batch.planningExtractedId}-B${batch.sequence}`}
-                </h3>
-                <button type="button" onClick={() => setBatchForDetailModal(null)} className="text-gray-500 hover:text-gray-700">
-                  <X size={20} />
-                </button>
-              </div>
-              <p className="px-4 pt-2 text-xs text-gray-600">
-                {batch.productName ?? batch.productCode ?? '—'} · SO {batch.soNumber ?? '—'} · Size {sizeKg} kg.
-              </p>
-              <div className="px-4 pt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-semibold text-gray-700">Items released</span>
-                <ItemsReleasedSplitBadges split={batchReleaseSplit} />
-                {batchReleaseSplit.rm.remaining + batchReleaseSplit.pm.remaining > 0 ? (
-                  <span className="text-gray-500">
-                    ({batchReleaseSplit.rm.remaining + batchReleaseSplit.pm.remaining} remaining)
-                  </span>
-                ) : null}
-              </div>
-              <div className="p-4 overflow-x-auto max-h-[70vh]">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Item / Code</th>
-                      <th className="px-3 py-2 text-center font-semibold text-gray-700">Type</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Required</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Stock in hand</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Available</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Planned qty</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">PO qty</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">In transit</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Shortfall</th>
-                      <th className="px-3 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">
-                        Release to Planning
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => (
-                      <tr key={row.id} className="border-b border-gray-100">
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-gray-900">{row.name}</div>
-                          <div className="text-xs text-gray-500">{row.code}</div>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${row.type === 'RM' ? 'bg-cyan-100 text-cyan-700' : 'bg-orange-100 text-orange-700'}`}>{row.type}</span>
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-900">
-                          {formatQtyExact(row.required, row.unit?.toUpperCase() === 'KG' ? 'kg' : 'pcs')} {row.unit}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.available.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-mono text-blue-700">
-                          {row.plannedQty > 0 ? formatBatchDetailQty(row.plannedQty, row.unit) : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-indigo-700">
-                          {row.poQty > 0 ? formatBatchDetailQty(row.poQty, row.unit) : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-sky-700">
-                          {row.inTransit > 0 ? formatBatchDetailQty(row.inTransit, row.unit) : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono font-semibold">{row.shortfall > 0 ? <span className="text-red-600">{row.shortfall.toLocaleString()}</span> : '—'}</td>
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          {batchDetailItemsLoading ? (
-                            <span className="text-xs text-gray-400">…</span>
-                          ) : (() => {
-                            const sourceId = row.type === 'RM' ? row.raw_material_id : row.pack_material_id;
-                            const involved = findItemsInvolvedRowByMaterial(
-                              itemsInvolvedForBatchDetailModal,
-                              row.type,
-                              sourceId,
-                              row.code
-                            );
-                            if (!involved) {
-                              return (
-                                <div className="flex flex-col items-center gap-1">
-                                  <span
-                                    className="inline-flex px-2 py-0.5 rounded text-[10px] font-semibold border bg-gray-50 text-gray-600 border-gray-200"
-                                    title="Not on Items Involved — confirm BOM / planning extract first."
-                                  >
-                                    Not listed
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 underline"
-                                    onClick={() =>
-                                      navigateToItemsInvolvedForRelease(
-                                        row.type,
-                                        sourceId,
-                                        row.code,
-                                        batch.planningExtractedId
-                                      )
-                                    }
-                                  >
-                                    Items Involved →
-                                  </button>
-                                </div>
-                              );
-                            }
-                            const releaseView = getReleaseToPlanningStatusView(
-                              involved,
-                              procurementRequests,
-                              plannedLinesFromBackend,
-                              rawMaterialsList
-                            );
-                            return (
-                              <div className="flex flex-col items-center gap-1 min-w-[7rem]">
-                                <span
-                                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold border ${releaseToPlanningStatusBadgeClass(releaseView.kind)}`}
-                                  title={releaseView.title}
-                                >
-                                  {releaseView.label}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 underline"
-                                  title="Open Items Involved — Release to Planning action for this material"
-                                  onClick={() =>
-                                    navigateToItemsInvolvedForRelease(
-                                      row.type,
-                                      sourceId,
-                                      row.code,
-                                      batch.planningExtractedId
-                                    )
-                                  }
-                                >
-                                  View release →
-                                </button>
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {rows.length === 0 && (
-                  <div className="py-8 text-center text-gray-500 text-sm">No RM/PM lines in this batch.</div>
-                )}
-              </div>
-              {(() => {
-                const allShortfallResolved = rows.length > 0 && rows.every((r) => r.shortfall <= 0);
-                // const alreadySent = Boolean(batch.sent);
-                // if (alreadySent) {
-                //   return (
-                //     <div className="px-4 py-3 border-t border-gray-200 bg-emerald-50 flex items-center justify-between">
-                //       <span className="text-sm font-medium text-emerald-800">Sent to production — can be scheduled in Production → Calendar.</span>
-                //       <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-                //     </div>
-                //   );
-                // }
-                if (allShortfallResolved) {
-                  return (
-                    <div className="px-4 py-3 border-t border-gray-200 bg-amber-50 flex items-center justify-between gap-3">
-                      <span className="text-sm text-amber-800">All materials available. Send this batch to production to allow scheduling in Production → Calendar.</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSendToProductionConfirm({ source: 'batch-detail', batch });
-                          }}
-                          className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 shadow-sm"
-                        >
-                          Send To Production
-                        </button>
-                        <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="px-4 py-3 border-t border-gray-200 flex justify-end">
-                    <button type="button" onClick={() => setBatchForDetailModal(null)} className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
+          <PlanBatchItemsPanelModal
+            batch={batch}
+            rows={panelRows}
+            materialFilter={batchDetailMaterialFilter}
+            itemsLoading={batchDetailItemsLoading}
+            releaseSplit={batchReleaseSplit}
+            onClose={() => {
+              setBatchForDetailModal(null);
+              setBatchDetailMaterialFilter('ALL');
+            }}
+            onItemCodeClick={(row) =>
+              navigateToItemsInvolvedForRelease(
+                row.itemType,
+                row.itemType === 'RM' ? row.raw_material_id : row.pack_material_id,
+                row.itemCode,
+                batch.planningExtractedId
+              )
+            }
+            onSendToProduction={() => setSendToProductionConfirm({ source: 'batch-detail', batch })}
+          />
         );
       })()}
 
@@ -9263,85 +9772,10 @@ const Planning = () => {
                       );
                     })()}
 
-                    {/* RM Feasibility Table */}
-                    <div>
-                      <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Raw materials ({feasibilityRmRows.length})</h4>
-                      <div className="border border-gray-200 rounded-lg overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200">
-                              <th className="px-3 py-2 text-left font-semibold text-gray-700 min-w-[120px]">Item</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">SG</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Req this order</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Stock</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Available</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">PO / Transit</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Gap</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Max units</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {feasibilityRmRows.map((row, idx) => (
-                              <tr key={`rm-${row.code}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-2 text-gray-900">
-                                  <span className="font-medium text-xs">{row.name}</span>
-                                  <div className="text-[10px] text-gray-500">{row.code} · kg</div>
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-700">{Number(row.specificGravity ?? 1).toFixed(2)}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">
-                                  {formatQtyExact(row.reqThisOrder, 'kg')}
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-700">{formatQtyExact(row.sih, 'kg')}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{formatQtyExact(row.reserved, 'kg')}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{formatQtyExact(row.free, 'kg')}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{formatQtyExact(row.inTransit, 'kg')}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold">{row.gap > 0 ? <span className="text-red-600">{formatQtyExact(row.gap, 'kg')}</span> : <span className="text-emerald-600">—</span>}</td>
-                                <td className="px-3 py-2 text-right font-mono font-bold text-amber-700">{Math.round(row.maxUnits).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* PM Feasibility Table */}
-                    <div>
-                      <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Packing materials ({feasibilityPmRows.length})</h4>
-                      <div className="border border-gray-200 rounded-lg overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200">
-                              <th className="px-3 py-2 text-left font-semibold text-gray-700 min-w-[120px]">Item</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Req this order</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Stock</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Reserved</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Free</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">PO / Transit</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700">Gap</th>
-                              <th className="px-3 py-2 text-right font-semibold text-gray-700 text-[10px]">Max units</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {feasibilityPmRows.map((row, idx) => (
-                              <tr key={`pm-${row.code}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-2 text-gray-900">
-                                  <span className="font-medium text-xs">{row.name}</span>
-                                  <div className="text-[10px] text-gray-500">{row.code} · pcs</div>
-                                </td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-gray-900">{row.reqThisOrder.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-700">{row.sih.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{row.reserved.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{row.free.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-gray-600">{row.inTransit.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono font-semibold">{row.gap > 0 ? <span className="text-red-600">{row.gap.toLocaleString()}</span> : <span className="text-emerald-600">—</span>}</td>
-                                <td className="px-3 py-2 text-right font-mono font-bold text-amber-700">{Math.round(row.maxUnits).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                    <PlanBatchFeasibilityTables
+                      rmRows={planBatchRmDisplayRows}
+                      pmRows={planBatchPmDisplayRows}
+                    />
                   </div>
 
                   {(() => {

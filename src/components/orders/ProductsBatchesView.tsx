@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Package,
   FileText,
@@ -55,6 +55,9 @@ interface ProductsBatchesViewProps {
     bmrYieldPct: number;
     completionPercent: number;
   }) => void;
+  initialSearchQuery?: string;
+  initialOpenBmrNo?: string | null;
+  onDeepLinkConsumed?: () => void;
 }
 
 type Row = { so: SaleOrder; item: OrderItem; split: BatchSplit };
@@ -125,8 +128,11 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   onDispatch,
   onConfirmDelivery,
   onViewYieldSplit,
+  initialSearchQuery = '',
+  initialOpenBmrNo = null,
+  onDeepLinkConsumed,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [sortColumn, setSortColumn] = useState<BatchSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -136,6 +142,29 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   const [shipModalSO, setShipModalSO] = useState<SaleOrder | null>(null);
   const [trackModalSO, setTrackModalSO] = useState<SaleOrder | null>(null);
   const [detailModalSO, setDetailModalSO] = useState<SaleOrder | null>(null);
+  const batchesDeepLinkAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (initialSearchQuery) setSearchQuery(initialSearchQuery);
+  }, [initialSearchQuery]);
+
+  useEffect(() => {
+    if (!initialOpenBmrNo || batchesDeepLinkAppliedRef.current || saleOrders.length === 0) return;
+    const target = initialOpenBmrNo.trim().toLowerCase();
+    const matchSo = saleOrders.find((so) =>
+      so.items.some((item) =>
+        item.batchSplits.some(
+          (split) =>
+            split.bmrNo.toLowerCase() === target || split.bprNo.toLowerCase() === target,
+        ),
+      ),
+    );
+    if (matchSo) {
+      batchesDeepLinkAppliedRef.current = true;
+      setDetailModalSO(matchSo);
+      onDeepLinkConsumed?.();
+    }
+  }, [initialOpenBmrNo, saleOrders, onDeepLinkConsumed]);
 
   const tableRows = useMemo(
     () => filterBatchSplits(saleOrders, activeFilter, searchQuery),

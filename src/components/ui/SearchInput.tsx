@@ -40,7 +40,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
     value={value}
     onChange={(e) => onChange(e.target.value)}
     placeholder={placeholder}
-    className={`w-full pl-10 pr-${showClear && value ? '8' : '4'} py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 text-sm transition-all bg-white ${className}`}
+    className={`w-full pl-10 ${showClear && value ? 'pr-8' : 'pr-4'} py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-700 transition-all ${className}`}
     {...props}
    />
    {showClear && value && (

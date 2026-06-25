@@ -93,6 +93,9 @@ interface SaleOrdersViewProps {
   onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
   onDispatch: (soNo: string, data: ShipData) => void;
   onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
+  /** Open SO detail when navigating from Planning etc. (`/fulfillment?so=...`). */
+  initialOpenSoNo?: string | null;
+  onDeepLinkSoConsumed?: () => void;
 }
 
 export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
@@ -102,7 +105,9 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   onPickConfirm,
   onGenerateInvoice,
   onDispatch,
-  onConfirmDelivery
+  onConfirmDelivery,
+  initialOpenSoNo = null,
+  onDeepLinkSoConsumed,
 }) => {
   const normalizeSoKey = (value: string) => String(value || '').trim().toUpperCase();
   const now = () => new Date().toISOString();
@@ -135,6 +140,20 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
   const planningAvailabilityRequestInFlight = useRef(false);
   const planningAvailabilityFetchedOnce = useRef(false);
+  const deepLinkSoAppliedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const target = initialOpenSoNo?.trim();
+    if (!target || saleOrders.length === 0) return;
+    if (deepLinkSoAppliedRef.current === target) return;
+    const normalized = target.toUpperCase();
+    const so = saleOrders.find((order) => String(order.soNo || '').trim().toUpperCase() === normalized);
+    if (!so) return;
+    deepLinkSoAppliedRef.current = target;
+    setDetailModalSO(so);
+    setSearchQuery(so.soNo);
+    onDeepLinkSoConsumed?.();
+  }, [initialOpenSoNo, saleOrders, onDeepLinkSoConsumed]);
 
   // Filter sale orders
   const filteredSOs = useMemo(() => {

@@ -287,14 +287,17 @@ export async function updateBatch(
 export interface PlanningBatchAllRow extends PlanningBatchRow {
   sent?: boolean;
   sentBatchIndices?: number[];
+  createdAt?: string | null;
   soNumber?: string;
   customerName?: string;
   productName?: string;
   productCode?: string;
   orderQty?: string;
   totalKg?: string;
+  orderDate?: string;
   dueDate?: string;
   bomStatus?: string;
+  productId?: number | null;
 }
 
 export async function fetchAllBatches(): Promise<PlanningBatchAllRow[]> {

@@ -8993,6 +8993,8 @@ const Production = () => {
   const [yieldReworkPreflightBatch, setYieldReworkPreflightBatch] = useState<Batch | null>(null);
   const [batchActionLoading, setBatchActionLoading] = useState<{ bmrNo: string; label: string } | null>(null);
   const batchActionPendingRef = useRef(0);
+  const productionBmrDeepLinkAppliedRef = useRef(false);
+  const deepLinkBmr = searchParams.get('bmr')?.trim() ?? '';
   const loadedFromApi = useRef(false);
   const prevActiveSectionRef = useRef<Section | null>(null);
 
@@ -9080,6 +9082,21 @@ const Production = () => {
         setState(defaultState());
       });
   }, []);
+
+  useEffect(() => {
+    if (!deepLinkBmr || productionBmrDeepLinkAppliedRef.current || state.batches.length === 0) return;
+    const batch = state.batches.find((b) => String(b.bmrNo).trim() === deepLinkBmr);
+    if (!batch) return;
+    productionBmrDeepLinkAppliedRef.current = true;
+    setSection('batches');
+    setModalBatch(batch);
+    setModalType('detail');
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete('bmr');
+      return p;
+    }, { replace: true });
+  }, [deepLinkBmr, state.batches, setSection, setSearchParams]);
 
   /** When opening Calendar, jump to the nearest week that has scheduled stage dates if the current week is empty. */
   useEffect(() => {

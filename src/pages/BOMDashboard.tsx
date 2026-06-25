@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
@@ -75,6 +75,7 @@ const FORMULA_BOM_CHUNK_GROUPS = 5;
 const BOMDashboard: React.FC = () => {
   const { hasModuleAccess, isAdmin } = usePermissions();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canEdit = hasModuleAccess('catalogue-management') || hasModuleAccess('packaging-management');
   const { canAssignApprover } = useMasterApprovalPermission('PR');
 
@@ -108,6 +109,7 @@ const BOMDashboard: React.FC = () => {
   /** 0–100 while chunked Formula BOM import runs */
   const [formulaBomUploadPercent, setFormulaBomUploadPercent] = useState<number | null>(null);
   const formulaRmFileInputRef = useRef<HTMLInputElement | null>(null);
+  const deepLinkPrAppliedRef = useRef(false);
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
 
@@ -812,6 +814,45 @@ const BOMDashboard: React.FC = () => {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (loading || deepLinkPrAppliedRef.current || list.length === 0) return;
+    const productIdRaw = searchParams.get('productId')?.trim();
+    const prCodeRaw = searchParams.get('pr')?.trim();
+    if (!productIdRaw && !prCodeRaw) return;
+
+    let product: PRProductListItem | undefined;
+    if (productIdRaw) {
+      const id = Number(productIdRaw);
+      if (Number.isFinite(id)) {
+        product = list.find((p) => Number(p.product_id) === id);
+      }
+    }
+    if (!product && prCodeRaw) {
+      const key = prCodeRaw.toUpperCase();
+      product = list.find((p) => String(p.product_code ?? '').trim().toUpperCase() === key);
+    }
+    if (!product) {
+      deepLinkPrAppliedRef.current = true;
+      if (prCodeRaw) setSearchTerm(prCodeRaw);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('productId');
+        next.delete('pr');
+        return next;
+      }, { replace: true });
+      return;
+    }
+
+    deepLinkPrAppliedRef.current = true;
+    void handleViewItem(product);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('productId');
+      next.delete('pr');
+      return next;
+    }, { replace: true });
+  }, [loading, list, searchParams, handleViewItem, setSearchParams]);
 
   useEffect(() => {
     // Reset to page 1 whenever filters/search/page size change.

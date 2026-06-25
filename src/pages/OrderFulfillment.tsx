@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ShoppingCart, Package, Search, Loader2, LayoutDashboard, ArrowUpDown } from 'lucide-react';
 import { SaleOrdersView } from '../components/orders/SaleOrdersView';
 import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
@@ -33,6 +33,7 @@ type SortOrder = 'asc' | 'desc';
 
 export const OrderFulfillment: React.FC = () => {
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('orders');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | SaleOrder['soStatus']>('all');
@@ -66,6 +67,38 @@ export const OrderFulfillment: React.FC = () => {
   const [reworkSubmitting, setReworkSubmitting] = useState(false);
   const salesOrderExcelInputRef = useRef<HTMLInputElement>(null);
   const [importingSalesOrders, setImportingSalesOrders] = useState(false);
+  const [deepLinkSoNo, setDeepLinkSoNo] = useState<string | null>(null);
+  const [batchesDeepLinkSearch, setBatchesDeepLinkSearch] = useState('');
+  const [batchesDeepLinkBmr, setBatchesDeepLinkBmr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const so = searchParams.get('so')?.trim();
+    const view = searchParams.get('view')?.trim();
+    const bmr = searchParams.get('bmr')?.trim();
+    if (view === 'batches') {
+      setViewMode('batches');
+      if (so) setBatchesDeepLinkSearch(so);
+      else if (bmr) setBatchesDeepLinkSearch(bmr);
+      if (bmr) setBatchesDeepLinkBmr(bmr);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('view');
+        next.delete('bmr');
+        if (so) next.delete('so');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    if (!so) return;
+    setViewMode('orders');
+    setSearchTerm(so);
+    setDeepLinkSoNo(so);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('so');
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -551,7 +584,17 @@ export const OrderFulfillment: React.FC = () => {
               </button>
             </div>
           ) : viewMode === 'orders' ? (
-            <SaleOrdersView saleOrders={filteredSaleOrders} onAddSO={handleAddSO} onUpdateSO={handleUpdateSO} onPickConfirm={handlePickConfirm} onGenerateInvoice={handleGenerateInvoice} onDispatch={handleDispatch} onConfirmDelivery={handleConfirmDelivery} />
+            <SaleOrdersView
+              saleOrders={filteredSaleOrders}
+              onAddSO={handleAddSO}
+              onUpdateSO={handleUpdateSO}
+              onPickConfirm={handlePickConfirm}
+              onGenerateInvoice={handleGenerateInvoice}
+              onDispatch={handleDispatch}
+              onConfirmDelivery={handleConfirmDelivery}
+              initialOpenSoNo={deepLinkSoNo}
+              onDeepLinkSoConsumed={() => setDeepLinkSoNo(null)}
+            />
           ) : (
             <ProductsBatchesView
               saleOrders={filteredSaleOrders}
@@ -560,6 +603,12 @@ export const OrderFulfillment: React.FC = () => {
               onDispatch={handleDispatch}
               onConfirmDelivery={handleConfirmDelivery}
               onViewYieldSplit={(payload) => setSelectedYield(payload)}
+              initialSearchQuery={batchesDeepLinkSearch}
+              initialOpenBmrNo={batchesDeepLinkBmr}
+              onDeepLinkConsumed={() => {
+                setBatchesDeepLinkSearch('');
+                setBatchesDeepLinkBmr(null);
+              }}
             />
           )}
         </div>

@@ -1,8 +1,10 @@
 # Production admin: static Vite build + nginx (fast on EC2 vs `vite dev` + bind mounts)
-# Vite/Rollup can exceed Node's default heap → OOM. Raise if needed: --build-arg NODE_MEMORY_MB=8192
+# Vite/Rollup can exceed Node's default heap → OOM on large machines.
+# On small EC2 (2–4 GB RAM), a 4 GB heap causes swap thrashing and 5–10 min "transforming..." stalls.
+# Tune per host: docker compose build --build-arg NODE_MEMORY_MB=1536 admin
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
-ARG NODE_MEMORY_MB=4096
+ARG NODE_MEMORY_MB=2048
 ENV NODE_OPTIONS=--max-old-space-size=${NODE_MEMORY_MB}
 COPY package.json package-lock.json ./
 RUN npm ci
