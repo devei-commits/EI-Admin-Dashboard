@@ -4,7 +4,6 @@ import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, Pencil, Check, ArrowUpFromLine } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
-import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import {
@@ -23,7 +22,18 @@ import {
   type MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
+import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 import { normalizePrApprovalTeamPending } from '../lib/prMasterTeamApproval';
+import {
+  canEditPrFormSubsection,
+  normalizePrProcessStepKind,
+  prQualitySpecSectionEditable,
+  resolvePrFormTeamRole,
+  type PrFormTeamRole,
+  type PrProcessStepKind,
+} from '../lib/prFormTeamAccess';
+import { PrTeamSectionGate } from '../components/masters/PrTeamSectionGate';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import PmMasterTypeahead from '../components/PmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
@@ -192,6 +202,7 @@ interface BOMFormState {
     stepNumber: string;
     instruction: string;
     duration: string;
+    stepKind?: PrProcessStepKind;
   }>;
 
   // Specs & Regulatory Tab
@@ -360,10 +371,12 @@ function bomFormToProcessSteps(fd: BOMFormState) {
   return fd.processSteps.map((s, i) => {
     const stepNum = parseInt(String(s.stepNumber).replace(/\D/g, ''), 10);
     const durNum = parseInt(String(s.duration).replace(/\D/g, ''), 10);
+    const stepKind = normalizePrProcessStepKind(s.stepKind);
     return {
       step_number: Number.isNaN(stepNum) ? i + 1 : stepNum,
       description: s.instruction,
       duration_minutes: Number.isNaN(durNum) ? 0 : durNum,
+      step_kind: stepKind,
     };
   });
 }
@@ -629,6 +642,10 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
     stepNumber: String(step.step_number ?? ''),
     instruction: step.description || '',
     duration: String(step.duration_minutes ?? ''),
+    stepKind: normalizePrProcessStepKind(
+      (step as { step_kind?: unknown; stepKind?: unknown }).step_kind ??
+        (step as { stepKind?: unknown }).stepKind
+    ),
   }));
   const skuCode = p.product_code || '';
   const categoryFromCode = inferPrCategoryFromLegacyCode(skuCode);
@@ -763,7 +780,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [tempComponent, setTempComponent] = useState(emptyPackComponentDraft);
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
   const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
-  const [tempStep, setTempStep] = useState({ stepNumber: '', instruction: '', duration: '' });
+  const [tempProductionStep, setTempProductionStep] = useState({ stepNumber: '', instruction: '', duration: '' });
+  const [tempPackagingStep, setTempPackagingStep] = useState({ stepNumber: '', instruction: '', duration: '' });
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
   const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
@@ -794,10 +812,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [editApprovalTeamPending, setEditApprovalTeamPending] =
     useState<import('../lib/prMasterTeamApproval').PrApprovalTeamPending | null>(null);
   const { canApproveAtStatus } = useMasterApprovalPermission('PR');
-  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
-  const [saveSuccessCode, setSaveSuccessCode] = useState('');
-  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
-  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
+  const { isAdmin } = usePermissions();
+  const { user } = useAuth();
 
   const resetPrFormToEmpty = useCallback(() => {
     setFormData(emptyBomForm());
@@ -815,7 +831,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setTempComponent(emptyPackComponentDraft());
     setEditingIngredientId(null);
     setEditingComponentId(null);
-    setTempStep({ stepNumber: '', instruction: '', duration: '' });
+    setTempProductionStep({ stepNumber: '', instruction: '', duration: '' });
+    setTempPackagingStep({ stepNumber: '', instruction: '', duration: '' });
     setSelectedRmId('');
     setSelectedItemGroupId('');
     setFormulaLineKind('rm');
@@ -873,6 +890,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         formData.bomCompositeItem &&
         formData.productName.trim()
     );
+  const prFormTeamRole: PrFormTeamRole = useMemo(() => {
+    const role = resolvePrFormTeamRole(isAdmin, user?.id, editApprovalStageAssignees);
+    if (isNewProduct && role === 'unassigned') {
+      return isAdmin ? 'admin' : 'both_teams';
+    }
+    return role;
+  }, [isAdmin, user?.id, editApprovalStageAssignees, isNewProduct]);
+
+  const prCanEdit = useCallback(
+    (subsection: import('../lib/prFormTeamAccess').PrFormSubsection) =>
+      canEditPrFormSubsection(prFormTeamRole, subsection),
+    [prFormTeamRole]
+  );
+
   const prSubCategoryOptions = useMemo(() => {
     const base = prSubCategoryOptionsForCategory(formData.category);
     const cur = String(formData.prSubCategory ?? '').trim();
@@ -995,7 +1026,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const ingredientDraftRef = useRef<HTMLDivElement>(null);
   const packDraftRef = useRef<HTMLDivElement>(null);
-  const stepDraftRef = useRef<HTMLDivElement>(null);
+  const productionStepDraftRef = useRef<HTMLDivElement>(null);
+  const packagingStepDraftRef = useRef<HTMLDivElement>(null);
 
   const getFormulaIngredientSku = useCallback(
     (ing: BOMFormState['formulaIngredients'][number]): string => {
@@ -1709,24 +1741,27 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }));
   };
 
-  const flushStepDraft = (): boolean => {
-    if (!tempStep.instruction.trim()) return false;
+  const flushStepDraft = (stepKind: PrProcessStepKind): boolean => {
+    const draft = stepKind === 'packaging' ? tempPackagingStep : tempProductionStep;
+    const setDraft = stepKind === 'packaging' ? setTempPackagingStep : setTempProductionStep;
+    if (!draft.instruction.trim()) return false;
     setFormData((prev) => ({
       ...prev,
       processSteps: [
         ...prev.processSteps,
         {
           id: Date.now().toString(),
-          ...tempStep,
+          ...draft,
+          stepKind,
         },
       ],
     }));
-    setTempStep({ stepNumber: '', instruction: '', duration: '' });
+    setDraft({ stepNumber: '', instruction: '', duration: '' });
     return true;
   };
 
-  const addStep = () => {
-    flushStepDraft();
+  const addStep = (stepKind: PrProcessStepKind) => {
+    flushStepDraft(stepKind);
   };
 
   const removeStep = (id: string) => {
@@ -1851,6 +1886,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
+        addToast('success', 'Draft saved. Continue editing and submit for review when ready.');
+        onSaved?.();
       } else {
         const res = await createPRRegistration(pending.body);
         if (!res.success || !res.data) {
@@ -1858,26 +1895,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           return;
         }
         const product = res.data.product as Record<string, unknown>;
-        const pid = product.product_id ?? product.productId;
-        if (pid != null) {
-          const idStr = String(pid);
-          setLocalProductId(idStr);
-          const detail = await fetchPRProductDetail(idStr);
-          if (detail.success && detail.data) {
-            setFormData(productDetailToBomForm(detail.data));
-            setEditApprovalStageAssignees(normalizeStageAssignees(detail.data.approval_stage_assignees));
-            setEditApprovalTeamPending(normalizePrApprovalTeamPending(detail.data.approval_team_pending));
-          } else {
-            setFormData((prev) => ({
-              ...prev,
-              skuCode: String(product.product_code ?? product.productCode ?? prev.skuCode),
-              masterApprovalStatus: 'Draft',
-            }));
-          }
-        }
+        const code = String(product.product_code ?? product.productCode ?? '').trim();
+        addToast('success', code ? `Draft saved (${code}).` : 'Draft saved.');
+        exitPrForm();
       }
-      addToast('success', 'Draft saved. Continue editing and submit for review when ready.');
-      onSaved?.();
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Failed to save draft');
@@ -1930,14 +1951,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setRevertPreviewOpen(true);
   };
 
-  const closeSaveSuccessAndExit = () => {
-    setSaveSuccessOpen(false);
-    setSaveSuccessCode('');
-    setSaveSuccessRows([]);
+  const exitPrForm = useCallback(() => {
     onSaved?.();
     if (onClose) onClose();
     else navigate('/bom');
-  };
+  }, [onSaved, onClose, navigate]);
 
   const handleConfirmSubmit = async (comment: string) => {
     const pending = pendingPrSubmit;
@@ -1946,6 +1964,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     try {
       let recordId = effectiveProductId;
       let approvalStatus = formData.masterApprovalStatus;
+
+      let savedProductCode = formData.skuCode.trim();
 
       if (pending.mode === 'update' && effectiveProductId) {
         const res = await updatePRProduct(effectiveProductId, pending.body);
@@ -1956,8 +1976,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
-        setSaveSuccessIsEdit(true);
-        setSaveSuccessCode(formData.skuCode.trim() || '');
+        savedProductCode = formData.skuCode.trim() || savedProductCode;
       } else {
         const res = await createPRRegistration(pending.body);
         if (!res.success || !res.data) {
@@ -1967,8 +1986,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         const product = res.data.product as Record<string, unknown>;
         recordId = String(product.product_id ?? product.productId ?? '');
         if (recordId) setLocalProductId(recordId);
-        setSaveSuccessIsEdit(false);
-        setSaveSuccessCode(String(product.product_code ?? product.productCode ?? '').trim());
+        savedProductCode = String(product.product_code ?? product.productCode ?? '').trim();
       }
 
       const freshAfterSave = recordId ? await fetchPRProductDetail(recordId) : null;
@@ -2028,33 +2046,23 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
       }
 
-      setSaveSuccessRows([
-        { label: 'Product name', value: formData.productName.trim() },
-        { label: 'Category', value: formData.category || '' },
-        {
-          label: 'Record type',
-          value:
-            formData.prRecordType === 'temporary'
-              ? 'Temporary'
-              : formData.prRecordType === 'permanent'
-                ? 'Permanent'
-                : 'Legacy',
-        },
-        { label: 'Approval status', value: approvalStatus },
-        ...(formData.skuBomLimitQty.trim()
-          ? [
-              {
-                label: 'SKU BOM net per unit',
-                value: `${formData.skuBomLimitQty.trim()} ${formData.skuBomLimitUom || 'GM'}`,
-              },
-            ]
-          : []),
-      ]);
       setSubmitPreviewOpen(false);
+      setSubmitPreviewBaseline(null);
       setPendingPrSubmit(null);
       setPendingApprovalIntentStatus(null);
-      setSaveSuccessOpen(true);
-      onSaved?.();
+
+      const isCreate = pending.mode === 'create';
+      if (isCreate) {
+        addToast(
+          'success',
+          savedProductCode
+            ? `Product registered (${savedProductCode}). Status: ${approvalStatus}`
+            : `Product registered. Status: ${approvalStatus}`
+        );
+      } else {
+        addToast('success', `Product updated. Status: ${approvalStatus}`);
+      }
+      exitPrForm();
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Save failed');
@@ -2126,6 +2134,105 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     }
   };
 
+  const renderProcessStepsBlock = (
+    stepKind: PrProcessStepKind,
+    title: string,
+    description: string,
+    draftRef: React.RefObject<HTMLDivElement | null>,
+    temp: { stepNumber: string; instruction: string; duration: string },
+    setTemp: React.Dispatch<
+      React.SetStateAction<{ stepNumber: string; instruction: string; duration: string }>
+    >,
+    accessKey: 'processProduction' | 'processPackaging'
+  ): JSX.Element => {
+    const steps = formData.processSteps.filter(
+      (step) => normalizePrProcessStepKind(step.stepKind) === stepKind
+    );
+    return (
+      <PrTeamSectionGate
+        canEdit={prCanEdit(accessKey)}
+        viewOnlyLabel={`View only — ${stepKind === 'packaging' ? 'packaging' : 'product (RM)'} team maintains these process steps.`}
+        className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+      >
+        <label className="block text-sm font-semibold text-blue-700 mb-3">{title}</label>
+        <p className="text-xs text-slate-600 mb-3">{description}</p>
+        <div className="space-y-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase">
+            <div>Step</div>
+            <div className="col-span-2">Step Description / Instruction</div>
+          </div>
+          <div className="space-y-2">
+            {steps.map((step) => (
+              <div key={step.id} className="grid grid-cols-3 gap-2 text-sm items-start bg-slate-50 p-2 rounded">
+                <div className="text-slate-900 font-semibold">{step.stepNumber}</div>
+                <div className="col-span-2 flex justify-between items-start gap-2">
+                  <div className="flex-1">
+                    <div className="text-slate-900">{step.instruction}</div>
+                    <div className="text-xs text-slate-600 mt-1">Duration: {step.duration}</div>
+                  </div>
+                  <button type="button" onClick={() => removeStep(step.id)} className="text-red-600 hover:text-red-800">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div
+          ref={draftRef}
+          className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && (e.target as HTMLElement).tagName === 'TEXTAREA') {
+              e.preventDefault();
+              addStep(stepKind);
+            }
+          }}
+        >
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New step</p>
+          <input
+            type="text"
+            placeholder="Step #"
+            value={temp.stepNumber}
+            onChange={(e) => setTemp((prev) => ({ ...prev, stepNumber: e.target.value }))}
+            onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+          <textarea
+            placeholder="Step Description / Instruction (Ctrl+Enter to add)"
+            value={temp.instruction}
+            onChange={(e) => setTemp((prev) => ({ ...prev, instruction: e.target.value }))}
+            onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
+            rows={2}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Duration (e.g., 15 mins)"
+            value={temp.duration}
+            onChange={(e) => setTemp((prev) => ({ ...prev, duration: e.target.value }))}
+            onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addStep(stepKind);
+              }
+            }}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+        </div>
+        <div className="flex justify-end mt-3">
+          <button
+            type="button"
+            onClick={() => addStep(stepKind)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+          >
+            <Plus className="w-4 h-4" /> Add step to list
+          </button>
+        </div>
+      </PrTeamSectionGate>
+    );
+  };
+
   const renderStageContent = () => {
     switch (currentStage) {
       case 0:
@@ -2144,6 +2251,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </p>
             </div>
 
+            <PrTeamSectionGate canEdit={prCanEdit('primary')}>
             <div className="min-w-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
                 Category &amp; sub-category
@@ -2321,11 +2429,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
               </div>
             </div>
+            </PrTeamSectionGate>
 
           </div>
         );
       case 1:
         return (
+            <PrTeamSectionGate canEdit={prCanEdit('formulaBom')}>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
@@ -2690,9 +2800,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
               </div>
             </div>
+            </PrTeamSectionGate>
         );
       case 2: {
         return (
+            <PrTeamSectionGate
+              canEdit={prCanEdit('skuBom')}
+              viewOnlyLabel="Automatic — SKU BOM is derived from Formula BOM. Edit formula lines to change per-unit quantities."
+            >
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-violet-800 mb-2">
                 SKU BOM — RAW MATERIALS (PER UNIT){' '}
@@ -2819,10 +2934,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </table>
               </div>
             </div>
+            </PrTeamSectionGate>
         );
       }
       case 3:
         return (
+            <PrTeamSectionGate canEdit={prCanEdit('packBom')}>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
@@ -3255,99 +3372,40 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
               </div>
             </div>
+            </PrTeamSectionGate>
         );
       case 4:
         return (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-3">MANUFACTURING PROCESS STEPS</label>
-                <p className="text-xs text-slate-600 mb-3">
-                  Steps are added when you leave the fields below (or use Ctrl+Enter in the instruction box). Instruction is required.
-                </p>
-
-                <div className="space-y-2 mb-4">
-                  <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase">
-                    <div>Step</div>
-                    <div className="col-span-2">Step Description / Instruction</div>
-                  </div>
-                  <div className="space-y-2">
-                    {formData.processSteps.map(step => (
-                      <div key={step.id} className="grid grid-cols-3 gap-2 text-sm items-start bg-slate-50 p-2 rounded">
-                        <div className="text-slate-900 font-semibold">{step.stepNumber}</div>
-                        <div className="col-span-2 flex justify-between items-start gap-2">
-                          <div className="flex-1">
-                            <div className="text-slate-900">{step.instruction}</div>
-                            <div className="text-xs text-slate-600 mt-1">Duration: {step.duration}</div>
-                          </div>
-                          <button type="button" onClick={() => removeStep(step.id)} className="text-red-600 hover:text-red-800">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  ref={stepDraftRef}
-                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && (e.target as HTMLElement).tagName === 'TEXTAREA') {
-                      e.preventDefault();
-                      addStep();
-                    }
-                  }}
-                >
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New step</p>
-                  <input
-                    type="text"
-                    placeholder="Step #"
-                    value={tempStep.stepNumber}
-                    onChange={(e) => setTempStep(prev => ({ ...prev, stepNumber: e.target.value }))}
-                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
-                  <textarea
-                    placeholder="Step Description / Instruction (Ctrl+Enter to add)"
-                    value={tempStep.instruction}
-                    onChange={(e) => setTempStep(prev => ({ ...prev, instruction: e.target.value }))}
-                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
-                    rows={2}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Duration (e.g., 15 mins)"
-                    value={tempStep.duration}
-                    onChange={(e) => setTempStep(prev => ({ ...prev, duration: e.target.value }))}
-                    onBlur={() => runOnDraftLeave(stepDraftRef, flushStepDraft)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addStep();
-                      }
-                    }}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
-                  />
-                </div>
-
-                <div className="flex justify-end mt-3">
-                  <button
-                    type="button"
-                    onClick={addStep}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
-                  >
-                    <Plus className="w-4 h-4" /> Add step to list
-                  </button>
-                </div>
-              </div>
+            <div className="space-y-6">
+              {renderProcessStepsBlock(
+                'production',
+                'PRODUCTION PROCESS STEPS',
+                'Manufacturing / bulk production steps. Product (RM) team maintains this list.',
+                productionStepDraftRef,
+                tempProductionStep,
+                setTempProductionStep,
+                'processProduction'
+              )}
+              {renderProcessStepsBlock(
+                'packaging',
+                'PACKAGING PROCESS STEPS',
+                'Filling, labelling, and dispatch preparation steps. Packaging team maintains this list.',
+                packagingStepDraftRef,
+                tempPackagingStep,
+                setTempPackagingStep,
+                'processPackaging'
+              )}
             </div>
         );
       case 5:
         return (
             <div className="space-y-6">
-              <div className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Optional — business & storage</h3>
+              <PrTeamSectionGate
+                canEdit={prCanEdit('specsProduct')}
+                viewOnlyLabel="View only — product specs & regulatory claims are maintained by the product (RM) team."
+                className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Product — business, storage &amp; specs</h3>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Brand / Client</label>
@@ -3361,16 +3419,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       <option value="Client A">Client A</option>
                       <option value="Client B">Client B</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1x50 tube"
-                      value={formData.packConfiguration}
-                      onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="productForm">Product Form</label>
@@ -3466,10 +3514,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   onChange={handleCustomFieldChange}
                   onRemoveFieldValue={handleRemoveCustomFieldValue}
                 />
-              </div>
-
-              <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
-                <label className="block text-sm font-semibold text-blue-700 mb-3">REGULATORY & CLAIMS</label>
+                <label className="block text-sm font-semibold text-blue-700 mb-3 mt-4">REGULATORY &amp; CLAIMS (product)</label>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Applicable Regulation</label>
@@ -3514,6 +3559,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
                 </div>
+              </PrTeamSectionGate>
+
+              <PrTeamSectionGate
+                canEdit={prCanEdit('specsPackaging')}
+                viewOnlyLabel="View only — packaging specs are maintained by the packaging team."
+                className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white space-y-4"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Packaging — configuration &amp; specs</h3>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1x50 tube"
+                    value={formData.packConfiguration}
+                    onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
                 <MasterCustomFieldsBlock
                   moduleCode="REG"
                   taxonomyLabel={prCustomFieldsTaxonomyLabel}
@@ -3522,7 +3585,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   onChange={handleCustomFieldChange}
                   onRemoveFieldValue={handleRemoveCustomFieldValue}
                 />
-              </div>
+              </PrTeamSectionGate>
             </div>
         );
       case 6:
@@ -3561,18 +3624,23 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   ? undefined
                   : 'Select PR category and sub-category in Primary info to add dispatch sub-category specs.'
               }
+              sectionEditable={(section) => prQualitySpecSectionEditable(prFormTeamRole, section)}
             />
           </div>
         );
       case 7:
         return (
-          <div className="min-w-0 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white">
+          <PrTeamSectionGate
+            canEdit={prCanEdit('licensing')}
+            viewOnlyLabel="Licensing is restricted — only administrators may edit facility licences."
+            className="min-w-0 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+          >
             <PrFacilityLicenceStep
               records={formData.prFacilityLicences}
               onChange={(records) => setFormData((prev) => ({ ...prev, prFacilityLicences: records }))}
               productLabel={formData.productName.trim() || formData.skuCode.trim() || undefined}
             />
-          </div>
+          </PrTeamSectionGate>
         );
       default:
         return null;
@@ -3651,19 +3719,6 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         confirming={submitConfirming}
         isEdit
         commentPlaceholder="Why is this being sent back? (optional)"
-      />
-      <MasterSaveSuccessModal
-        isOpen={saveSuccessOpen}
-        onClose={closeSaveSuccessAndExit}
-        title={saveSuccessIsEdit ? 'Product updated' : 'Product registered'}
-        subtitle={
-          saveSuccessIsEdit
-            ? 'Changes are saved. Internal code cannot be changed here.'
-            : 'Your product is saved. Details and the generated internal code are below.'
-        }
-        generatedCode={saveSuccessCode}
-        codeLabel={saveSuccessIsEdit ? 'Internal PR code (SKU)' : 'Generated internal code (SKU)'}
-        rows={saveSuccessRows}
       />
       </MasterCustomFieldsProvider>
     </>

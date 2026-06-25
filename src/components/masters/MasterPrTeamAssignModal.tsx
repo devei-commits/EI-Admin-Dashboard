@@ -60,7 +60,7 @@ export function MasterPrTeamAssignModal({
     if (busy) return;
     setBusy(true);
     try {
-      const payload = toApiPayload(draft);
+      const payload = toApiPayload({ ...assignees, [team]: draft[team] });
       const res = await patchMasterApprovalStatus('PR', itemId, {
         approval_stage_assignees: payload,
       });

@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom';
 import { PlusCircle, Trash2, Plus, ArrowUpFromLine, Upload, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
+import { normalizeStageAssignees } from '../constants/masterApprovalStatus';
+import { canEditPrTeamAssignSlot, type PrTeamKey } from '../lib/prMasterTeamApproval';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterPrTeamAssignCell } from '../components/masters/MasterPrTeamAssignCell';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
@@ -70,9 +73,16 @@ const FORMULA_SUMMARY_CHUNK_ROWS = 25;
 const FORMULA_BOM_CHUNK_GROUPS = 5;
 
 const BOMDashboard: React.FC = () => {
-  const { hasModuleAccess } = usePermissions();
+  const { hasModuleAccess, isAdmin } = usePermissions();
+  const { user } = useAuth();
   const canEdit = hasModuleAccess('catalogue-management') || hasModuleAccess('packaging-management');
   const { canAssignApprover } = useMasterApprovalPermission('PR');
+
+  const canAssignPrTeam = useCallback(
+    (team: PrTeamKey, stageAssignees: unknown): boolean =>
+      canEditPrTeamAssignSlot(team, isAdmin, user?.id, normalizeStageAssignees(stageAssignees), canAssignApprover),
+    [isAdmin, user?.id, canAssignApprover]
+  );
 
   const [list, setList] = useState<PRProductListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1231,7 +1241,7 @@ const BOMDashboard: React.FC = () => {
                             itemCode={p.product_code || String(p.product_id)}
                             stageAssignees={p.approval_stage_assignees}
                             approvalTeamPending={p.approval_team_pending}
-                            canAssign={canAssignApprover}
+                            canAssign={canAssignPrTeam('rm_team', p.approval_stage_assignees)}
                             onSaved={(assignees) => {
                               setList((prev) =>
                                 prev.map((row) =>
@@ -1254,7 +1264,7 @@ const BOMDashboard: React.FC = () => {
                             itemCode={p.product_code || String(p.product_id)}
                             stageAssignees={p.approval_stage_assignees}
                             approvalTeamPending={p.approval_team_pending}
-                            canAssign={canAssignApprover}
+                            canAssign={canAssignPrTeam('pack_team', p.approval_stage_assignees)}
                             onSaved={(assignees) => {
                               setList((prev) =>
                                 prev.map((row) =>

@@ -15,6 +15,7 @@ type SectionTablePairProps = {
   subDisabledHint?: string;
   idPrefix: string;
   scopeLabel: string;
+  readOnly?: boolean;
 };
 
 function SectionCommonAndSubTables({
@@ -28,7 +29,9 @@ function SectionCommonAndSubTables({
   subDisabledHint,
   idPrefix,
   scopeLabel,
+  readOnly = false,
 }: SectionTablePairProps): React.ReactElement {
+  const tablesEnabled = !readOnly;
   return (
     <>
       <QualitySpecTable
@@ -39,7 +42,7 @@ function SectionCommonAndSubTables({
         rows={commonRows}
         onChange={onCommonChange}
         idPrefix={`${idPrefix}-common`}
-        enabled={Boolean(categoryLabel && categoryLabel !== '—')}
+        enabled={tablesEnabled && Boolean(categoryLabel && categoryLabel !== '—')}
         disabledHint={
           categoryLabel && categoryLabel !== '—'
             ? undefined
@@ -55,7 +58,7 @@ function SectionCommonAndSubTables({
           rows={subRows}
           onChange={onSubChange}
           idPrefix={`${idPrefix}-sub`}
-          enabled={Boolean(subCategoryLabel && subCategoryLabel !== '—')}
+          enabled={tablesEnabled && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
           disabledHint={subDisabledHint}
         />
       ) : null}
@@ -80,6 +83,8 @@ type PrQualitySpecTableProps = {
   bulkSubDisabledHint?: string;
   finalSubDisabledHint?: string;
   dispatchSubDisabledHint?: string;
+  /** When set, tabs/sections the user cannot edit are disabled (view-only). */
+  sectionEditable?: (section: PrQualitySpecSectionKey) => boolean;
 };
 
 export function PrQualitySpecTable({
@@ -99,10 +104,14 @@ export function PrQualitySpecTable({
   bulkSubDisabledHint,
   finalSubDisabledHint,
   dispatchSubDisabledHint,
+  sectionEditable,
 }: PrQualitySpecTableProps): React.ReactElement {
   const [activeSection, setActiveSection] = useState<PrQualitySpecSectionKey>('bulkClearance');
 
   const activeMeta = PR_QUALITY_SPEC_SECTIONS.find((s) => s.key === activeSection) ?? PR_QUALITY_SPEC_SECTIONS[0];
+  const canEditSection = (key: PrQualitySpecSectionKey): boolean =>
+    sectionEditable ? sectionEditable(key) : true;
+  const activeEditable = canEditSection(activeSection);
 
   return (
     <div className="space-y-4">
@@ -113,6 +122,7 @@ export function PrQualitySpecTable({
       >
         {PR_QUALITY_SPEC_SECTIONS.map((section) => {
           const isActive = activeSection === section.key;
+          const tabEditable = canEditSection(section.key);
           return (
             <button
               key={section.key}
@@ -122,10 +132,15 @@ export function PrQualitySpecTable({
               aria-controls={`pr-qs-panel-${section.key}`}
               id={`pr-qs-tab-${section.key}`}
               onClick={() => setActiveSection(section.key)}
+              title={tabEditable ? undefined : 'View only — assigned to the other team'}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
                 isActive
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-50'
+                  ? tabEditable
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-500 text-white shadow-sm'
+                  : tabEditable
+                    ? 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-50'
+                    : 'text-slate-400 bg-slate-100 border border-slate-200'
               }`}
             >
               <span aria-hidden="true">{section.emoji} </span>
@@ -142,6 +157,12 @@ export function PrQualitySpecTable({
         aria-labelledby={`pr-qs-tab-${activeSection}`}
         className="space-y-1 rounded-lg border border-slate-200 bg-slate-50/40 p-3 sm:p-4"
       >
+        {!activeEditable ? (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            View only — this quality section is maintained by the{' '}
+            {activeSection === 'bulkClearance' ? 'product (RM)' : 'packaging'} team.
+          </p>
+        ) : null}
         <h4 className="text-sm font-semibold text-slate-800 mb-3">
           {activeMeta.emoji} {activeMeta.title}
         </h4>
@@ -158,6 +179,7 @@ export function PrQualitySpecTable({
             subDisabledHint={bulkSubDisabledHint}
             idPrefix="pr-qs-bulk"
             scopeLabel="bulk clearance"
+            readOnly={!activeEditable}
           />
         ) : null}
 
@@ -173,6 +195,7 @@ export function PrQualitySpecTable({
             subDisabledHint={finalSubDisabledHint}
             idPrefix="pr-qs-final"
             scopeLabel="final clearance"
+            readOnly={!activeEditable}
           />
         ) : null}
 
@@ -188,6 +211,7 @@ export function PrQualitySpecTable({
             subDisabledHint={dispatchSubDisabledHint}
             idPrefix="pr-qs-dispatch"
             scopeLabel="dispatch"
+            readOnly={!activeEditable}
           />
         ) : null}
       </div>

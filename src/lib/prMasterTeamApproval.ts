@@ -96,3 +96,21 @@ export function prTeamAssigneeSummary(assignees: MasterApprovalStageAssignees): 
   const pack = assignees.pack_team?.display_name?.split(' ')[0] ?? 'Open';
   return `RM: ${rm} · Pack: ${pack}`;
 }
+
+/** RM team assignee may only edit rm_team; Pack team assignee may only edit pack_team. */
+export function canEditPrTeamAssignSlot(
+  team: PrTeamKey,
+  isAdmin: boolean,
+  userId: string | number | undefined,
+  assignees: MasterApprovalStageAssignees,
+  hasAssignPermission: boolean
+): boolean {
+  if (!hasAssignPermission) return false;
+  if (isAdmin) return true;
+  const me = parseInt(String(userId ?? ''), 10);
+  if (!Number.isFinite(me) || me <= 0) return true;
+  const isRm = assignees.rm_team?.user_id === me;
+  const isPack = assignees.pack_team?.user_id === me;
+  if (team === 'rm_team') return !isPack || isRm;
+  return !isRm || isPack;
+}
