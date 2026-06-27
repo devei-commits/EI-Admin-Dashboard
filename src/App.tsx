@@ -13,6 +13,7 @@ import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
 import { SuperAdminRoute } from './components/SuperAdminRoute'
 import Sidebar from "./components/Sidebar"
 import StandaloneModuleLayout from "./components/StandaloneModuleLayout"
+import SwipeableModuleLayout from "./components/SwipeableModuleLayout"
 import { monitorConnection } from './lib/performanceOptimization'
 
 // Lazy loaded pages for better performance
@@ -279,7 +280,7 @@ const AppLayout = () => {
 
        if (isFulfillmentRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <SwipeableModuleLayout>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -293,7 +294,7 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </SwipeableModuleLayout>
               );
        }
 
