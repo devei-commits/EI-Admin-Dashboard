@@ -96,6 +96,7 @@ export interface SaleOrder {
   dueDate: string;
   priority: Priority;
   soStatus: SOStatus;
+  commercialStatus?: CommercialStatus;
   soValue: number;
   shipAddress: string;
   paymentTerms: PaymentTerms;
@@ -294,6 +295,162 @@ export interface NewSOData {
 // Alias types for consistency
 export type AddSOData = NewSOData;
 export type FilterChip = string;
+
+// ═══════════════════════════════════════════════════════════
+// COMMERCIAL STATUS (fulfillment lifecycle)
+// ═══════════════════════════════════════════════════════════
+
+export type CommercialStatus =
+  | 'draft'
+  | 'received'
+  | 'advance_pending'
+  | 'under_review'
+  | 'approved'
+  | 'partial_closed'
+  | 'closed'
+  | 'on_hold';
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD TYPES
+// ═══════════════════════════════════════════════════════════
+
+export interface SlaFlag {
+  overdue: boolean;
+  approaching: boolean;
+  daysOverdue: number;
+}
+
+export interface BatchPill {
+  batchNo: string;
+  bprNo: string;
+  stage: string;
+  stageLabel: string;
+}
+
+export interface StageStatusEntry {
+  key: 'fg_ready' | 'packed' | 'invoiced' | 'shipped';
+  label: string;
+  /** Number of batches that have reached this stage. */
+  batches: number;
+  /** Units (batch qty) at this stage — never KG. */
+  qty: number;
+}
+
+export interface SODashboardRow {
+  id: number;
+  soNo: string;
+  soDate: string | null;
+  dueDate: string | null;
+  priority: string;
+  soStatus: string;
+  commercialStatus: CommercialStatus;
+  soValue: number;
+  unitPrice: number;
+  customer: {
+    name: string;
+    code: string | null;
+    city: string;
+    clientId: number | null;
+  };
+  product: {
+    name: string;
+    code: string;
+    extraCount: number;
+  } | null;
+  totalOrderedQty: number;
+  fgReadyQty: number;
+  fgReadyPct: number;
+  packedQty: number;
+  packedPct: number;
+  invoicedQty: number;
+  invoicedPct: number;
+  shippedQty: number;
+  shippedPct: number;
+  /** Per-stage fulfillment status in batches + batch units (not KG). */
+  stageStatus: StageStatusEntry[];
+  batchPills: BatchPill[];
+  batchPillsTotal: number;
+  slaFlag: SlaFlag;
+  commentCount: number;
+}
+
+export interface StageLogEntry {
+  stage: string;
+  stageLabel: string;
+  startedAt: string;
+  completedAt: string | null;
+  actorName: string | null;
+  committedDays: number | null;
+  actualDays: number | null;
+  slipped: boolean;
+  approaching: boolean;
+}
+
+export interface BatchDashboardRow {
+  id: number;
+  soId: number;
+  soNo: string;
+  soDate: string | null;
+  dueDate: string | null;
+  priority: string;
+  soStatus: string;
+  commercialStatus: CommercialStatus;
+  client: { name: string; code: string | null; city: string; id: number | null };
+  product: { name: string; code: string; pack: string; orderedQty: number; unitPrice: number };
+  batch: {
+    batchNo: string;
+    bprNo: string;
+    bmrNo: string;
+    plannedQty: number;
+    coveragePct: number;
+    stage: string;
+    stageLabel: string;
+    fgLocation: string | null;
+  };
+  ffStatus: string;
+  fgQty: number;
+  pickedQty: number;
+  packedQty: number;
+  invoicedQty: number;
+  shippedQty: number;
+  invoiceNo: string | null;
+  awbNo: string | null;
+  courier: string | null;
+  dispatchDate: string | null;
+  etaDate: string | null;
+  deliveryDate: string | null;
+  stageLogs: StageLogEntry[];
+  slaFlag: SlaFlag;
+  commentCount: number;
+}
+
+export interface CommentFeedItem {
+  kind: 'comment' | 'stage_event';
+  id: number;
+  at: string;
+  // comment fields
+  byName?: string | null;
+  byUserId?: number | null;
+  text?: string;
+  taggedUsers?: { id?: number; name?: string }[];
+  attachments?: { name?: string; url?: string }[];
+  resolved?: boolean;
+  // stage_event fields
+  stage?: string;
+  stageLabel?: string;
+  startedAt?: string;
+  completedAt?: string | null;
+  actorName?: string | null;
+  committedDays?: number | null;
+  actualDays?: number | null;
+  slipped?: boolean;
+}
+
+export interface DashboardPageMeta {
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
 export interface DeliveryData {
   deliveryDate: string;

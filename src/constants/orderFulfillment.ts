@@ -3,22 +3,27 @@
  * Static configuration and lookup data
  */
 
-import { 
-  Package, 
-  CheckCircle, 
-  Hand, 
-  FileText, 
-  Truck, 
-  MapPin, 
-  Lock, 
+import {
+  Package,
+  CheckCircle,
+  Hand,
+  FileText,
+  Truck,
+  MapPin,
+  Lock,
   AlertCircle,
   Clock,
   TestTube,
   Zap,
   ShoppingCart,
-  Settings
+  Settings,
+  PauseCircle,
+  ReceiptText,
+  Search,
+  ThumbsUp,
+  XCircle,
 } from 'lucide-react';
-import type { FFStatus, SOStatus } from '../types/orderFulfillment';
+import type { FFStatus, SOStatus, CommercialStatus } from '../types/orderFulfillment';
 
 // ═══════════════════════════════════════════════════════════
 // FG LOCATIONS & COURIERS
@@ -280,6 +285,97 @@ export const BATCH_FILTER_CHIPS = [
 // ═══════════════════════════════════════════════════════════
 // UTILITY CONSTANTS
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// COMMERCIAL STATUS CONFIG
+// ═══════════════════════════════════════════════════════════
+
+export const COMMERCIAL_STATUS_CONFIG: Record<CommercialStatus, {
+  label: string;
+  icon: typeof Package;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}> = {
+  draft: {
+    label: 'Draft',
+    icon: FileText,
+    color: 'text-gray-500',
+    bgColor: 'bg-gray-100',
+    borderColor: 'border-gray-200',
+  },
+  received: {
+    label: 'Received',
+    icon: ReceiptText,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+  },
+  advance_pending: {
+    label: 'Advance Pending',
+    icon: Clock,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+  },
+  under_review: {
+    label: 'Under Review',
+    icon: Search,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
+    borderColor: 'border-purple-200',
+  },
+  approved: {
+    label: 'Approved',
+    icon: ThumbsUp,
+    color: 'text-emerald-600',
+    bgColor: 'bg-emerald-50',
+    borderColor: 'border-emerald-200',
+  },
+  partial_closed: {
+    label: 'Partial Closed',
+    icon: Zap,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+  },
+  closed: {
+    label: 'Closed',
+    icon: XCircle,
+    color: 'text-teal-700',
+    bgColor: 'bg-teal-50',
+    borderColor: 'border-teal-200',
+  },
+  on_hold: {
+    label: 'On Hold',
+    icon: PauseCircle,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+  },
+};
+
+export const COMMERCIAL_STATUS_FILTER_OPTIONS: { key: CommercialStatus | 'all'; label: string }[] = [
+  { key: 'all', label: 'All Statuses' },
+  { key: 'received', label: 'Received' },
+  { key: 'advance_pending', label: 'Advance Pending' },
+  { key: 'under_review', label: 'Under Review' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'partial_closed', label: 'Partial Closed' },
+  { key: 'closed', label: 'Closed' },
+  { key: 'on_hold', label: 'On Hold' },
+];
+
+export const BATCH_STAGE_FILTER_OPTIONS = [
+  { key: 'all', label: 'All Stages' },
+  { key: 'PLANNING', label: 'Planning' },
+  { key: 'PROCUREMENT', label: 'Procurement' },
+  { key: 'PRODUCTION', label: 'Production' },
+  { key: 'FG_READY', label: 'FG Ready' },
+  { key: 'PACKED', label: 'Packed' },
+  { key: 'INVOICED', label: 'Invoiced' },
+  { key: 'SHIPPED', label: 'Shipped' },
+];
 
 export const GST_RATE = 0.18; // 18% GST
 

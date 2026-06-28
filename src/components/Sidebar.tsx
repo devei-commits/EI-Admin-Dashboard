@@ -34,9 +34,15 @@ type SidebarProps = {
   variant?: "layout" | "drawer";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Live drag offset in px for the drawer variant (e.g. while a swipe gesture is in
+   * progress). When non-null the panel follows the finger and its transition is disabled.
+   * The value is the panel's translateX (−width … 0). Ignored for the layout variant.
+   */
+  dragPx?: number | null;
 };
 
-const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: SidebarProps) => {
+const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragPx = null }: SidebarProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const [mediumExpanded, setMediumExpanded] = useState(false);
   const viewportMode = useSidebarViewport();
@@ -302,10 +308,11 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange }: Sid
 
       {/* Sidebar */}
       <div
-        className={`fixed flex flex-col bg-background border-r border-gray-200 transition-all duration-300 ease-in-out shadow-sm
+        style={isDrawer && dragPx != null ? { transform: `translateX(${dragPx}px)` } : undefined}
+        className={`fixed flex flex-col bg-background border-r border-gray-200 ${isDrawer && dragPx != null ? "transition-none" : "transition-all duration-300 ease-in-out"} shadow-sm
           ${isIconOnly ? "is-sidebar-icon-only md:w-16" : "w-64"}
           ${isDrawer
-            ? `top-0 left-0 h-screen z-[90] w-64 ${isOpen ? "translate-x-0" : "-translate-x-full"}`
+            ? `top-0 left-0 h-screen z-[90] w-64 ${dragPx != null ? "" : (isOpen ? "translate-x-0" : "-translate-x-full")}`
             : `md:sticky md:top-0 h-screen md:h-screen z-40 ${isMediumExpanded ? "md:z-50" : ""} ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"} mt-14 md:mt-0 lg:w-64`
           }`}
       >

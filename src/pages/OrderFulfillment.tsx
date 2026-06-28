@@ -5,9 +5,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ShoppingCart, Package, Search, Loader2, LayoutDashboard, ArrowUpDown } from 'lucide-react';
-import { SaleOrdersView } from '../components/orders/SaleOrdersView';
-import { ProductsBatchesView } from '../components/orders/ProductsBatchesView';
+import { ShoppingCart, Package, Loader2, LayoutDashboard } from 'lucide-react';
+import { SODashboardView } from '../components/orders/SODashboardView';
+import { BatchesDashboardView } from '../components/orders/BatchesDashboardView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
 import { normalizePackSize } from '../utils/orderFulfillmentUtils';
 import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
@@ -23,18 +23,17 @@ import { importOpenSoHeadersExcel } from '../services/salesPurchase.service';
 import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
-import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 
-type ViewMode = 'orders' | 'batches';
+type ViewMode = 'so-dashboard' | 'products-batches';
 type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
 type SortOrder = 'asc' | 'desc';
 
 export const OrderFulfillment: React.FC = () => {
   const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [viewMode, setViewMode] = useState<ViewMode>('orders');
+  const [viewMode, setViewMode] = useState<ViewMode>('so-dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | SaleOrder['soStatus']>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'normal' | 'high'>('all');
@@ -75,10 +74,8 @@ export const OrderFulfillment: React.FC = () => {
     const so = searchParams.get('so')?.trim();
     const view = searchParams.get('view')?.trim();
     const bmr = searchParams.get('bmr')?.trim();
-    if (view === 'batches') {
-      setViewMode('batches');
-      if (so) setBatchesDeepLinkSearch(so);
-      else if (bmr) setBatchesDeepLinkSearch(bmr);
+    if (view === 'batches' || view === 'products-batches') {
+      setViewMode('products-batches');
       if (bmr) setBatchesDeepLinkBmr(bmr);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
@@ -90,8 +87,7 @@ export const OrderFulfillment: React.FC = () => {
       return;
     }
     if (!so) return;
-    setViewMode('orders');
-    setSearchTerm(so);
+    setViewMode('so-dashboard');
     setDeepLinkSoNo(so);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -424,13 +420,9 @@ export const OrderFulfillment: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="sticky top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-2 bg-gray-50 border-b border-gray-200 flex items-center">
-        <AdminMainMenuButton />
-        <span className="ml-2 text-sm font-medium text-gray-600">Main menu</span>
-      </div>
       <div className="max-w-screen-2xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200">
         <div className="p-6">
-          <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
+          <div className="flex flex-wrap justify-between items-start gap-4 mb-6 pl-12 sm:pl-0">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">Order Fulfillment</h1>
               <p className="text-sm text-gray-500 mt-1">Manage sale orders from creation to delivery.</p>
@@ -465,113 +457,24 @@ export const OrderFulfillment: React.FC = () => {
 
           <div className="flex justify-between items-center mb-4">
             <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-lg p-1">
-              <button 
-                onClick={() => setViewMode('orders')} 
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'orders' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+              <button
+                onClick={() => setViewMode('so-dashboard')}
+                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'so-dashboard' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
               >
-                <ShoppingCart size={16} /> Sale Orders
+                <ShoppingCart size={16} /> SO Dashboard
               </button>
-              <button 
-                onClick={() => setViewMode('batches')} 
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'batches' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
+              <button
+                onClick={() => setViewMode('products-batches')}
+                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'products-batches' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
               >
                 <Package size={16} /> Products & Batches
               </button>
             </div>
-            <span className="text-xs text-gray-500">
-              Showing {filteredSaleOrders.length} of {saleOrders.length} orders
-            </span>
           </div>
 
-          <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/70 p-3 space-y-3">
-            <DateRangeFilterInputs
-              value={dateFilter}
-              onChange={setDateFilter}
-              dateFieldLabel="Order date"
-            />
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
-              <div className="relative xl:col-span-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Search SO, customer, city, SKU, product..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all text-sm bg-white"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'all' | SaleOrder['soStatus'])}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              >
-                <option value="all">All Statuses</option>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value as 'all' | 'normal' | 'high')}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              >
-                <option value="all">All Priorities</option>
-                <option value="high">High</option>
-                <option value="normal">Normal</option>
-              </select>
-              <select
-                value={cityFilter}
-                onChange={(e) => setCityFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-              >
-                <option value="all">All Cities</option>
-                {cityOptions.filter((city) => city !== 'all').map((city) => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                >
-                  <option value="dueDate">Sort: Due date</option>
-                  <option value="orderDate">Sort: Order date</option>
-                  <option value="customer">Sort: Customer</option>
-                  <option value="soNo">Sort: SO no</option>
-                  <option value="soValue">Sort: SO value</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white hover:bg-gray-100 flex items-center gap-1.5"
-                  title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-                >
-                  <ArrowUpDown size={15} />
-                  {sortOrder.toUpperCase()}
-                </button>
-              </div>
-            </div>
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                  setPriorityFilter('all');
-                  setCityFilter('all');
-                  setSortKey('dueDate');
-                  setSortOrder('asc');
-                  setDateFilter({ from: '', to: '' });
-                }}
-                className="text-xs font-semibold text-gray-600 hover:text-gray-900 underline"
-              >
-                Clear filters
-              </button>
-            </div>
-          </div>
-
-          {loading ? (
+          {viewMode === 'products-batches' ? (
+            <BatchesDashboardView />
+          ) : loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="animate-spin text-orange-500 mr-3" size={24} />
               <span className="text-gray-500">Loading fulfillment orders...</span>
@@ -583,9 +486,9 @@ export const OrderFulfillment: React.FC = () => {
                 Retry
               </button>
             </div>
-          ) : viewMode === 'orders' ? (
-            <SaleOrdersView
-              saleOrders={filteredSaleOrders}
+          ) : (
+            <SODashboardView
+              saleOrders={saleOrders}
               onAddSO={handleAddSO}
               onUpdateSO={handleUpdateSO}
               onPickConfirm={handlePickConfirm}
@@ -594,21 +497,6 @@ export const OrderFulfillment: React.FC = () => {
               onConfirmDelivery={handleConfirmDelivery}
               initialOpenSoNo={deepLinkSoNo}
               onDeepLinkSoConsumed={() => setDeepLinkSoNo(null)}
-            />
-          ) : (
-            <ProductsBatchesView
-              saleOrders={filteredSaleOrders}
-              onPickConfirm={handlePickConfirm}
-              onGenerateInvoice={handleGenerateInvoice}
-              onDispatch={handleDispatch}
-              onConfirmDelivery={handleConfirmDelivery}
-              onViewYieldSplit={(payload) => setSelectedYield(payload)}
-              initialSearchQuery={batchesDeepLinkSearch}
-              initialOpenBmrNo={batchesDeepLinkBmr}
-              onDeepLinkConsumed={() => {
-                setBatchesDeepLinkSearch('');
-                setBatchesDeepLinkBmr(null);
-              }}
             />
           )}
         </div>

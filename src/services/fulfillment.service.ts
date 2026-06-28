@@ -1,5 +1,8 @@
 import { api } from '../lib/apiClient';
-import type { SaleOrder, PickData, InvoiceData, ShipData, DeliveryData, BatchSplit, BatchTimelineStep } from '../types/orderFulfillment';
+import type {
+  SaleOrder, PickData, InvoiceData, ShipData, DeliveryData, BatchSplit, BatchTimelineStep,
+  SODashboardRow, BatchDashboardRow, CommentFeedItem, CommercialStatus, DashboardPageMeta,
+} from '../types/orderFulfillment';
 
 const BASE = '/api/v1/fulfillment';
 
@@ -357,6 +360,92 @@ export interface SoPlanningAvailabilityResponse {
 
 const soPlanningAvailabilityCache = new Map<string, SoPlanningAvailabilityResponse>();
 const soPlanningAvailabilityInFlight = new Map<string, Promise<SoPlanningAvailabilityResponse>>();
+
+/* ── Dashboard views ── */
+
+export interface SODashboardParams {
+  client_id?: string;
+  status?: string[];
+  date_from?: string;
+  date_to?: string;
+  search?: string;
+  flagged_only?: boolean;
+  page?: number;
+  page_size?: number;
+}
+
+export interface SODashboardResponse extends DashboardPageMeta {
+  rows: SODashboardRow[];
+}
+
+export async function fetchSalesOrdersDashboard(params: SODashboardParams = {}): Promise<SODashboardResponse> {
+  const qs = new URLSearchParams();
+  if (params.client_id) qs.set('client_id', params.client_id);
+  if (params.status?.length) params.status.forEach((s) => qs.append('status', s));
+  if (params.date_from) qs.set('date_from', params.date_from);
+  if (params.date_to) qs.set('date_to', params.date_to);
+  if (params.search) qs.set('search', params.search);
+  if (params.flagged_only) qs.set('flagged_only', 'true');
+  if (params.page) qs.set('page', String(params.page));
+  if (params.page_size) qs.set('page_size', String(params.page_size));
+  const res = await api.get<SODashboardResponse>(`${BASE}/sales-orders-dashboard?${qs}`);
+  const data = (res as any)?.data ?? res;
+  return { total: data.total ?? 0, page: data.page ?? 1, pageSize: data.pageSize ?? 100, rows: Array.isArray(data.rows) ? data.rows : [] };
+}
+
+export interface BatchDashboardParams {
+  stage?: string[];
+  due_before?: string;
+  due_after?: string;
+  client_id?: string;
+  product_id?: string;
+  search?: string;
+  flagged_only?: boolean;
+  page?: number;
+  page_size?: number;
+}
+
+export interface BatchDashboardResponse extends DashboardPageMeta {
+  rows: BatchDashboardRow[];
+}
+
+export async function fetchBatchesDashboard(params: BatchDashboardParams = {}): Promise<BatchDashboardResponse> {
+  const qs = new URLSearchParams();
+  if (params.stage?.length) params.stage.forEach((s) => qs.append('stage', s));
+  if (params.due_before) qs.set('due_before', params.due_before);
+  if (params.due_after) qs.set('due_after', params.due_after);
+  if (params.client_id) qs.set('client_id', params.client_id);
+  if (params.product_id) qs.set('product_id', params.product_id);
+  if (params.search) qs.set('search', params.search);
+  if (params.flagged_only) qs.set('flagged_only', 'true');
+  if (params.page) qs.set('page', String(params.page));
+  if (params.page_size) qs.set('page_size', String(params.page_size));
+  const res = await api.get<BatchDashboardResponse>(`${BASE}/batches-dashboard?${qs}`);
+  const data = (res as any)?.data ?? res;
+  return { total: data.total ?? 0, page: data.page ?? 1, pageSize: data.pageSize ?? 200, rows: Array.isArray(data.rows) ? data.rows : [] };
+}
+
+/* ── Comments ── */
+
+export async function fetchComments(entityType: 'so' | 'batch', entityId: number): Promise<CommentFeedItem[]> {
+  const res = await api.get(`${BASE}/comments/${entityType}/${entityId}`);
+  const data = (res as any)?.data ?? res;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addComment(entityType: 'so' | 'batch', entityId: number, text: string): Promise<void> {
+  await api.post(`${BASE}/comments/${entityType}/${entityId}`, { text });
+}
+
+export async function resolveComment(commentId: number): Promise<void> {
+  await api.patch(`${BASE}/comments/${commentId}/resolve`, {});
+}
+
+/* ── Commercial status ── */
+
+export async function updateCommercialStatus(id: number, status: CommercialStatus, reason?: string): Promise<void> {
+  await api.patch(`${BASE}/${id}/commercial-status`, { status, reason });
+}
 
 export async function fetchSoPlanningAvailability(soNo: string): Promise<SoPlanningAvailabilityResponse> {
   const cacheKey = String(soNo || '').trim().toUpperCase();

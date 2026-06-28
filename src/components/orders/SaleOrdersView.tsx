@@ -4,11 +4,10 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, ShoppingCart, Package, TrendingUp, DollarSign, Factory, CheckCircle, FileText, Truck, MapPin, Lock } from 'lucide-react';
+import { Plus, ShoppingCart, TrendingUp, DollarSign, Factory, CheckCircle, FileText, Truck, Lock, MessageSquare, AlertCircle, Clock } from 'lucide-react';
 import { KPICard } from './KPICard';
 import { PipelineStrip } from './PipelineStrip';
 import { FilterBar } from './FilterBar';
-import { SOCard } from './SOCard';
 import { AddSOModal } from './AddSOModal';
 import { SODetailModal } from './SODetailModal';
 import { PickModal } from './PickModal';
@@ -16,14 +15,83 @@ import { InvoiceModal } from './InvoiceModal';
 import { ShipModal } from './ShipModal';
 import { TrackModal } from './TrackModal';
 import { EditSOModal } from './EditSOModal';
-import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../../types/orderFulfillment';
-import { aggregateKPIs, aggregatePipelineCounts, formatINR, formatLakhs, formatNumber } from '../../utils/orderFulfillmentUtils';
+import { CommentsPanel } from './CommentsPanel';
+import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData, CommercialStatus } from '../../types/orderFulfillment';
+import { aggregateKPIs, aggregatePipelineCounts, formatLakhs, formatNumber } from '../../utils/orderFulfillmentUtils';
 import { computeOrderItemExecutionPercent } from '../../lib/fulfillmentExecutionPct';
 import type { ExecPlanningItem } from '../../lib/fulfillmentExecutionPct';
 import type { SoPlanningAvailabilityResponse } from '../../services/fulfillment.service';
 import { fetchSoPlanningAvailability } from '../../services/fulfillment.service';
 import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
-import type { OrderItem } from '../../types/orderFulfillment';
+import type { OrderItem, BatchSplit } from '../../types/orderFulfillment';
+import { COMMERCIAL_STATUS_CONFIG } from '../../constants/orderFulfillment';
+
+// ─── Fulfillment progress helpers ────────────────────────────────────────────
+
+const FG_PLUS   = new Set(['fg_ready','picking','invoiced','shipped','delivered','closed']);
+const PICK_PLUS  = new Set(['picking','invoiced','shipped','delivered','closed']);
+const INV_PLUS   = new Set(['invoiced','shipped','delivered','closed']);
+const SHIP_PLUS  = new Set(['shipped','delivered','closed']);
+
+function computeItemProgress(item: OrderItem) {
+  const splits = item.batchSplits;
+  const totalSplits = splits.length || 1;
+  const unitPerSplit = Math.round(item.orderedQty / totalSplits);
+  let fgReady = 0, packed = 0, invoiced = 0, shipped = 0;
+  for (const s of splits) {
+    // Best unit estimate for this split (fgYield from production → pickedQty → proportional)
+    const unitQty = (s.fgYield && s.fgYield > 0) ? s.fgYield
+      : s.pickedQty > 0 ? s.pickedQty
+      : unitPerSplit;
+    if (FG_PLUS.has(s.ffStatus))  fgReady  += unitQty;
+    if (PICK_PLUS.has(s.ffStatus)) packed   += s.pickedQty;
+    if (INV_PLUS.has(s.ffStatus))  invoiced += s.pickedQty;
+    if (SHIP_PLUS.has(s.ffStatus)) shipped  += s.pickedQty;
+  }
+  return { fgReady: Math.round(fgReady), packed, invoiced, shipped };
+}
+
+const STAGE_COLORS_PILL: Record<string, string> = {
+  PLANNING:    'bg-gray-100 text-gray-600 border-gray-200',
+  PRODUCTION:  'bg-amber-50 text-amber-700 border-amber-200',
+  FG_READY:    'bg-emerald-50 text-emerald-700 border-emerald-200',
+  PACKED:      'bg-orange-50 text-orange-700 border-orange-200',
+  INVOICED:    'bg-purple-50 text-purple-700 border-purple-200',
+  SHIPPED:     'bg-teal-50 text-teal-700 border-teal-200',
+};
+
+function ffStatusToStage(status: string): string {
+  if (['shipped','delivered','closed'].includes(status)) return 'SHIPPED';
+  if (status === 'invoiced') return 'INVOICED';
+  if (status === 'picking') return 'PACKED';
+  if (status === 'fg_ready') return 'FG_READY';
+  return 'PLANNING';
+}
+
+function deriveBatchPills(splits: BatchSplit[]) {
+  const seen = new Set<string>();
+  return splits
+    .filter(s => { const k = s.bprNo || `_${s.bmrNo}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(s => ({ bprNo: s.bprNo, stage: ffStatusToStage(s.ffStatus) }));
+}
+
+function computeSlaFlag(dueDate: string | null | undefined) {
+  if (!dueDate) return { overdue: false, approaching: false, daysOverdue: 0 };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate); due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diff < 0) return { overdue: true, approaching: false, daysOverdue: -diff };
+  if (diff <= 7) return { overdue: false, approaching: true, daysOverdue: 0 };
+  return { overdue: false, approaching: false, daysOverdue: 0 };
+}
+
+function fmtShortDate(d: string | null | undefined) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }); }
+  catch { return d; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 type SaleOrderItemSortColumn = 'soNo' | 'product' | 'qty' | 'availability' | 'execPct' | 'batches' | 'sentCount';
 
@@ -119,6 +187,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   const [pageSize, setPageSize] = useState(10);
   const [sortColumn, setSortColumn] = useState<SaleOrderItemSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [commentPanelSo, setCommentPanelSo] = useState<{ id: number; label: string } | null>(null);
 
   // Modal states
   const [isAddSOModalOpen, setIsAddSOModalOpen] = useState(false);
@@ -660,7 +729,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               <tr>
                 <SortableTableTh label="SO" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
                 <SortableTableTh label="Product" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
-                <SortableTableTh label="Qty" column="qty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
+                <SortableTableTh label="Qty · Due" column="qty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
                 <SortableTableTh
                   label={
                     <>
@@ -673,6 +742,10 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   sortDirection={sortDirection}
                   onSort={toggleSaleOrderSort}
                 />
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm whitespace-nowrap">
+                  Fulfillment Progress
+                  <div className="text-[10px] font-normal text-gray-500">FG · Packed · Invoiced · Shipped</div>
+                </th>
                 <SortableTableTh
                   label={
                     <>
@@ -685,6 +758,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   sortDirection={sortDirection}
                   onSort={toggleSaleOrderSort}
                 />
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm whitespace-nowrap">Batch Stages</th>
                 <SortableTableTh
                   label={
                     <>
@@ -698,7 +772,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   onSort={toggleSaleOrderSort}
                 />
                 <SortableTableTh label="#" column="sentCount" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -711,6 +785,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                       onViewDetails={handleViewDetails}
                       onEdit={setEditModalSO}
                       isEditLocked={isEditLocked}
+                      onComments={(id, label) => setCommentPanelSo({ id, label })}
                     />
                   ))
                 : pagedClientGroups.flatMap((clientGroup) => {
@@ -718,7 +793,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                     const clientRows = enrichedRows.filter((r) => r.clientKey === clientKey);
                     const groupHeader = (
                       <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
-                        <td colSpan={8} className="px-4 py-2.5">
+                        <td colSpan={10} className="px-4 py-2.5">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-blue-900">
                               {clientGroup.clientName}
@@ -743,6 +818,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                           onViewDetails={handleViewDetails}
                           onEdit={setEditModalSO}
                           isEditLocked={isEditLocked}
+                          onComments={(id, label) => setCommentPanelSo({ id, label })}
                         />
                       )),
                     ];
@@ -891,9 +967,40 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
         selectedBprNos={trackSelectedBprNos}
         onConfirmDelivery={handleDeliveryConfirm}
       />
+
+      {commentPanelSo && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setCommentPanelSo(null)} />
+          <CommentsPanel
+            entityType="so"
+            entityId={commentPanelSo.id}
+            entityLabel={commentPanelSo.label}
+            onClose={() => setCommentPanelSo(null)}
+          />
+        </>
+      )}
     </div>
   );
 };
+
+function MiniBar({ pct, color }: { pct: number; color: string }) {
+  return (
+    <div className="w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden shrink-0 inline-block">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
+    </div>
+  );
+}
+
+function CommercialBadge({ status }: { status: CommercialStatus }) {
+  const cfg = COMMERCIAL_STATUS_CONFIG[status] ?? COMMERCIAL_STATUS_CONFIG.received;
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${cfg.color} ${cfg.bgColor} ${cfg.borderColor}`}>
+      <Icon size={9} className="shrink-0" />
+      {cfg.label}
+    </span>
+  );
+}
 
 function SaleOrderItemTableRow({
   row,
@@ -901,95 +1008,142 @@ function SaleOrderItemTableRow({
   onViewDetails,
   onEdit,
   isEditLocked,
+  onComments,
 }: {
   row: EnrichedSaleOrderItemRow;
   planningAvailabilityLoading: boolean;
   onViewDetails: (soNo: string) => void;
   onEdit: (so: SaleOrder) => void;
   isEditLocked: (so: SaleOrder) => boolean;
+  onComments: (id: number, label: string) => void;
 }): JSX.Element {
   const {
-    so,
-    item,
-    execPct,
-    batchCount,
-    rmNumerator,
-    rmDenominator,
-    pmNumerator,
-    pmDenominator,
-    rmStarted,
-    pmStarted,
-    totalBatches,
-    sentCount,
-    rmOk,
-    pmOk,
-    rmAvailabilityPct,
-    pmAvailabilityPct,
-    planningItem,
+    so, item, execPct, batchCount,
+    rmNumerator, rmDenominator, pmNumerator, pmDenominator,
+    rmStarted, pmStarted, totalBatches, sentCount,
+    rmOk, pmOk, rmAvailabilityPct, pmAvailabilityPct, planningItem,
   } = row;
 
+  const progress = computeItemProgress(item);
+  const ordQty = item.orderedQty || 1;
+  const fgPct   = Math.min(100, Math.round(progress.fgReady  / ordQty * 100));
+  const pkPct   = Math.min(100, Math.round(progress.packed   / ordQty * 100));
+  const invPct  = Math.min(100, Math.round(progress.invoiced / ordQty * 100));
+  const shpPct  = Math.min(100, Math.round(progress.shipped  / ordQty * 100));
+
+  const pills = deriveBatchPills(item.batchSplits);
+  const sla = computeSlaFlag(so.dueDate);
+  const commercialStatus = so.commercialStatus;
+
   return (
-    <tr>
+    <tr className="hover:bg-gray-50/60">
+      {/* SO No + commercial status + SLA */}
       <td className="px-4 py-3 align-top">
-        <div className="font-mono text-[12px] text-gray-900">
-          {so.soNo}
-          <div className="text-[10px] text-gray-500 font-normal">{so.orderDate}</div>
-        </div>
+        <div className="font-mono text-[12px] text-gray-900 font-semibold">{so.soNo}</div>
+        <div className="text-[10px] text-gray-400 mt-0.5">{so.orderDate}</div>
+        {commercialStatus && (
+          <div className="mt-1">
+            <CommercialBadge status={commercialStatus} />
+          </div>
+        )}
+        {sla.overdue && (
+          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-red-600 font-semibold">
+            <AlertCircle size={9} /> {sla.daysOverdue}d overdue
+          </div>
+        )}
+        {!sla.overdue && sla.approaching && (
+          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-amber-600 font-semibold">
+            <Clock size={9} /> Due soon
+          </div>
+        )}
       </td>
+
+      {/* Product */}
       <td className="px-4 py-3 align-top">
         <div className="font-semibold text-gray-900 text-[13px]">{item.productName}</div>
+        {item.pack && <div className="text-[10px] text-gray-400 mt-0.5">{item.pack}</div>}
       </td>
+
+      {/* Qty + Due Date */}
       <td className="px-4 py-3 text-right align-top">
-        <div className="font-mono text-[12px] text-gray-900 font-bold">{formatNumber(item.orderedQty)}</div>
+        <div className="font-mono text-[13px] text-gray-900 font-bold">{formatNumber(item.orderedQty)}</div>
+        <div className="text-[10px] text-gray-400 mt-0.5">Due {fmtShortDate(so.dueDate)}</div>
       </td>
+
+      {/* RM / PM Availability */}
       <td className="px-4 py-3 align-top">
         <div className="text-[11px]">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span className="text-gray-500">RM</span>
-            <b className={rmOk ? 'text-emerald-700' : 'text-amber-700'}>
-              {rmNumerator}/{rmDenominator || 0}
-            </b>
+            <b className={rmOk ? 'text-emerald-700' : 'text-amber-700'}>{rmNumerator}/{rmDenominator || 0}</b>
           </div>
-          <div className="text-[10px] text-gray-500 mt-1">
-            production started {rmStarted}/{totalBatches || 0}
-          </div>
-          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
-            <div
-              className={rmOk ? 'bg-emerald-500' : 'bg-amber-500'}
-              style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
-            />
+          <div className="text-[10px] text-gray-500 mt-1">started {rmStarted}/{totalBatches || 0}</div>
+          <div className="bg-gray-200/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
+            <div className={rmOk ? 'bg-emerald-500' : 'bg-amber-500'} style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
           </div>
         </div>
         <div className="text-[11px] mt-2">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
             <span className="text-gray-500">PM</span>
-            <b className={pmOk ? 'text-emerald-700' : 'text-amber-700'}>
-              {pmNumerator}/{pmDenominator || 0}
-            </b>
+            <b className={pmOk ? 'text-emerald-700' : 'text-amber-700'}>{pmNumerator}/{pmDenominator || 0}</b>
           </div>
-          <div className="text-[10px] text-gray-500 mt-1">
-            production started {pmStarted}/{totalBatches || 0}
-          </div>
-          <div className="bg-gray-200/60 rounded-full h-1.5 mt-2" style={{ width: 100 }}>
-            <div
-              className={pmOk ? 'bg-emerald-500' : 'bg-amber-500'}
-              style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }}
-            />
+          <div className="text-[10px] text-gray-500 mt-1">started {pmStarted}/{totalBatches || 0}</div>
+          <div className="bg-gray-200/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
+            <div className={pmOk ? 'bg-emerald-500' : 'bg-amber-500'} style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
           </div>
         </div>
       </td>
+
+      {/* Fulfillment Progress: FG / Packed / Invoiced / Shipped */}
+      <td className="px-4 py-3 align-top min-w-[180px]">
+        {[
+          { label: 'FG',  qty: progress.fgReady,  pct: fgPct,  color: 'bg-emerald-400' },
+          { label: 'Pkg', qty: progress.packed,   pct: pkPct,  color: 'bg-amber-400'   },
+          { label: 'Inv', qty: progress.invoiced, pct: invPct, color: 'bg-purple-400'  },
+          { label: 'Shp', qty: progress.shipped,  pct: shpPct, color: 'bg-teal-400'    },
+        ].map(({ label, qty, pct, color }) => (
+          <div key={label} className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] text-gray-400 w-6 shrink-0">{label}</span>
+            <MiniBar pct={pct} color={color} />
+            <span className="text-[10px] tabular-nums text-gray-700 whitespace-nowrap">
+              {formatNumber(qty)}<span className="text-gray-400">/{formatNumber(item.orderedQty)}</span>
+            </span>
+          </div>
+        ))}
+      </td>
+
+      {/* Exec% */}
       <td className="px-4 py-3 align-top">
-        <div
-          className={`text-2xl font-extrabold ${
-            execPct >= 100 ? 'text-emerald-600' : execPct >= 40 ? 'text-amber-600' : 'text-amber-700'
-          }`}
-        >
+        <div className={`text-2xl font-extrabold ${execPct >= 100 ? 'text-emerald-600' : execPct >= 40 ? 'text-amber-600' : 'text-amber-700'}`}>
           {execPct}%
         </div>
         <div className="text-[10px] text-gray-500 font-normal">
           {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
         </div>
       </td>
+
+      {/* Batch Stage Pills */}
+      <td className="px-4 py-3 align-top min-w-[120px]">
+        <div className="flex flex-wrap gap-1">
+          {pills.length === 0 && <span className="text-[10px] text-gray-400">—</span>}
+          {pills.slice(0, 4).map((p, i) => {
+            const cls = STAGE_COLORS_PILL[p.stage] ?? STAGE_COLORS_PILL.PLANNING;
+            return (
+              <span key={i} title={`${p.bprNo || '—'} · ${p.stage}`}
+                className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[9.5px] font-medium ${cls}`}>
+                {p.bprNo || 'Pending'}
+              </span>
+            );
+          })}
+          {pills.length > 4 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-200 text-[9.5px]">
+              +{pills.length - 4}
+            </span>
+          )}
+        </div>
+      </td>
+
+      {/* Batches */}
       <td className="px-4 py-3 align-top">
         {planningAvailabilityLoading && !planningItem ? (
           <div className="text-[11px] text-gray-500">Loading…</div>
@@ -997,27 +1151,36 @@ function SaleOrderItemTableRow({
           <div className="text-[11px] text-gray-500">No batches</div>
         ) : (
           <button type="button" className="text-left" onClick={() => onViewDetails(so.soNo)}>
-            <div className="text-[12px] text-gray-900 font-semibold">
-              {sentCount}/{totalBatches} Batches
-            </div>
+            <div className="text-[12px] text-gray-900 font-semibold">{sentCount}/{totalBatches} Batches</div>
             <div className="text-[10px] text-gray-500">click to open BMR</div>
           </button>
         )}
       </td>
+
+      {/* # sent */}
       <td className="px-4 py-3 text-right align-top">
         <b className="font-mono text-[14px] text-gray-900">{sentCount}</b>
       </td>
+
+      {/* Actions + Comments */}
       <td className="px-4 py-3 align-top">
-        {!isEditLocked(so) ? (
-          <button
-            type="button"
-            onClick={() => onEdit(so)}
-            title={`Edit ${so.soNo}`}
-            className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-          >
-            Edit SO
-          </button>
-        ) : null}
+        <div className="flex flex-col gap-1.5 items-start">
+          {!isEditLocked(so) && (
+            <button type="button" onClick={() => onEdit(so)}
+              className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 whitespace-nowrap">
+              Edit SO
+            </button>
+          )}
+          {so.id != null && (
+            <button type="button"
+              onClick={() => onComments(so.id!, so.soNo)}
+              title="Comments & history"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-semibold border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 whitespace-nowrap">
+              <MessageSquare size={12} />
+              Comments
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );

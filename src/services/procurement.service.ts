@@ -134,3 +134,28 @@ export async function deleteProcurementRequest(id: string): Promise<ServiceResul
     return { data: null, error: err, success: false };
   }
 }
+
+// ─── Item price-list (PR Edit popup §3A dual-pane) ───────────────────────────
+export interface ItemPriceTier {
+  vendor: string;
+  vendorCode: string | null;
+  tier: string;
+  price: number;
+  lead: number;
+}
+
+export async function fetchItemPriceList(params: {
+  rawMaterialId?: number | null;
+  packMaterialId?: number | null;
+}): Promise<ItemPriceTier[]> {
+  const qs = new URLSearchParams();
+  if (params.rawMaterialId != null) qs.set('rawMaterialId', String(params.rawMaterialId));
+  if (params.packMaterialId != null) qs.set('packMaterialId', String(params.packMaterialId));
+  if (![...qs.keys()].length) return [];
+  try {
+    const data = await api.get<{ tiers: ItemPriceTier[] }>(`/api/v1/procurement/item-price-list?${qs.toString()}`);
+    return Array.isArray(data?.tiers) ? data.tiers : [];
+  } catch {
+    return [];
+  }
+}
