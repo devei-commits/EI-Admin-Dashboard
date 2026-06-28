@@ -194,3 +194,69 @@ export async function updateGRN(id: string, payload: UpdateGRNPayload): Promise<
 export async function deleteGRN(id: string): Promise<void> {
   await api.delete(`/api/v1/grn/${id}`);
 }
+
+// ─── Shipment Batch + Initiate Transit (Procurement spec §4A / §4B) ──────────
+export interface TransitVehicle {
+  vehicleNo?: string;
+  driverName?: string;
+  driverPhone?: string;
+  transporter?: string;
+  shippedDate?: string;
+  vendorInvoiceNo?: string;
+  expectedArrival?: string;
+}
+export interface InitiateTransitPayload {
+  poId?: number | string | null;
+  poNo: string;
+  vendor?: string;
+  item: { code: string; name: string; type?: string };
+  shippedQty: number;
+  vehicle: TransitVehicle;
+}
+export interface ConsolidatedShipmentPayload {
+  poId?: number | string | null;
+  poNo: string;
+  vendor?: string;
+  lines: { code: string; name: string; type?: string; shippedQty: number }[];
+  vehicle: TransitVehicle;
+}
+export interface ShipmentBatchResult {
+  shipmentBatch: { id: number; code: string; vehicleNo?: string | null };
+  grns: { id: number; grnNo: string; stage: string }[];
+}
+export async function initiateTransit(payload: InitiateTransitPayload): Promise<ShipmentBatchResult> {
+  return api.post<ShipmentBatchResult>('/api/v1/grn/initiate-transit', payload);
+}
+export async function createConsolidatedShipment(payload: ConsolidatedShipmentPayload): Promise<ShipmentBatchResult> {
+  return api.post<ShipmentBatchResult>('/api/v1/grn/consolidated-shipment', payload);
+}
+
+// ─── GRN Tracker (Procurement spec View 5, §7) ───────────────────────────────
+export interface GrnTrackerRow {
+  id: number;
+  grnNo: string;
+  sbId: number | null;
+  sbCode: string | null;
+  poNo: string | null;
+  vendor: string | null;
+  type: string | null;
+  item: { code: string; name: string };
+  poQty: number;
+  shippedQty: number;
+  shippedDate: string | null;
+  expectedDate: string | null;
+  stage: string;
+  status: string | null;
+  vehicleNo: string | null;
+}
+export async function fetchGrnTracker(filters?: { stage?: string; vendor?: string; sb?: string }): Promise<GrnTrackerRow[]> {
+  const qs = new URLSearchParams();
+  if (filters?.stage) qs.set('stage', filters.stage);
+  if (filters?.vendor) qs.set('vendor', filters.vendor);
+  if (filters?.sb) qs.set('sb', filters.sb);
+  const q = qs.toString();
+  return api.get<GrnTrackerRow[]>(`/api/v1/grn/tracker${q ? `?${q}` : ''}`);
+}
+export async function advanceGrnStage(id: number | string, stage: string): Promise<{ id: number; grnNo: string; stage: string; status: string }> {
+  return api.put<{ id: number; grnNo: string; stage: string; status: string }>(`/api/v1/grn/${id}/stage`, { stage });
+}
