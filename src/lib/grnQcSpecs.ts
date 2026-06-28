@@ -1,5 +1,7 @@
 /** GRN inbound QC — master quality specs with measured results and pass/fail tracking. */
 
+import { deriveAutoPassedFromResult } from './grnQcAutoPass';
+
 export interface GrnQcTestRow {
   specId: string;
   parameter: string;
@@ -12,6 +14,8 @@ export interface GrnQcTestRow {
   acceptance: string;
   /** GRN result input type from master QC spec (pass-fail, number-range, etc.). */
   outputType?: string;
+  /** Dropdown options when outputType is select. */
+  selectOptions?: string[];
   result: string;
   passed: boolean | null;
 }
@@ -30,7 +34,27 @@ export interface GrnQcLineSpec {
 export interface GrnQcSpecsStored {
   lines: GrnQcLineSpec[];
   remarks?: string;
+  attachments?: GrnQcAttachment[];
 }
+
+export type GrnQcAttachment = {
+  id: string;
+  fileName: string;
+  type: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+};
+
+export const GRN_QC_ATTACHMENT_TYPES = [
+  'Vendor COA',
+  'In-house test',
+  'Sample photo',
+  'Lab report',
+  'Equipment photo',
+  'Other',
+] as const;
+
+export type GrnQcAttachmentType = (typeof GRN_QC_ATTACHMENT_TYPES)[number];
 
 export type GrnDerivedQcStatus = 'Under test' | 'Passed' | 'Rejected';
 
@@ -132,7 +156,14 @@ export function updateGrnQcTestAt(
     ...payload,
     lines: payload.lines.map((line) => {
       if (line.lineItemId !== lineItemId) return line;
-      const tests = line.tests.map((t, idx) => (idx === testIndex ? { ...t, ...patch } : t));
+      const tests = line.tests.map((t, idx) => {
+        if (idx !== testIndex) return t;
+        const next = { ...t, ...patch };
+        if ('result' in patch && patch.result !== undefined && !('passed' in patch)) {
+          next.passed = deriveAutoPassedFromResult(next);
+        }
+        return next;
+      });
       return { ...line, tests };
     }),
   };
@@ -142,4 +173,31 @@ export function cycleGrnQcTestPassed(current: boolean | null): boolean | null {
   if (current === null) return true;
   if (current === true) return false;
   return null;
+}
+
+export function createGrnQcAttachment(
+  fileName: string,
+  type: string,
+  uploadedBy?: string,
+): GrnQcAttachment {
+  return {
+    id: `qca-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    fileName: String(fileName ?? '').trim(),
+    type: String(type ?? '').trim() || 'Other',
+    uploadedAt: new Date().toISOString(),
+    uploadedBy: uploadedBy?.trim() || undefined,
+  };
+}
+
+export function addGrnQcAttachment(
+  payload: GrnQcSpecsStored,
+  attachment: GrnQcAttachment,
+): GrnQcSpecsStored {
+  const existing = Array.isArray(payload.attachments) ? payload.attachments : [];
+  return { ...payload, attachments: [...existing, attachment] };
+}
+
+export function removeGrnQcAttachment(payload: GrnQcSpecsStored, attachmentId: string): GrnQcSpecsStored {
+  const existing = Array.isArray(payload.attachments) ? payload.attachments : [];
+  return { ...payload, attachments: existing.filter((a) => a.id !== attachmentId) };
 }

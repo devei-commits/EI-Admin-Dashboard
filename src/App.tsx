@@ -57,6 +57,7 @@ const Planning = lazy(() => import('./pages/Planning'))
 const Production = lazy(() => import('./pages/Production'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
 const ClientHub = lazy(() => import('./pages/ClientHub'))
+const QualityPage = lazy(() => import('./pages/QualityPage'))
 const FacilityManagement = lazy(() => import('./pages/FacilityManagement'))
 
 // Loading spinner component
@@ -101,6 +102,7 @@ const AppLayout = () => {
               else if (path === '/planning' || path.startsWith('/planning/')) suffix = 'Planning';
               else if (path === '/production' || path.startsWith('/production/')) suffix = 'Production';
               else if (path === '/warehouse' || path.startsWith('/warehouse/')) suffix = 'Warehouse';
+              else if (path === '/quality' || path.startsWith('/quality/')) suffix = 'Quality';
               else if (path === '/procurement' || path.startsWith('/procurement/')) suffix = 'Procurement';
               else if (path === '/pis' || path.startsWith('/pis/')) suffix = 'PIS';
               else if (path === '/treasury' || path.startsWith('/treasury/')) suffix = 'Treasury';
@@ -146,6 +148,7 @@ const AppLayout = () => {
        const isTreasuryRoute = location.pathname === '/treasury' || location.pathname.startsWith('/treasury/');
        const isProcurementRoute = location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
        const isWarehouseRoute = location.pathname === '/warehouse' || location.pathname.startsWith('/warehouse/');
+       const isQualityRoute = location.pathname === '/quality' || location.pathname.startsWith('/quality/');
        const isPlanningRoute = location.pathname === '/planning' || location.pathname.startsWith('/planning/');
        const isProductionRoute = location.pathname === '/production' || location.pathname.startsWith('/production/');
        const isFulfillmentRoute = location.pathname === '/fulfillment' || location.pathname.startsWith('/fulfillment/');
@@ -215,6 +218,26 @@ const AppLayout = () => {
                                                         <Route path="/warehouse/*" element={
                                                                <ProtectedModuleRoute moduleId="order-management" subModuleId="warehouse-inventory">
                                                                       <WarehousePage />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
+              );
+       }
+
+       if (isQualityRoute) {
+              return (
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/quality/*" element={
+                                                               <ProtectedModuleRoute moduleId="order-management" subModuleId="quality">
+                                                                      <QualityPage />
                                                                </ProtectedModuleRoute>
                                                         } />
                                                  </Routes>

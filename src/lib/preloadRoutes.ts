@@ -25,6 +25,7 @@ export const preloadRoutes: Record<string, () => Promise<unknown>> = {
   '/product-samples': () => import('../pages/ProductSamples'),
   '/procurement': () => import('../pages/procurement/index'),
   '/warehouse': () => import('../pages/WarehousePage'),
+  '/quality': () => import('../pages/QualityPage'),
   '/planning': () => import('../pages/Planning'),
   '/production': () => import('../pages/Production'),
   '/fulfillment': () => import('../pages/Fulfillment'),

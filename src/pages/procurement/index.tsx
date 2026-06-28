@@ -78,6 +78,11 @@ import {
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import {
+  buildStockCheckWarehouseDispatchPayload,
+  isOpenStockCheckStatus,
+} from '../../lib/stockCheckWarehouseDispatch';
+import {
+  coerceProcurementRequestRows,
   mapBackendPrToRequest,
   fillItemLeadFromPriceListPages,
   mapBackendQuotationToQuote,
@@ -220,18 +225,6 @@ const PROCUREMENT_PAGE_QUERY_ROOTS = new Set<string>([
 function procurementPageQueryPredicate(query: Query): boolean {
   const key0 = query.queryKey[0];
   return typeof key0 === 'string' && PROCUREMENT_PAGE_QUERY_ROOTS.has(key0);
-}
-
-/** Shared React Query key ['procurement-requests'] must always hold an array; unwrap mistaken ServiceResult or wrapped shapes. */
-function coerceProcurementRequestRows(value: unknown): ApiProcurementRequest[] {
-  if (value == null) return [];
-  if (Array.isArray(value)) return value as ApiProcurementRequest[];
-  if (typeof value === 'object' && value !== null) {
-    const o = value as Record<string, unknown>;
-    if (Array.isArray(o.data)) return o.data as ApiProcurementRequest[];
-    if (Array.isArray(o.requests)) return o.requests as ApiProcurementRequest[];
-  }
-  return [];
 }
 
 /** Detect API-driven PR changes that the list sync must apply (stock check, line qty, etc.). */
@@ -1268,6 +1261,58 @@ const Procurement: React.FC = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     },
     [queryClient]
+  );
+
+  const sendStockCheckToWarehouse = useCallback(
+    async (req: ProcurementRequest): Promise<ApiProcurementRequest | null> => {
+      if (isStockCheckOneTimeCompleted(req)) {
+        addToast(
+          'warning',
+          'Stock check already completed successfully with warehouse qty data. New stock check cannot be raised again for this request.',
+        );
+        return null;
+      }
+      if (isOpenStockCheckStatus(req.stockCheckStatus)) {
+        addToast(
+          'warning',
+          'Stock check request is already pending for this request. Complete the current check before raising a new one.',
+        );
+        return null;
+      }
+      const res = await updateProcurementRequestApi(req.id, buildStockCheckWarehouseDispatchPayload(req));
+      if (!res.success || !res.data) {
+        addToast(
+          'error',
+          typeof res.error === 'string'
+            ? res.error
+            : (res.error as { message?: string } | null)?.message ?? 'Failed to send stock check request',
+        );
+        return null;
+      }
+      const rows = coerceProcurementRequestRows(queryClient.getQueryData(['procurement-requests']));
+      const nextRows = rows.some((row) => String(row.id) === String(res.data?.id))
+        ? rows.map((row) => (String(row.id) === String(res.data?.id) ? res.data! : row))
+        : [res.data, ...rows];
+      queryClient.setQueryData(['procurement-requests'], nextRows);
+      await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+      addToast('success', 'Stock check request sent to Warehouse.');
+      return res.data;
+    },
+    [addToast, queryClient],
+  );
+
+  const handleStockCheckAction = useCallback(
+    async (req: ProcurementRequest) => {
+      if (isOpenStockCheckStatus(req.stockCheckStatus) || isStockCheckOneTimeCompleted(req)) {
+        openStockCheckModal(req);
+        return;
+      }
+      const updated = await sendStockCheckToWarehouse(req);
+      if (updated) {
+        openStockCheckModal(mapBackendPrToRequest(updated));
+      }
+    },
+    [openStockCheckModal, sendStockCheckToWarehouse],
   );
 
   const { data: rawMaterialsListForQuote = [], isError: rawMaterialsListForQuoteError } = useQuery({
@@ -6828,55 +6873,7 @@ const Procurement: React.FC = () => {
                                     </button>
                                   )}
                                   <button
-                                    onClick={async () => {
-                                      if (isStockCheckOneTimeCompleted(req)) {
-                                        addToast(
-                                          'warning',
-                                          'Stock check already completed successfully with warehouse qty data. New stock check cannot be raised again for this request.',
-                                        );
-                                        openStockCheckModal(req);
-                                        return;
-                                      }
-                                      const currentStockStatus = String(req.stockCheckStatus ?? '').trim().toLowerCase();
-                                      const isPendingStockCheckRequest =
-                                        currentStockStatus === 'pending' ||
-                                        currentStockStatus === 'requested' ||
-                                        currentStockStatus === 'in progress';
-                                      if (isPendingStockCheckRequest) {
-                                        addToast(
-                                          'warning',
-                                          'Stock check request is already pending for this request. Complete the current check before raising a new one.',
-                                        );
-                                        openStockCheckModal(req);
-                                        return;
-                                      }
-                                      {
-                                        const res = await updateProcurementRequestApi(req.id, {
-                                          stockCheckAssignedTo: req.stockCheckAssignedTo || null,
-                                          stockCheckStatus: 'Pending',
-                                          stockCheckNotes:
-                                            req.stockCheckNotes && String(req.stockCheckNotes).trim()
-                                              ? req.stockCheckNotes
-                                              : JSON.stringify({
-                                                  version: 1,
-                                                  requestedAt: new Date().toISOString(),
-                                                  requestedBy: req.requestedBy ?? 'Procurement Team',
-                                                }),
-                                        });
-                                        if (!res.success) {
-                                          addToast(
-                                            'error',
-                                            typeof res.error === 'string'
-                                              ? res.error
-                                              : (res.error as { message?: string } | null)?.message ?? 'Failed to send stock check request',
-                                          );
-                                          return;
-                                        }
-                                        await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
-                                        addToast('success', 'Stock check request sent to Warehouse.');
-                                      }
-                                      openStockCheckModal(req);
-                                    }}
+                                    onClick={() => void handleStockCheckAction(req)}
                                     className="px-3 py-1.5 rounded-lg border border-cyan-400 text-cyan-700 text-xs font-semibold hover:bg-cyan-50 transition-all"
                                   >
                                     Stock Check
@@ -9946,7 +9943,7 @@ const Procurement: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => openStockCheckModal(req)}
+                    onClick={() => void handleStockCheckAction(req)}
                     className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
                   >
                     Stock Check

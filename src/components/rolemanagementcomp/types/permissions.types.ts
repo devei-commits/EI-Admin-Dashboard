@@ -185,6 +185,16 @@ export const DEFAULT_MODULE_PERMISSIONS: ModulePermission[] = [
    ]
   },
   {
+   subModuleId: 'quality',
+   subModuleName: 'Quality',
+   actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },
+   columns: [
+    { columnId: 'inbound-qc', columnName: 'Inbound QC', view: false, edit: false },
+    { columnId: 'quarantine-review', columnName: 'Quarantine Review', view: false, edit: false },
+    { columnId: 'qc-release', columnName: 'QC Release', view: false, edit: false },
+   ]
+  },
+  {
    subModuleId: 'production-bmr',
    subModuleName: 'Production - BMR',
    actions: { view: false, create: false, edit: false, delete: false, approve: false, export: false },

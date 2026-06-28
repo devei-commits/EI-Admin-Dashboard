@@ -1,8 +1,20 @@
 export type StockCheckOutcome = 'all_ok' | 'not_ok';
 
+export type ParsedStockCheckRackAudit = {
+  rackLabel: string;
+  rackId?: number | null;
+  systemQty?: number;
+  physicalQty?: number;
+  notes?: string;
+  grnBatch?: string;
+  isNew?: boolean;
+};
+
 export type ParsedStockCheckNoteLine = {
   itemCode?: string;
   itemName?: string;
+  /** Per-rack physical count captured during warehouse audit. */
+  rackAudits?: ParsedStockCheckRackAudit[];
   /** Warehouse system qty at audit time */
   systemQty?: number;
   /** System qty frozen when stock check was first opened (request received day). */
@@ -27,12 +39,16 @@ export type ParsedStockCheckNoteLine = {
 };
 
 export type ParsedStockCheckNotes = {
+  version?: number;
   outcome?: StockCheckOutcome;
   lines?: ParsedStockCheckNoteLine[];
   requestedAt?: string;
   requestedBy?: string;
+  auditInitiatedAt?: string;
+  auditInitiatedBy?: string;
   updatedAt?: string;
   updatedBy?: string;
+  evidencePhotoCount?: number;
 };
 
 export function parseStockCheckNotes(raw: string | null | undefined): ParsedStockCheckNotes | null {

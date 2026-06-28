@@ -27,6 +27,7 @@ export const ROUTE_MODULE_MAP: Record<string, string> = {
   '/pis': 'pis',
   '/procurement': 'order-management',
   '/warehouse': 'order-management',
+  '/quality': 'order-management',
   '/planning': 'order-management',
   '/production': 'order-management',
   '/fulfillment': 'order-management',

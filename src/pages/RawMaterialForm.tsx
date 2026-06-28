@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
@@ -13,6 +14,7 @@ import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { deriveRmSourcingFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import { buildRmPreviewBaselineFromFetch } from '../lib/masterPreviewBaseline';
+import { resolveMasterQualityStageIndex } from '../lib/qualityTableNavigation';
 import VendorCommercialEditor, {
   defaultTempVendorTiers,
   type RmCommercialVendor,
@@ -310,6 +312,11 @@ const RawMaterialRefactored: React.FC = () => {
  const [saveSuccessCode, setSaveSuccessCode] = useState('');
  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
+ const [searchParams, setSearchParams] = useSearchParams();
+ const masterDeepLinkAppliedRef = useRef(false);
+ const pendingQualityStageRef = useRef(false);
+ const rmDeepLinkCode = searchParams.get('rm')?.trim() ?? '';
+ const stepDeepLink = searchParams.get('step')?.trim().toLowerCase() ?? '';
 
  const focusFieldById = useCallback((fieldId: string) => {
   window.setTimeout(() => {
@@ -1304,8 +1311,37 @@ const RawMaterialRefactored: React.FC = () => {
 
  // Load existing RM when editing — always populate from API; use form_data if present, else map from record
  useEffect(() => {
+  if (masterDeepLinkAppliedRef.current || !rmDeepLinkCode) return;
+  masterDeepLinkAppliedRef.current = true;
+  void (async () => {
+   try {
+    const list = await fetchRawMaterialsList(rmDeepLinkCode);
+    const match = list.find((r) => String(r.code).trim() === rmDeepLinkCode);
+    if (!match) return;
+    if (stepDeepLink === 'quality') pendingQualityStageRef.current = true;
+    setEditApprovalStageAssignees(match.approvalStageAssignees ?? emptyStageAssignees());
+    setExistingRmId(match.id);
+    setPageTab('form');
+    setSearchParams((prev) => {
+     const p = new URLSearchParams(prev);
+     p.delete('rm');
+     p.delete('step');
+     return p;
+    }, { replace: true });
+   } catch {
+    // ignore deep-link lookup failures
+   }
+  })();
+ }, [rmDeepLinkCode, stepDeepLink, setSearchParams]);
+
+ useEffect(() => {
   if (pageTab !== 'form' || !existingRmId) return;
-  setCurrentStage(0);
+  if (pendingQualityStageRef.current) {
+   pendingQualityStageRef.current = false;
+   setCurrentStage(resolveMasterQualityStageIndex('RM'));
+  } else {
+   setCurrentStage(0);
+  }
   let cancelled = false;
   setEditRmLoading(true);
   fetchRawMaterialById(existingRmId).then(async (result) => {

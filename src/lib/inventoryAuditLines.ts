@@ -183,8 +183,10 @@ export function buildInventoryAuditLines(requests: ProcurementRequest[]): Invent
     };
 
     const details = req.itemDetails ?? [];
+    let pushedCount = 0;
     if (details.length > 0) {
       details.forEach((d, idx) => {
+        pushedCount += 1;
         pushLine(
           d.itemCode ?? '',
           d.itemName ?? '',
@@ -196,27 +198,46 @@ export function buildInventoryAuditLines(requests: ProcurementRequest[]): Invent
           idx
         );
       });
-      continue;
+    } else {
+      const names = req.items ?? [];
+      const qtys = req.quantities ?? [];
+      const units = req.units ?? [];
+      names.forEach((name, idx) => {
+        const itemName = String(name ?? '').trim();
+        if (!itemName) return;
+        pushedCount += 1;
+        const generatedCode = `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`;
+        pushLine(
+          generatedCode,
+          itemName,
+          Number(qtys[idx] ?? 0) || 0,
+          String(units[idx] ?? ''),
+          req.type,
+          undefined,
+          undefined,
+          idx
+        );
+      });
     }
 
-    const names = req.items ?? [];
-    const qtys = req.quantities ?? [];
-    const units = req.units ?? [];
-    names.forEach((name, idx) => {
-      const itemName = String(name ?? '').trim();
-      if (!itemName) return;
-      const generatedCode = `EI-${req.type}-${itemName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6) || String(idx + 1).padStart(3, '0')}`;
+    if (pushedCount === 0) {
+      const firstDetail = details[0];
+      const fallbackCode =
+        String(firstDetail?.itemCode ?? req.planningProductCode ?? '').trim() || `REQ-${req.id}`;
+      const fallbackName =
+        String(firstDetail?.itemName ?? req.planningProductName ?? req.items?.[0] ?? '').trim() ||
+        `Request ${req.code}`;
       pushLine(
-        generatedCode,
-        itemName,
-        Number(qtys[idx] ?? 0) || 0,
-        String(units[idx] ?? ''),
-        req.type,
-        undefined,
-        undefined,
-        idx
+        fallbackCode,
+        fallbackName,
+        Number(firstDetail?.reqQty ?? 0) || 0,
+        String(firstDetail?.unit ?? (req.type === 'PM' ? 'PCS' : 'KG')),
+        firstDetail?.type === 'PM' ? 'PM' : firstDetail?.type === 'FG' ? 'FG' : req.type,
+        firstDetail?.raw_material_id,
+        firstDetail?.pack_material_id,
+        0
       );
-    });
+    }
   }
 
   return lines.sort((a, b) => {

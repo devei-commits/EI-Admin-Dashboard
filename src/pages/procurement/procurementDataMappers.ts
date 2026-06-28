@@ -43,6 +43,18 @@ function buildVendorPaymentTermsForProcurement(v: VendorClientRecord): string {
   return 'As per contract';
 }
 
+/** Shared React Query key ['procurement-requests'] must always hold an array. */
+export function coerceProcurementRequestRows(value: unknown): BackendPR[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value as BackendPR[];
+  if (typeof value === 'object' && value !== null) {
+    const o = value as Record<string, unknown>;
+    if (Array.isArray(o.data)) return o.data as BackendPR[];
+    if (Array.isArray(o.requests)) return o.requests as BackendPR[];
+  }
+  return [];
+}
+
 const PR_STATUS_MAP: Record<string, ProcurementRequest['status']> = {
   Pending: 'New',
   New: 'New',

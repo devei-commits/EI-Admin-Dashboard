@@ -4,6 +4,7 @@
 
 import { api } from '../lib/apiClient';
 import type { GrnQcSpecsStored } from '../lib/grnQcSpecs';
+import type { InboundGrnSourceDocuments } from '../lib/inboundGrnSourceDocs';
 
 export interface GRNRecordFromApi {
   id: string;
@@ -47,6 +48,10 @@ export interface GRNRecordFromApi {
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+  /** po | transfer | return */
+  receiptSource?: string | null;
+  purchaseOrderId?: number | null;
+  sourceDocuments?: InboundGrnSourceDocuments | null;
 }
 
 export interface GeneratedLabel {
@@ -158,6 +163,8 @@ export interface CreateGRNPayload {
   invoiceNo?: string | null;
   invoiceAmount?: number | null;
   grnDate?: string | null;
+  receiptSource?: 'po' | 'transfer' | 'return' | string;
+  purchaseOrderId?: number | null;
 }
 
 export async function createGRN(payload: CreateGRNPayload): Promise<GRNRecordFromApi> {
@@ -185,6 +192,7 @@ export interface UpdateGRNPayload {
   grnBatchMfg?: string | null;
   expiry?: string | null;
   mfgBatch?: string | null;
+  sourceDocuments?: InboundGrnSourceDocuments | null;
 }
 
 export async function updateGRN(id: string, payload: UpdateGRNPayload): Promise<GRNRecordFromApi> {

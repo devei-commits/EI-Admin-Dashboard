@@ -86,4 +86,21 @@ describe('buildInventoryAuditLines', () => {
     expect(lines[0]?.stockCheckOutcome).toBe('not_ok');
     expect(lines[0]?.remarks).toBe('5KG physical vs system gap');
   });
+
+  it('creates a fallback line when stock check is active but item lines are missing', () => {
+    const lines = buildInventoryAuditLines([
+      mkRequest({
+        id: '56',
+        code: 'PR-REQ-056',
+        stockCheckStatus: 'Pending',
+        itemDetails: [],
+        items: [],
+        planningProductCode: 'PR0007100',
+        planningProductName: 'FRAGILE STICKER',
+      }),
+    ]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.requestId).toBe('56');
+    expect(lines[0]?.itemName).toBe('FRAGILE STICKER');
+  });
 });

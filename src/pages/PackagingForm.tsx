@@ -11,6 +11,7 @@ import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import { buildPmPreviewBaselineFromFetch } from '../lib/masterPreviewBaseline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { resolveMasterQualityStageIndex } from '../lib/qualityTableNavigation';
 import { useItems } from '../context/ItemsContext';
 import { useToast } from '../context/ToastContext';
 import ArrayItemManager from '../components/ArrayItemManager';
@@ -329,6 +330,11 @@ const PackagingRefactored: React.FC = () => {
   const [saveSuccessCode, setSaveSuccessCode] = useState('');
   const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
   const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const masterDeepLinkAppliedRef = useRef(false);
+  const pendingQualityStageRef = useRef(false);
+  const pmDeepLinkCode = searchParams.get('pm')?.trim() ?? '';
+  const stepDeepLink = searchParams.get('step')?.trim().toLowerCase() ?? '';
   const focusPmField = useCallback((fieldId: string) => {
     window.setTimeout(() => {
       const el = document.getElementById(fieldId);
@@ -1372,8 +1378,37 @@ const PackagingRefactored: React.FC = () => {
 
   // Load existing PM when editing — show loading until data is in, then fill form
   useEffect(() => {
+    if (masterDeepLinkAppliedRef.current || !pmDeepLinkCode) return;
+    masterDeepLinkAppliedRef.current = true;
+    void (async () => {
+      try {
+        const list = await fetchPackMaterialsList(pmDeepLinkCode);
+        const match = list.find((p) => String(p.code).trim() === pmDeepLinkCode);
+        if (!match) return;
+        if (stepDeepLink === 'quality') pendingQualityStageRef.current = true;
+        setEditApprovalStageAssignees(normalizeStageAssignees(match.approvalStageAssignees));
+        setExistingPmId(match.id);
+        setPageTab('form');
+        setSearchParams((prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('pm');
+          p.delete('step');
+          return p;
+        }, { replace: true });
+      } catch {
+        // ignore deep-link lookup failures
+      }
+    })();
+  }, [pmDeepLinkCode, stepDeepLink, setSearchParams]);
+
+  useEffect(() => {
     if (pageTab !== 'form' || !existingPmId) return;
-    setCurrentSection(0);
+    if (pendingQualityStageRef.current) {
+      pendingQualityStageRef.current = false;
+      setCurrentSection(resolveMasterQualityStageIndex('PM'));
+    } else {
+      setCurrentSection(0);
+    }
     let cancelled = false;
     setEditPmLoading(true);
     fetchPackMaterialById(existingPmId).then(async (pm) => {

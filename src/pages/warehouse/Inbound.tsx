@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -16,10 +17,47 @@ import {
   type FacilityAreaDTO,
   type ZoneDTO,
 } from '../../services/facilityAreas.service';
+import {
+  INBOUND_GRN_SOURCE_TABS,
+  inboundGrnSourceEmptyMessage,
+  matchesInboundGrnSourceTab,
+  resolveGrnReceiptSource,
+  type InboundGrnSourceTab,
+} from '../../lib/inboundGrnSourceFilter';
+import GrnCopyReceiptModal from '../../components/warehouse/GrnCopyReceiptModal';
+import GrnPostRackingPhotosSection from '../../components/warehouse/GrnPostRackingPhotosSection';
+import type { EvidencePhoto } from '../../components/warehouse/StockCheckEvidenceCapture';
+import { inboundSourceDocRequirementLabel, type InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
+import {
+  buildInboundGrnTableRowView,
+  buildInboundGrnSlaView,
+  displayInboundGrnNo,
+  formatInboundQty,
+  formatInboundShipmentLabel,
+  formatInboundSourceDocSet,
+  formatInboundStorage,
+  inboundGrnArrivalConfirmPayload,
+  inboundGrnSlaClass,
+  inboundGrnStatusClass,
+  resolveInboundWarehouseCode,
+  type InboundGrnRowInput,
+} from '../../lib/inboundGrnTableDisplay';
+import { inboundGrnSendToQcPayload } from '../../lib/inboundGrnStatus';
+import {
+  buildPostRackingPhotosMeta,
+  extractPostRackingRackTargets,
+  postRackingPhotoBlockers,
+} from '../../lib/grnPostRackingPhotos';
+import {
+  buildQualityOrderManagementRowForGrnLine,
+  type QualityOrderManagementInput,
+  type QualityOrderManagementRow,
+} from '../../lib/qualityOrderManagementTableDisplay';
+import QualityCheckModal from '../../components/quality/QualityCheckModal';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
-type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending';
+type GRNStatus = 'GRN Complete' | 'Under GRN' | 'In Transit' | 'On Hold' | 'Delayed' | 'Pending' | 'Verified';
 
 /** Map legacy API qc_status to QCStatus */
 function normalizeQcStatus(s: string | undefined): QCStatus {
@@ -87,6 +125,7 @@ interface LineItem {
   rcvdQty: number;
   invoiceQty: number;
   unitPrice: number;
+  unit?: string;
   diff?: number;
   qcStatus: 'Pass' | 'Hold' | 'Pending' | 'Fail';
   qcBy: string;
@@ -103,8 +142,11 @@ interface GRNRecord {
   poNo: string;
   vendor: string;
   type: GRNType;
+  receiptSource?: string;
+  purchaseOrderId?: number | null;
   items: number;
   poValue: number;
+  expectedDate?: string | null;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: QCStatus;
@@ -125,23 +167,144 @@ interface GRNRecord {
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+  sourceDocuments?: InboundGrnSourceDocuments | null;
 }
 
 type InboundSortColumn =
+  | 'shipment'
   | 'grnNo'
+  | 'loc'
   | 'item'
-  | 'rcvdQty'
-  | 'remaining'
-  | 'type'
-  | 'received'
-  | 'assignedTo'
-  | 'qc'
-  | 'status';
+  | 'poQty'
+  | 'shipped'
+  | 'storage'
+  | 'sourceDoc'
+  | 'status'
+  | 'sla'
+  | 'related';
 
 interface InboundTableRow {
   rowId: string;
   grn: GRNRecord;
   lineItem: LineItem | null;
+}
+
+type InboundReceiptModalState = {
+  grn: GRNRecord;
+  lineItem: LineItem;
+  mode: 'confirm-receipt' | 'grn-copy';
+} | null;
+
+function grnRecordToQualityInput(grn: GRNRecord, lineItem: LineItem | null): QualityOrderManagementInput {
+  return {
+    id: grn.id,
+    grnNo: grn.grnNo,
+    poNo: grn.poNo,
+    vendor: grn.vendor,
+    type: grn.type,
+    status: grn.status,
+    qcStatus: grn.qcStatus,
+    assignedTo: grn.assignedTo,
+    qcBy: grn.qcBy,
+    grnDate: grn.grnDate ?? null,
+    receivedDate: grn.receivedDate,
+    expectedDate: grn.expectedDate ?? null,
+    receiptSource: grn.receiptSource,
+    purchaseOrderId: grn.purchaseOrderId,
+    locationZone: grn.locationZone,
+    workflowSteps: grn.workflowSteps,
+    generatedLabels: grn.generatedLabels,
+    lineItems: lineItem
+      ? [
+          {
+            item: lineItem.item,
+            itemCode: lineItem.itemCode,
+            poQty: lineItem.poQty,
+            rcvdQty: lineItem.rcvdQty,
+            diff: lineItem.diff,
+            unit: lineItem.unit,
+            qcStatus: lineItem.qcStatus,
+          },
+        ]
+      : grn.lineItems,
+  };
+}
+
+function openInboundRowAction(
+  grn: GRNRecord,
+  lineItem: LineItem | null,
+  actionLabel: string,
+  openReceipt: (state: InboundReceiptModalState) => void,
+  openDetail: (grn: GRNRecord, lineItem?: LineItem | null, mode?: 'detail' | 'assign-rack') => void,
+  onConfirmArrival?: (grn: GRNRecord) => void,
+  onSendToQc?: (grn: GRNRecord) => void,
+  onOpenQcCheck?: (grn: GRNRecord, lineItem: LineItem | null) => void,
+): void {
+  if (actionLabel === 'Confirm' && onConfirmArrival) {
+    onConfirmArrival(grn);
+    return;
+  }
+  if (actionLabel === 'Send to QC' && onSendToQc) {
+    onSendToQc(grn);
+    return;
+  }
+  if (actionLabel === 'QC Check' && onOpenQcCheck) {
+    onOpenQcCheck(grn, lineItem);
+    return;
+  }
+  if (actionLabel === 'Awaiting QC') {
+    return;
+  }
+  if (actionLabel === 'Assign Rack') {
+    openDetail(grn, lineItem, 'assign-rack');
+    return;
+  }
+  if (lineItem && (actionLabel === 'Confirm Receipt' || actionLabel === 'GRN Copy')) {
+    openReceipt({
+      grn,
+      lineItem,
+      mode: actionLabel === 'Confirm Receipt' ? 'confirm-receipt' : 'grn-copy',
+    });
+    return;
+  }
+  openDetail(grn);
+}
+
+function toInboundRowInput(grn: GRNRecord, lineItem: LineItem | null): InboundGrnRowInput {
+  return {
+    grnNo: grn.grnNo,
+    poNo: grn.poNo,
+    vendor: grn.vendor,
+    status: grn.status,
+    qcStatus: grn.qcStatus,
+    receiptSource: grn.receiptSource,
+    purchaseOrderId: grn.purchaseOrderId,
+    expectedDate: grn.expectedDate,
+    receivedDate: grn.receivedDate,
+    grnDate: grn.grnDate,
+    locationZone: grn.locationZone,
+    locationPrefix: grn.locationPrefix,
+    grnBatchMfg: grn.grnBatchMfg,
+    mfgBatch: grn.mfgBatch,
+    noOfBoxes: grn.noOfBoxes,
+    unitsPerBox: grn.unitsPerBox,
+    invoiceNo: grn.invoiceNo,
+    workflowSteps: grn.workflowSteps,
+    generatedLabels: grn.generatedLabels,
+    sourceDocuments: grn.sourceDocuments,
+    lineItemsCount: Array.isArray(grn.lineItems) ? grn.lineItems.length : 0,
+    lineItem: lineItem
+      ? {
+          item: lineItem.item,
+          itemCode: lineItem.itemCode,
+          poQty: lineItem.poQty,
+          rcvdQty: lineItem.rcvdQty,
+          unit: lineItem.unit,
+          diff: lineItem.diff,
+          qcStatus: lineItem.qcStatus,
+        }
+      : null,
+  };
 }
 
 function compareSortValues(av: string | number, bv: string | number, direction: SortDirection): number {
@@ -156,25 +319,30 @@ function compareSortValues(av: string | number, bv: string | number, direction: 
 
 function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): string | number {
   const { grn, lineItem } = row;
+  const input = toInboundRowInput(grn, lineItem);
   switch (col) {
+    case 'shipment':
+      return formatInboundShipmentLabel(input);
     case 'grnNo':
-      return displayGrnNo(grn.grnNo);
+      return displayInboundGrnNo(grn.grnNo);
+    case 'loc':
+      return resolveInboundWarehouseCode(input, lineItem);
     case 'item':
       return lineItem ? `${lineItem.item} ${lineItem.itemCode}` : '';
-    case 'rcvdQty':
+    case 'poQty':
+      return lineItem?.poQty ?? -1;
+    case 'shipped':
       return lineItem?.rcvdQty ?? -1;
-    case 'remaining':
-      return lineItem ? Math.max(0, lineItem.poQty - lineItem.rcvdQty) : -1;
-    case 'type':
-      return grn.type;
-    case 'received':
-      return grn.receivedDate ? new Date(grn.receivedDate).getTime() : 0;
-    case 'assignedTo':
-      return grn.assignedTo || '';
-    case 'qc':
-      return grn.qcStatus || '';
+    case 'storage':
+      return formatInboundStorage(input);
+    case 'sourceDoc':
+      return formatInboundSourceDocSet(input).uploaded;
     case 'status':
       return grn.status || '';
+    case 'sla':
+      return buildInboundGrnSlaView(input).label;
+    case 'related':
+      return buildInboundGrnTableRowView(input).relatedPrimary ?? '';
     default:
       return '';
   }
@@ -258,7 +426,21 @@ function matchGrnLocationToFacility(
 }
 
 // GRN Detail Modal Component
-const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: { grn: GRNRecord; onClose: () => void; onSaveChanges: (updatedGRN: GRNRecord) => void; assignableUsers?: AssignableUser[] }) => {
+const GRNDetailModal = ({
+  grn,
+  mode = 'detail',
+  focusLineItem = null,
+  onClose,
+  onSaveChanges,
+  assignableUsers = [],
+}: {
+  grn: GRNRecord;
+  mode?: 'detail' | 'assign-rack';
+  focusLineItem?: LineItem | null;
+  onClose: () => void;
+  onSaveChanges: (updatedGRN: GRNRecord) => void;
+  assignableUsers?: AssignableUser[];
+}) => {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const { data: facilityAreasRaw = [], isLoading: facilityAreasLoading } = useQuery({
@@ -312,6 +494,61 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(grn.qcSpecs ?? null);
   const [qcSpecsLoading, setQcSpecsLoading] = useState(false);
   const [qcSpecsError, setQcSpecsError] = useState<string | null>(null);
+  const [sourceDocuments, setSourceDocuments] = useState<InboundGrnSourceDocuments>(
+    () => ({ ...(grn.sourceDocuments ?? {}) }),
+  );
+  const [postRackingPhotosByRack, setPostRackingPhotosByRack] = useState<Record<string, EvidencePhoto[]>>({});
+
+  const assignRackLineItem =
+    focusLineItem ??
+    editedLineItems.find((li) => li.id === selectedLineItemId) ??
+    editedLineItems[0] ??
+    null;
+
+  const postRackingRackTargets = useMemo(
+    () =>
+      extractPostRackingRackTargets({
+        locationPrefix,
+        locationZone,
+        generatedLabels: labels ?? grn.generatedLabels,
+        lineItems: editedLineItems,
+        warehouseCode: resolveInboundWarehouseCode(
+          {
+            grnNo: grn.grnNo,
+            locationZone,
+            locationPrefix: grn.locationPrefix,
+            lineItem: assignRackLineItem
+              ? {
+                  item: assignRackLineItem.item,
+                  itemCode: assignRackLineItem.itemCode,
+                  poQty: assignRackLineItem.poQty,
+                  rcvdQty: assignRackLineItem.rcvdQty,
+                  unit: assignRackLineItem.unit,
+                }
+              : null,
+          },
+          assignRackLineItem
+            ? {
+                item: assignRackLineItem.item,
+                itemCode: assignRackLineItem.itemCode,
+                poQty: assignRackLineItem.poQty,
+                rcvdQty: assignRackLineItem.rcvdQty,
+                unit: assignRackLineItem.unit,
+              }
+            : null,
+        ),
+      }),
+    [
+      assignRackLineItem,
+      editedLineItems,
+      grn.generatedLabels,
+      grn.grnNo,
+      grn.locationPrefix,
+      labels,
+      locationPrefix,
+      locationZone,
+    ],
+  );
 
   const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
   const parsedNoOfBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
@@ -344,6 +581,12 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
   const allLineItemsLabeled =
     editedLineItems.length > 0 &&
     editedLineItems.every((li) => labeledLineItemCodes.has(String(li.itemCode || '').trim().toLowerCase()));
+
+  useEffect(() => {
+    if (mode === 'assign-rack' && focusLineItem?.id) {
+      setSelectedLineItemId(focusLineItem.id);
+    }
+  }, [focusLineItem?.id, mode]);
 
   useEffect(() => {
     if (!labels || labels.length === 0) {
@@ -545,6 +788,18 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         queryClient.invalidateQueries({ queryKey: ['warehouse-locations'] });
       }
 
+      const mergedSourceDocuments: InboundGrnSourceDocuments = {
+        ...sourceDocuments,
+        postRackingPhotos: buildPostRackingPhotosMeta(
+          Object.fromEntries(
+            postRackingRackTargets.map((rack) => [
+              rack.rackCode,
+              postRackingPhotosByRack[rack.rackCode] ?? [],
+            ]),
+          ),
+        ),
+      };
+
       const res = await updateGRN(grn.id, {
         assignedTo,
         grnDate: grnDate || undefined,
@@ -558,6 +813,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         mfgBatch: mfgBatch || undefined,
         qcSpecs: qcSpecs ?? undefined,
         qcBy: qcBy || undefined,
+        sourceDocuments: mergedSourceDocuments,
         ...payload,
       });
       const updated: GRNRecord = {
@@ -587,7 +843,9 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         expiry: res.expiry ?? undefined,
         mfgBatch: res.mfgBatch ?? undefined,
         generatedLabels: res.generatedLabels ?? undefined,
+        sourceDocuments: res.sourceDocuments ?? mergedSourceDocuments,
       };
+      setSourceDocuments(mergedSourceDocuments);
       onSaveChanges(updated);
       if (payload.status === 'GRN Complete') {
         // Planning batch availability depends on warehouse inventory (SIH) and planning-extracted derived data.
@@ -747,6 +1005,20 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
       locationSource === 'facility'
         ? 'Zone label is required (choose zone + rack from Facility Management).'
         : 'Storage zone is required.',
+    );
+  }
+  if (mode === 'assign-rack') {
+    completionBlockers.push(
+      ...postRackingPhotoBlockers(
+        postRackingRackTargets,
+        Object.fromEntries(
+          Object.entries(postRackingPhotosByRack).map(([rackCode, photos]) => [
+            rackCode,
+            { length: photos.length },
+          ]),
+        ),
+        sourceDocuments.postRackingPhotos,
+      ),
     );
   }
   const canMarkComplete = completionBlockers.length === 0;
@@ -963,7 +1235,48 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">GRN — {displayGrnNo(grn.grnNo)}</h2>
+            {mode === 'assign-rack' ? (
+              <>
+                <h2 className="text-lg font-bold text-slate-900">
+                  📍 Assign Rack — {displayGrnNo(grn.grnNo)}{' '}
+                  {assignRackLineItem?.item || '—'}
+                  {assignRackLineItem?.itemCode ? ` · ${assignRackLineItem.itemCode}` : ''}
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">
+                  {resolveInboundWarehouseCode(
+                    {
+                      grnNo: grn.grnNo,
+                      locationZone,
+                      locationPrefix,
+                      lineItem: assignRackLineItem
+                        ? {
+                            item: assignRackLineItem.item,
+                            itemCode: assignRackLineItem.itemCode,
+                            poQty: assignRackLineItem.poQty,
+                            rcvdQty: assignRackLineItem.rcvdQty,
+                            unit: assignRackLineItem.unit,
+                          }
+                        : null,
+                    },
+                    assignRackLineItem
+                      ? {
+                          item: assignRackLineItem.item,
+                          itemCode: assignRackLineItem.itemCode,
+                          poQty: assignRackLineItem.poQty,
+                          rcvdQty: assignRackLineItem.rcvdQty,
+                          unit: assignRackLineItem.unit,
+                        }
+                      : null,
+                  )}{' '}
+                  · QC TESTED PASS ·{' '}
+                  {assignRackLineItem
+                    ? `${formatInboundQty(assignRackLineItem.rcvdQty)} ${assignRackLineItem.unit || 'units'} to rack`
+                    : '—'}
+                </p>
+              </>
+            ) : (
+              <h2 className="text-lg font-bold text-slate-900">GRN — {displayGrnNo(grn.grnNo)}</h2>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -1590,6 +1903,16 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
             </div>
           )}
 
+          {mode === 'assign-rack' ? (
+            <GrnPostRackingPhotosSection
+              racks={postRackingRackTargets}
+              photosByRack={postRackingPhotosByRack}
+              savedMeta={sourceDocuments.postRackingPhotos}
+              disabled={saving}
+              onPhotosByRackChange={setPostRackingPhotosByRack}
+            />
+          ) : null}
+
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
@@ -1604,7 +1927,7 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               disabled={saving}
               className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 transition-colors disabled:opacity-50"
             >
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? 'Saving…' : mode === 'assign-rack' ? 'Save draft' : 'Save changes'}
             </button>
             <button
               onClick={handleCompleteGRN}
@@ -1612,7 +1935,11 @@ const GRNDetailModal = ({ grn, onClose, onSaveChanges, assignableUsers = [] }: {
               className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
                 }`}
             >
-              {grn.status === 'In Transit' ? 'Complete GRN & Initiate Stock' : 'Mark complete'}
+              {mode === 'assign-rack'
+                ? 'Complete GRN'
+                : grn.status === 'In Transit'
+                  ? 'Complete GRN & Initiate Stock'
+                  : 'Mark complete'}
             </button>
             {!canMarkComplete && (
               <p className="w-full text-right text-xs text-amber-700">
@@ -1634,6 +1961,7 @@ function mapApiToGRNRecord(r: {
   type: 'RM' | 'PM';
   items: number;
   poValue: number;
+  expectedDate?: string | null;
   receivedDate: string | null;
   assignedTo: string;
   qcStatus: string;
@@ -1654,6 +1982,9 @@ function mapApiToGRNRecord(r: {
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+  receiptSource?: string | null;
+  purchaseOrderId?: number | null;
+  sourceDocuments?: InboundGrnSourceDocuments | null;
 }): GRNRecord {
   return {
     id: r.id,
@@ -1661,8 +1992,11 @@ function mapApiToGRNRecord(r: {
     poNo: r.poNo,
     vendor: r.vendor,
     type: r.type,
+    receiptSource: r.receiptSource ?? 'po',
+    purchaseOrderId: r.purchaseOrderId ?? null,
     items: r.items,
     poValue: r.poValue,
+    expectedDate: r.expectedDate ?? null,
     receivedDate: r.receivedDate,
     assignedTo: r.assignedTo,
     qcStatus: normalizeQcStatus(r.qcStatus),
@@ -1683,16 +2017,25 @@ function mapApiToGRNRecord(r: {
     expiry: r.expiry ?? undefined,
     mfgBatch: r.mfgBatch ?? undefined,
     generatedLabels: r.generatedLabels ?? undefined,
+    sourceDocuments: r.sourceDocuments ?? undefined,
   };
 }
 
 const WarehouseInbound = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const inboundGrnDeepLinkAppliedRef = useRef(false);
+  const grnDeepLinkId = searchParams.get('grn')?.trim() ?? '';
+  const [activeSourceTab, setActiveSourceTab] = useState<InboundGrnSourceTab>('po');
   const [activeTab, setActiveTab] = useState<'All' | 'Pending' | 'Under GRN' | 'Completed'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [grnData, setGrnData] = useState<GRNRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [selectedGRN, setSelectedGRN] = useState<GRNRecord | null>(null);
+  const [selectedGRNMode, setSelectedGRNMode] = useState<'detail' | 'assign-rack'>('detail');
+  const [assignRackFocusLineItem, setAssignRackFocusLineItem] = useState<LineItem | null>(null);
+  const [activeQcRow, setActiveQcRow] = useState<QualityOrderManagementRow | null>(null);
+  const [receiptModal, setReceiptModal] = useState<InboundReceiptModalState>(null);
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [grnDate, setGrnDate] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<InboundSortColumn | null>(null);
@@ -1715,8 +2058,40 @@ const WarehouseInbound = () => {
       .catch(() => setAssignableUsers([]));
   }, []);
 
+  useEffect(() => {
+    if (inboundGrnDeepLinkAppliedRef.current || !grnDeepLinkId || loading) return;
+    const grn = grnData.find(
+      (g) => g.id === grnDeepLinkId || String(g.grnNo).trim() === grnDeepLinkId,
+    );
+    if (!grn) return;
+    inboundGrnDeepLinkAppliedRef.current = true;
+    setActiveSourceTab(resolveGrnReceiptSource(grn));
+    setSelectedGRN(grn);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete('grn');
+      return p;
+    }, { replace: true });
+  }, [grnDeepLinkId, grnData, loading, setSearchParams]);
+
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleOpenGrnDetail = useCallback((
+    grn: GRNRecord,
+    lineItem: LineItem | null = null,
+    mode: 'detail' | 'assign-rack' = 'detail',
+  ): void => {
+    setSelectedGRN(grn);
+    setSelectedGRNMode(mode);
+    setAssignRackFocusLineItem(mode === 'assign-rack' ? lineItem : null);
+  }, []);
+
+  const handleCloseGrnDetail = (): void => {
+    setSelectedGRN(null);
+    setSelectedGRNMode('detail');
+    setAssignRackFocusLineItem(null);
+  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     if (toastRef.current) window.clearTimeout(toastRef.current);
@@ -1735,21 +2110,117 @@ const WarehouseInbound = () => {
     setSelectedGRN(updatedGRN);
   };
 
+  const handleReceiptSaved = (updated: {
+    id: string;
+    status?: string;
+    sourceDocuments?: InboundGrnSourceDocuments | null;
+    workflowSteps?: string[];
+    noOfBoxes?: number | null;
+    unitsPerBox?: number | null;
+    generatedLabels?: GeneratedLabel[] | null;
+    receivedDate?: string | null;
+    grnDate?: string | null;
+  }) => {
+    setGrnData((prev) =>
+      prev.map((grn) =>
+        grn.id === updated.id
+          ? {
+              ...grn,
+              status: (updated.status ?? grn.status) as GRNStatus,
+              receivedDate: updated.receivedDate ?? grn.receivedDate,
+              grnDate: updated.grnDate ?? grn.grnDate,
+              sourceDocuments: updated.sourceDocuments ?? grn.sourceDocuments,
+              workflowSteps: (updated.workflowSteps ?? grn.workflowSteps) as WorkflowStep[] | undefined,
+              noOfBoxes: updated.noOfBoxes ?? grn.noOfBoxes,
+              unitsPerBox: updated.unitsPerBox ?? grn.unitsPerBox,
+              generatedLabels: updated.generatedLabels ?? grn.generatedLabels,
+            }
+          : grn,
+      ),
+    );
+  };
+
+  const handleConfirmArrival = async (grn: GRNRecord): Promise<void> => {
+    try {
+      const res = await updateGRN(grn.id, inboundGrnArrivalConfirmPayload(grn.workflowSteps));
+      const updated = mapApiToGRNRecord(res);
+      setGrnData((prev) => prev.map((row) => (row.id === grn.id ? updated : row)));
+      showToast(`Arrival confirmed · ${displayInboundGrnNo(grn.grnNo)} is now LANDED`);
+    } catch {
+      showToast('Could not confirm arrival', 'error');
+    }
+  };
+
+  const handleSendToQc = async (grn: GRNRecord): Promise<void> => {
+    try {
+      const res = await updateGRN(grn.id, inboundGrnSendToQcPayload(grn.workflowSteps));
+      const updated = mapApiToGRNRecord(res);
+      setGrnData((prev) => prev.map((row) => (row.id === grn.id ? updated : row)));
+      showToast(`Sent to QC · ${displayInboundGrnNo(grn.grnNo)} is now in the Quality module`);
+    } catch {
+      showToast('Could not send to QC', 'error');
+    }
+  };
+
+  const assigneeOptions = useMemo(
+    () =>
+      assignableUsers
+        .map((u) => String(u.displayName ?? '').trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [assignableUsers],
+  );
+
+  const handleOpenQcCheck = (grn: GRNRecord, lineItem: LineItem | null): void => {
+    setActiveQcRow(
+      buildQualityOrderManagementRowForGrnLine(grnRecordToQualityInput(grn, lineItem), null),
+    );
+  };
+
+  const reloadGrnList = useCallback(async (): Promise<void> => {
+    try {
+      const list = await fetchGRNList();
+      setGrnData(list.map(mapApiToGRNRecord));
+    } catch {
+      setGrnData([]);
+    }
+  }, []);
+
+  const handleQcCheckSaved = (): void => {
+    setActiveQcRow(null);
+    void reloadGrnList();
+  };
+
   // Helper function to check if all workflow steps are completed
   const isGRNReady = (grn: GRNRecord): boolean => {
     if (!grn.workflowSteps || grn.workflowSteps.length === 0) return false;
     return WORKFLOW_STEPS_REQUIRED.every(step => grn.workflowSteps?.includes(step));
   };
 
-  // Calculate stats
-  const totalGRNs = grnData.length;
-  const underGRN = grnData.filter(g => g.status === 'Under GRN').length;
-  const onHold = grnData.filter(g => g.status === 'On Hold').length;
-  const inTransit = grnData.filter(g => g.status === 'In Transit').length;
-  const completed = grnData.filter(g => g.status === 'GRN Complete').length;
+  const sourceScopedGrns = useMemo(
+    () =>
+      grnData.filter((grn) =>
+        matchesInboundGrnSourceTab(
+          {
+            receiptSource: grn.receiptSource,
+            poNo: grn.poNo,
+            purchaseOrderId: grn.purchaseOrderId,
+          },
+          activeSourceTab,
+        ),
+      ),
+    [grnData, activeSourceTab],
+  );
 
-  // Filter data based on tab and search
-  const filteredData = grnData.filter(grn => {
+  // Calculate stats (scoped to active source tab)
+  const totalGRNs = sourceScopedGrns.length;
+  const underGRN = sourceScopedGrns.filter(g => g.status === 'Under GRN').length;
+  const onHold = sourceScopedGrns.filter(g => g.status === 'On Hold').length;
+  const inTransit = sourceScopedGrns.filter(g => g.status === 'In Transit').length;
+  const completed = sourceScopedGrns.filter(g => g.status === 'GRN Complete').length;
+
+  // Filter data based on source tab, status tab, and search
+  const filteredData = sourceScopedGrns.filter(grn => {
     // Tab filter
     if (activeTab === 'Pending' && grn.status !== 'Pending' && grn.status !== 'In Transit') return false;
     if (activeTab === 'Under GRN' && grn.status !== 'Under GRN') return false;
@@ -1758,14 +2229,32 @@ const WarehouseInbound = () => {
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
+      const lineMatch = (grn.lineItems ?? []).some((line) => {
+        const item = String(line.item ?? '').toLowerCase();
+        const code = String(line.itemCode ?? '').toLowerCase();
+        return item.includes(query) || code.includes(query);
+      });
       return (
         grn.grnNo.toLowerCase().includes(query) ||
-        grn.assignedTo.toLowerCase().includes(query)
+        grn.poNo.toLowerCase().includes(query) ||
+        grn.vendor.toLowerCase().includes(query) ||
+        grn.assignedTo.toLowerCase().includes(query) ||
+        lineMatch
       );
     }
 
     return true;
   });
+
+  const siblingGrnCountByPo = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const grn of sourceScopedGrns) {
+      const po = String(grn.poNo ?? '').trim().toLowerCase();
+      if (!po) continue;
+      counts.set(po, (counts.get(po) ?? 0) + 1);
+    }
+    return counts;
+  }, [sourceScopedGrns]);
 
   const filteredItemRows = useMemo((): InboundTableRow[] => {
     return filteredData.flatMap((grn) => {
@@ -1895,13 +2384,34 @@ const WarehouseInbound = () => {
         </div>
 
         {/* Filters and search */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4 sm:p-5">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {INBOUND_GRN_SOURCE_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveSourceTab(tab.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeSourceTab === tab.key
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500">
+            Source-doc set per tab: {inboundSourceDocRequirementLabel(activeSourceTab)}
+          </p>
+
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            {/* Tabs */}
+            {/* Status tabs */}
             <div className="flex flex-wrap items-center gap-2">
               {(['All', 'Pending', 'Under GRN', 'Completed'] as const).map(tab => (
                 <button
                   key={tab}
+                  type="button"
                   onClick={() => setActiveTab(tab)}
                   className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
                       ? 'bg-blue-600 text-white shadow-sm'
@@ -1930,12 +2440,26 @@ const WarehouseInbound = () => {
         {/* Data Table */}
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[840px]">
+            <table className="w-full min-w-[1280px]">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <SortableTableTh
-                    label="GRN No."
+                    label="Shipment"
+                    column="shipment"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="GRN #"
                     column="grnNo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="Loc"
+                    column="loc"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
@@ -1948,142 +2472,225 @@ const WarehouseInbound = () => {
                     onSort={toggleInboundSort}
                   />
                   <SortableTableTh
-                    label="RCVD Qty"
-                    column="rcvdQty"
+                    label="PO Qty"
+                    column="poQty"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
                     align="right"
                   />
                   <SortableTableTh
-                    label="Remaining"
-                    column="remaining"
+                    label="Shipped"
+                    column="shipped"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
                     align="right"
                   />
                   <SortableTableTh
-                    label="Type"
-                    column="type"
+                    label="Storage (rack · pack · GRN batch)"
+                    column="storage"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
-                    align="right"
+                    thClassName="min-w-[12rem]"
                   />
                   <SortableTableTh
-                    label="Received"
-                    column="received"
+                    label={
+                      <span className="inline-flex flex-col items-start normal-case tracking-normal">
+                        <span>Source-doc set</span>
+                        <span className="text-[10px] font-normal text-slate-500 lowercase first-letter:uppercase">
+                          {inboundSourceDocRequirementLabel(activeSourceTab)}
+                        </span>
+                      </span>
+                    }
+                    column="sourceDoc"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
-                    align="right"
+                    thClassName="min-w-[11rem]"
                   />
                   <SortableTableTh
-                    label="Assigned To"
-                    column="assignedTo"
-                    sortColumn={sortColumn}
-                    sortDirection={sortDirection}
-                    onSort={toggleInboundSort}
-                  />
-                  <SortableTableTh
-                    label="QC"
-                    column="qc"
-                    sortColumn={sortColumn}
-                    sortDirection={sortDirection}
-                    onSort={toggleInboundSort}
-                    align="right"
-                  />
-                  <SortableTableTh
-                    label="Status"
+                    label="GRN Status"
                     column="status"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
-                    align="right"
                   />
+                  <SortableTableTh
+                    label="SLA"
+                    column="sla"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="Related"
+                    column="related"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
                 ) : sortedItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">No GRN items found</td>
+                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">
+                      {inboundGrnSourceEmptyMessage(activeSourceTab)}
+                    </td>
                   </tr>
                 ) : (
-                  sortedItemRows.map(({ rowId, grn, lineItem }) => (
+                  sortedItemRows.map(({ rowId, grn, lineItem }) => {
+                    const rowInput = toInboundRowInput(grn, lineItem);
+                    const poKey = String(grn.poNo ?? '').trim().toLowerCase();
+                    const siblingGrnCount = poKey ? Math.max(0, (siblingGrnCountByPo.get(poKey) ?? 1) - 1) : 0;
+                    const view = buildInboundGrnTableRowView(rowInput, siblingGrnCount);
+                    return (
                     <tr
                       key={rowId}
-                      className="hover:bg-amber-50/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedGRN(grn)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedGRN(grn); } }}
+                      className="hover:bg-amber-50/50 transition-colors align-top"
                     >
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm font-mono font-medium text-blue-600">{displayGrnNo(grn.grnNo)}</span>
+                      <td className="px-4 py-3.5 text-sm text-slate-800 tabular-nums whitespace-nowrap">
+                        {view.shipmentDate}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-3.5">
+                        <span className="text-sm font-mono font-semibold text-blue-600">{view.grnNo}</span>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm font-bold text-slate-800 whitespace-nowrap">
+                        {view.warehouse}
+                      </td>
+                      <td className="px-4 py-4 min-w-[9rem]">
                         {lineItem ? (
                           <div>
-                            <div className="text-sm font-medium text-slate-900">{lineItem.item}</div>
-                            <div className="text-xs text-slate-500 font-mono">{lineItem.itemCode}</div>
+                            <div className="text-sm font-semibold text-slate-900 leading-snug">{lineItem.item}</div>
+                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">{lineItem.itemCode}</div>
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-sm font-medium text-slate-700">{lineItem ? lineItem.rcvdQty : '—'}</span>
+                      <td className="px-4 py-4 text-right tabular-nums text-sm text-slate-800 whitespace-nowrap">
+                        {lineItem ? formatInboundQty(lineItem.poQty, lineItem.unit) : '—'}
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`text-sm font-semibold ${lineItem ? (Math.max(0, lineItem.poQty - lineItem.rcvdQty) > 0 ? 'text-amber-700' : 'text-emerald-700') : 'text-slate-400'}`}>
-                          {lineItem ? Math.max(0, lineItem.poQty - lineItem.rcvdQty) : '—'}
+                      <td className="px-4 py-4 text-right tabular-nums text-sm font-medium text-slate-800 whitespace-nowrap">
+                        {lineItem ? formatInboundQty(lineItem.rcvdQty, lineItem.unit) : '—'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700 min-w-[12rem]">
+                        <p>{view.storagePrimary}</p>
+                        {view.storageSecondary ? (
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">{view.storageSecondary}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4 text-sm whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            view.sourceDocsComplete
+                              ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
+                              : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                          }`}
+                          title={view.sourceDocsHint}
+                        >
+                          {view.sourceDocs}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${grn.type === 'RM'
-                            ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
-                            : 'bg-violet-100 text-violet-700 border-violet-200'
-                          }`}>
-                          {grn.type}
-                        </span>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <p className={`text-xs tracking-wide ${inboundGrnStatusClass(view.statusTone)}`}>
+                          {view.statusLabel}
+                        </p>
+                        {view.statusSubLabel ? (
+                          <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">{view.statusSubLabel}</p>
+                        ) : null}
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        {grn.receivedDate ? (
-                          <span className="text-sm text-slate-600">{formatDate(grn.receivedDate)}</span>
+                      <td className={`px-4 py-4 text-xs whitespace-nowrap ${inboundGrnSlaClass(view.slaTone)}`}>
+                        {view.slaIcon ? <span className="mr-1" aria-hidden="true">{view.slaIcon}</span> : null}
+                        {view.slaLabel}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700 min-w-[7rem]">
+                        {view.relatedPrimary ? <p>{view.relatedPrimary}</p> : <p className="text-slate-400">—</p>}
+                        {view.relatedSecondary ? (
+                          <p className="text-[11px] text-slate-500 mt-0.5">{view.relatedSecondary}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {view.actionLabel === 'Awaiting QC' ? (
+                          <span className="text-xs font-semibold text-slate-500">
+                            {view.actionPrefix ? `${view.actionPrefix} ` : ''}
+                            {view.actionLabel}
+                          </span>
                         ) : (
-                          <span className="text-sm text-slate-400">—</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openInboundRowAction(
+                                grn,
+                                lineItem,
+                                view.actionLabel,
+                                setReceiptModal,
+                                handleOpenGrnDetail,
+                                (row) => {
+                                  void handleConfirmArrival(row);
+                                },
+                                (row) => {
+                                  void handleSendToQc(row);
+                                },
+                                handleOpenQcCheck,
+                              )
+                            }
+                            className="text-xs font-semibold text-slate-800 hover:text-slate-950 hover:underline"
+                          >
+                            {view.actionPrefix ? `${view.actionPrefix} ` : ''}
+                            {view.actionLabel}
+                          </button>
                         )}
                       </td>
-                      <td className="px-4 py-4">
-                        <span className={`text-sm ${grn.assignedTo === 'Unassigned' ? 'text-slate-400 italic' : 'text-slate-700'}`}>
-                          {grn.assignedTo}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getQCStatusColor(grn.qcStatus)}`}>
-                          {grn.qcStatus}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusColor(grn.status)}`}>
-                          {grn.status}
-                        </span>
-                      </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
+        {receiptModal ? (
+          <GrnCopyReceiptModal
+            grn={receiptModal.grn}
+            lineItem={receiptModal.lineItem}
+            mode={receiptModal.mode}
+            onClose={() => setReceiptModal(null)}
+            onSaved={handleReceiptSaved}
+          />
+        ) : null}
+
         {/* GRN Detail Modal */}
-        {selectedGRN && <GRNDetailModal grn={selectedGRN} onClose={() => setSelectedGRN(null)} onSaveChanges={handleSaveChanges} assignableUsers={assignableUsers} />}
+        {selectedGRN && !receiptModal && !activeQcRow ? (
+          <GRNDetailModal
+            grn={selectedGRN}
+            mode={selectedGRNMode}
+            focusLineItem={assignRackFocusLineItem}
+            onClose={handleCloseGrnDetail}
+            onSaveChanges={handleSaveChanges}
+            assignableUsers={assignableUsers}
+          />
+        ) : null}
+
+        {activeQcRow ? (
+          <QualityCheckModal
+            row={activeQcRow}
+            assigneeOptions={assigneeOptions}
+            readOnly
+            onClose={() => setActiveQcRow(null)}
+            onSaved={handleQcCheckSaved}
+          />
+        ) : null}
       </div>
     </div>
   );
