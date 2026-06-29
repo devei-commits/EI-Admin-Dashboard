@@ -17,6 +17,8 @@ export type QualitySpecTableProps = {
   disabledHint?: string;
   /** When false, hides inline “+ Add …” controls (use external modal add instead). */
   showAddButton?: boolean;
+  /** When set, “+ Add …” opens this handler instead of inserting an empty inline row. */
+  onAddClick?: () => void;
 };
 
 const inputCls =
@@ -33,6 +35,7 @@ export function QualitySpecTable({
   enabled = true,
   disabledHint,
   showAddButton = true,
+  onAddClick,
 }: QualitySpecTableProps): React.ReactElement {
   const updateRow = (id: string, patch: Partial<QualitySpecTableRow>): void => {
     if (!enabled) return;
@@ -46,6 +49,10 @@ export function QualitySpecTable({
 
   const addRow = (): void => {
     if (!enabled) return;
+    if (onAddClick) {
+      onAddClick();
+      return;
+    }
     onChange([...rows, createEmptyQualitySpecRow({ id: `${idPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` })]);
   };
 

@@ -51,37 +51,38 @@ export function MasterCustomQualitySpecsSection({
   const [addError, setAddError] = useState<string | null>(null);
   const allowScopeSelection = showSubTable && Boolean(subCategoryLabel.trim());
 
-  const handleSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+  const handleSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): boolean => {
     setAddError(null);
     if (scope === 'common') {
       const scopeKey = categoryScopeKey.trim();
       if (!scopeKey) {
         setAddError('Select a category before adding a shared parameter.');
-        return;
+        return false;
       }
       const result = addSharedQualitySpec(entity, 'common', scopeKey, row);
       if (!result.ok) {
         if (result.reason === 'duplicate') {
           setAddError('This parameter already exists for this category.');
         }
-        return;
+        return false;
       }
       onCommonChange([...commonRows, { ...row, custom: true }]);
-      return;
+      return true;
     }
     const pathKey = subScopePathKey.trim();
     if (!pathKey) {
       setAddError('Select a sub-category before adding a shared parameter.');
-      return;
+      return false;
     }
     const result = addSharedQualitySpec(entity, 'sub', pathKey, row);
     if (!result.ok) {
       if (result.reason === 'duplicate') {
         setAddError('This parameter already exists for this sub-category.');
       }
-      return;
+      return false;
     }
     onSubChange([...subRows, { ...row, custom: true }]);
+    return true;
   };
 
   const tableProps = {

@@ -873,6 +873,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   }, [productIdFromRoute]);
 
   const isNewProduct = !effectiveProductId;
+  const isModalPopup = Boolean(onClose);
+  const isEditingPr = Boolean(effectiveProductId);
   const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
   const approvalRevertAction = getMasterApprovalRevertAction(formData.masterApprovalStatus);
   const canShowApprovalSubmit =
@@ -3593,11 +3595,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white min-w-0">
             <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality specifications</h3>
             <p className="text-xs text-slate-500 mb-4">
-              Choose Bulk Clearance, Final Clearance, or Dispatch Specs above the table — use Add when no template exists for that section.
+              Choose Bulk Clearance, Final Clearance, or Dispatch Specs. Use &ldquo;+ Add Common Spec&rdquo; or
+              &ldquo;+ Add Specific Spec&rdquo; to open the same quality spec form as RM/PM masters.
             </p>
             <PrQualitySpecTable
               categoryLabel={prQualitySpecResolved.categoryDisplayLabel}
               subCategoryLabel={prQualitySpecResolved.subCategory || '—'}
+              taxonomyLabel={prCustomFieldsTaxonomyLabel}
               rowsBySection={formData.prQualitySpecRowsBySection}
               bulkSubRows={currentPrBulkSubSpecRows}
               finalSubRows={currentPrFinalSubSpecRows}
@@ -3648,15 +3652,42 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   };
 
   if (editLoading) {
-    return (
-      <div className="min-h-screen bg-[#f9fafb] flex items-center justify-center">
+    const loadingBody = (
+      <div
+        className={
+          isModalPopup
+            ? 'min-h-[40vh] bg-[#f9fafb] flex items-center justify-center'
+            : 'min-h-screen bg-[#f9fafb] flex items-center justify-center'
+        }
+      >
         <p className="text-gray-500">Loading product…</p>
       </div>
     );
+    if (isModalPopup) {
+      return (
+        <>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-800">Edit Product Registration (PR Master)</div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close PR master popup"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+            >
+              <span aria-hidden>✕</span>
+              <span>Close</span>
+            </button>
+          </div>
+          <div className="max-h-[88vh] overflow-y-auto">{loadingBody}</div>
+        </>
+      );
+    }
+    return loadingBody;
   }
 
-  return (
-    <>
+  const prFormBody = (
       <MasterCustomFieldsProvider entity="PR" taxonomyKey={prCustomFieldsTaxonomyKey}>
       <MasterFormBase
         title={effectiveProductId ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
@@ -3721,8 +3752,48 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         commentPlaceholder="Why is this being sent back? (optional)"
       />
       </MasterCustomFieldsProvider>
-    </>
   );
+
+  if (isModalPopup) {
+    return (
+      <>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-gray-800">
+              {isEditingPr ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
+            </div>
+            {isEditingPr ? (
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                <span className="font-mono font-semibold text-teal-700">
+                  {formData.skuCode.trim() || '—'}
+                </span>
+                {formData.productName.trim() ? (
+                  <>
+                    <span className="text-gray-300" aria-hidden>
+                      ·
+                    </span>
+                    <span className="truncate font-medium text-gray-900">{formData.productName.trim()}</span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close PR master popup"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+          >
+            <span aria-hidden>✕</span>
+            <span>Close</span>
+          </button>
+        </div>
+        <div className="max-h-[88vh] overflow-y-auto">{prFormBody}</div>
+      </>
+    );
+  }
+
+  return prFormBody;
 };
 
 export default BOMForm;

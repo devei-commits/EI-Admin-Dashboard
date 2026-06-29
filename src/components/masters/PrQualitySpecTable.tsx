@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { PR_QUALITY_SPEC_SECTIONS } from '../../constants/prQualitySpecSections';
 import type { PrQualitySpecSectionKey } from '../../constants/prQualitySpecSections';
+import { qualitySpecParameterKey } from '../../lib/masterSharedQualitySpecs';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
+import { MasterAddCustomQualitySpecModal } from './MasterAddCustomQualitySpecModal';
 import { QualitySpecTable } from './QualitySpecTable';
 
 type SectionTablePairProps = {
@@ -16,6 +18,8 @@ type SectionTablePairProps = {
   idPrefix: string;
   scopeLabel: string;
   readOnly?: boolean;
+  onRequestAddCommon: () => void;
+  onRequestAddSpecific: () => void;
 };
 
 function SectionCommonAndSubTables({
@@ -30,36 +34,43 @@ function SectionCommonAndSubTables({
   idPrefix,
   scopeLabel,
   readOnly = false,
+  onRequestAddCommon,
+  onRequestAddSpecific,
 }: SectionTablePairProps): React.ReactElement {
+  const categoryReady = Boolean(categoryLabel && categoryLabel !== '—');
+  const subReady = Boolean(subCategoryLabel && subCategoryLabel !== '—');
   const tablesEnabled = !readOnly;
+
   return (
     <>
       <QualitySpecTable
         title="Common Specs"
         subtitle={categoryLabel ? `${categoryLabel} — applies to all` : 'Select category in Primary info'}
         addButtonLabel="+ Add Common Spec"
-        emptyMessage={`No common ${scopeLabel.toLowerCase()} specs yet. Use “Add Common Spec” to define parameters that apply to all sub-categories.`}
+        emptyMessage={`No common ${scopeLabel.toLowerCase()} specs yet. Use “+ Add Common Spec” to open the quality spec form.`}
         rows={commonRows}
         onChange={onCommonChange}
         idPrefix={`${idPrefix}-common`}
-        enabled={tablesEnabled && Boolean(categoryLabel && categoryLabel !== '—')}
+        enabled={tablesEnabled && categoryReady}
         disabledHint={
-          categoryLabel && categoryLabel !== '—'
+          categoryReady
             ? undefined
             : `Select PR category in Primary info to add ${scopeLabel.toLowerCase()} common specs.`
         }
+        onAddClick={onRequestAddCommon}
       />
       {showSubTable ? (
         <QualitySpecTable
           title="Sub-category Specs"
           subtitle={subCategoryLabel ? `only for ${subCategoryLabel}` : 'Select sub-category in Primary info'}
           addButtonLabel="+ Add Specific Spec"
-          emptyMessage={`No sub-category ${scopeLabel.toLowerCase()} specs yet. Use “Add Specific Spec” to add parameters for this sub-category.`}
+          emptyMessage={`No sub-category ${scopeLabel.toLowerCase()} specs yet. Use “+ Add Specific Spec” to open the quality spec form.`}
           rows={subRows}
           onChange={onSubChange}
           idPrefix={`${idPrefix}-sub`}
-          enabled={tablesEnabled && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
+          enabled={tablesEnabled && subReady}
           disabledHint={subDisabledHint}
+          onAddClick={onRequestAddSpecific}
         />
       ) : null}
     </>
@@ -69,6 +80,7 @@ function SectionCommonAndSubTables({
 type PrQualitySpecTableProps = {
   categoryLabel: string;
   subCategoryLabel: string;
+  taxonomyLabel?: string;
   rowsBySection: Record<PrQualitySpecSectionKey, QualitySpecTableRow[]>;
   bulkSubRows: QualitySpecTableRow[];
   finalSubRows: QualitySpecTableRow[];
@@ -90,6 +102,7 @@ type PrQualitySpecTableProps = {
 export function PrQualitySpecTable({
   categoryLabel,
   subCategoryLabel,
+  taxonomyLabel,
   rowsBySection,
   bulkSubRows,
   finalSubRows,
@@ -107,11 +120,84 @@ export function PrQualitySpecTable({
   sectionEditable,
 }: PrQualitySpecTableProps): React.ReactElement {
   const [activeSection, setActiveSection] = useState<PrQualitySpecSectionKey>('bulkClearance');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalScope, setModalScope] = useState<'common' | 'specific'>('common');
+  const [addError, setAddError] = useState<string | null>(null);
 
   const activeMeta = PR_QUALITY_SPEC_SECTIONS.find((s) => s.key === activeSection) ?? PR_QUALITY_SPEC_SECTIONS[0];
   const canEditSection = (key: PrQualitySpecSectionKey): boolean =>
     sectionEditable ? sectionEditable(key) : true;
   const activeEditable = canEditSection(activeSection);
+
+  const showSubTableForSection =
+    activeSection === 'bulkClearance'
+      ? showBulkSubTable
+      : activeSection === 'finalClearance'
+        ? showFinalSubTable
+        : showDispatchSubTable;
+
+  const openAddModal = useCallback((scope: 'common' | 'specific'): void => {
+    setAddError(null);
+    setModalScope(scope);
+    setModalOpen(true);
+  }, []);
+
+  const getActiveCommonRows = (): QualitySpecTableRow[] => rowsBySection[activeSection] ?? [];
+
+  const getActiveSubRows = (): QualitySpecTableRow[] => {
+    if (activeSection === 'bulkClearance') return bulkSubRows;
+    if (activeSection === 'finalClearance') return finalSubRows;
+    return dispatchSubRows;
+  };
+
+  const appendToActiveSubRows = (rows: QualitySpecTableRow[]): void => {
+    if (activeSection === 'bulkClearance') onBulkSubChange(rows);
+    else if (activeSection === 'finalClearance') onFinalSubChange(rows);
+    else onDispatchSubChange(rows);
+  };
+
+  const handleModalSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): boolean => {
+    setAddError(null);
+    const paramKey = qualitySpecParameterKey(row.parameter);
+    if (!paramKey) {
+      setAddError('Parameter name is required.');
+      return false;
+    }
+
+    if (scope === 'common') {
+      if (!categoryLabel || categoryLabel === '—') {
+        setAddError('Select a PR category before adding a common parameter.');
+        return false;
+      }
+      const existing = getActiveCommonRows();
+      if (existing.some((r) => qualitySpecParameterKey(r.parameter) === paramKey)) {
+        setAddError('This parameter already exists in common specs for this section.');
+        return false;
+      }
+      onSectionChange(activeSection, [...existing, { ...row, custom: true }]);
+      return true;
+    }
+
+    if (!showSubTableForSection || !subCategoryLabel || subCategoryLabel === '—') {
+      setAddError('Select a PR sub-category before adding a sub-category parameter.');
+      return false;
+    }
+    const existing = getActiveSubRows();
+    if (existing.some((r) => qualitySpecParameterKey(r.parameter) === paramKey)) {
+      setAddError('This parameter already exists in sub-category specs for this section.');
+      return false;
+    }
+    appendToActiveSubRows([...existing, { ...row, custom: true }]);
+    return true;
+  };
+
+  const sectionTableProps = {
+    categoryLabel,
+    subCategoryLabel,
+    readOnly: !activeEditable,
+    onRequestAddCommon: () => openAddModal('common'),
+    onRequestAddSpecific: () => openAddModal('specific'),
+  };
 
   return (
     <div className="space-y-4">
@@ -166,11 +252,15 @@ export function PrQualitySpecTable({
         <h4 className="text-sm font-semibold text-slate-800 mb-3">
           {activeMeta.emoji} {activeMeta.title}
         </h4>
+        {addError ? (
+          <p className="text-xs text-red-600 mb-3" role="alert">
+            {addError}
+          </p>
+        ) : null}
 
         {activeSection === 'bulkClearance' ? (
           <SectionCommonAndSubTables
-            categoryLabel={categoryLabel}
-            subCategoryLabel={subCategoryLabel}
+            {...sectionTableProps}
             commonRows={rowsBySection.bulkClearance ?? []}
             subRows={bulkSubRows}
             onCommonChange={(rows) => onSectionChange('bulkClearance', rows)}
@@ -179,14 +269,12 @@ export function PrQualitySpecTable({
             subDisabledHint={bulkSubDisabledHint}
             idPrefix="pr-qs-bulk"
             scopeLabel="bulk clearance"
-            readOnly={!activeEditable}
           />
         ) : null}
 
         {activeSection === 'finalClearance' ? (
           <SectionCommonAndSubTables
-            categoryLabel={categoryLabel}
-            subCategoryLabel={subCategoryLabel}
+            {...sectionTableProps}
             commonRows={rowsBySection.finalClearance ?? []}
             subRows={finalSubRows}
             onCommonChange={(rows) => onSectionChange('finalClearance', rows)}
@@ -195,14 +283,12 @@ export function PrQualitySpecTable({
             subDisabledHint={finalSubDisabledHint}
             idPrefix="pr-qs-final"
             scopeLabel="final clearance"
-            readOnly={!activeEditable}
           />
         ) : null}
 
         {activeSection === 'dispatchSpecs' ? (
           <SectionCommonAndSubTables
-            categoryLabel={categoryLabel}
-            subCategoryLabel={subCategoryLabel}
+            {...sectionTableProps}
             commonRows={rowsBySection.dispatchSpecs ?? []}
             subRows={dispatchSubRows}
             onCommonChange={(rows) => onSectionChange('dispatchSpecs', rows)}
@@ -211,10 +297,20 @@ export function PrQualitySpecTable({
             subDisabledHint={dispatchSubDisabledHint}
             idPrefix="pr-qs-dispatch"
             scopeLabel="dispatch"
-            readOnly={!activeEditable}
           />
         ) : null}
       </div>
+
+      <MasterAddCustomQualitySpecModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        taxonomyLabel={taxonomyLabel ?? (categoryLabel !== '—' ? categoryLabel : 'PR master')}
+        subCategoryLabel={subCategoryLabel === '—' ? '' : subCategoryLabel}
+        categoryScopeLabel={categoryLabel === '—' ? '' : categoryLabel}
+        allowScopeSelection={showSubTableForSection && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
+        initialScope={modalScope}
+        onSave={handleModalSave}
+      />
     </div>
   );
 }

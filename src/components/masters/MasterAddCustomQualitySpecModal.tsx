@@ -20,7 +20,9 @@ export type MasterAddCustomQualitySpecModalProps = {
   subCategoryLabel: string;
   allowScopeSelection: boolean;
   categoryScopeLabel: string;
-  onSave: (row: QualitySpecTableRow, scope: 'common' | 'specific') => void;
+  /** Pre-select common vs sub-category when the modal opens. */
+  initialScope?: 'common' | 'specific';
+  onSave: (row: QualitySpecTableRow, scope: 'common' | 'specific') => boolean | void;
 };
 
 const NUMBER_TYPES: MasterQualitySpecDataType[] = [
@@ -38,6 +40,7 @@ export function MasterAddCustomQualitySpecModal({
   subCategoryLabel,
   allowScopeSelection,
   categoryScopeLabel,
+  initialScope,
   onSave,
 }: MasterAddCustomQualitySpecModalProps): React.ReactElement {
   const [name, setName] = useState('');
@@ -69,9 +72,9 @@ export function MasterAddCustomQualitySpecModal({
     setFrequency('');
     setSample('');
     setAcceptance('');
-    setScope(allowScopeSelection ? 'specific' : 'common');
+    setScope(allowScopeSelection ? (initialScope ?? 'specific') : 'common');
     setError('');
-  }, [isOpen, allowScopeSelection]);
+  }, [isOpen, allowScopeSelection, initialScope]);
 
   const showOptions = dataType === 'select' || outputType === 'select';
   const showUnit = NUMBER_TYPES.includes(dataType);
@@ -121,8 +124,8 @@ export function MasterAddCustomQualitySpecModal({
       selectOptions: selectOptions?.length ? selectOptions : undefined,
       custom: true,
     });
-    onSave(row, allowScopeSelection ? scope : 'common');
-    onClose();
+    const shouldClose = onSave(row, allowScopeSelection ? scope : 'common');
+    if (shouldClose !== false) onClose();
   };
 
   return (
