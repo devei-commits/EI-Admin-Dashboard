@@ -1,5 +1,6 @@
 import React from 'react';
 import { grnOutputTypeLabel } from '../../lib/qualitySpecDataType';
+import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../../types/qualitySpecTable';
 import { QualitySpecAttachmentsCell } from './QualitySpecAttachmentsCell';
 import { QualitySpecLimitInputFromRow } from './QualitySpecLimitInput';
 
