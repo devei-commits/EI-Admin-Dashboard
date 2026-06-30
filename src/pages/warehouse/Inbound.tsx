@@ -3,13 +3,17 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
-import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, generateGRNLabels, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
 import { GrnQcInspectionPanel } from '../../components/warehouse/GrnQcInspectionPanel';
 import {
   deriveGrnQcStatusFromSpecs,
   grnQcCompletionBlockers,
   type GrnQcSpecsStored,
 } from '../../lib/grnQcSpecs';
+import {
+  findGrnLineItemByIdOrCode,
+  normalizeGrnLineItemIds,
+} from '../../lib/grnLineItemIds';
 import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
 import {
   fetchFacilityAreas,
@@ -454,7 +458,7 @@ const GRNDetailModal = ({
   const [assignedTo, setAssignedTo] = useState(grn.assignedTo || '');
   const [grnDate, setGrnDate] = useState(grn.grnDate || new Date().toISOString().split('T')[0]);
   const [editedLineItems, setEditedLineItems] = useState<LineItem[]>(() =>
-    (grn.lineItems || []).map(li => ({
+    normalizeGrnLineItemIds((grn.lineItems || []).map(li => ({
       ...li,
       rcvdQty: (li.rcvdQty != null && li.rcvdQty !== 0) ? li.rcvdQty : li.poQty,
       labelGenerated: Boolean((li as { labelGenerated?: boolean; label_generated?: boolean }).labelGenerated ?? (li as { labelGenerated?: boolean; label_generated?: boolean }).label_generated),
@@ -463,15 +467,14 @@ const GRNDetailModal = ({
         : Array.isArray((li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generated_labels)
           ? (li as { generatedLabels?: GeneratedLabel[]; generated_labels?: GeneratedLabel[] }).generated_labels ?? null
           : null,
-    }))
+    })))
   );
-  const [labelsGenerated, setLabelsGenerated] = useState(!!(grn.generatedLabels && grn.generatedLabels.length > 0));
-  const [labels, setLabels] = useState<GeneratedLabel[] | null>(grn.generatedLabels ?? null);
+  const [labels, setLabels] = useState<GeneratedLabel[] | null>(null);
   /** Which box's label is shown in the preview dropdown (1-based box index from API). */
   const [selectedLabelBoxIndex, setSelectedLabelBoxIndex] = useState<number | null>(null);
-  const [generatingLabels, setGeneratingLabels] = useState(false);
-  const [labelError, setLabelError] = useState<string | null>(null);
-  const [selectedLineItemId, setSelectedLineItemId] = useState<string>('');
+  const [selectedLineItemId, setSelectedLineItemId] = useState<string>(() =>
+    editedLineItems.length > 0 ? editedLineItems[0].id : '',
+  );
   const [noOfBoxes, setNoOfBoxes] = useState(String(grn.noOfBoxes ?? 1));
   const [unitsPerBoxListStr, setUnitsPerBoxListStr] = useState<string[]>([]);
   const [locationPrefix, setLocationPrefix] = useState(grn.locationPrefix ?? '');
@@ -500,8 +503,14 @@ const GRNDetailModal = ({
   const [postRackingPhotosByRack, setPostRackingPhotosByRack] = useState<Record<string, EvidencePhoto[]>>({});
 
   const assignRackLineItem =
-    focusLineItem ??
+    (focusLineItem ? findGrnLineItemByIdOrCode(editedLineItems, focusLineItem) : undefined) ??
     editedLineItems.find((li) => li.id === selectedLineItemId) ??
+    editedLineItems[0] ??
+    null;
+
+  const selectedLineItem =
+    editedLineItems.find((li) => li.id === selectedLineItemId) ??
+    (focusLineItem ? findGrnLineItemByIdOrCode(editedLineItems, focusLineItem) : undefined) ??
     editedLineItems[0] ??
     null;
 
@@ -550,7 +559,6 @@ const GRNDetailModal = ({
     ],
   );
 
-  const selectedLineItem = editedLineItems.find(li => li.id === selectedLineItemId) ?? null;
   const parsedNoOfBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
   const parsedUnitsPerBoxList = unitsPerBoxListStr.map((v) => Math.max(0, parseGrnQty(v)));
   const totalUnitsAllocated = parsedUnitsPerBoxList.reduce((s, n) => s + n, 0);
@@ -563,10 +571,7 @@ const GRNDetailModal = ({
   const unitsFullyAllocated =
     selectedLineItem != null && grnQtysEqual(totalUnitsAllocated, selectedLineItem.rcvdQty);
 
-  /** Show primary Generate when a line is selected and there are no labels yet, or saved QRs are for a different line. */
-  const needsGenerateForSelection = Boolean(
-    selectedLineItemId && (!labels || labels.length === 0),
-  );
+  const labelsGenerated = Boolean(labels && labels.length > 0);
   const labeledLineItemCodes = useMemo(() => {
     const set = new Set<string>();
     for (const li of editedLineItems) {
@@ -583,10 +588,26 @@ const GRNDetailModal = ({
     editedLineItems.every((li) => labeledLineItemCodes.has(String(li.itemCode || '').trim().toLowerCase()));
 
   useEffect(() => {
-    if (mode === 'assign-rack' && focusLineItem?.id) {
-      setSelectedLineItemId(focusLineItem.id);
+    if (mode === 'assign-rack' && focusLineItem) {
+      const match = findGrnLineItemByIdOrCode(editedLineItems, focusLineItem);
+      if (match) setSelectedLineItemId(match.id);
     }
-  }, [focusLineItem?.id, mode]);
+  }, [focusLineItem, mode, editedLineItems]);
+
+  useEffect(() => {
+    const activeId =
+      selectedLineItemId ||
+      (focusLineItem ? findGrnLineItemByIdOrCode(editedLineItems, focusLineItem)?.id : undefined) ||
+      editedLineItems[0]?.id ||
+      '';
+    if (!activeId) {
+      setLabels(null);
+      return;
+    }
+    const li = editedLineItems.find((x) => x.id === activeId);
+    const next = Array.isArray(li?.generatedLabels) ? li.generatedLabels : null;
+    setLabels(next);
+  }, [selectedLineItemId, editedLineItems, focusLineItem]);
 
   useEffect(() => {
     if (!labels || labels.length === 0) {
@@ -624,19 +645,6 @@ const GRNDetailModal = ({
       setUnitsPerBoxListStr(values);
     }
   }, [labels]);
-
-  /** Switching line item should restore that line's own generated labels. */
-  useEffect(() => {
-    if (!selectedLineItemId) {
-      setLabels(null);
-      setLabelsGenerated(false);
-      return;
-    }
-    const li = editedLineItems.find((x) => x.id === selectedLineItemId);
-    const next = Array.isArray(li?.generatedLabels) ? li.generatedLabels : null;
-    setLabels(next);
-    setLabelsGenerated(Boolean(next && next.length > 0));
-  }, [selectedLineItemId, editedLineItems]);
 
   /** When reopening a GRN, preselect first line that already has labels (line-level first, legacy fallback second). */
   useEffect(() => {
@@ -868,130 +876,23 @@ const GRNDetailModal = ({
     void persistUpdate({});
   };
 
-  const runGenerateLabels = async () => {
-    if (qcStatus !== 'Passed') {
-      setLabelError('QC must be Passed before generating labels.');
-      return;
-    }
-    if (!qcBy.trim()) {
-      setLabelError('Assign QC by before generating labels.');
-      return;
-    }
-    if (!assignedTo.trim()) {
-      setLabelError('Assign this GRN (Assigned To) before generating labels.');
-      return;
-    }
-    const targetLineItem = selectedLineItem ?? editedLineItems[0] ?? null;
-    if (!locationPrefix.trim()) {
-      setLabelError(
-        locationSource === 'facility'
-          ? 'Select warehouse area, zone, and rack before generating labels.'
-          : 'Enter location prefix (rack code) before generating labels.',
-      );
-      return;
-    }
-    if (!locationZone.trim()) {
-      setLabelError(
-        locationSource === 'facility'
-          ? 'Complete zone and rack selection from Facility Management before generating labels.'
-          : 'Enter storage zone before generating labels.',
-      );
-      return;
-    }
-    const numBoxes = Math.max(1, parseInt(noOfBoxes, 10) || 1);
-    const boxUnitsList = Array.from({ length: numBoxes }, (_, i) => Math.max(0, parseGrnQty(unitsPerBoxListStr[i] || '0')));
-    if (targetLineItem != null) {
-      const pack = validateUnitsPerBoxList(
-        targetLineItem.rcvdQty,
-        boxUnitsList
-      );
-      if (!pack.ok) {
-        setLabelError(pack.message);
-        return;
-      }
-    }
-    const wasRegenerating = Boolean(labels && labels.length > 0);
-    setLabelError(null);
-    setGeneratingLabels(true);
-    try {
-      const saved = await persistUpdate({});
-      if (!saved) {
-        addToast('error', 'Could not save changes. Fix the error above, then try again.');
-        return;
-      }
-      const res = await generateGRNLabels(grn.id, {
-        noOfBoxes: numBoxes,
-        unitsPerBoxList: boxUnitsList,
-        locationPrefix: locationPrefix || undefined,
-        locationZone: locationZone || undefined,
-        locationSource,
-        grnBatchMfg: grnBatchMfg || undefined,
-        expiry: expiry || undefined,
-        mfgBatch: mfgBatch || undefined,
-        productName: targetLineItem?.item || undefined,
-        itemCode: targetLineItem?.itemCode || undefined,
-      });
-      setLabels(res.labels);
-      setLabelsGenerated(true);
-      const selectedCodeNorm = String(targetLineItem?.itemCode || selectedLineItem?.itemCode || '').trim().toLowerCase();
-      const nextLineItems = selectedCodeNorm
-        ? editedLineItems.map((li) =>
-            String(li.itemCode || '').trim().toLowerCase() === selectedCodeNorm
-              ? { ...li, labelGenerated: true, generatedLabels: res.labels }
-              : li
-          )
-        : editedLineItems;
-      setEditedLineItems(nextLineItems);
-      try {
-        await updateGRN(grn.id, { lineItems: nextLineItems });
-      } catch {
-        // Non-fatal; keep this session state even if persistence fails.
-      }
-      if (res.workflowSteps) {
-        setCurrentWorkflowSteps(res.workflowSteps as WorkflowStep[]);
-      }
-      const merged: GRNRecord = {
-        ...saved,
-        generatedLabels: res.labels,
-        workflowSteps: (res.workflowSteps ?? saved.workflowSteps) as WorkflowStep[],
-      };
-      onSaveChanges(merged);
-      addToast(
-        'success',
-        wasRegenerating ? 'QR labels regenerated with your updates.' : 'QR labels generated.',
-      );
-    } catch (e: unknown) {
-      const err = e as { status?: number; body?: { error?: string }; message?: string };
-      const status = err?.status;
-      const bodyError =
-        err?.body && typeof err.body === 'object' && 'error' in err.body
-          ? (err.body as { error?: string }).error
-          : undefined;
-      const msg = bodyError || (e instanceof Error ? e.message : 'Failed to generate labels');
-      setLabelError(msg);
-      if (status === 403) {
-        addToast(
-          'error',
-          'QC must be Passed on the server before labels can be generated. Save failed or QC was not persisted.',
-        );
-      } else {
-        addToast('error', msg);
-      }
-    } finally {
-      setGeneratingLabels(false);
-    }
-  };
-
   const qcTestBlockers = grnQcCompletionBlockers(qcSpecs);
+  const isAssignRackMode = mode === 'assign-rack';
   const completionBlockers: string[] = [];
-  if (qcStatus !== 'Passed') {
-    if (qcTestBlockers.length > 0) completionBlockers.push(...qcTestBlockers);
-    else completionBlockers.push('QC status must be Passed (complete all master quality tests).');
+  if (!isAssignRackMode) {
+    if (qcStatus !== 'Passed') {
+      if (qcTestBlockers.length > 0) completionBlockers.push(...qcTestBlockers);
+      else completionBlockers.push('QC status must be Passed (complete all master quality tests).');
+    }
+    if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   }
-  if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
   if (!allLineItemsLabeled) {
-    completionBlockers.push('QR labels must be generated for all GRN materials.');
+    completionBlockers.push(
+      isAssignRackMode
+        ? 'Complete GRN Copy (documents + QR labels) before assign rack.'
+        : 'QR labels must be generated in GRN Copy for all GRN materials.',
+    );
   }
   if (!locationPrefix.trim()) {
     completionBlockers.push(
@@ -1309,11 +1210,12 @@ const GRNDetailModal = ({
             </span>
           </div>
 
-          {/* QC section: master specs + QC by */}
+          {/* QC section: master specs + QC by — read-only during assign rack */}
+          {!isAssignRackMode ? (
           <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
             <h3 className="text-sm font-semibold text-slate-700">QC inspection &amp; QC by</h3>
             <p className="text-xs text-slate-600">
-              Tests are loaded from the RM/PM master <strong>Quality Specifications</strong>. Rows marked <strong>Mand</strong> in the master must be tested (result + Pass). Optional tests may be left pending. Labels (QR) require all mandatory tests to pass.
+              Tests are loaded from the RM/PM master <strong>Quality Specifications</strong>. Rows marked <strong>Mand</strong> in the master must be tested (result + Pass). Optional tests may be left pending.
             </p>
             <GrnQcInspectionPanel
               qcSpecs={qcSpecs}
@@ -1382,6 +1284,11 @@ const GRNDetailModal = ({
               </div>
             </div>
           </section>
+          ) : (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+              <strong>QC passed.</strong> QR labels were created in <strong>GRN Copy</strong>. Use this step to assign put-away rack, upload post-racking photos, and complete the GRN.
+            </section>
+          )}
 
           {/* Workflow Steps */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -1517,26 +1424,57 @@ const GRNDetailModal = ({
             </section>
           )}
 
-          {/* Label data & Generate QR Labels */}
+          {/* Put-away / labels — QR generation only in GRN Copy; assign rack is put-away + photos */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box)</h3>
-            <p className="text-xs text-slate-600">One QR per box for this GRN. Set <strong>No of boxes</strong>, then enter <strong>Units/box</strong> for each box. The total must match received quantity. <strong>Generate Labels</strong> saves first, then creates QR codes.</p>
-            {qcStatus !== 'Passed' && (
+            <h3 className="text-sm font-semibold text-slate-700">
+              {isAssignRackMode ? 'Put-away location' : 'Labels (QR per box)'}
+            </h3>
+            {isAssignRackMode ? (
+              <p className="text-xs text-slate-600">
+                QR labels were generated in <strong>GRN Copy</strong>. Select the physical rack for put-away below. Labels cannot be created or regenerated here.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-600">
+                Generate QR labels from <strong>GRN Copy</strong> on the inbound list (documents, pack counts, and shipment photos). This screen shows saved labels for reference only.
+              </p>
+            )}
+
+            {!isAssignRackMode && labelsGenerated && labels && labels.length > 0 && (
+              <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                {labels.length} QR label{labels.length === 1 ? '' : 's'} on file from GRN Copy. Open <strong>GRN Copy</strong> to regenerate after changing pack counts or documents.
+              </p>
+            )}
+
+            {!isAssignRackMode && !labelsGenerated && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-                <strong>QC must be Passed</strong> before generating labels. Complete all master quality tests, assign &quot;QC by&quot;, and allocate &quot;Assigned To&quot;, then use Generate Labels (it will save automatically).
+                Use <strong>GRN Copy</strong> on the inbound table to upload receipt documents and generate QR labels before QC and assign rack.
               </div>
             )}
 
+            {isAssignRackMode && labelsGenerated && labels && labels.length > 0 && (
+              <p className="text-xs text-slate-600">
+                <strong>{labels.length}</strong> box label{labels.length === 1 ? '' : 's'} from GRN Copy
+                {grn.noOfBoxes != null ? ` · ${grn.noOfBoxes} box(es) configured` : ''}.
+              </p>
+            )}
+
+            {isAssignRackMode && !labelsGenerated && (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">
+                No QR labels on this GRN yet. Complete <strong>GRN Copy</strong> first (documents + Generate Labels), then return to assign rack.
+              </div>
+            )}
+
+            {!isAssignRackMode && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  No of boxes <span className="text-red-500">*</span>
+                  No of boxes
                 </label>
-                <input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input type="number" min={1} value={noOfBoxes} readOnly className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-600" />
               </div>
               <div className="col-span-2 md:col-span-3">
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Units/box by box <span className="text-red-500">*</span>
+                  Units/box by box
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {Array.from({ length: parsedNoOfBoxes }).map((_, i) => (
@@ -1546,25 +1484,17 @@ const GRNDetailModal = ({
                         type="number"
                         min={0}
                         value={unitsPerBoxListStr[i] ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setUnitsPerBoxListStr((prev) => prev.map((x, idx) => (idx === i ? v : x)));
-                        }}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        readOnly
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-600"
                       />
                     </div>
                   ))}
                 </div>
-                {selectedLineItem && (
-                  <p className={`text-xs mt-2 ${overAllocatedUnits > 0 ? 'text-red-600' : remainingUnitsForSelectedLine > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    Received: <strong>{selectedLineItem.rcvdQty}</strong> units · Assigned in boxes: <strong>{totalUnitsAllocated}</strong> · Remaining: <strong>{remainingUnitsForSelectedLine}</strong>
-                    {overAllocatedUnits > 0 ? ` · Over by ${overAllocatedUnits}` : ''}
-                    {overAllocatedUnits === 0 && !unitsFullyAllocated ? ' · Warning: fill remaining units before generating labels.' : ''}
-                  </p>
-                )}
               </div>
+            </div>
+            )}
 
-              <div className="col-span-2 md:col-span-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
                 <div className="flex flex-wrap items-center gap-4">
                   <span className="text-xs font-semibold text-slate-700">Put-away location <span className="text-red-500">*</span></span>
                   <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
@@ -1715,8 +1645,9 @@ const GRNDetailModal = ({
                     <span className="font-mono font-medium">rack</span> = {locationPrefix}
                   </p>
                 )}
-              </div>
+            </div>
 
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
                 <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
@@ -1730,30 +1661,10 @@ const GRNDetailModal = ({
                 <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 flex-wrap">
-                {needsGenerateForSelection && (
-                  <button
-                    type="button"
-                    onClick={() => void runGenerateLabels()}
-                    disabled={generatingLabels || saving || qcStatus !== 'Passed'}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                  >
-                    {saving ? 'Saving…' : generatingLabels ? 'Generating…' : 'Generate Labels'}
-                  </button>
-                )}
-                {labelsGenerated && labels && labels.length > 0 && (
-                  <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 max-w-xl">
-                    Labels on file match this line. Change boxes, rack/location, or batch above, then use{' '}
-                    <strong>Regenerate all QR labels</strong> in the preview section to update every box QR.
-                  </p>
-                )}
-              </div>
-            </div>
-            {labelError && <p className="text-sm text-red-600">{labelError}</p>}
+
           </section>
 
-          {/* QR Label Preview — dropdown to pick a box; regenerate updates all QRs from form fields */}
+          {/* QR Label Preview — print only; generation happens in GRN Copy */}
           {labelsGenerated && labels && labels.length > 0 && activeLabel && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
@@ -1783,14 +1694,6 @@ const GRNDetailModal = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => void runGenerateLabels()}
-                  disabled={generatingLabels || saving || qcStatus !== 'Passed' || !selectedLineItemId}
-                  className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 transition-colors disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : generatingLabels ? 'Regenerating…' : 'Regenerate all QR labels'}
-                </button>
-                <button
-                  type="button"
                   onClick={handlePrintActiveLabel}
                   disabled={!activeLabel}
                   className="px-4 py-2 bg-slate-700 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
@@ -1807,7 +1710,7 @@ const GRNDetailModal = ({
                 </button>
               </div>
               <p className="text-[11px] text-slate-500">
-                Updating applies to <strong>all</strong> boxes (same product line, packaging, and location fields). Pick a box here to inspect its QR; then adjust fields in &quot;Labels (QR per box)&quot; above and regenerate.
+                Labels were generated in <strong>GRN Copy</strong>. Use print to reprint box QRs. To change pack counts or regenerate, open <strong>GRN Copy</strong> from the inbound list.
               </p>
               {(() => {
                 const label = activeLabel;

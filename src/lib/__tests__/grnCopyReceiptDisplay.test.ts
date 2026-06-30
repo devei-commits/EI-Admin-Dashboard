@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allGrnMatchChecksPass,
+  allGrnReceiptChecksPass,
   buildGrnCopyDocumentRows,
   buildGrnCopyReceiptHeaderView,
   buildGrnMatchChecks,
@@ -8,6 +9,7 @@ import {
   formatShipmentBatchRef,
   grnReceiptDocumentsLocked,
   initialGrnCopyDocRefs,
+  resolveGrnExistingLabels,
 } from '../grnCopyReceiptDisplay';
 
 describe('grnCopyReceiptDisplay', () => {
@@ -68,7 +70,40 @@ describe('grnCopyReceiptDisplay', () => {
       documentRows,
       photoCount: 3,
     });
-    expect(allGrnMatchChecksPass(checks)).toBe(true);
+    expect(allGrnReceiptChecksPass(checks)).toBe(true);
+    expect(allGrnMatchChecksPass(checks)).toBe(false);
+  });
+
+  it('resolveGrnExistingLabels reads GRN-level and line-level labels', () => {
+    expect(
+      resolveGrnExistingLabels({
+        generatedLabels: [{ boxIndex: 1 }],
+        lineItem: { itemCode: '1000020' },
+      }),
+    ).toHaveLength(1);
+    expect(
+      resolveGrnExistingLabels({
+        lineItems: [{ itemCode: '1000020', generatedLabels: [{ boxIndex: 1 }, { boxIndex: 2 }] }],
+        lineItem: { itemCode: '1000020' },
+      }),
+    ).toHaveLength(2);
+    expect(
+      resolveGrnExistingLabels({
+        lineItem: { itemCode: '1000020' },
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('marks QR label row pass when labels on file', () => {
+    const checks = buildGrnMatchChecks({
+      grn: { grnNo: 'GRN-1', lineItem: { poQty: 36, rcvdQty: 36, unit: 'kg' } },
+      packRows: deriveGrnPackRows({ rcvdQty: 36, noOfBoxes: 1, unit: 'kg' }),
+      documentRows: buildGrnCopyDocumentRows({ grnNo: 'GRN-1' }),
+      photoCount: 0,
+      existingLabelCount: 1,
+    });
+    const labelRow = checks.find((c) => c.label.startsWith('QR labels'));
+    expect(labelRow?.pass).toBe(true);
   });
 
   it('seeds bill ref from invoice on init only', () => {
@@ -88,11 +123,26 @@ describe('grnCopyReceiptDisplay', () => {
     ).toBe(false);
   });
 
-  it('locks docs in grn-copy after labels exist', () => {
+  it('does not lock grn-copy when labels exist but receipt docs are incomplete', () => {
     expect(
       grnReceiptDocumentsLocked('grn-copy', {
         status: 'Under GRN',
         generatedLabels: [{}],
+        sourceDocuments: {},
+      }),
+    ).toBe(false);
+  });
+
+  it('locks grn-copy when receipt docs are complete and labels exist', () => {
+    expect(
+      grnReceiptDocumentsLocked('grn-copy', {
+        status: 'Under GRN',
+        generatedLabels: [{}],
+        sourceDocuments: {
+          bill: { fileName: 'inv.pdf' },
+          waybill: { fileName: 'ewb.pdf' },
+          coa: { fileName: 'coa.pdf' },
+        },
       }),
     ).toBe(true);
   });

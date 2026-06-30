@@ -55,6 +55,35 @@ export type GrnMatchCheckRow = {
   pass: boolean;
 };
 
+/** QR labels already saved on GRN (header or matching line item). */
+export function resolveGrnExistingLabels(input: {
+  generatedLabels?: Array<{ boxIndex?: number }> | null;
+  lineItems?: Array<{ itemCode?: string; generatedLabels?: Array<{ boxIndex?: number }> | null }> | null;
+  lineItem?: { itemCode?: string; generatedLabels?: Array<{ boxIndex?: number }> | null } | null;
+}): Array<{ boxIndex?: number }> {
+  const line = input.lineItem;
+  if (line && Array.isArray(line.generatedLabels) && line.generatedLabels.length > 0) {
+    return line.generatedLabels;
+  }
+  const codeU = String(line?.itemCode ?? '').trim().toUpperCase();
+  if (codeU && Array.isArray(input.lineItems)) {
+    const match = input.lineItems.find(
+      (li) => String(li.itemCode ?? '').trim().toUpperCase() === codeU,
+    );
+    if (match && Array.isArray(match.generatedLabels) && match.generatedLabels.length > 0) {
+      return match.generatedLabels;
+    }
+  }
+  if (Array.isArray(input.generatedLabels) && input.generatedLabels.length > 0) {
+    return input.generatedLabels;
+  }
+  return [];
+}
+
+export function grnCopyHasExistingLabels(input: Parameters<typeof resolveGrnExistingLabels>[0]): boolean {
+  return resolveGrnExistingLabels(input).length > 0;
+}
+
 export type GrnCopyReceiptHeaderView = {
   titleGrnNo: string;
   itemTitle: string;
@@ -312,6 +341,7 @@ export function buildGrnMatchChecks(input: {
   packRows: GrnPackCheckRow[];
   documentRows: GrnCopyDocumentRow[];
   photoCount: number;
+  existingLabelCount?: number;
 }): GrnMatchCheckRow[] {
   const line = input.grn.lineItem;
   const poQty = Number(line?.poQty) || 0;
@@ -327,10 +357,11 @@ export function buildGrnMatchChecks(input: {
   const ewbDoc = input.documentRows.find((d) => d.key === 'waybill');
   const coaDoc = input.documentRows.find((d) => d.key === 'coa');
   const docsComplete = Boolean(invoiceDoc?.uploaded && ewbDoc?.uploaded && coaDoc?.uploaded);
+  const labelCount = Math.max(0, Number(input.existingLabelCount) || 0);
 
   const qtyMatch = (a: number, b: number) => Math.abs(a - b) <= 0.0001;
 
-  return [
+  const rows: GrnMatchCheckRow[] = [
     {
       label: `Shipped Qty (vendor ${formatQty(shippedQty, line?.unit)}) vs Physical (${formatQty(physicalTotal, line?.unit)})`,
       pass: qtyMatch(shippedQty, physicalTotal),
@@ -360,17 +391,43 @@ export function buildGrnMatchChecks(input: {
       pass: input.photoCount >= 1,
     },
   ];
+
+  rows.splice(rows.length - 1, 0, {
+    label: labelCount > 0
+      ? `QR labels (${labelCount} on file — regenerate after all receipt checks pass)`
+      : 'QR labels (not generated — use Generate Labels after receipt checks pass)',
+    pass: labelCount > 0,
+  });
+
+  return rows;
+}
+
+function grnReceiptDocsComplete(sourceDocuments: InboundGrnSourceDocuments | null | undefined): boolean {
+  return GRN_COPY_FILE_DOC_KEYS.every((key) => docUploaded(sourceDocuments, key));
 }
 
 export function grnReceiptDocumentsLocked(
   mode: 'confirm-receipt' | 'grn-copy',
-  grn: { status?: string | null; generatedLabels?: unknown[] | null },
+  grn: {
+    status?: string | null;
+    generatedLabels?: unknown[] | null;
+    sourceDocuments?: InboundGrnSourceDocuments | null;
+  },
 ): boolean {
   if (mode === 'confirm-receipt') return false;
   if (String(grn.status ?? '').trim() === 'GRN Complete') return true;
-  return Boolean(Array.isArray(grn.generatedLabels) && grn.generatedLabels.length > 0);
+  const hasLabels = Boolean(Array.isArray(grn.generatedLabels) && grn.generatedLabels.length > 0);
+  if (!hasLabels) return false;
+  // Lock receipt docs after GRN Copy captured all mandatory uploads and generated QR labels.
+  return grnReceiptDocsComplete(grn.sourceDocuments);
 }
 
 export function allGrnMatchChecksPass(checks: GrnMatchCheckRow[]): boolean {
   return checks.length > 0 && checks.every((c) => c.pass);
+}
+
+/** Receipt checks only — excludes informational QR label row. */
+export function allGrnReceiptChecksPass(checks: GrnMatchCheckRow[]): boolean {
+  const receipt = checks.filter((c) => !c.label.startsWith('QR labels'));
+  return allGrnMatchChecksPass(receipt);
 }

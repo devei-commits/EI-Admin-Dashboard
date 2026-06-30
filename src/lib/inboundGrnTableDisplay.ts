@@ -371,13 +371,19 @@ export function inboundGrnArrivalConfirmPayload(
 export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; prefix: string | null } {
   const statusView = buildInboundGrnStatusView(grn);
 
+  /** Assign Rack only after GRN Copy (documents + QR labels). */
+  const assignRackOrGrnCopy = (): { label: string; prefix: string | null } =>
+    isInboundGrnVerified(grn)
+      ? { label: 'Assign Rack', prefix: '📍' }
+      : { label: 'GRN Copy', prefix: '📋' };
+
   if (statusView.label === 'GRN COMPLETED') {
     return { label: 'GRN Copy', prefix: '📋' };
   }
   if (statusView.label === 'QUARANTINED') {
     if (isInboundGrnSentToQc(grn)) {
       if (isInboundGrnQcTested(grn)) {
-        return { label: 'Assign Rack', prefix: '📍' };
+        return assignRackOrGrnCopy();
       }
       if (isInboundGrnQcComplete(grn) || isInboundGrnQcReportSent(grn)) {
         return { label: 'QC Check', prefix: '🧪' };
@@ -387,9 +393,12 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     return { label: 'Send to QC', prefix: '🚦' };
   }
   if (statusView.label === 'QC TESTED · PASS') {
-    return { label: 'Assign Rack', prefix: '📍' };
+    return assignRackOrGrnCopy();
   }
   if (statusView.label === 'VERIFIED') {
+    if (isInboundGrnQcTested(grn)) {
+      return assignRackOrGrnCopy();
+    }
     return { label: 'GRN Copy', prefix: '📋' };
   }
   if (statusView.label === 'LANDED') {

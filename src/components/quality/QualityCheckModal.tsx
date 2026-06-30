@@ -27,6 +27,7 @@ import {
 import {
   deriveGrnQcStatusFromSpecs,
   grnQcCompletionBlockers,
+  resolveGrnQcLineForItem,
   type GrnQcSpecsStored,
   updateGrnQcTestAt,
 } from '../../lib/grnQcSpecs';
@@ -118,7 +119,10 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
     };
   }, [assignedTo, grn, qcBy]);
 
-  const qcLine = qcSpecs?.lines?.[0];
+  const qcLine = useMemo(
+    () => resolveGrnQcLineForItem(qcSpecs, row.itemCode, row.itemName),
+    [qcSpecs, row.itemCode, row.itemName],
+  );
   const workflow = resolveQcWorkflowStages(grnInput ?? { id: row.id, grnNo: row.grnSourceNo, lineItems: [] }, qcSpecs);
   const canComplete = canCompleteQualityCheck(qcSpecs);
   const blockers = grnQcCompletionBlockers(qcSpecs);

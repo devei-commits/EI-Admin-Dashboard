@@ -201,3 +201,24 @@ export function removeGrnQcAttachment(payload: GrnQcSpecsStored, attachmentId: s
   const existing = Array.isArray(payload.attachments) ? payload.attachments : [];
   return { ...payload, attachments: existing.filter((a) => a.id !== attachmentId) };
 }
+
+/** Pick the QC line that matches the quality table row (SKU / name), else first line. */
+export function resolveGrnQcLineForItem(
+  payload: GrnQcSpecsStored | null | undefined,
+  itemCode: string,
+  itemName?: string,
+): GrnQcLineSpec | undefined {
+  const lines = payload?.lines ?? [];
+  if (!lines.length) return undefined;
+  const codeU = itemCode.trim().toUpperCase();
+  if (codeU && codeU !== '—') {
+    const byCode = lines.find((l) => String(l.itemCode ?? '').trim().toUpperCase() === codeU);
+    if (byCode) return byCode;
+  }
+  const nameU = (itemName ?? '').trim().toLowerCase();
+  if (nameU && nameU !== '—') {
+    const byName = lines.find((l) => String(l.itemName ?? '').trim().toLowerCase() === nameU);
+    if (byName) return byName;
+  }
+  return lines[0];
+}

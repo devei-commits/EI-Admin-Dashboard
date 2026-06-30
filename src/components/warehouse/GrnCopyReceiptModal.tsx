@@ -9,7 +9,7 @@ import {
 } from '../../services/grn.service';
 import type { InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
 import {
-  allGrnMatchChecksPass,
+  allGrnReceiptChecksPass,
   buildGrnCopyDocumentRows,
   buildGrnCopyReceiptHeaderFields,
   buildGrnCopyReceiptHeaderView,
@@ -18,6 +18,7 @@ import {
   docRefsToSourceDocuments,
   grnReceiptDocumentsLocked,
   initialGrnCopyDocRefs,
+  resolveGrnExistingLabels,
   type GrnCopyDocRefKey,
   type GrnCopyDocUploadKey,
   type GrnPackCheckRow,
@@ -33,6 +34,7 @@ export type GrnCopyReceiptLineItem = {
   invoiceQty: number;
   unitPrice: number;
   unit?: string;
+  generatedLabels?: GeneratedLabel[] | null;
 };
 
 export type GrnCopyReceiptGrn = {
@@ -50,7 +52,7 @@ export type GrnCopyReceiptGrn = {
   sourceDocuments?: InboundGrnSourceDocuments | null;
   workflowSteps?: string[];
   generatedLabels?: GeneratedLabel[] | null;
-  lineItems?: GrnCopyReceiptLineItem[];
+  lineItems?: Array<Pick<GrnCopyReceiptLineItem, 'itemCode' | 'generatedLabels'>>;
   status?: string | null;
 };
 
@@ -242,11 +244,29 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     () => buildGrnCopyDocumentRows(receiptInput),
     [receiptInput],
   );
-  const matchChecks = useMemo(
-    () => buildGrnMatchChecks({ grn: receiptInput, packRows, documentRows, photoCount }),
-    [receiptInput, packRows, documentRows, photoCount],
+  const existingLabels = useMemo(
+    () =>
+      resolveGrnExistingLabels({
+        generatedLabels: grn.generatedLabels,
+        lineItems: grn.lineItems,
+        lineItem,
+      }),
+    [grn.generatedLabels, grn.lineItems, lineItem],
   );
-  const allChecksPass = allGrnMatchChecksPass(matchChecks);
+  const hasExistingLabels = existingLabels.length > 0;
+
+  const matchChecks = useMemo(
+    () =>
+      buildGrnMatchChecks({
+        grn: receiptInput,
+        packRows,
+        documentRows,
+        photoCount,
+        existingLabelCount: existingLabels.length,
+      }),
+    [receiptInput, packRows, documentRows, photoCount, existingLabels.length],
+  );
+  const receiptChecksPass = allGrnReceiptChecksPass(matchChecks);
   const receivedPacks = packRows.filter((row) => row.actualQty > 0).length;
   const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
   const docsLocked = grnReceiptDocumentsLocked(mode, grn);
@@ -309,7 +329,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   };
 
   const handleGenerateLabels = async (): Promise<void> => {
-    if (!allChecksPass) {
+    if (!receiptChecksPass) {
       addToast('error', 'Complete all match checks and upload at least one shipment photo before generating labels.');
       return;
     }
@@ -385,11 +405,18 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                disabled={!allChecksPass || generating}
+                disabled={!receiptChecksPass || generating}
                 onClick={() => void handleGenerateLabels()}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  receiptChecksPass
+                    ? undefined
+                    : hasExistingLabels
+                      ? 'Complete document uploads and shipment photos to regenerate labels'
+                      : 'Complete document uploads, pack counts, and shipment photos to generate labels'
+                }
               >
-                {generating ? 'Generating…' : 'Generate Labels'}
+                {generating ? 'Generating…' : hasExistingLabels ? 'Regenerate Labels' : 'Generate Labels'}
               </button>
               <button
                 type="button"
@@ -404,6 +431,18 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         </div>
 
         <div className="space-y-6 px-6 py-5">
+          {hasExistingLabels ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <strong>{existingLabels.length} QR label{existingLabels.length === 1 ? '' : 's'} already on file</strong> for this GRN.
+              Upload receipt documents and shipment photos below. The button stays disabled until those checks pass; then you can{' '}
+              <strong>Regenerate Labels</strong> or save draft and continue to QC / assign rack.
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              No QR labels on this GRN yet. Complete documents, pack counts, and shipment photos — then <strong>Generate Labels</strong> will enable.
+            </div>
+          )}
+
           <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-800">📦 GRN header (auto from system)</h3>
             <div className="overflow-x-auto">
@@ -610,10 +649,14 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 </tbody>
               </table>
             </div>
-            <p className={`mt-3 text-sm font-medium ${allChecksPass ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {allChecksPass
-                ? '✓ All checks pass. Generate Labels button enabled · on click → rack labels print (one per pack) · GRN moves to VERIFIED · auto-routed to QC.'
-                : 'Complete document uploads, pack counts, and shipment photos to enable Generate Labels.'}
+            <p className={`mt-3 text-sm font-medium ${receiptChecksPass ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {receiptChecksPass
+                ? hasExistingLabels
+                  ? '✓ Receipt checks pass. Regenerate Labels is enabled if you need new QRs; otherwise save draft and continue.'
+                  : '✓ All checks pass. Generate Labels is enabled · on click → rack labels print (one per pack) · GRN moves to VERIFIED · ready for QC.'
+                : hasExistingLabels
+                  ? 'Labels are on file. Complete document uploads and shipment photos to enable Regenerate Labels (or save draft and close).'
+                  : 'Complete document uploads, pack counts, and shipment photos to enable Generate Labels.'}
             </p>
           </section>
 

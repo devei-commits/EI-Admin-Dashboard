@@ -117,6 +117,18 @@ describe('inboundGrnTableDisplay', () => {
         qcStatus: 'Passed',
       }),
     ).toEqual({
+      label: 'GRN Copy',
+      prefix: '📋',
+    });
+    expect(
+      inboundGrnActionView({
+        grnNo: 'x',
+        status: 'On Hold',
+        workflowSteps: ['Sent to QC', 'Label Generation'],
+        qcStatus: 'Passed',
+        generatedLabels: [{}],
+      }),
+    ).toEqual({
       label: 'Assign Rack',
       prefix: '📍',
     });
@@ -146,17 +158,32 @@ describe('inboundGrnTableDisplay', () => {
     expect(view.actionPrefix).toBe('📋');
   });
 
-  it('shows Assign Rack when QC passed', () => {
+  it('shows Assign Rack when QC passed and GRN Copy labels exist', () => {
     const view = buildInboundGrnTableRowView({
       grnNo: 'GRN-2026-0311',
+      status: 'Under GRN',
+      grnDate: '2026-06-30T09:14:00.000Z',
+      qcStatus: 'Passed',
+      workflowSteps: ['Label Generation'],
+      generatedLabels: [{}],
+      lineItem: { poQty: 100, rcvdQty: 100, unit: 'kg', qcStatus: 'Pass' },
+    });
+    expect(view.statusLabel).toBe('QC TESTED · PASS');
+    expect(view.actionLabel).toBe('Assign Rack');
+    expect(view.actionPrefix).toBe('📍');
+  });
+
+  it('shows GRN Copy when QC passed but labels not generated yet', () => {
+    const view = buildInboundGrnTableRowView({
+      grnNo: 'GRN-2026-0312',
       status: 'Under GRN',
       grnDate: '2026-06-30T09:14:00.000Z',
       qcStatus: 'Passed',
       lineItem: { poQty: 100, rcvdQty: 100, unit: 'kg', qcStatus: 'Pass' },
     });
     expect(view.statusLabel).toBe('QC TESTED · PASS');
-    expect(view.actionLabel).toBe('Assign Rack');
-    expect(view.actionPrefix).toBe('📍');
+    expect(view.actionLabel).toBe('GRN Copy');
+    expect(view.actionPrefix).toBe('📋');
   });
 
   it('counts partial source docs', () => {
