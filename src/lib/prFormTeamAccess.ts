@@ -45,14 +45,13 @@ function roleMayEditPackagingSections(role: PrFormTeamRole): boolean {
 
 /** Whether the current user may edit a PR form subsection (non-admin rules). */
 export function canEditPrFormSubsection(role: PrFormTeamRole, subsection: PrFormSubsection): boolean {
-  if (subsection === 'skuBom') return false;
   if (role === 'admin') return true;
   switch (subsection) {
     case 'primary':
     case 'formulaBom':
       return role !== 'unassigned';
     case 'skuBom':
-      return false;
+      return roleMayEditProductSections(role);
     case 'packBom':
     case 'processPackaging':
     case 'specsPackaging':

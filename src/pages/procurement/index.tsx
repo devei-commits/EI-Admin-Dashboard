@@ -6,13 +6,11 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
-import IssuedPOsView from '../../components/procurement/IssuedPOsView';
+import type { IssuedPOViewRecord } from '../../components/procurement/IssuedPOsView';
 import { PurchaseOrdersView } from '../../components/procurement/PurchaseOrdersView';
 import { GrnTrackerView } from '../../components/procurement/GrnTrackerView';
 import { StockAuditTrackerView } from '../../components/procurement/StockAuditTrackerView';
 import { QuoteRequestsView } from '../../components/procurement/QuoteRequestsView';
-import { WeekVendorConsolidationView } from '../../components/procurement/WeekVendorConsolidationView';
-import { InventoryAuditView } from '../../components/procurement/InventoryAuditView';
 import { PrInboxView } from '../../components/procurement/PrInboxView';
 import { PrEditPopup } from '../../components/procurement/PrEditPopup';
 import { StockAuditPopup } from '../../components/procurement/StockAuditPopup';
@@ -27,10 +25,8 @@ import {
 import { findStockCheckNoteForItem } from '../../lib/stockCheckNotes';
 import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
 import type { Order } from '../../types/salesPurchase.types';
-import {
-  buildWeekVendorConsolidationLines,
-  type WeekVendorItemBucket,
-} from '../../lib/weekVendorConsolidation';
+import { mergePurchaseOrderRecords } from '../../lib/purchaseOrderRecordsMerge';
+import { normalizeProcurementSection } from '../../lib/procurementNav';
 import { formatIsoWeekLabel } from '../../lib/isoWeek';
 import { buildProcurementRequestItemLines } from '../../lib/procurementRequestItemLines';
 import procurementData from '../../mocks/procurement-data.json';
@@ -149,8 +145,6 @@ import type {
   QuoteLine,
 } from '../../types/procurement.types';
 import StockCheckUpdateModal from './StockCheckUpdateModal';
-import ProcurementVendors from './ProcurementVendors';
-import ProcurementReports from './ProcurementReports';
 import { Search, X, Package, Loader2 } from 'lucide-react';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
@@ -400,15 +394,13 @@ function resolveMasterIdsFromRawItem(raw: any): {
   };
 }
 
-const MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
+const MAIN_TABS: MainTab[] = ['Procurement'];
 const SIDE_SECTIONS: SideSection[] = [
-  'Overview',
   'Requests',
-  'Quotations',
-  'Draft POs',
-  'Issued POs',
-  'GRN Monitor',
-  'Inventory Audit',
+  'Purchase Orders',
+  'Quote Requests',
+  'Stock Audit',
+  'GRN Tracker',
 ];
 
 type RequestListTab = 'All' | 'Active' | RequestStatus | 'Week + Vendor';
@@ -674,8 +666,9 @@ function planningQuotationRequestHasRecordedQuote(req: ProcurementRequest, quote
   );
 }
 
-const getInitialMainTab = (searchParams: URLSearchParams): MainTab => (isMainTab(searchParams.get('tab')) ? (searchParams.get('tab') as MainTab) : 'Procurement');
-const getInitialSideSection = (searchParams: URLSearchParams): SideSection => (isSideSection(searchParams.get('section')) ? (searchParams.get('section') as SideSection) : 'Overview');
+const getInitialMainTab = (_searchParams: URLSearchParams): MainTab => 'Procurement';
+const getInitialSideSection = (searchParams: URLSearchParams): SideSection =>
+  normalizeProcurementSection(searchParams.get('section'));
 
 const deriveStockCheckStatusForRequest = (request: ProcurementRequest): StockCheckStatus => {
   const sc = String(request.stockCheckStatus ?? '').trim();
@@ -1539,7 +1532,7 @@ const Procurement: React.FC = () => {
         return acc;
       }, {} as Record<string, PoTrackingRecord>);
     },
-    enabled: sideSection === 'Issued POs' && releasedPoBackendIdsForTracking.length > 0,
+    enabled: sideSection === 'Purchase Orders' && releasedPoBackendIdsForTracking.length > 0,
     staleTime: 30_000,
   });
 
@@ -1594,8 +1587,8 @@ const Procurement: React.FC = () => {
   }, [releasePOTarget?.id, releaseDraftTracking]);
 
   const needItemsListForQuotesOrDraftPO =
-    sideSection === 'Quotations' ||
-    sideSection === 'Draft POs' ||
+    sideSection === 'Quote Requests' ||
+    sideSection === 'Purchase Orders' ||
     sideSection === 'Requests' ||
     !!selectedDraftPO ||
     !!selectedRequest;
@@ -1738,9 +1731,9 @@ const Procurement: React.FC = () => {
   const isProcurementDataLoading =
     vendorClientList === undefined ||
     purchaseOrdersRaw === undefined ||
-    (sideSection === 'Quotations' &&
+    (sideSection === 'Quote Requests' &&
       (quotationsResult === undefined || planningQuotationAsksResult === undefined)) ||
-    (sideSection !== 'Quotations' && (backendPrResult === undefined || quotationsResult === undefined));
+    (sideSection !== 'Quote Requests' && (backendPrResult === undefined || quotationsResult === undefined));
 
   useEffect(() => {
     if (backendPrResult === undefined) return;
@@ -2340,10 +2333,10 @@ const Procurement: React.FC = () => {
 
         setTimeout(() => {
           setMainTab('Procurement');
-          setSideSection('Draft POs');
+          setSideSection('Purchase Orders');
           const nextSearchParams = new URLSearchParams(searchParams);
           nextSearchParams.set('tab', 'Procurement');
-          nextSearchParams.set('section', 'Draft POs');
+          nextSearchParams.set('section', 'Purchase Orders');
           setSearchParams(nextSearchParams, { replace: true });
         }, 500);
       } finally {
@@ -2526,7 +2519,7 @@ const Procurement: React.FC = () => {
   };
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
-    const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Overview';
+    const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Requests';
     setMainTab(tab);
     setSideSection(nextSection);
 
@@ -2668,19 +2661,7 @@ const Procurement: React.FC = () => {
         return false;
       }
 
-      if (sideSection === 'Quotations' || sideSection === 'Overview') {
-        /* ignored */
-      } else if (sideSection === 'Draft POs') {
-        const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || linkedRequest.status !== 'PO Draft') {
-          return false;
-        }
-      } else if (sideSection === 'Issued POs') {
-        const linkedRequest = requests.find((request) => request.id === quote.requestId);
-        if (!linkedRequest || !requestStatusShowsIssuedPOs(linkedRequest.status)) {
-          return false;
-        }
-      } else if (sideSection === 'Requests') {
+      if (sideSection === 'Requests') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
         if (!linkedRequest || !requestStatusIsPreDraftPipeline(linkedRequest.status)) {
           return false;
@@ -2814,7 +2795,7 @@ const Procurement: React.FC = () => {
 
   /** Quotations tab: show recorded procurement quotations (DB) and Items List–derived price cards. IL-* rows are not procurement_quotations rows. */
   const quotesForQuotationsSection = useMemo(() => {
-    if (sideSection !== 'Quotations') return sortVendorQuotesLatestFirst(filteredQuotes);
+    if (sideSection !== 'Quote Requests') return sortVendorQuotesLatestFirst(filteredQuotes);
     return sortVendorQuotesLatestFirst([...filteredQuotes, ...filteredItemsListQuotes]);
   }, [sideSection, filteredQuotes, filteredItemsListQuotes]);
 
@@ -3124,16 +3105,13 @@ const Procurement: React.FC = () => {
     });
   }, [procurementRequestsList, categoryFilter, searchQuery]);
 
-  const weekVendorTabLineCount = useMemo(
-    () => buildWeekVendorConsolidationLines(procurementRequestsMatchingSearchAndCategory).length,
-    [procurementRequestsMatchingSearchAndCategory],
-  );
+  const weekVendorTabLineCount = 0;
 
   const quoteStats = useMemo(() => {
-    const list = sideSection === 'Quotations' ? quotesForQuotationsSection : filteredQuotes;
+    const list = sideSection === 'Quote Requests' ? quotesForQuotationsSection : filteredQuotes;
     const totalQuotes =
       list.length +
-      (sideSection === 'Quotations'
+      (sideSection === 'Quote Requests'
         ? filteredPlanningQuotationAsks.length + filteredPlanningQuotationRequestsAwaitingQuote.length
         : 0);
     const confirmed = list.filter((quote) => quote.status === 'Confirmed').length;
@@ -3506,24 +3484,26 @@ const Procurement: React.FC = () => {
     };
   }, [issuedPORecords, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides, grnCompletePoNormSet]);
 
+  const purchaseOrderViewRecords = useMemo(
+    () => mergePurchaseOrderRecords(issuedPORecords, draftPOs, requests),
+    [issuedPORecords, draftPOs, requests],
+  );
+
   /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
   const sideCounts = useMemo(
     () => ({
-      Overview: procurementRequestsList.length,
       Requests: procurementRequestTabCounts.active,
-      Quotations:
+      'Purchase Orders': purchaseOrderViewRecords.length,
+      'Quote Requests':
         quotes.length +
         filteredPlanningQuotationAsks.length +
         planningQuotationRequestsAwaitingQuote.length,
-      'Draft POs': draftPOs.length,
-      'Issued POs': issuedPORecords.length,
-      'GRN Monitor': (grnListFromApi ?? []).length,
-      'Inventory Audit': buildInventoryAuditLines(procurementRequestsList).length,
+      'Stock Audit': buildInventoryAuditLines(procurementRequestsList).length,
+      'GRN Tracker': (grnListFromApi ?? []).length,
     }),
     [
-      draftPOs,
+      purchaseOrderViewRecords.length,
       grnListFromApi,
-      issuedPORecords,
       procurementRequestsList,
       filteredPlanningQuotationAsks.length,
       planningQuotationRequestsAwaitingQuote.length,
@@ -3587,7 +3567,33 @@ const Procurement: React.FC = () => {
     unlinkedPoTimelineOverrides,
   ]);
 
-  const openIssuedPODetail = (record: (typeof filteredIssuedPORecords)[number]) => {
+  const filteredPurchaseOrderRecords = useMemo(() => {
+    return purchaseOrderViewRecords.filter((record) => {
+      if (categoryFilter !== 'All' && record.request.type !== categoryFilter) {
+        return false;
+      }
+      if (issuedVendorFilter !== 'All Vendors' && record.vendor !== issuedVendorFilter) {
+        return false;
+      }
+      if (issuedStatusFilter !== 'All' && record.status !== issuedStatusFilter) {
+        return false;
+      }
+      if (!issuedSearch.trim()) return true;
+      const query = issuedSearch.toLowerCase();
+      return (
+        record.poNumber.toLowerCase().includes(query) ||
+        record.requestCode.toLowerCase().includes(query) ||
+        record.vendor.toLowerCase().includes(query) ||
+        record.lineItems.some(
+          (line) =>
+            line.item.toLowerCase().includes(query) ||
+            String((line as { itemCode?: string }).itemCode ?? '').toLowerCase().includes(query),
+        )
+      );
+    });
+  }, [purchaseOrderViewRecords, categoryFilter, issuedVendorFilter, issuedStatusFilter, issuedSearch]);
+
+  const openIssuedPODetail = (record: IssuedPOViewRecord) => {
     const recBackend = (record as { backendPoId?: string }).backendPoId;
     const normPoKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
     let backendPo: PurchaseOrder | undefined;
@@ -3628,6 +3634,18 @@ const Procurement: React.FC = () => {
         record.createdDate,
       ),
     });
+  };
+
+  const openPurchaseOrderDetail = (record: IssuedPOViewRecord) => {
+    if (record.poWorkflowStatus === 'draft' || record.status === 'Draft') {
+      const normKey = (n: string) => String(n ?? '').trim().replace(/^PO-?/i, '').replace(/^DPO-?/i, '');
+      const dpo = draftPOs.find((d) => normKey(d.dpoNumber) === normKey(record.poNumber));
+      if (dpo) {
+        setSelectedDraftPO(dpo);
+        return;
+      }
+    }
+    openIssuedPODetail(record);
   };
 
   const resolveIssuedPoBackendId = (record: {
@@ -4686,7 +4704,7 @@ const Procurement: React.FC = () => {
       // Planning-created draft POs (from Planning > Items Involved) may not be linked to a procurement_requests row.
       // In that case, we can still release the underlying purchase order and show it in "Issued POs".
       addToast('warning', `${target.dpoNumber} released (no backend procurement request link; created from Planning).`);
-      applyRouteState('Procurement', 'Issued POs');
+      applyRouteState('Procurement', 'Purchase Orders');
       return true;
     }
 
@@ -4700,7 +4718,7 @@ const Procurement: React.FC = () => {
     // and leave procurement_requests.status stuck while the UI still showed release success.
     const ok = await updateRequestStatus(backendRequestId, 'PO Released', { skipItems: true, silentToast: true });
     if (!ok) return false;
-    applyRouteState('Procurement', 'Issued POs');
+    applyRouteState('Procurement', 'Purchase Orders');
     return true;
   };
 
@@ -5915,7 +5933,7 @@ const Procurement: React.FC = () => {
         sideSection={sideSection}
         onSideSectionChange={(section) => {
           applyRouteState('Procurement', section);
-          if (section === 'GRN Monitor') {
+          if (section === 'GRN Tracker') {
             addToast('info', `${section} synced with procurement data`);
           }
         }}
@@ -5925,114 +5943,10 @@ const Procurement: React.FC = () => {
         importingPoExcel={importingPoExcel}
         onImportPoExcel={() => poExcelInputRef.current?.click()}
         showGlobalLoader={showProcurementGlobalLoader}
-        secondaryContent={
-          <>
-            {mainTab === 'Vendors' && (
-              <ProcurementVendors
-                vendors={vendors}
-                purchaseOrders={purchaseOrders}
-                selectedVendor={selectedVendor}
-                setSelectedVendor={setSelectedVendor}
-                applyRouteState={applyRouteState}
-                sideSection={sideSection}
-              />
-            )}
-            {mainTab === 'Reports' && (
-              <ProcurementReports
-                requests={requests}
-                quotes={quotes}
-                quoteStats={quoteStats}
-                applyRouteState={applyRouteState}
-                sideSection={sideSection}
-                requestTypeClass={requestTypeClass}
-                priorityClass={priorityClass}
-                statusBg={statusBg}
-              />
-            )}
-          </>
-        }
         procurementContent={
           <>
-            {sideSection !== 'Overview' && (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                {[
-                  { label: 'TOTAL QUOTES', value: quoteStats.totalQuotes, color: 'text-yellow-700' },
-                  { label: 'CONFIRMED', value: quoteStats.confirmed, color: 'text-emerald-600' },
-                  { label: 'NOT SELECTED', value: quoteStats.notSelected, color: 'text-slate-600' },
-                ].map((stat) => (
-                  <div key={stat.label} className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500">{stat.label}</p>
-                    <p className={`mt-2 text-3xl font-bold font-archivo ${stat.color}`}>{stat.value}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {false && sideSection === 'Quotations' && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="text-slate-500">CATEGORY:</span>
-                  {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
-                    <button
-                      key={category}
-                      onClick={() => setCategoryFilter(category)}
-                      className={`px-2 py-1 rounded border ${categoryFilter === category
-                        ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                        : 'bg-white text-slate-700 border-slate-300'
-                        }`}
-                    >
-                      {category}
-                    </button>
-                  ))}
-
-                  <span className="text-slate-500 ml-2">VENDOR:</span>
-                  <select
-                    value={vendorFilter}
-                    onChange={(event) => setVendorFilter(event.target.value)}
-                    className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                  >
-                    <option value="All Vendors">All Vendors</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.name}>
-                        {vendor.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <span className="text-slate-500 ml-2">STATUS:</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value as 'All Statuses' | QuoteStatus)}
-                    className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                  >
-                    <option value="All Statuses">All Statuses</option>
-                    <option value="Confirmed">Confirmed</option>
-                    <option value="Not Selected">Not Selected</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search vendor, request ID..."
-                    className="w-60 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
-                  />
-                  <button
-                    onClick={addNewQuote}
-                    className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm"
-                  >
-                    + Record Quote
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500 px-1 pt-2 border-t border-slate-100 mt-2">
-                  Planning quotation asks appear here (no procurement request). Record vendor rates on Items List; planners create PRs manually from Release to Planning.
-                </p>
-              </div>
-            )}
-
             <div className="space-y-4">
-              {sideSection === 'Overview' && (() => {
+              {false && sideSection === 'Overview' && (() => {
                 const TODAY = new Date();
                 // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
                 const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
@@ -6300,7 +6214,18 @@ const Procurement: React.FC = () => {
               )}
 
 
-              {sideSection === 'Quotations' && (
+              {sideSection === 'Quote Requests' && (
+                <QuoteRequestsView
+                  vendorQuotes={quotesForQuotationsSection}
+                  onEditQuote={(quote) => {
+                    const req = requests.find((r) => String(r.id) === String(quote.requestId));
+                    if (req) openRecordQuoteFromRequest(req);
+                  }}
+                  onNewQuoteRequest={() => applyRouteState('Procurement', 'Requests')}
+                />
+              )}
+
+              {false && sideSection === 'Quote Requests' && (
                 <div className="space-y-3">
                   {isProcurementDataLoading ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
@@ -6844,7 +6769,7 @@ const Procurement: React.FC = () => {
                 </div>
               )}
 
-              {sideSection === 'Draft POs' && (
+              {false && sideSection === 'Draft POs' && (
                 <>
                   {/* Filters */}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
@@ -6911,7 +6836,7 @@ const Procurement: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              applyRouteState('Procurement', 'Draft POs');
+                              applyRouteState('Procurement', 'Purchase Orders');
                               setSelectedRequest(req);
                             }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
@@ -7296,28 +7221,50 @@ const Procurement: React.FC = () => {
                 </div>
               )}
 
-              {sideSection === 'Issued POs' && (
-                <PurchaseOrdersView
-                  records={filteredIssuedPORecords}
-                  grnList={grnListFromApi ?? []}
-                  vendorOptions={Array.from(new Set(issuedPORecords.map((r) => r.vendor))).sort((a, b) =>
-                    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+              {sideSection === 'Purchase Orders' && (
+                <>
+                  {requestsPODraftNoDraftPO.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO</p>
+                      {requestsPODraftNoDraftPO.map((req) => (
+                        <article key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{req.code}</span>
+                            <span className="text-sm text-slate-700">No draft PO yet</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequest(req)}
+                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
+                          >
+                            Open PR & create Draft PO
+                          </button>
+                        </article>
+                      ))}
+                    </div>
                   )}
-                  onOpenDetail={openIssuedPODetail}
-                  onEdit={openIssuedPODetail}
-                  onShipmentCreated={() => {
-                    void queryClient.invalidateQueries({ queryKey: ['grn-list'] });
-                    void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-                    addToast('success', 'Shipment batch + GRN(s) created — moved to In Transit.');
-                  }}
-                  onOpenGrnForPo={() => applyRouteState('Procurement', 'GRN Monitor')}
-                />
+                  <PurchaseOrdersView
+                    records={filteredPurchaseOrderRecords}
+                    grnList={grnListFromApi ?? []}
+                    vendorOptions={Array.from(new Set(purchaseOrderViewRecords.map((r) => r.vendor))).sort((a, b) =>
+                      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+                    )}
+                    onOpenDetail={openPurchaseOrderDetail}
+                    onEdit={openPurchaseOrderDetail}
+                    onShipmentCreated={() => {
+                      void queryClient.invalidateQueries({ queryKey: ['grn-list'] });
+                      void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+                      addToast('success', 'Shipment batch + GRN(s) created — moved to In Transit.');
+                    }}
+                    onOpenGrnForPo={() => applyRouteState('Procurement', 'GRN Tracker')}
+                  />
+                </>
               )}
 
 
-              {sideSection === 'GRN Monitor' && <GrnTrackerView />}
+              {sideSection === 'GRN Tracker' && <GrnTrackerView />}
 
-              {sideSection === 'Inventory Audit' && (
+              {sideSection === 'Stock Audit' && (
                 <StockAuditTrackerView
                   requests={procurementRequestsList}
                   onOpenPr={(pr) => setPrEditReq(pr)}
@@ -7600,7 +7547,7 @@ const Procurement: React.FC = () => {
               <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
                 {po.backendPoId && (
                   <button
-                    onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Monitor'); }}
+                    onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Tracker'); }}
                     className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 transition"
                   >
                     Open GRN Monitor
@@ -9003,7 +8950,7 @@ const Procurement: React.FC = () => {
                         );
                         if (raised) {
                           setSelectedRequest(null);
-                          applyRouteState('Procurement', 'Draft POs');
+                          applyRouteState('Procurement', 'Purchase Orders');
                         }
                       }}
                       className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
@@ -10125,7 +10072,7 @@ const Procurement: React.FC = () => {
                       setReleaseToPlannedNotes('');
                       setReleaseToPlannedTarget(null);
                       setTimeout(() => {
-                        applyRouteState('Procurement', 'Draft POs');
+                        applyRouteState('Procurement', 'Purchase Orders');
                       }, 500);
                     }}
                     className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600"
@@ -11450,7 +11397,7 @@ const Procurement: React.FC = () => {
                               setShowCreatePoFromQuoteModal(false);
 
                               setTimeout(() => {
-                                applyRouteState('Procurement', 'Draft POs');
+                                applyRouteState('Procurement', 'Purchase Orders');
                               }, 500);
                             }}
                             className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-60"

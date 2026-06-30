@@ -10,9 +10,9 @@ import { Search, Pencil, MessageSquare, PackageSearch, Truck, Plus, Download } f
 import type { ProcurementRequest, ItemDetail } from '../../types/procurement.types';
 import {
   PR_SOURCE_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
-  slaLevelFromDaysOpen, expectedVsNeedByLevel,
   type PrSource, type SlaLevel,
 } from '../../constants/procurement';
+import { slaLevelFromDaysOpen, expectedVsNeedByLevel } from '../../lib/procurementSla';
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 function parseDate(d: string | null | undefined): Date | null {

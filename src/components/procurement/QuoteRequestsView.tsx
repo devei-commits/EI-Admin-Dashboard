@@ -1,16 +1,16 @@
 /**
- * Track Quote Requests — Procurement spec View 3 (§5).
- * Tracks RFQ requests (sourced from Planning's quotation asks) through their
- * lifecycle, with a Generate-Template action (§5.3). Self-fetches all statuses.
- * Tool-native light styling.
+ * Track Quote Requests — Procurement spec View 3 (§4).
+ * Planning-originated RFQs and Procurement-initiated quote requests in one inbox.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, MessageSquare, Loader2, FileText } from 'lucide-react';
+import { Search, RefreshCw, MessageSquare, Loader2, FileText, Pencil, Plus, Download } from 'lucide-react';
 import { fetchPlanningQuotationAsks, type PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
+import type { VendorQuote } from '../../types/procurement.types';
 import {
   QUOTE_STATUS_CONFIG, PR_SOURCE_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
-  slaLevelFromDaysOpen, type QuoteStatus,
+  type QuoteStatus, type PrSource,
 } from '../../constants/procurement';
+import { quoteSlaLevel } from '../../lib/procurementSla';
 import { RfqTemplatePopup, type RfqTemplateData } from './RfqTemplatePopup';
 
 function fmtDate(d: string | null | undefined): string {
@@ -26,18 +26,52 @@ function daysSince(d: string | null | undefined): number {
   const t = new Date(); t.setHours(0, 0, 0, 0);
   return Math.max(0, Math.round((t.getTime() - dt.getTime()) / 86_400_000));
 }
-function mapStatus(s: PlanningQuotationAsk['status']): QuoteStatus {
+function mapPlanningStatus(s: PlanningQuotationAsk['status']): QuoteStatus {
   if (s === 'fulfilled') return 'completed';
   if (s === 'cancelled') return 'terminated';
   return 'requested';
 }
+function mapVendorQuoteStatus(s: VendorQuote['status']): QuoteStatus {
+  if (s === 'Confirmed') return 'completed';
+  if (s === 'Not Selected') return 'terminated';
+  return 'requested';
+}
 
-export const QuoteRequestsView: React.FC = () => {
+interface QuoteRow {
+  id: string;
+  qtId: string;
+  source: PrSource;
+  itemName: string;
+  itemCode: string;
+  vendors: string;
+  qtyTiers: string[];
+  targetPrice: number | null;
+  status: QuoteStatus;
+  requestDate: string | null;
+  daysOpen: number;
+  templateData: RfqTemplateData;
+}
+
+export interface QuoteRequestsViewProps {
+  /** Procurement-recorded vendor quotations (from parent React Query). */
+  vendorQuotes?: VendorQuote[];
+  onEditQuote?: (quote: VendorQuote) => void;
+  onNewQuoteRequest?: () => void;
+  onExport?: () => void;
+}
+
+export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
+  vendorQuotes = [],
+  onEditQuote,
+  onNewQuoteRequest,
+  onExport,
+}) => {
   const [asks, setAsks] = useState<PlanningQuotationAsk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
   const [templateFor, setTemplateFor] = useState<RfqTemplateData | null>(null);
 
   const load = useCallback(async () => {
@@ -51,71 +85,130 @@ export const QuoteRequestsView: React.FC = () => {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const out = asks.map((a) => ({
-      ask: a,
-      qtId: `QT-${String(a.id).padStart(4, '0')}`,
-      status: mapStatus(a.status),
+  const rows = useMemo((): QuoteRow[] => {
+    const planningRows: QuoteRow[] = asks.map((a) => ({
+      id: `planning-${a.id}`,
+      qtId: `QT-${new Date(a.createdAt ?? Date.now()).getFullYear()}-${String(a.id).padStart(4, '0')}`,
+      source: 'planning' as PrSource,
+      itemName: a.itemName ?? '—',
+      itemCode: a.itemCode ?? '',
+      vendors: a.vendorHint || 'Any (broadcast)',
+      qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
+      targetPrice: null,
+      status: mapPlanningStatus(a.status),
+      requestDate: a.createdAt ?? null,
       daysOpen: daysSince(a.createdAt),
+      templateData: {
+        qtId: `QT-${String(a.id).padStart(4, '0')}`,
+        requestDate: a.createdAt,
+        vendor: a.vendorHint || 'Any (broadcast)',
+        itemCode: a.itemCode || '',
+        itemName: a.itemName || '—',
+        qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
+        needBy: null,
+        comments: a.notes || undefined,
+      },
     }));
-    const filtered = out.filter((r) => {
+
+    const procRows: QuoteRow[] = vendorQuotes.map((q) => {
+      const qtyTiers = q.lines.map((l) => l.qty).filter(Boolean);
+      return {
+        id: `proc-${q.id}`,
+        qtId: `QT-${new Date(q.createdAt ?? q.quotedOn ?? Date.now()).getFullYear()}-${String(q.id).padStart(4, '0')}`,
+        source: 'procurement' as PrSource,
+        itemName: q.lines[0]?.item ?? q.requestCode,
+        itemCode: q.lines[0]?.itemId ?? '',
+        vendors: q.vendor,
+        qtyTiers: qtyTiers.length ? qtyTiers : ['—'],
+        targetPrice: q.lines[0]?.pricePerUnit ?? null,
+        status: mapVendorQuoteStatus(q.status),
+        requestDate: q.createdAt ?? q.quotedOn ?? null,
+        daysOpen: daysSince(q.createdAt ?? q.quotedOn),
+        templateData: {
+          qtId: `QT-${String(q.id).padStart(4, '0')}`,
+          requestDate: q.createdAt ?? q.quotedOn,
+          vendor: q.vendor,
+          itemCode: q.lines[0]?.itemId ?? '',
+          itemName: q.lines[0]?.item ?? q.requestCode,
+          qtyTiers,
+          needBy: null,
+          comments: q.note || undefined,
+        },
+      };
+    });
+
+    const q = search.trim().toLowerCase();
+    const merged = [...planningRows, ...procRows].filter((r) => {
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-      if (q && !`${r.qtId} ${r.ask.itemName ?? ''} ${r.ask.itemCode ?? ''} ${r.ask.vendorHint ?? ''}`.toLowerCase().includes(q)) return false;
+      if (sourceFilter !== 'all' && r.source !== sourceFilter) return false;
+      if (q && !`${r.qtId} ${r.itemName} ${r.itemCode} ${r.vendors}`.toLowerCase().includes(q)) return false;
       return true;
     });
     const rank: Record<QuoteStatus, number> = { requested: 0, draft: 1, completed: 2, terminated: 3 };
-    filtered.sort((a, b) => (rank[a.status] - rank[b.status]) || (b.daysOpen - a.daysOpen));
-    return filtered;
-  }, [asks, search, statusFilter]);
+    merged.sort((a, b) => (rank[a.status] - rank[b.status]) || (b.daysOpen - a.daysOpen));
+    return merged;
+  }, [asks, vendorQuotes, search, statusFilter, sourceFilter]);
 
-  const openTemplate = (a: PlanningQuotationAsk) => {
-    setTemplateFor({
-      qtId: `QT-${String(a.id).padStart(4, '0')}`,
-      requestDate: a.createdAt,
-      vendor: a.vendorHint || 'Any (broadcast)',
-      itemCode: a.itemCode || '',
-      itemName: a.itemName || '—',
-      qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
-      needBy: null,
-      comments: a.notes || undefined,
-    });
-  };
+  const awaiting = rows.filter((r) => r.status === 'requested').length;
+  const breached = rows.filter((r) => r.status === 'requested' && quoteSlaLevel(r.daysOpen) === 'bad').length;
+  const fromPlanning = rows.filter((r) => r.source === 'planning').length;
 
-  const awaiting = asks.filter((a) => a.status === 'pending').length;
-  const breached = rows.filter((r) => r.status === 'requested' && r.daysOpen > SLA_DEFAULTS.quoteDays).length;
+  const chip = (active: boolean) =>
+    `px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors ${
+      active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+    }`;
 
   return (
     <div className="space-y-3">
-      {/* Summary */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
         <div className="text-xs text-slate-600">
-          💬 <b className="text-slate-800">Quote Requests</b> · {asks.length} total · {awaiting} awaiting response
+          💬 <b className="text-slate-800">Quote Requests</b> · {rows.length} active · {awaiting} awaiting response
           {breached > 0 && <span className="ml-2 text-red-600 font-semibold">🚩 {breached} SLA-breached</span>}
+          <span className="ml-2 text-slate-400">· {fromPlanning} from Planning</span>
         </div>
-        <button onClick={() => void load()} title="Refresh" className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-500">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2">
+          {onNewQuoteRequest && (
+            <button onClick={onNewQuoteRequest} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
+              <Plus size={14} /> New Quote Request
+            </button>
+          )}
+          {onExport && (
+            <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
+              <Download size={14} /> Export
+            </button>
+          )}
+          <button onClick={() => void load()} title="Refresh" className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-500">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search QT ID, item, vendor…"
-            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Source</span>
+          {(['all', 'planning', 'procurement'] as const).map((s) => (
+            <button key={s} onClick={() => setSourceFilter(s)} className={chip(sourceFilter === s)}>
+              {s === 'all' ? 'All' : s === 'planning' ? '📋 Planning' : '⊕ Procurement'}
+            </button>
+          ))}
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-          <option value="all">All Statuses</option>
-          <option value="requested">Requested</option>
-          <option value="completed">Completed</option>
-          <option value="terminated">Terminated</option>
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search QT ID, item, vendor…"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Statuses</option>
+            {(Object.keys(QUOTE_STATUS_CONFIG) as QuoteStatus[]).map((s) => (
+              <option key={s} value={s}>{QUOTE_STATUS_CONFIG[s].label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Table */}
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-blue-500 mr-2" /><span className="text-sm text-slate-500">Loading quote requests…</span></div>
       ) : error ? (
         <div className="rounded-xl border border-slate-200 bg-white py-12 text-center"><p className="text-red-500 text-sm mb-3">{error}</p><button onClick={() => void load()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Retry</button></div>
@@ -126,7 +219,7 @@ export const QuoteRequestsView: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['Req Date', 'QT ID', 'Source', 'Item', 'Vendor(s)', 'Req Qty', 'Target Price', 'Quote Status', 'SLA', 'Actions'].map((h) => (
+                {['Req Date', 'QT Req ID', 'Source', 'Item', 'Vendor(s)', 'Req Qty', 'Target Price', 'Quote Status', 'SLA', 'Actions'].map((h) => (
                   <th key={h} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -134,28 +227,36 @@ export const QuoteRequestsView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => {
                 const sc = QUOTE_STATUS_CONFIG[r.status];
-                const src = PR_SOURCE_CONFIG.planning;
-                const slaLevel = slaLevelFromDaysOpen(r.daysOpen, SLA_DEFAULTS.quoteDays);
+                const src = PR_SOURCE_CONFIG[r.source];
+                const slaLevel = quoteSlaLevel(r.daysOpen);
+                const linkedQuote = r.id.startsWith('proc-') ? vendorQuotes.find((q) => `proc-${q.id}` === r.id) : undefined;
                 return (
-                  <tr key={r.ask.id} className="hover:bg-blue-50/30 transition-colors">
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.ask.createdAt)}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-slate-800">{r.qtId}</td>
+                  <tr key={r.id} className="hover:bg-blue-50/30 transition-colors">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.requestDate)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-blue-600">{r.qtId}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${src.text} ${src.bg} ${src.border}`}>{src.emoji} {src.label}</span>
                     </td>
                     <td className="px-3 py-2.5 max-w-[170px]">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={r.ask.itemName ?? ''}>{r.ask.itemName ?? '—'}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{r.ask.itemCode}</p>
+                      <p className="text-xs font-semibold text-slate-800 truncate" title={r.itemName}>{r.itemName}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{r.itemCode}</p>
                     </td>
-                    <td className="px-3 py-2.5 max-w-[130px]"><p className="text-xs text-slate-700 truncate">{r.ask.vendorHint || 'Any (broadcast)'}</p></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.ask.quantityRequested.toLocaleString('en-IN')}{r.ask.unit ? ` ${r.ask.unit}` : ''}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-400">—</td>
+                    <td className="px-3 py-2.5 max-w-[130px]"><p className="text-xs text-slate-700 truncate">{r.vendors}</p></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.qtyTiers.join(' / ')}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sc.text} ${sc.bg} ${sc.border}`}>{sc.label}</span></td>
                     <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>{SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d</span><span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span></td>
                     <td className="px-3 py-2.5">
-                      <button onClick={() => openTemplate(r.ask)} title="Generate RFQ template" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
-                        <FileText size={12} /> Template
-                      </button>
+                      <div className="flex gap-1">
+                        {linkedQuote && onEditQuote && (
+                          <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
+                            <Pencil size={12} /> Edit
+                          </button>
+                        )}
+                        <button onClick={() => setTemplateFor(r.templateData)} title="Generate RFQ template" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
+                          <FileText size={12} /> Template
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

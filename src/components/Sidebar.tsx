@@ -511,6 +511,14 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <span>Client Hub</span>
                       </PreloadNavLink>
                     </li>
+                    <li>
+                      <PreloadNavLink to="/bd" className={submenuLinkClass} onClick={(e) => handleNavClick(e)}>
+                        <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
+                        </svg>
+                        <span>BD Management</span>
+                      </PreloadNavLink>
+                    </li>
                   </ul>
                 </div>
               </li>

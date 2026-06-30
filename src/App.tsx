@@ -58,6 +58,7 @@ const Planning = lazy(() => import('./pages/Planning'))
 const Production = lazy(() => import('./pages/Production'))
 const Fulfillment = lazy(() => import('./pages/Fulfillment'))
 const ClientHub = lazy(() => import('./pages/ClientHub'))
+const BD = lazy(() => import('./pages/bd/index'))
 const QualityPage = lazy(() => import('./pages/QualityPage'))
 const FacilityManagement = lazy(() => import('./pages/FacilityManagement'))
 
@@ -108,6 +109,7 @@ const AppLayout = () => {
               else if (path === '/pis' || path.startsWith('/pis/')) suffix = 'PIS';
               else if (path === '/treasury' || path.startsWith('/treasury/')) suffix = 'Treasury';
               else if (path === '/client-hub' || path.startsWith('/client-hub/')) suffix = 'Client Hub';
+              else if (path === '/bd' || path.startsWith('/bd/')) suffix = 'BD Management';
               else if (path.startsWith('/user-management')) suffix = 'User Management';
               else if (path.startsWith('/role-management')) suffix = 'Role Management';
               else if (path.startsWith('/catalogue-management')) suffix = 'Catalogue Management';
@@ -154,6 +156,7 @@ const AppLayout = () => {
        const isProductionRoute = location.pathname === '/production' || location.pathname.startsWith('/production/');
        const isFulfillmentRoute = location.pathname === '/fulfillment' || location.pathname.startsWith('/fulfillment/');
        const isClientHubRoute = location.pathname === '/client-hub' || location.pathname.startsWith('/client-hub/');
+       const isBdRoute = location.pathname === '/bd' || location.pathname.startsWith('/bd/');
 
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
@@ -199,6 +202,26 @@ const AppLayout = () => {
                                                         <Route path="/procurement" element={
                                                                <ProtectedModuleRoute moduleId="order-management" anySubModuleIds={["procurement", "sales-orders"]}>
                                                                       <Procurement />
+                                                               </ProtectedModuleRoute>
+                                                        } />
+                                                 </Routes>
+                                          </ErrorBoundary>
+                                   </Suspense>
+                            </main>
+                     </StandaloneModuleLayout>
+              );
+       }
+
+       if (isBdRoute) {
+              return (
+                     <StandaloneModuleLayout>
+                            <main id="main-content" className="min-h-screen">
+                                   <Suspense fallback={<PageLoader />}>
+                                          <ErrorBoundary>
+                                                 <Routes>
+                                                        <Route path="/bd" element={
+                                                               <ProtectedModuleRoute moduleId="order-management">
+                                                                      <BD />
                                                                </ProtectedModuleRoute>
                                                         } />
                                                  </Routes>

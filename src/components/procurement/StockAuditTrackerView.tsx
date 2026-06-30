@@ -10,8 +10,9 @@ import { Search, PackageSearch } from 'lucide-react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import {
   AUDIT_STATUS_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
-  slaLevelFromDaysOpen, type AuditStatus,
+  type AuditStatus,
 } from '../../constants/procurement';
+import { auditSlaLevel } from '../../lib/procurementSla';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -154,7 +155,7 @@ export const StockAuditTrackerView: React.FC<StockAuditTrackerViewProps> = ({ re
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => {
-                const slaLevel = slaLevelFromDaysOpen(r.daysOpen, SLA_DEFAULTS.auditDays);
+                const slaLevel = auditSlaLevel(r.daysOpen);
                 return (
                   <tr key={r.pr.id} className="hover:bg-blue-50/30 transition-colors">
                     <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.reqDate)}</td>

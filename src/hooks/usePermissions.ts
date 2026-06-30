@@ -364,6 +364,7 @@ export const ROUTE_MODULE_MAP: Record<string, string> = {
  '/production': 'order-management',
  '/fulfillment': 'order-management',
  '/client-hub': 'order-management',
+ '/bd': 'order-management',
  '/raw-material': 'inventory',
  '/packaging': 'inventory',
  '/bom': 'inventory',
