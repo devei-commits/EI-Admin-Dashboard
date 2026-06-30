@@ -240,6 +240,12 @@ export async function createConsolidatedShipment(payload: ConsolidatedShipmentPa
 }
 
 // ─── GRN Tracker (Procurement spec View 5, §7) ───────────────────────────────
+export type GrnWorkflowStepRecord = {
+  stage: string;
+  at: string;
+  actor?: string;
+};
+
 export interface GrnTrackerRow {
   id: number;
   grnNo: string;
@@ -256,6 +262,7 @@ export interface GrnTrackerRow {
   stage: string;
   status: string | null;
   vehicleNo: string | null;
+  workflowSteps?: GrnWorkflowStepRecord[] | string[];
 }
 export async function fetchGrnTracker(filters?: { stage?: string; vendor?: string; sb?: string }): Promise<GrnTrackerRow[]> {
   const qs = new URLSearchParams();
@@ -265,6 +272,13 @@ export async function fetchGrnTracker(filters?: { stage?: string; vendor?: strin
   const q = qs.toString();
   return api.get<GrnTrackerRow[]>(`/api/v1/grn/tracker${q ? `?${q}` : ''}`);
 }
-export async function advanceGrnStage(id: number | string, stage: string): Promise<{ id: number; grnNo: string; stage: string; status: string }> {
-  return api.put<{ id: number; grnNo: string; stage: string; status: string }>(`/api/v1/grn/${id}/stage`, { stage });
+export async function advanceGrnStage(
+  id: number | string,
+  stage: string,
+  actor?: string,
+): Promise<{ id: number; grnNo: string; stage: string; status: string }> {
+  return api.put<{ id: number; grnNo: string; stage: string; status: string }>(`/api/v1/grn/${id}/stage`, {
+    stage,
+    ...(actor ? { actor } : {}),
+  });
 }

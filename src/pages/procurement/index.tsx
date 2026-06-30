@@ -14,7 +14,13 @@ import { QuoteRequestsView } from '../../components/procurement/QuoteRequestsVie
 import { PrInboxView } from '../../components/procurement/PrInboxView';
 import { PrEditPopup } from '../../components/procurement/PrEditPopup';
 import { StockAuditPopup } from '../../components/procurement/StockAuditPopup';
+import { InventoryAuditDetailModal } from '../../components/procurement/InventoryAuditDetailModal';
 import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inventoryAuditLines';
+import { buildProcurementStockAuditSubmitPayload } from '../../lib/buildProcurementStockAuditSubmitPayload';
+import {
+  buildStockAuditWarehousesFromLocations,
+  mergeStockByLocationIntoWarehouses,
+} from '../../lib/stockAuditWarehouses';
 import {
   bumpProcurementRequestItemQty,
   bumpPurchaseOrderItemsQty,
@@ -22,7 +28,7 @@ import {
   mergeGapApprovalIntoStockCheckNotes,
   resolveInventoryStockAfterGapApproval,
 } from '../../lib/inventoryAuditGapApproval';
-import { findStockCheckNoteForItem } from '../../lib/stockCheckNotes';
+import { findStockCheckNoteForItem, parseStockCheckNotes } from '../../lib/stockCheckNotes';
 import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
 import type { Order } from '../../types/salesPurchase.types';
 import { mergePurchaseOrderRecords } from '../../lib/purchaseOrderRecordsMerge';
@@ -68,7 +74,8 @@ import {
   updateGRN,
   type GRNRecordFromApi,
 } from '../../services/grn.service';
-import { fetchWarehouseInventory, updateWarehouseStock } from '../../services/warehouseInventory.service';
+import { fetchWarehouseInventory, fetchStockByLocation, updateWarehouseStock } from '../../services/warehouseInventory.service';
+import { fetchWarehouseLocations } from '../../services/warehouseLocations.service';
 import {
   fetchPriceListPage,
   createItemList,
@@ -894,6 +901,10 @@ const Procurement: React.FC = () => {
   // Spec §3A/§3B/§3C popups (PR Inbox row actions)
   const [prEditReq, setPrEditReq] = useState<ProcurementRequest | null>(null);
   const [stockAuditReq, setStockAuditReq] = useState<ProcurementRequest | null>(null);
+  const [inventoryAuditDetailLine, setInventoryAuditDetailLine] = useState<InventoryAuditLine | null>(null);
+  const [inventoryAuditApproving, setInventoryAuditApproving] = useState(false);
+  const [inventoryAuditReAuditing, setInventoryAuditReAuditing] = useState(false);
+  const [inventoryAuditTerminating, setInventoryAuditTerminating] = useState(false);
   /** In PR View: which quotation is selected for "Create Draft PO" (dropdown) */
   const [selectedQuoteIdInPrView, setSelectedQuoteIdInPrView] = useState<string>('');
   const [editRequestTarget, setEditRequestTarget] = useState<ProcurementRequest | null>(null);
@@ -1249,13 +1260,59 @@ const Procurement: React.FC = () => {
       const res = await fetchWarehouseInventory();
       return res.success ? res.data : null;
     },
-    // Needed for Stock Summary in PR View modal as well.
-    enabled: !!selectedStockCheckRequest || !!selectedRequest,
+    enabled: !!selectedStockCheckRequest || !!selectedRequest || !!stockAuditReq,
     staleTime: 0,
-    // Avoid repeated GETs when users switch tabs/windows.
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
+
+  const stockAuditItemWhInvId = useMemo(() => {
+    if (!stockAuditReq) return null;
+    const item = stockAuditReq.itemDetails?.[0];
+    const whRows = warehouseInventoryData?.rows ?? [];
+    if (!item || !whRows.length) return null;
+    const rmId = item.raw_material_id != null ? Number(item.raw_material_id) : NaN;
+    const pmId = item.pack_material_id != null ? Number(item.pack_material_id) : NaN;
+    let row = Number.isFinite(rmId) && rmId > 0 ? whRows.find((r) => r.type === 'RM' && Number(r.sourceId) === rmId) : undefined;
+    if (!row && Number.isFinite(pmId) && pmId > 0) {
+      row = whRows.find((r) => r.type === 'PM' && Number(r.sourceId) === pmId);
+    }
+    if (!row) {
+      const codeKey = String(item.itemCode ?? '').trim().toLowerCase();
+      if (codeKey) row = whRows.find((r) => String(r.code ?? '').trim().toLowerCase() === codeKey);
+    }
+    if (!row) {
+      const nameKey = String(item.itemName ?? '').trim().toLowerCase();
+      if (nameKey) row = whRows.find((r) => String(r.name ?? '').trim().toLowerCase() === nameKey);
+    }
+    const wid = row?.warehouseInventoryId;
+    return wid != null && Number(wid) > 0 ? Number(wid) : null;
+  }, [stockAuditReq, warehouseInventoryData?.rows]);
+
+  const { data: warehouseLocationsForAudit = [], isLoading: warehouseLocationsLoading } = useQuery({
+    queryKey: ['warehouse-locations', 'stock-audit'],
+    queryFn: async () => {
+      const res = await fetchWarehouseLocations('warehouse');
+      if (!res.success) throw new Error(typeof res.error === 'string' ? res.error : 'Failed to load warehouse locations');
+      return res.data ?? [];
+    },
+    enabled: !!stockAuditReq,
+  });
+
+  const { data: stockByLocationForAudit } = useQuery({
+    queryKey: ['stock-by-location', 'stock-audit', stockAuditItemWhInvId],
+    queryFn: async () => {
+      const res = await fetchStockByLocation(stockAuditItemWhInvId!);
+      if (!res.success) throw new Error(typeof res.error === 'string' ? res.error : 'Failed to load stock by location');
+      return res.data;
+    },
+    enabled: stockAuditItemWhInvId != null && stockAuditItemWhInvId > 0,
+  });
+
+  const stockAuditWarehouses = useMemo(() => {
+    const base = buildStockAuditWarehousesFromLocations(warehouseLocationsForAudit);
+    return mergeStockByLocationIntoWarehouses(base, stockByLocationForAudit);
+  }, [warehouseLocationsForAudit, stockByLocationForAudit]);
 
   const openStockCheckModal = useCallback(
     (req: ProcurementRequest) => {
@@ -1938,6 +1995,82 @@ const Procurement: React.FC = () => {
       user?.name,
       warehouseInventoryData?.rows,
     ]
+  );
+
+  const handleReAuditInventoryAudit = useCallback(
+    async (line: InventoryAuditLine, comment: string): Promise<void> => {
+      const prRow = backendPrArray.find((p) => String(p.id) === line.requestId);
+      if (!prRow) {
+        addToast('error', 'Linked procurement request was not found.');
+        return;
+      }
+      setInventoryAuditReAuditing(true);
+      try {
+        const notesParsed = parseStockCheckNotes(prRow.stockCheckNotes);
+        const notesPayload = {
+          version: 1,
+          requestedAt: notesParsed?.requestedAt ?? new Date().toISOString(),
+          requestedBy: notesParsed?.requestedBy ?? prRow.requestedBy ?? 'Procurement Team',
+          reAuditComment: comment,
+          reAuditAt: new Date().toISOString(),
+          reAuditBy: user?.name?.trim() || 'Procurement',
+          lines: notesParsed?.lines ?? [],
+          warehouseCodes: (notesParsed as { warehouseCodes?: string[] } | null)?.warehouseCodes,
+          comments: (notesParsed as { comments?: string } | null)?.comments,
+        };
+        const res = await updateProcurementRequestApi(line.requestId, {
+          stockCheckStatus: 'Pending',
+          stockCheckAssignedTo: null,
+          stockCheckNotes: JSON.stringify(notesPayload),
+        });
+        if (!res.success) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to send re-audit request');
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        addToast('success', 'Audit sent back to Warehouse for re-count.');
+        setInventoryAuditDetailLine(null);
+      } finally {
+        setInventoryAuditReAuditing(false);
+      }
+    },
+    [addToast, backendPrArray, queryClient, user?.name],
+  );
+
+  const handleTerminateInventoryAudit = useCallback(
+    async (line: InventoryAuditLine, reason: string): Promise<void> => {
+      const prRow = backendPrArray.find((p) => String(p.id) === line.requestId);
+      if (!prRow) {
+        addToast('error', 'Linked procurement request was not found.');
+        return;
+      }
+      setInventoryAuditTerminating(true);
+      try {
+        const notesParsed = parseStockCheckNotes(prRow.stockCheckNotes);
+        const notesPayload = {
+          ...notesParsed,
+          version: 1,
+          terminated: true,
+          terminatedAt: new Date().toISOString(),
+          terminatedBy: user?.name?.trim() || 'Procurement',
+          terminatedReason: reason || undefined,
+        };
+        const res = await updateProcurementRequestApi(line.requestId, {
+          stockCheckStatus: 'Cancelled',
+          stockCheckNotes: JSON.stringify(notesPayload),
+        });
+        if (!res.success) {
+          addToast('error', typeof res.error === 'string' ? res.error : 'Failed to terminate audit');
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+        addToast('success', 'Stock audit terminated.');
+        setInventoryAuditDetailLine(null);
+      } finally {
+        setInventoryAuditTerminating(false);
+      }
+    },
+    [addToast, backendPrArray, queryClient, user?.name],
   );
 
   const handleReleaseWeekVendorConsolidated = useCallback(
@@ -5946,195 +6079,6 @@ const Procurement: React.FC = () => {
         procurementContent={
           <>
             <div className="space-y-4">
-              {false && sideSection === 'Overview' && (() => {
-                const TODAY = new Date();
-                // Actions Required: same as Requests "Active" — New / Quoted only (excludes PO Draft+)
-                const activeRequests = procurementRequestsList.filter((r) => requestStatusIsPreDraftPipeline(r.status));
-                const rmRequests = procurementRequestsList.filter(r => r.type === 'RM');
-                const pmRequests = procurementRequestsList.filter(r => r.type === 'PM');
-                const activePOValue = purchaseOrders.filter(p => p.status !== 'Delivered').reduce((s, p) => s + (p.value ?? 0), 0);
-                const poStatusColor: Record<string, string> = {
-                  Shipped: 'bg-blue-100 text-blue-700',
-                  'Advance Paid': 'bg-orange-100 text-orange-700',
-                  Delivered: 'bg-emerald-100 text-emerald-700',
-                  '80% Complete': 'bg-yellow-100 text-yellow-700',
-                };
-                if (isProcurementDataLoading) {
-                  return (
-                    <div className="flex items-center justify-center py-16 text-slate-500">
-                      <span className="animate-pulse">Loading procurement data…</span>
-                    </div>
-                  );
-                }
-                return (
-                  <>
-                    {/* KPI strip */}
-                    <div className="flex flex-wrap gap-3">
-                      {[
-                        { label: 'NEW REQUESTS', value: procurementRequestsList.filter(r => r.status === 'New').length, sub: 'Awaiting action', color: 'text-yellow-600' },
-                        { label: 'RM — RAW MATERIALS', value: rmRequests.length, sub: `${rmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-cyan-600', badge: 'RM' },
-                        { label: 'PM — PACKAGING MATERIALS', value: pmRequests.length, sub: `${pmRequests.flatMap(r => r.items).length} items · pending action`, color: 'text-violet-600', badge: 'PM' },
-                        { label: 'ACTIVE POS', value: requests.filter(r => r.status === 'PO Draft' || r.status === 'PO Released').length, sub: 'In pipeline', color: 'text-emerald-600' },
-                        { label: 'DELIVERY PENDING GRN', value: requests.filter(r => r.status === 'Delivery Pending').length, sub: null, color: 'text-rose-600' },
-                        { label: 'STOCK CHECKS ACTIVE', value: requests.filter(r => r.priority !== 'Low').length, sub: null, color: 'text-yellow-600' },
-                        { label: 'PO VALUE (ACTIVE)', value: `₹${activePOValue.toLocaleString('en-IN')}`, sub: null, color: 'text-cyan-600' },
-                      ].map(kpi => (
-                        <div key={kpi.label} className="flex-1 min-w-32 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                          <div className="flex items-center gap-2 mb-1">
-                            {kpi.badge && (
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${kpi.badge === 'RM' ? 'bg-cyan-100 text-cyan-700' : 'bg-violet-100 text-violet-700'}`}>{kpi.badge}</span>
-                            )}
-                            <p className="text-[10px] tracking-[0.12em] text-slate-500 uppercase">{kpi.label}</p>
-                          </div>
-                          <p className={`text-3xl font-bold font-archivo ${kpi.color} leading-none`}>{kpi.value}</p>
-                          {kpi.sub && <p className="text-[10px] text-slate-500 mt-1">{kpi.sub}</p>}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Actions Required + PO Pipeline */}
-                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-                      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
-                          <h3 className="font-bold text-gray-900">Actions Required</h3>
-                        </div>
-                        <div className="divide-y divide-slate-100">
-                          {activeRequests.map(req => {
-                            const days = computeRequestDaysUntilDue(req, TODAY);
-                            const daysDisplay =
-                              days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`;
-                            const urgency = days <= 3 ? 100 : days <= 10 ? 80 : days <= 20 ? 55 : 30;
-                            return (
-                              <div
-                                key={req.id}
-                                className="px-5 py-4 cursor-pointer hover:bg-yellow-50/60 transition-colors"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setSelectedRequest(req);
-                                }}
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${requestTypeClass[req.type]}`}>{req.type}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${priorityClass[req.priority]}`}>{req.priority}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
-                                    <span className="text-xs text-slate-500 font-mono">{daysDisplay}</span>
-                                  </div>
-                                </div>
-                                <p className="text-sm font-bold text-slate-900 mb-0.5">
-                                  {req.type === 'RM' ? 'Raw Material' : 'Packaging Material'} — {req.items.length} item(s)
-                                </p>
-                                <p className="text-xs text-slate-500 mb-2">{req.items.join(', ')}</p>
-                                <div className="w-full bg-slate-100 rounded-full h-1">
-                                  <div className="h-1 rounded-full bg-yellow-400" style={{ width: `${urgency}%` }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-orange-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-orange-200 bg-linear-to-r from-orange-50 to-white">
-                          <h3 className="font-bold text-slate-900">PO Pipeline</h3>
-                        </div>
-                        <div className="divide-y divide-slate-100">
-                          {purchaseOrders.map(po => (
-                            <div
-                              key={po.id}
-                              className="px-5 py-4 cursor-pointer hover:bg-orange-50/60 transition-colors"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setSelectedPO(po);
-                              }}
-                            >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{po.poNumber}</span>
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${poStatusColor[po.status] ?? 'bg-slate-100 text-slate-600'}`}>{po.status}</span>
-                              </div>
-                              <p className="text-sm font-bold text-slate-900 mb-0.5">{po.vendorName}</p>
-                              <p className="text-xs text-slate-500 mb-1">{po.itemCount} items · ₹{po.value.toLocaleString('en-IN')}</p>
-                              <p className="text-xs text-slate-400">{po.etaDays} days ETA</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* RM + PM Summary Tables */}
-                    {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-cyan-200 bg-cyan-50 flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-200 text-cyan-800">RM</span>
-                          <h3 className="font-bold text-slate-900">Raw Material — Request Summary</h3>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-[10px] tracking-[0.12em] text-slate-500 border-b border-slate-200 bg-slate-50">
-                                <th className="px-4 py-2">REQUEST</th>
-                                <th className="px-4 py-2">ITEMS</th>
-                                <th className="px-4 py-2">REQUIRED</th>
-                                <th className="px-4 py-2">STATUS</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rmRequests.map(req => (
-                                <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                                  <td className="px-4 py-2">
-                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
-                                  </td>
-                                  <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
-                                  <td className="px-4 py-2">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-violet-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-3 border-b border-violet-200 bg-violet-50 flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-200 text-violet-800">PM</span>
-                          <h3 className="font-bold text-slate-900">Packaging Material — Request Summary</h3>
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-[10px] tracking-[0.12em] text-slate-500 border-b border-slate-200 bg-slate-50">
-                                <th className="px-4 py-2">REQUEST</th>
-                                <th className="px-4 py-2">ITEMS</th>
-                                <th className="px-4 py-2">REQUIRED</th>
-                                <th className="px-4 py-2">STATUS</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pmRequests.map(req => (
-                                <tr key={req.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                                  <td className="px-4 py-2">
-                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{req.code}</span>
-                                  </td>
-                                  <td className="px-4 py-2 text-xs text-slate-600">{req.items.join(', ')}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500">{formatDateEnInSafe(req.dueDate)}</td>
-                                  <td className="px-4 py-2">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${statusBg[req.status]}`}>{req.status}</span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div> */}
-                  </>
-                );
-              })()}
 
               {sideSection === 'Requests' && (
                 <PrInboxView
@@ -6181,15 +6125,18 @@ const Procurement: React.FC = () => {
               {stockAuditReq && (
                 <StockAuditPopup
                   req={stockAuditReq}
+                  warehouses={stockAuditWarehouses}
+                  warehousesLoading={warehouseLocationsLoading || warehouseInventoryLoading}
                   onClose={() => setStockAuditReq(null)}
                   onSubmit={async (payload) => {
                     const base = stockAuditReq;
-                    const res = await updateProcurementRequestApi(base.id, {
-                      stockCheckAssignedTo: payload.warehouseCodes.join(', '),
-                      stockCheckStatus: 'Pending',
-                      stockCheckDueDate: payload.targetDate,
-                      stockCheckNotes: payload.comments || null,
-                    });
+                    const dispatch = buildProcurementStockAuditSubmitPayload(
+                      base,
+                      payload,
+                      stockAuditWarehouses,
+                      user?.name?.trim() || 'Procurement Team',
+                    );
+                    const res = await updateProcurementRequestApi(base.id, dispatch);
                     if (res.success && res.data) {
                       const rows = coerceProcurementRequestRows(queryClient.getQueryData(['procurement-requests']));
                       const nextRows = rows.some((row) => String(row.id) === String(res.data?.id))
@@ -6202,7 +6149,6 @@ const Procurement: React.FC = () => {
                         `Stock check sent to Warehouse for ${base.code} @ ${payload.warehouseCodes.join(', ')} (target ${payload.targetDate}).`,
                       );
                       setStockAuditReq(null);
-                      openStockCheckModal(mapBackendPrToRequest(res.data));
                     } else {
                       addToast(
                         'error',
@@ -6225,840 +6171,7 @@ const Procurement: React.FC = () => {
                 />
               )}
 
-              {false && sideSection === 'Quote Requests' && (
-                <div className="space-y-3">
-                  {isProcurementDataLoading ? (
-                    <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                      Loading procurement data…
-                    </div>
-                  ) : (
-                    <>
-                  {filteredPlanningQuotationAsks.length > 0 && (
-                    <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 px-1">
-                        Awaiting vendor quote from Planning ({filteredPlanningQuotationAsks.length})
-                      </p>
-                      {filteredPlanningQuotationAsks.map((ask) => (
-                        <article
-                          key={`planning-quote-ask-${ask.id}`}
-                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
-                        >
-                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2 mb-1">
-                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
-                                    Planning
-                                  </span>
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[ask.itemType === 'PM' ? 'PM' : 'RM']}`}
-                                  >
-                                    {ask.itemType}
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                    Awaiting quote
-                                  </span>
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900">
-                                  {ask.itemName ?? 'Material line'}
-                                </h3>
-                                <p className="text-xs text-slate-600 mt-1">
-                                  Add vendor / MOQ on Items List — no procurement request is created
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openRecordQuoteFromPlanningAsk(ask)}
-                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
-                              >
-                                Record Quote
-                              </button>
-                            </div>
-                          </div>
-                          <div className="px-5 py-4">
-                            <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
-                            <p className="font-semibold text-slate-900 text-sm">
-                              {Number(ask.quantityRequested ?? 0).toLocaleString('en-IN')}{' '}
-                              {ask.unit ||
-                                (ask.itemType === 'PM'
-                                  ? 'PCS'
-                                  : resolveRmPrimaryUnit(
-                                      ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
-                                      ask.itemCode,
-                                      ask.unit
-                                    ))}
-                            </p>
-                            <p className="text-[11px] text-slate-500 font-mono mt-0.5">{ask.itemCode || '—'}</p>
-                            {ask.vendorHint ? (
-                              <p className="text-xs text-slate-700 mt-2">
-                                <span className="font-semibold">Vendor hint:</span> {ask.vendorHint}
-                                {ask.moqHint != null && ask.moqHint > 0 ? (
-                                  <>
-                                    {' '}
-                                    · <span className="font-semibold">MOQ:</span>{' '}
-                                    {formatQtyWithPrimaryUnit(
-                                      ask.moqHint,
-                                      ask.unit ||
-                                        (ask.itemType === 'PM'
-                                          ? 'PCS'
-                                          : resolveRmPrimaryUnit(
-                                              ask.raw_material_id != null ? Number(ask.raw_material_id) : null,
-                                              ask.itemCode,
-                                              ''
-                                            )),
-                                      ask.itemType === 'PM' ? 'PM' : 'RM'
-                                    )}
-                                  </>
-                                ) : null}
-                              </p>
-                            ) : null}
-                            {(ask.planningSoNumber || ask.planningProductName) && (
-                              <p className="text-xs text-slate-600 mt-2">
-                                {ask.planningSoNumber ? (
-                                  <>
-                                    <span className="font-semibold">SO</span> {ask.planningSoNumber}
-                                    {ask.planningCustomerName ? ` · ${ask.planningCustomerName}` : ''}
-                                  </>
-                                ) : null}
-                                {ask.planningProductName ? (
-                                  <span className={ask.planningSoNumber ? ' ml-2' : ''}>
-                                    <span className="font-semibold">Product</span> {ask.planningProductName}
-                                  </span>
-                                ) : null}
-                              </p>
-                            )}
-                            {ask.notes ? (
-                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
-                                {ask.notes}
-                              </p>
-                            ) : null}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                  {filteredPlanningQuotationRequestsAwaitingQuote.length > 0 && (
-                    <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 px-1">
-                        Legacy planning quotation PRs ({filteredPlanningQuotationRequestsAwaitingQuote.length})
-                      </p>
-                      {filteredPlanningQuotationRequestsAwaitingQuote.map((req) => (
-                        <article
-                          key={`planning-quote-pending-${req.id}`}
-                          className="rounded-xl border border-amber-300 bg-white shadow-md overflow-hidden"
-                        >
-                          <div className="px-5 py-3 bg-linear-to-r from-amber-50 via-yellow-50 to-amber-50 border-b border-amber-200">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2 mb-1">
-                                  <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold">
-                                    Planning
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-md bg-slate-700 text-white text-xs font-mono font-bold">
-                                    {req.code}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[req.type]}`}
-                                  >
-                                    {req.type}
-                                  </span>
-                                  <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                    Awaiting quote
-                                  </span>
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900">
-                                  {req.items[0] ?? 'Material line'}
-                                </h3>
-                                <p className="text-xs text-slate-600 mt-1">
-                                  Record vendor rates — same flow as <span className="font-semibold">+ Record Quote</span>
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openRecordQuoteFromRequest(req)}
-                                className="px-4 py-2 rounded-lg bg-yellow-400 text-slate-900 font-semibold text-sm hover:bg-yellow-500 shadow-sm"
-                              >
-                                Record Quote
-                              </button>
-                            </div>
-                          </div>
-                          <div className="px-5 py-4">
-                            {(req.itemDetails ?? []).map((detail, idx) => (
-                              <div key={idx} className="mb-3 last:mb-0">
-                                <p className="text-slate-500 uppercase tracking-wide text-xs mb-1">Qty to quote</p>
-                                <p className="font-semibold text-slate-900 text-sm">
-                                  {Number(detail.reqQty ?? 0).toLocaleString('en-IN')}{' '}
-                                  {detail.unit ||
-                                    (req.type === 'PM'
-                                      ? 'PCS'
-                                      : resolveRmPrimaryUnit(
-                                          detail.raw_material_id != null ? Number(detail.raw_material_id) : null,
-                                          detail.itemCode,
-                                          ''
-                                        ))}
-                                </p>
-                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{detail.itemCode || '—'}</p>
-                              </div>
-                            ))}
-                            {(req.planningSoNumber || req.planningProductName) && (
-                              <p className="text-xs text-slate-600 mt-2">
-                                {req.planningSoNumber ? (
-                                  <>
-                                    <span className="font-semibold">SO</span> {req.planningSoNumber}
-                                    {req.planningCustomerName ? ` · ${req.planningCustomerName}` : ''}
-                                  </>
-                                ) : null}
-                                {req.planningProductName ? (
-                                  <span className={req.planningSoNumber ? ' ml-2' : ''}>
-                                    <span className="font-semibold">Product</span> {req.planningProductName}
-                                  </span>
-                                ) : null}
-                              </p>
-                            )}
-                            {req.notes ? (
-                              <p className="text-xs text-slate-600 mt-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
-                                {req.notes}
-                              </p>
-                            ) : null}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                  {quotesForQuotationsSection.length === 0 &&
-                  filteredPlanningQuotationAsks.length === 0 &&
-                  filteredPlanningQuotationRequestsAwaitingQuote.length === 0 ? (
-                    <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                      No quotes match current filters.
-                    </div>
-                  ) : (
-                    <>
-                  {quotesForQuotationsSection.length > 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 uppercase tracking-wide">
-                          Recorded quotes & price list
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {quotesForQuotationsSection.length} quote
-                          {quotesForQuotationsSection.length === 1 ? '' : 's'} match filters
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                        <span>Per page</span>
-                        <select
-                          value={quotationsPageSize}
-                          onChange={(e) => {
-                            setQuotationsPageSize(Number(e.target.value));
-                            setQuotationsPage(1);
-                          }}
-                          className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 text-xs"
-                        >
-                          {QUOTATIONS_PAGE_SIZE_OPTIONS.map((size) => (
-                            <option key={size} value={size}>
-                              {size}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  {pagedQuotesForQuotationsSection.map((quote) => {
-                      const isExpanded = expandedQuoteId === quote.id;
-                      const linesExpanded = expandedQuoteLineLists[quote.id] ?? false;
-                      const lineCount = quote.lines.length;
-                      const hasManyLines = lineCount > QUOTATION_VENDOR_LINES_PREVIEW;
-                      const hiddenLineCount = hasManyLines ? lineCount - QUOTATION_VENDOR_LINES_PREVIEW : 0;
-                      const visibleLineEntries = (
-                        hasManyLines && !linesExpanded
-                          ? quote.lines
-                              .map((line, idx) => ({ line, idx }))
-                              .slice(0, QUOTATION_VENDOR_LINES_PREVIEW)
-                          : quote.lines.map((line, idx) => ({ line, idx }))
-                      );
 
-                      return (
-                        <article key={quote.id} className="rounded-xl border border-cyan-300 bg-white shadow-md overflow-hidden">
-                          {/* Card Header */}
-                          <div className="px-5 py-3 bg-linear-to-r from-cyan-50 via-blue-50 to-cyan-50 border-b border-cyan-200">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1.5">
-                                  <span className="px-2.5 py-1 rounded-md bg-cyan-500 text-white text-xs font-bold tracking-wide">
-                                    {quote.id}
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${requestTypeClass[quote.requestType]}`}>
-                                    {quote.requestType}
-                                  </span>
-                                  {quote.status !== 'Pending Review' && (
-                                    <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border ${statusClass[quote.status]}`}>
-                                      {quote.status}
-                                    </span>
-                                  )}
-                                </div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-1">{quote.vendor}</h3>
-                                <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
-                                  <span className="font-mono bg-slate-100 px-2 py-0.5 rounded">
-                                    For {quote.requestCode}
-                                  </span>
-                                  <span>·</span>
-                                  <span>{quote.requestType === 'RM' ? 'Raw Material' : 'Packaging Material'}</span>
-                                  <span>·</span>
-                                  <span>
-                                    {lineCount} item{lineCount === 1 ? '' : 's'}
-                                  </span>
-                                  {quote.quotedOn ? (
-                                    <>
-                                      <span>·</span>
-                                      <span>Quoted {quote.quotedOn.split('-').reverse().join('-')}</span>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Items Table */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left text-[10px] tracking-[0.14em] uppercase text-slate-500 bg-slate-50 border-b border-slate-200">
-                                  <th className="px-4 py-2.5 font-semibold">ITEM</th>
-                                  <th className="px-4 py-2.5 font-semibold">ORDER QTY</th>
-                                  <th className="px-4 py-2.5 font-semibold text-right">PRICE / UNIT</th>
-                                  <th className="px-4 py-2.5 font-semibold text-right">VS PLANNED</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {visibleLineEntries.map(({ line, idx }) => (
-                                  <tr key={`${quote.id}-line-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="min-w-0">
-                                          <span className="font-semibold text-slate-900">{line.item}</span>
-                                          {(() => {
-                                            const hist = Array.isArray(line.priceHistory) ? line.priceHistory : [];
-                                            const latest = hist.length > 0 ? hist[hist.length - 1] : null;
-                                            if (!latest) return null;
-                                            const oldP = Number(latest.oldPrice);
-                                            const newP = Number(latest.newPrice);
-                                            if (!Number.isFinite(oldP) || !Number.isFinite(newP) || Math.abs(oldP - newP) < 1e-9) return null;
-                                            return (
-                                              <p className="text-[10px] text-amber-700 mt-0.5">
-                                                Previous: ₹{oldP.toLocaleString('en-IN')} {'->'} Now: ₹{newP.toLocaleString('en-IN')}
-                                              </p>
-                                            );
-                                          })()}
-                                          {!!line.priceHistory?.length && (
-                                            <p className="text-[10px] text-slate-500 mt-0.5">
-                                              {line.priceHistory.length} price change{line.priceHistory.length !== 1 ? 's' : ''}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          {!quote.id.startsWith('IL-') && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setEditingQuoteLine({
-                                                  quoteId: quote.id,
-                                                  lineIndex: idx,
-                                                  nextPrice: String(Number(line.pricePerUnit ?? 0) || ''),
-                                                })
-                                              }
-                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
-                                            >
-                                              Edit Price
-                                            </button>
-                                          )}
-                                          {quote.id.startsWith('IL-') && (
-                                            <button
-                                              type="button"
-                                              onClick={() => openEditItemsListTier(quote, line)}
-                                              className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
-                                            >
-                                              Edit
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <span className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
-                                        {line.qty}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-slate-700">
-                                      {editingQuoteLine?.quoteId === quote.id && editingQuoteLine?.lineIndex === idx ? (
-                                        <div className="flex items-center justify-end gap-2">
-                                          <input
-                                            value={editingQuoteLine.nextPrice}
-                                            onChange={(e) =>
-                                              setEditingQuoteLine((prev) => (prev ? { ...prev, nextPrice: e.target.value } : prev))
-                                            }
-                                            type="number"
-                                            min={0}
-                                            step="0.01"
-                                            className="w-28 rounded-md border border-slate-300 px-2 py-1 text-xs text-right"
-                                            disabled={savingQuoteLine}
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => void saveQuotedLinePrice(quote, line, idx)}
-                                            className="px-2 py-1 rounded-md bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700 disabled:opacity-60"
-                                            disabled={savingQuoteLine}
-                                          >
-                                            Save
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <>₹{line.pricePerUnit.toLocaleString('en-IN')}</>
-                                      )}
-                                    </td>
-                                    <td className={`px-4 py-3 text-right font-bold ${line.vsPlanned.includes('-') ? 'text-emerald-600' : 'text-rose-600'
-                                      }`}>
-                                      {line.vsPlanned}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          {hasManyLines ? (
-                            <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/90 flex justify-center">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedQuoteLineLists((prev) => ({
-                                    ...prev,
-                                    [quote.id]: !linesExpanded,
-                                  }))
-                                }
-                                className="px-3 py-1.5 rounded-md border border-cyan-300 bg-white text-cyan-800 text-xs font-semibold hover:bg-cyan-50 transition-colors"
-                              >
-                                {linesExpanded
-                                  ? 'Show fewer items'
-                                  : `View ${hiddenLineCount} more item${hiddenLineCount === 1 ? '' : 's'}`}
-                              </button>
-                            </div>
-                          ) : null}
-
-                          {/* Footer Info */}
-                          <div className="px-5 py-3 bg-slate-50 border-t border-slate-200">
-                            <div className="flex flex-wrap items-start justify-between gap-3 text-xs text-slate-700">
-                              <div className="flex flex-wrap items-center gap-6">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">Lead time:</span>
-                                  <span className="font-semibold">{quote.leadTimeDays} days</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">Valid till:</span>
-                                  <span className="font-semibold">{quote.validTill}</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-slate-500">Vendor:</span>
-                                  <span className="font-semibold text-amber-600">
-                                    {quote.rating}
-                                  </span>
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => setExpandedQuoteId(isExpanded ? null : quote.id)}
-                                className="px-3 py-1.5 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 font-medium transition-colors shrink-0"
-                              >
-                                {isExpanded ? 'Hide Details' : 'View Details'}
-                              </button>
-                            </div>
-                            <div className="mt-3 pt-3 border-t border-slate-200/90">
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Payment terms</p>
-                              <PaymentTermsDisplay value={quote.terms} />
-                            </div>
-                          </div>
-
-                          {/* Expanded Details */}
-                          {isExpanded && (
-                            <div className="px-5 py-4 bg-cyan-50/50 border-t border-cyan-100">
-                              <div className="space-y-3">
-                                {/* Note */}
-                                {quote.note && (
-                                  <div className="p-3 rounded-lg bg-white border border-cyan-200">
-                                    <div className="text-xs font-semibold text-slate-600 mb-1">Additional Notes</div>
-                                    <div className="text-sm text-slate-700">{quote.note}</div>
-                                  </div>
-                                )}
-
-                                {/* File Info */}
-                                <div className="flex items-center justify-between p-3 rounded-lg bg-white border border-slate-200">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-slate-500">Attached File:</span>
-                                    <span className="text-sm font-semibold text-slate-700">{quote.fileName}</span>
-                                  </div>
-                                  <button className="px-3 py-1 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-medium">
-                                    Download
-                                  </button>
-                                </div>
-                                {quote.lines.some((l) => Array.isArray(l.priceHistory) && l.priceHistory.length > 0) && (
-                                  <div className="p-3 rounded-lg bg-white border border-slate-200">
-                                    <div className="text-xs font-semibold text-slate-600 mb-2">Price change history</div>
-                                    <div className="space-y-2">
-                                      {quote.lines.map((line, lineIdx) => {
-                                        const history = Array.isArray(line.priceHistory) ? [...line.priceHistory].reverse() : [];
-                                        if (!history.length) return null;
-                                        return (
-                                          <div key={`${quote.id}-h-${lineIdx}`} className="rounded-md border border-slate-100 p-2">
-                                            <p className="text-xs font-semibold text-slate-700">{line.item}</p>
-                                            <div className="mt-1 space-y-1">
-                                              {history.map((h, hIdx) => (
-                                                <p key={`${quote.id}-${lineIdx}-${hIdx}`} className="text-[11px] text-slate-600">
-                                                  ₹{Number(h.oldPrice || 0).toLocaleString('en-IN')} → ₹
-                                                  {Number(h.newPrice || 0).toLocaleString('en-IN')}
-                                                  {' · '}
-                                                  {h.changedAt ? new Date(h.changedAt).toLocaleString('en-IN') : '—'}
-                                                  {h.changedBy ? ` · ${h.changedBy}` : ''}
-                                                </p>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Action Buttons — DB quotations delete via API; IL-* cards are Items List aggregates (not procurement_quotations rows). */}
-                          <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-end">
-                            {String(quote.id).startsWith('IL-') ? (
-                              <span className="text-[11px] text-slate-500">
-                                Managed from Items List / vendor rates
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete quote ${quote.id}?`)) {
-                                    deleteQuote(quote.id);
-                                  }
-                                }}
-                                className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-medium transition-colors"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </article>
-                      );
-                    })}
-                  {quotesForQuotationsSection.length > 0 && quotationsTotalPages > 1 && (
-                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                      <Pagination
-                        currentPage={quotationsSafePage}
-                        totalPages={quotationsTotalPages}
-                        onPageChange={setQuotationsPage}
-                        totalItems={quotesForQuotationsSection.length}
-                        itemsPerPage={quotationsPageSize}
-                        variant="compact"
-                      />
-                    </div>
-                  )}
-                    </>
-                  )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {false && sideSection === 'Draft POs' && (
-                <>
-                  {/* Filters */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="text-slate-500">CATEGORY:</span>
-                      {(['All', 'RM', 'PM'] as Array<'All' | RequestType>).map((category) => (
-                        <button
-                          key={category}
-                          onClick={() => setCategoryFilter(category)}
-                          className={`px-2 py-1 rounded border ${categoryFilter === category
-                            ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                            : 'bg-white text-slate-700 border-slate-300'
-                            }`}
-                        >
-                          {category}
-                        </button>
-                      ))}
-
-                      <span className="text-slate-500 ml-2">VENDOR:</span>
-                      <select
-                        value={vendorFilter}
-                        onChange={(event) => setVendorFilter(event.target.value)}
-                        className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                      >
-                        <option value="All Vendors">All Vendors</option>
-                        {vendors.map((vendor) => (
-                          <option key={vendor.id} value={vendor.name}>
-                            {vendor.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <span className="text-slate-500 ml-2">STATUS:</span>
-                      <select
-                        value={draftPOStatusFilter}
-                        onChange={(e) => setDraftPOStatusFilter(e.target.value as 'All Statuses' | 'Pending Approval' | 'Approved')}
-                        className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-700"
-                      >
-                        <option value="All Statuses">All Statuses</option>
-                        <option value="Pending Approval">Pending Approval</option>
-                        <option value="Approved">Approved</option>
-                      </select>
-                    </div>
-
-                    <input
-                      value={draftPOSearch}
-                      onChange={(e) => setDraftPOSearch(e.target.value)}
-                      placeholder="Search vendor, DPO ID, item..."
-                      className="w-60 max-w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700"
-                    />
-                  </div>
-
-                  {/* Requests marked PO Draft but no Draft PO yet — open PR modal to pick quotation & create draft */}
-                  {requestsPODraftNoDraftPO.length > 0 && (
-                    <div className="space-y-2 mb-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO (use recorded quotations)</p>
-                      {requestsPODraftNoDraftPO.map((req) => (
-                        <article key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{req.code}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${requestTypeClass[req.type]}`}>{req.type}</span>
-                            <span className="text-sm text-slate-700">No draft PO yet</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              applyRouteState('Procurement', 'Purchase Orders');
-                              setSelectedRequest(req);
-                            }}
-                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
-                          >
-                            Open PR & create Draft PO
-                          </button>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Draft PO Cards */}
-                  <div className="space-y-3">
-                    {filteredDraftPOs.length === 0 ? (
-                      <div className="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-500 shadow-sm">
-                        {draftPOs.length === 0 && requestsPODraftNoDraftPO.length === 0
-                          ? 'No draft purchase orders.'
-                          : draftPOs.length === 0
-                            ? 'No draft POs yet. Use the cards above to open the PR and create a Draft PO from recorded quotations.'
-                            : 'No draft POs match the current filters.'}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200 bg-slate-50">
-                                  <th className="px-3 py-2">Date</th>
-                                  <th className="px-3 py-2">Vendor Name</th>
-                                  <th className="px-3 py-2">Purchase Order#</th>
-                                  <th className="px-3 py-2">Reference#</th>
-                                  <th className="px-3 py-2">Vendor Name</th>
-                                  <th className="px-3 py-2">Status</th>
-                                  <th className="px-3 py-2 text-right">Amount</th>
-                                  <th className="px-3 py-2">Delivery Date</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {filteredDraftPOs.map((dpo) => {
-                                  const linkedReq = procurementRequestsList.find((r) => r.id === dpo.requestId);
-                                  return (
-                                    <tr
-                                      key={`draft-row-${dpo.id}`}
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => setSelectedDraftPO(dpo)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === 'Enter' || event.key === ' ') {
-                                          event.preventDefault();
-                                          setSelectedDraftPO(dpo);
-                                        }
-                                      }}
-                                      className="border-b border-slate-100 hover:bg-blue-50 cursor-pointer"
-                                    >
-                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.createdDate || '—'}</td>
-                                      <td className="px-3 py-2 text-xs text-slate-700">{linkedReq?.planningCustomerName || linkedReq?.source || dpo.deliveryAddress || '—'}</td>
-                                      <td className="px-3 py-2 text-xs font-mono text-slate-700">{dpo.dpoNumber}</td>
-                                      <td className="px-3 py-2 text-xs font-mono font-semibold text-slate-900">{dpo.requestCode || '—'}</td>
-                                      <td className="px-3 py-2 text-xs text-slate-700">{dpo.vendor}</td>
-                                      <td className="px-3 py-2 text-xs">
-                                        <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
-                                          dpo.status === 'Approved'
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                            : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                        }`}>
-                                          {dpo.status}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-xs text-right font-semibold text-amber-700">₹{dpo.grandTotal.toLocaleString('en-IN')}</td>
-                                      <td className="px-3 py-2 text-xs text-slate-700 whitespace-nowrap">{dpo.expectedDelivery || '—'}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                          <p className="px-3 py-2 text-[11px] text-slate-500 border-t border-slate-100 bg-slate-50">
-                            Click any row to open full draft PO details.
-                          </p>
-                        </div>
-                        {filteredDraftPOs.map((dpo) => (
-                        <article key={dpo.backendPoId != null ? `po-${dpo.backendPoId}` : `dpo-${dpo.id}`} className="rounded-xl border border-blue-200 bg-white shadow-sm overflow-hidden">
-                          {/* Header */}
-                          <div className="px-5 py-3 border-b border-blue-200 bg-linear-to-r from-slate-50 to-white flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">{dpo.dpoNumber}</span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${requestTypeClass[dpo.type]}`}>{dpo.type}</span>
-                              <span className="text-sm font-bold text-slate-900">{dpo.vendor}</span>
-                            </div>
-                            <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                              }`}>{dpo.status}</span>
-                          </div>
-
-                          {/* Items Table */}
-                          <div className="px-4 py-2 overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left text-[11px] tracking-[0.14em] text-slate-500 border-b border-slate-200">
-                                  <th className="px-2 py-2">ITEM</th>
-                                  <th className="px-2 py-2">TYPE</th>
-                                  <th className="px-2 py-2 text-right">Lead (D)</th>
-                                  <th className="px-2 py-2">QTY</th>
-                                  <th className="px-2 py-2 text-right">PRICE/UNIT</th>
-                                  <th className="px-2 py-2 text-right">GST %</th>
-                                  <th className="px-2 py-2 text-right">GST AMT</th>
-                                  <th className="px-2 py-2 text-right">LINE TOTAL</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {dpo.lineItems.map((line, idx) => (
-                                  <tr key={idx} className="border-b border-slate-100">
-                                    <td className="px-2 py-2">
-                                      <div>
-                                        <p className="font-medium text-slate-900">{line.item}</p>
-                                        <p className="text-[10px] text-slate-500">{line.itemCode}</p>
-                                      </div>
-                                    </td>
-                                    <td className="px-2 py-2">
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${requestTypeClass[line.type]}`}>{line.type}</span>
-                                    </td>
-                                    <td className="px-2 py-2 text-right text-slate-700">{line.leadTimeDays != null ? `${line.leadTimeDays}d` : '—'}</td>
-                                    <td className="px-2 py-2 text-yellow-700 font-semibold">{line.qty}</td>
-                                    <td className="px-2 py-2 text-right">₹{line.pricePerUnit}</td>
-                                    <td className="px-2 py-2 text-right">{line.gstPercent}%</td>
-                                    <td className="px-2 py-2 text-right">₹{line.gstAmount.toLocaleString('en-IN')}</td>
-                                    <td className="px-2 py-2 text-right font-semibold">₹{line.lineTotal.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Footer */}
-                          <div className="px-5 py-3 bg-slate-50 flex flex-wrap items-start justify-between gap-4 text-xs">
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-[120px_1fr] gap-2 text-slate-700">
-                                <span>Subtotal</span>
-                                <span className="font-medium">₹{dpo.subtotal.toLocaleString('en-IN')}</span>
-                                <span>GST Total</span>
-                                <span className="font-medium">₹{dpo.gstTotal.toLocaleString('en-IN')}</span>
-                                <span className="text-yellow-700 font-bold">Grand Total</span>
-                                <span className="text-yellow-700 font-bold">₹{dpo.grandTotal.toLocaleString('en-IN')}</span>
-                              </div>
-                            </div>
-                            <div className="space-y-1 text-slate-600">
-                              <div>
-                                <p className="font-bold text-slate-800 mb-1">Payment Terms</p>
-                                <PaymentTermsDisplay value={dpo.paymentTerms} />
-                              </div>
-                              <p><strong>Expected Delivery</strong> {new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', { year: 'numeric', month: '2-digit', day: '2-digit' })}</p>
-                              <p><strong>Delivery Address</strong> {dpo.deliveryAddress}</p>
-                              <p><strong>Vendor Rating</strong> {dpo.vendorRating}</p>
-                            </div>
-                          </div>
-
-                          {/* Alert */}
-                          {dpo.alertMessage && (
-                            <div className={`px-5 py-2 text-xs flex items-center gap-2 ${dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800' : 'bg-emerald-50 text-emerald-800'
-                              }`}>
-                              <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
-                              <span>{dpo.alertMessage}</span>
-                            </div>
-                          )}
-
-                          {/* Actions */}
-                          <div className="px-5 py-3 border-t border-slate-200 flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              disabled={deletingDraftPoId === dpo.id}
-                              onClick={() => openDeleteDraftPOConfirm(dpo)}
-                              className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
-                            >
-                              {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDraftPO(dpo)}
-                              className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
-                            >
-                              View PO
-                            </button>
-                            <button
-                              onClick={() => setEditDraftPOTarget(dpo)}
-                              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
-                            >
-                              Edit
-                            </button>
-                            {dpo.status === 'Pending Approval' && (
-                              <button
-                                onClick={() => {
-                                  approveDraftPO(dpo.id);
-                                }}
-                                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
-                              >
-                                Approve
-                              </button>
-                            )}
-                            {dpo.status === 'Approved' && (
-                              <>
-                                <button
-                                  onClick={() => openReleasePOModal(dpo.id)}
-                                  className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
-                                >
-                                  Release PO to Vendor
-                                </button>
-                                <button
-                                  onClick={() => splitDraftPO(dpo.id)}
-                                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50 transition"
-                                >
-                                  Split PO
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </article>
-                      ))}
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
 
               {/* Items List tier edit modal (Quotations view writes to Items List) */}
               {editItemsListLineTarget && (
@@ -7268,6 +6381,28 @@ const Procurement: React.FC = () => {
                 <StockAuditTrackerView
                   requests={procurementRequestsList}
                   onOpenPr={(pr) => setPrEditReq(pr)}
+                  onOpenAudit={(line) => setInventoryAuditDetailLine(line)}
+                />
+              )}
+
+              {inventoryAuditDetailLine && (
+                <InventoryAuditDetailModal
+                  line={inventoryAuditDetailLine}
+                  onClose={() => setInventoryAuditDetailLine(null)}
+                  approving={inventoryAuditApproving}
+                  reAuditing={inventoryAuditReAuditing}
+                  terminating={inventoryAuditTerminating}
+                  onApproveGap={async (line) => {
+                    setInventoryAuditApproving(true);
+                    try {
+                      const ok = await handleApproveInventoryAuditGap(line);
+                      if (ok) setInventoryAuditDetailLine(null);
+                    } finally {
+                      setInventoryAuditApproving(false);
+                    }
+                  }}
+                  onReAudit={handleReAuditInventoryAudit}
+                  onTerminate={handleTerminateInventoryAudit}
                 />
               )}
 
