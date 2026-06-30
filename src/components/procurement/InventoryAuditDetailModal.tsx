@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { InventoryAuditLine } from '../../lib/inventoryAuditLines';
 import { formatDateEnInSafe } from '../../pages/procurement/procurementDataMappers';
 
@@ -6,7 +6,11 @@ export type InventoryAuditDetailModalProps = {
   line: InventoryAuditLine;
   onClose: () => void;
   onApproveGap?: (line: InventoryAuditLine) => Promise<void>;
+  onReAudit?: (line: InventoryAuditLine, comment: string) => Promise<void>;
+  onTerminate?: (line: InventoryAuditLine, reason: string) => Promise<void>;
   approving?: boolean;
+  reAuditing?: boolean;
+  terminating?: boolean;
 };
 
 function fmtQty(n: number | null, unit: string): string {
@@ -33,13 +37,34 @@ export function InventoryAuditDetailModal({
   line,
   onClose,
   onApproveGap,
+  onReAudit,
+  onTerminate,
   approving = false,
+  reAuditing = false,
+  terminating = false,
 }: InventoryAuditDetailModalProps): React.ReactElement {
+  const [reAuditComment, setReAuditComment] = useState('');
+  const [terminateReason, setTerminateReason] = useState('');
+  const [showReAudit, setShowReAudit] = useState(false);
+  const [showTerminate, setShowTerminate] = useState(false);
+
+  const consumedAtAudit =
+    line.physicalQty != null && line.systemQty != null
+      ? line.physicalQty - line.systemQty
+      : null;
+
   const canApproveGap =
     line.gapQty > 1e-6 &&
     !line.gapApproved &&
     line.stockCheckStatus.trim().toLowerCase() === 'completed' &&
     onApproveGap != null;
+
+  const canReAudit =
+    line.stockCheckStatus.trim().toLowerCase() === 'completed' &&
+    !line.gapApproved &&
+    onReAudit != null;
+
+  const canTerminate = onTerminate != null && line.stockCheckStatus.trim().toLowerCase() !== 'cancelled';
 
   return (
     <div
@@ -141,13 +166,13 @@ export function InventoryAuditDetailModal({
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Consumption (window)</p>
+                <p className="text-xs text-slate-500">Consumed during audit</p>
                 <p className="text-lg font-bold text-slate-900 tabular-nums">
-                  {line.consumptionQty != null ? line.consumptionQty.toLocaleString('en-IN') : '—'}
+                  {consumedAtAudit != null ? fmtGap(consumedAtAudit, line.unit) : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Gap (auto)</p>
+                <p className="text-xs text-slate-500">Gap (system − physical − consumption)</p>
                 <p
                   className={`text-lg font-bold tabular-nums ${
                     line.gapQty > 0 ? 'text-amber-700' : line.gapQty < 0 ? 'text-sky-700' : 'text-slate-900'
@@ -158,9 +183,60 @@ export function InventoryAuditDetailModal({
               </div>
             </div>
             <p className="text-[10px] text-slate-500 mt-2">
-              PR line qty: {fmtQty(line.requestedQty, line.unit)} · Gap = system − physical − consumption
+              PR line qty: {fmtQty(line.requestedQty, line.unit)} · Consumed during audit = physical − system at request (default formula).
+              {line.consumptionQty != null && line.consumptionQty !== 0 ? (
+                <> Window consumption: {line.consumptionQty.toLocaleString('en-IN')} {line.unit}.</>
+              ) : null}
             </p>
           </div>
+
+          {showReAudit ? (
+            <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-sky-900 uppercase tracking-wide">Re-audit — explain why</p>
+              <textarea
+                value={reAuditComment}
+                onChange={(e) => setReAuditComment(e.target.value)}
+                rows={2}
+                className="w-full border border-sky-200 rounded-lg px-2 py-1.5 text-xs"
+                placeholder="Required comment for warehouse…"
+              />
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowReAudit(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button
+                  type="button"
+                  disabled={!reAuditComment.trim() || reAuditing}
+                  onClick={() => void onReAudit?.(line, reAuditComment.trim())}
+                  className="px-3 py-1.5 text-xs font-bold bg-sky-700 text-white rounded-lg disabled:opacity-60"
+                >
+                  {reAuditing ? 'Sending…' : 'Send back to Warehouse'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {showTerminate ? (
+            <div className="rounded-lg border border-red-200 bg-red-50/60 p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-red-900 uppercase tracking-wide">Terminate audit</p>
+              <textarea
+                value={terminateReason}
+                onChange={(e) => setTerminateReason(e.target.value)}
+                rows={2}
+                className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-xs"
+                placeholder="Optional reason…"
+              />
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowTerminate(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button
+                  type="button"
+                  disabled={terminating}
+                  onClick={() => void onTerminate?.(line, terminateReason.trim())}
+                  className="px-3 py-1.5 text-xs font-bold bg-red-700 text-white rounded-lg disabled:opacity-60"
+                >
+                  {terminating ? 'Terminating…' : 'Terminate without action'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {line.remarks ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
@@ -191,6 +267,24 @@ export function InventoryAuditDetailModal({
         </div>
 
         <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-end gap-2">
+          {canTerminate && !showTerminate ? (
+            <button
+              type="button"
+              onClick={() => { setShowTerminate(true); setShowReAudit(false); }}
+              className="px-3 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 mr-auto"
+            >
+              ⛔ Terminate
+            </button>
+          ) : null}
+          {canReAudit && !showReAudit ? (
+            <button
+              type="button"
+              onClick={() => { setShowReAudit(true); setShowTerminate(false); }}
+              className="px-3 py-2 rounded-lg border border-sky-300 text-sky-800 text-sm font-semibold hover:bg-sky-50"
+            >
+              🔁 Re-Audit
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -205,7 +299,7 @@ export function InventoryAuditDetailModal({
               onClick={() => void onApproveGap(line)}
               className="px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-bold hover:bg-teal-800 disabled:opacity-60"
             >
-              {approving ? 'Approving…' : `Approve gap (+${line.gapQty.toLocaleString('en-IN')} ${line.unit})`}
+              {approving ? 'Updating…' : `✓ Mark UPDATED — adjust SIH (+${line.gapQty.toLocaleString('en-IN')} ${line.unit})`}
             </button>
           ) : null}
         </div>

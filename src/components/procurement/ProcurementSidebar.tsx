@@ -2,11 +2,7 @@ import React, { useState } from 'react';
 import eilogofull from '../../assets/logo/eilogofull.svg';
 import AdminMainMenuButton from '../AdminMainMenuButton';
 import type { MainTab, SideSection } from '../../types/procurement.types';
-import {
-  PROCUREMENT_MAIN_TABS,
-  PROCUREMENT_OPERATIONS_SECTIONS,
-  PROCUREMENT_PIPELINE_SECTIONS,
-} from '../../lib/procurementNav';
+import { PROCUREMENT_SECTIONS } from '../../lib/procurementNav';
 
 export type ProcurementSidebarProps = {
   mainTab: MainTab;
@@ -23,14 +19,6 @@ function sectionButtonClass(active: boolean): string {
   }`;
 }
 
-function mainTabButtonClass(active: boolean): string {
-  return `flex items-center w-full text-left px-4 py-2.5 rounded-lg transition-all duration-200 text-sm border-l-4 ${
-    active
-      ? 'bg-slate-100 text-slate-900 font-semibold border-l-slate-700'
-      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-l-transparent hover:border-l-slate-400'
-  }`;
-}
-
 export function ProcurementSidebar({
   mainTab,
   sideSection,
@@ -41,11 +29,6 @@ export function ProcurementSidebar({
 
   const handleSection = (section: SideSection) => {
     onNavigate('Procurement', section);
-    setIsOpen(false);
-  };
-
-  const handleMainTab = (tab: MainTab) => {
-    onNavigate(tab, tab === 'Procurement' ? sideSection : undefined);
     setIsOpen(false);
   };
 
@@ -90,63 +73,24 @@ export function ProcurementSidebar({
 
         <nav className="flex-1 p-4 overflow-y-auto overflow-x-hidden">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2">Procurement</p>
-          <ul className="space-y-1 mb-4">
-            {PROCUREMENT_PIPELINE_SECTIONS.map((section) => {
-              const active = mainTab === 'Procurement' && sideSection === section;
-              return (
-                <li key={section}>
-                  <button
-                    type="button"
-                    onClick={() => handleSection(section)}
-                    className={sectionButtonClass(active)}
-                  >
-                    <span>{section}</span>
-                    <span
-                      className={`text-[10px] font-bold rounded-full px-2 py-0.5 tabular-nums shrink-0 ${
-                        active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {sideCounts[section] ?? 0}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2">Operations</p>
-          <ul className="space-y-1 mb-4">
-            {PROCUREMENT_OPERATIONS_SECTIONS.map((section) => {
-              const active = mainTab === 'Procurement' && sideSection === section;
-              return (
-                <li key={section}>
-                  <button
-                    type="button"
-                    onClick={() => handleSection(section)}
-                    className={sectionButtonClass(active)}
-                  >
-                    <span>{section}</span>
-                    <span
-                      className={`text-[10px] font-bold rounded-full px-2 py-0.5 tabular-nums shrink-0 ${
-                        active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {sideCounts[section] ?? 0}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-4 mb-2">More</p>
           <ul className="space-y-1">
-            {PROCUREMENT_MAIN_TABS.filter((tab) => tab !== 'Procurement').map((tab) => {
-              const active = mainTab === tab;
+            {PROCUREMENT_SECTIONS.map((section) => {
+              const active = mainTab === 'Procurement' && sideSection === section;
               return (
-                <li key={tab}>
-                  <button type="button" onClick={() => handleMainTab(tab)} className={mainTabButtonClass(active)}>
-                    {tab}
+                <li key={section}>
+                  <button
+                    type="button"
+                    onClick={() => handleSection(section)}
+                    className={sectionButtonClass(active)}
+                  >
+                    <span>{section}</span>
+                    <span
+                      className={`text-[10px] font-bold rounded-full px-2 py-0.5 tabular-nums shrink-0 ${
+                        active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {sideCounts[section] ?? 0}
+                    </span>
                   </button>
                 </li>
               );

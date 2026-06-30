@@ -1,45 +1,51 @@
 import type { MainTab, SideSection } from '../types/procurement.types';
 
-export const PROCUREMENT_PIPELINE_SECTIONS: SideSection[] = [
-  'Overview',
+/** Five procurement views per spec (§1–§7). */
+export const PROCUREMENT_SECTIONS: SideSection[] = [
   'Requests',
-  'Quotations',
-  'Draft POs',
-  'Issued POs',
+  'Purchase Orders',
+  'Quote Requests',
+  'Stock Audit',
+  'GRN Tracker',
 ];
 
-export const PROCUREMENT_OPERATIONS_SECTIONS: SideSection[] = ['GRN Monitor', 'Inventory Audit'];
+/** @deprecated Use PROCUREMENT_SECTIONS */
+export const PROCUREMENT_PIPELINE_SECTIONS = PROCUREMENT_SECTIONS;
 
-export const PROCUREMENT_MAIN_TABS: MainTab[] = ['Procurement', 'Vendors', 'Reports'];
+/** @deprecated Operations merged into PROCUREMENT_SECTIONS */
+export const PROCUREMENT_OPERATIONS_SECTIONS: SideSection[] = [];
+
+export const PROCUREMENT_MAIN_TABS: MainTab[] = ['Procurement'];
+
+const LEGACY_SECTION_ALIASES: Record<string, SideSection> = {
+  Overview: 'Requests',
+  Quotations: 'Quote Requests',
+  'Draft POs': 'Purchase Orders',
+  'Issued POs': 'Purchase Orders',
+  'GRN Monitor': 'GRN Tracker',
+  'Inventory Audit': 'Stock Audit',
+};
+
+export function normalizeProcurementSection(raw: string | null | undefined): SideSection {
+  if (!raw) return 'Requests';
+  if ((PROCUREMENT_SECTIONS as string[]).includes(raw)) return raw as SideSection;
+  return LEGACY_SECTION_ALIASES[raw] ?? 'Requests';
+}
 
 export function procurementSectionPath(section: SideSection): string {
   const params = new URLSearchParams({ tab: 'Procurement', section });
   return `/procurement?${params.toString()}`;
 }
 
-export function procurementMainTabPath(tab: MainTab): string {
-  if (tab === 'Procurement') {
-    return procurementSectionPath('Overview');
-  }
-  const params = new URLSearchParams({ tab });
-  return `/procurement?${params.toString()}`;
+export function procurementMainTabPath(_tab: MainTab = 'Procurement'): string {
+  return procurementSectionPath('Requests');
 }
 
 export function parseProcurementRoute(search: string): { tab: MainTab; section: SideSection } {
   const params = new URLSearchParams(search);
   const tabRaw = params.get('tab');
   const sectionRaw = params.get('section');
-  const tab: MainTab =
-    tabRaw === 'Vendors' || tabRaw === 'Reports' || tabRaw === 'Procurement' ? tabRaw : 'Procurement';
-  const section: SideSection =
-    sectionRaw === 'Overview' ||
-    sectionRaw === 'Requests' ||
-    sectionRaw === 'Quotations' ||
-    sectionRaw === 'Draft POs' ||
-    sectionRaw === 'Issued POs' ||
-    sectionRaw === 'GRN Monitor' ||
-    sectionRaw === 'Inventory Audit'
-      ? sectionRaw
-      : 'Overview';
+  const tab: MainTab = tabRaw === 'Procurement' ? 'Procurement' : 'Procurement';
+  const section = normalizeProcurementSection(sectionRaw);
   return { tab, section };
 }

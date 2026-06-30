@@ -2,15 +2,13 @@ export type RequestType = 'RM' | 'PM';
 export type RequestPriority = 'High' | 'Medium' | 'Low';
 export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Delivery Pending' | 'Under GRN';
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
-export type MainTab = 'Procurement' | 'Vendors' | 'Reports';
+export type MainTab = 'Procurement';
 export type SideSection =
-  | 'Overview'
   | 'Requests'
-  | 'Quotations'
-  | 'Draft POs'
-  | 'Issued POs'
-  | 'GRN Monitor'
-  | 'Inventory Audit';
+  | 'Purchase Orders'
+  | 'Quote Requests'
+  | 'Stock Audit'
+  | 'GRN Tracker';
 
 export type ItemDetail = {
   itemCode: string;

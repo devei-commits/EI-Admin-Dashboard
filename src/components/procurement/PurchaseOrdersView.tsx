@@ -10,8 +10,8 @@ import { Search, Pencil, Truck, Download, ChevronRight } from 'lucide-react';
 import type { IssuedPOViewRecord } from './IssuedPOsView';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
-  GRN_STAGE_CONFIG, PURCHASE_STATUS_CONFIG,
-  type GrnStage, type PurchaseStatus,
+  GRN_STAGE_CONFIG, PURCHASE_STATUS_CONFIG, PO_STATUS_CONFIG, PO_SHIPPABLE_STATUSES,
+  type GrnStage, type PurchaseStatus, type PoStatus,
 } from '../../constants/procurement';
 import { InitiateTransitPopup, ConsolidatedShipmentPopup, type ConsolidatedLine } from './TransitPopups';
 import { initiateTransit, createConsolidatedShipment } from '../../services/grn.service';
@@ -34,15 +34,15 @@ function derivePurchaseStatus(received: number, billed: number): PurchaseStatus 
   return null;
 }
 
-// ── Display status (existing issued-PO display vocab) → spec-ish pill tone ──
-const PO_DISPLAY_STYLE: Record<IssuedPOViewRecord['status'], { text: string; bg: string; border: string }> = {
-  'Released':   { text: 'text-cyan-700',  bg: 'bg-cyan-50',   border: 'border-cyan-200' },
-  'In Transit': { text: 'text-amber-700', bg: 'bg-amber-50',  border: 'border-amber-200' },
-  'At Risk':    { text: 'text-red-700',   bg: 'bg-red-50',    border: 'border-red-200' },
-};
+// ── Display status → spec PO workflow status ──
+function resolvePoWorkflowStatus(record: IssuedPOViewRecord): PoStatus {
+  return record.poWorkflowStatus ?? (record.status === 'Draft' ? 'draft' : record.status === 'In Transit' ? 'issued' : 'issued');
+}
 
-/** Initiate Shipment is allowed only once a PO is out (Released / In Transit) — spec §4.1. */
-const SHIPPABLE: IssuedPOViewRecord['status'][] = ['Released', 'In Transit'];
+/** Initiate Shipment allowed only when PO Status is ISSUED or ACCEPTED (§3.1). */
+function isShippable(record: IssuedPOViewRecord): boolean {
+  return PO_SHIPPABLE_STATUSES.includes(resolvePoWorkflowStatus(record));
+}
 
 function fmtMoney(n: number): string {
   return `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -107,7 +107,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   const [tab, setTab] = useState<PoTab>('po-wise');
   const [search, setSearch] = useState('');
   const [vendorFilter, setVendorFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | IssuedPOViewRecord['status']>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | PoStatus>('all');
   const [itemFilter, setItemFilter] = useState<string | null>(null); // "Other POs" drill
 
   // Initiate-Transit popups (§4A per-line, §4B consolidated)
@@ -158,7 +158,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     return records
       .filter((r) => {
         if (vendorFilter !== 'all' && r.vendor !== vendorFilter) return false;
-        if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+        if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) return false;
         if (q && !`${r.poNumber} ${r.vendor}`.toLowerCase().includes(q)) return false;
         return true;
       })
@@ -185,7 +185,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     const now = Date.now();
     for (const r of records) {
       if (vendorFilter !== 'all' && r.vendor !== vendorFilter) continue;
-      if (statusFilter !== 'all' && r.status !== statusFilter) continue;
+      if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) continue;
       const grns = grnByPo.get(normPo(r.poNumber)) ?? [];
       const poDate = r.createdDate ? new Date(r.createdDate).getTime() : now;
       const daysOpen = Number.isNaN(poDate) ? 0 : Math.max(0, Math.round((now - poDate) / 86_400_000));
@@ -355,9 +355,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
               <option value="all">All Statuses</option>
-              <option value="Released">Released</option>
-              <option value="In Transit">In Transit</option>
-              <option value="At Risk">At Risk</option>
+              {(Object.keys(PO_STATUS_CONFIG) as PoStatus[]).map((s) => (
+                <option key={s} value={s}>{PO_STATUS_CONFIG[s].label}</option>
+              ))}
             </select>
             <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
@@ -381,8 +381,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ record: r, rollup }) => {
-                    const st = PO_DISPLAY_STYLE[r.status];
-                    const shippable = SHIPPABLE.includes(r.status);
+                    const wf = resolvePoWorkflowStatus(r);
+                    const st = PO_STATUS_CONFIG[wf];
+                    const shippable = isShippable(r);
                     return (
                       <tr key={r.poNumber} className="hover:bg-blue-50/30 transition-colors">
                         <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.createdDate)}</td>
@@ -391,7 +392,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         </td>
                         <td className="px-3 py-2.5 max-w-[150px]"><p className="text-xs text-slate-700 truncate" title={r.vendor}>{r.vendor}</p></td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{r.status}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{st.label}</span>
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap text-center">
                           <div className="text-xs font-bold text-slate-800 tabular-nums">{fmtMoney(r.grandTotal)}</div>

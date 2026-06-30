@@ -31,9 +31,12 @@ describe('prFormTeamAccess', () => {
     expect(canEditPrFormSubsection('unassigned', 'primary')).toBe(false);
   });
 
-  it('sku BOM is automatic (read-only)', () => {
-    expect(canEditPrFormSubsection('rm_team', 'skuBom')).toBe(false);
-    expect(canEditPrFormSubsection('admin', 'skuBom')).toBe(false);
+  it('sku BOM editable by admin and rm team, read-only for pack team and unassigned', () => {
+    expect(canEditPrFormSubsection('admin', 'skuBom')).toBe(true);
+    expect(canEditPrFormSubsection('rm_team', 'skuBom')).toBe(true);
+    expect(canEditPrFormSubsection('both_teams', 'skuBom')).toBe(true);
+    expect(canEditPrFormSubsection('pack_team', 'skuBom')).toBe(false);
+    expect(canEditPrFormSubsection('unassigned', 'skuBom')).toBe(false);
   });
 
   it('pack BOM and packaging process steps are pack-team only', () => {

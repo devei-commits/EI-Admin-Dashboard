@@ -36,7 +36,10 @@ export type IssuedPOViewRecord = {
   request: ProcurementRequest;
   poNumber: string;
   vendor: string;
-  status: 'Released' | 'In Transit' | 'At Risk';
+  /** Legacy shipment-oriented status (kept for ETA / in-transit logic). */
+  status: 'Draft' | 'Released' | 'In Transit' | 'At Risk';
+  /** Spec §9.2 PO workflow status pill. */
+  poWorkflowStatus?: import('../../constants/procurement').PoStatus;
   etaDays: number;
   etaDateDisplay?: string;
   lineItems: DraftPOLineItem[];
