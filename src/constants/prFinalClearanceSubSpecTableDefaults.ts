@@ -3,6 +3,18 @@ import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../types/qu
 
 type SubSpecTemplate = Omit<QualitySpecTableRow, 'id'>;
 
+/** Renamed PR taxonomy paths → legacy template keys. */
+const PATH_ALIASES: Record<string, string> = {
+  'Skin Care::Sunscreens': 'Skin Care::Sunscreen',
+  'Hair Care::Shampoos': 'Hair Care::Shampoo',
+  'Skin Care::Cleansers': 'Cleansing::Facewash',
+};
+
+function resolveSubSpecPathKey(category: string, subCategory: string): string {
+  const key = prFinalSubSpecPathKey(category, subCategory);
+  return PATH_ALIASES[key] ?? key;
+}
+
 /** Paths not covered by EI_FG_Clearance_Specs.html — kept as manual fallbacks. */
 const FALLBACK_SUB_SPEC_TEMPLATES: Record<string, readonly SubSpecTemplate[]> = {
   'Color Cosmetics::Lipstick': [
@@ -25,7 +37,7 @@ export function prFinalSubSpecPathKey(category: string, subCategory: string): st
 }
 
 export function hasPrFinalClearanceSubSpecDefaults(category: string, subCategory: string): boolean {
-  const key = prFinalSubSpecPathKey(category, subCategory);
+  const key = resolveSubSpecPathKey(category, subCategory);
   return Boolean(
     PR_FINAL_CLEARANCE_SUB_BY_PATH[key]?.length || FALLBACK_SUB_SPEC_TEMPLATES[key]?.length
   );
@@ -35,7 +47,7 @@ export function clonePrFinalClearanceSubSpecTableDefaults(
   category: string,
   subCategory: string
 ): QualitySpecTableRow[] {
-  const key = prFinalSubSpecPathKey(category, subCategory);
+  const key = resolveSubSpecPathKey(category, subCategory);
   const templates =
     PR_FINAL_CLEARANCE_SUB_BY_PATH[key] ?? FALLBACK_SUB_SPEC_TEMPLATES[key] ?? [];
   return templates.map((row) => createEmptyQualitySpecRow(row));

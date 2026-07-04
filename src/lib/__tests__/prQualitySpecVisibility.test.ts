@@ -139,9 +139,9 @@ describe('prQualitySpecVisibility', () => {
     expect(reconciled.finalSubByPath['Skin Care::Cream']?.map((r) => r.parameter)).toEqual(['Cap Torque']);
   });
 
-  it('seeds Cleansing / Facewash dispatch common defaults when empty', () => {
+  it('seeds Skin Care / Cleansers dispatch common defaults when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Cleansing', prSubCategory: 'Facewash' },
+      { category: 'Skin Care', prSubCategory: 'Cleansers' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {},
@@ -149,7 +149,7 @@ describe('prQualitySpecVisibility', () => {
     );
     expect(seeded.bySection.dispatchSpecs.some((r) => r.parameter === 'SO + Picking Match')).toBe(true);
     expect(seeded.bySection.dispatchSpecs.some((r) => r.parameter === 'FIFO Compliance')).toBe(true);
-    expect(seeded.dispatchSubByPath['Cleansing::Facewash']).toBeUndefined();
+    expect(seeded.dispatchSubByPath['Skin Care::Cleansers']).toBeUndefined();
   });
 
   it('seeds Skin Care / Cream dispatch common and sub defaults when empty', () => {
@@ -214,24 +214,20 @@ describe('prQualitySpecVisibility', () => {
     expect(rows.some((r) => r.parameter === 'Net Weight')).toBe(true);
   });
 
-  it('seeds Color Cosmetics / Lipstick final clearance common and sub defaults when empty', () => {
+  it('seeds Others custom sub-category with Skin Care final clearance fallback when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Color Cosmetics', prSubCategory: 'Lipstick' },
+      { category: 'Others', prSubCategory: 'Lipstick' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
     );
-    expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Weight / Volume per Unit')).toBe(
-      true
-    );
-    expect(
-      seeded.finalSubByPath['Color Cosmetics::Lipstick']?.some((r) => r.parameter === 'Bullet Orientation')
-    ).toBe(true);
+    expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Fill Volume / Weight')).toBe(true);
+    expect(seeded.finalSubByPath['Others::Lipstick']).toBeUndefined();
   });
 
-  it('seeds Hair Care / Shampoo final clearance common and sub defaults when empty', () => {
+  it('seeds Hair Care / Shampoos final clearance common and sub defaults when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Hair Care', prSubCategory: 'Shampoo' },
+      { category: 'Hair Care', prSubCategory: 'Shampoos' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
@@ -239,7 +235,7 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Fill Volume')).toBe(true);
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Coding + Labels + Carton')).toBe(true);
     expect(
-      seeded.finalSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Net Volume')
+      seeded.finalSubByPath['Hair Care::Shampoos']?.some((r) => r.parameter === 'Net Volume')
     ).toBe(true);
   });
 
@@ -249,9 +245,9 @@ describe('prQualitySpecVisibility', () => {
     expect(rows.some((r) => r.parameter === 'Active Assay (HPLC)')).toBe(true);
   });
 
-  it('seeds Hair Care / Shampoo bulk common and sub defaults when empty', () => {
+  it('seeds Hair Care / Shampoos bulk common and sub defaults when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Hair Care', prSubCategory: 'Shampoo' },
+      { category: 'Hair Care', prSubCategory: 'Shampoos' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
@@ -259,42 +255,37 @@ describe('prQualitySpecVisibility', () => {
     expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Active Matter (surfactants)')).toBe(
       true
     );
-    expect(seeded.bulkSubByPath['Hair Care::Shampoo']?.some((r) => r.parameter === 'Foam Volume (Ross-Miles)')).toBe(
+    expect(seeded.bulkSubByPath['Hair Care::Shampoos']?.some((r) => r.parameter === 'Foam Volume (Ross-Miles)')).toBe(
       true
     );
   });
 
-  it('seeds Cleansing / Facewash bulk common and sub defaults when empty', () => {
+  it('seeds Skin Care / Cleansers bulk common and sub defaults when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Cleansing', prSubCategory: 'Facewash' },
+      { category: 'Skin Care', prSubCategory: 'Cleansers' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
     );
-    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Foam Height')).toBe(true);
-    expect(
-      seeded.bySection.bulkClearance.some((r) => r.specLimit === '5.5–6.5 (skin-pH friendly)')
-    ).toBe(true);
-    expect(seeded.bulkSubByPath['Cleansing::Facewash']?.some((r) => r.parameter === 'Lather Density')).toBe(
+    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Appearance')).toBe(true);
+    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'pH')).toBe(true);
+    expect(seeded.bulkSubByPath['Skin Care::Cleansers']?.some((r) => r.parameter === 'Lather Density')).toBe(
       true
     );
   });
 
-  it('seeds Color Cosmetics / Lipstick bulk common and sub defaults when empty', () => {
+  it('maps legacy Color Cosmetics into Others with custom sub-category', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
       { category: 'Color Cosmetics', prSubCategory: 'Lipstick' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
     );
-    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Color Shade Match')).toBe(true);
-    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Asbestos (talc-based)')).toBe(true);
-    expect(
-      seeded.bulkSubByPath['Color Cosmetics::Lipstick']?.some((r) => r.parameter === 'Pay-off (color deposit)')
-    ).toBe(true);
+    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Appearance')).toBe(true);
+    expect(seeded.bulkSubByPath['Others::Lipstick']).toBeUndefined();
   });
 
-  it('seeds Baby / Sensitive / Baby Lotion final clearance common defaults when empty', () => {
+  it('maps legacy Baby / Sensitive into Others with custom sub-category', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
       { category: 'Baby / Sensitive', prSubCategory: 'Baby Lotion' },
       hydratePrQualitySpecRowsBySection({}),
@@ -302,36 +293,33 @@ describe('prQualitySpecVisibility', () => {
       {}
     );
     expect(seeded.bySection.finalClearance.some((r) => r.parameter === 'Tamper Evidence')).toBe(true);
-    expect(seeded.bySection.finalClearance[0]?.specLimit).toBe('Intact');
-    expect(seeded.finalSubByPath['Baby / Sensitive::Baby Lotion']).toBeUndefined();
+    expect(seeded.finalSubByPath['Others::Baby Lotion']).toBeUndefined();
   });
 
-  it('seeds Baby / Sensitive / Baby Lotion bulk common defaults when empty', () => {
+  it('seeds Others custom sub-category bulk common fallback when empty', () => {
     const seeded = seedPrQualitySpecsIfEmpty(
-      { category: 'Baby / Sensitive', prSubCategory: 'Baby Lotion' },
+      { category: 'Others', prSubCategory: 'Baby Lotion' },
       hydratePrQualitySpecRowsBySection({}),
       {},
       {}
     );
-    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'pH (skin-neutral)')).toBe(true);
-    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Patch Test (HRIPT)')).toBe(true);
-    expect(seeded.bySection.bulkClearance.some((r) => r.specLimit === '≤ stricter limit (baby)')).toBe(true);
-    expect(seeded.bulkSubByPath['Baby / Sensitive::Baby Lotion']).toBeUndefined();
+    expect(seeded.bySection.bulkClearance.some((r) => r.parameter === 'Appearance')).toBe(true);
+    expect(seeded.bulkSubByPath['Others::Baby Lotion']).toBeUndefined();
   });
 
-  it('provides Sunscreen bulk sub-category defaults from FG clearance HTML', () => {
-    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Sunscreen' });
+  it('provides Sunscreens bulk sub-category defaults from FG clearance HTML', () => {
+    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Sunscreens' });
     expect(rows.some((r) => r.parameter === 'In-vitro SPF (test patch)')).toBe(true);
   });
 
-  it('returns empty sub defaults for Toner (HTML category without templates — user adds specs)', () => {
-    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Toner' });
+  it('returns empty sub defaults for Actives (no fixed templates — user adds specs)', () => {
+    const rows = getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Actives' });
     expect(rows).toEqual([]);
   });
 
-  it('returns empty sub defaults for Face Mask / Bar Soap until user adds specs', () => {
-    expect(getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Face Mask' })).toEqual([]);
-    expect(getDefaultPrBulkClearanceSubRows({ category: 'Cleansing', prSubCategory: 'Bar Soap' })).toEqual([]);
+  it('returns empty sub defaults for Skin Care / Others and Hair Care / Others', () => {
+    expect(getDefaultPrBulkClearanceSubRows({ category: 'Skin Care', prSubCategory: 'Others' })).toEqual([]);
+    expect(getDefaultPrBulkClearanceSubRows({ category: 'Hair Care', prSubCategory: 'Others' })).toEqual([]);
   });
 
   it('flattens empty parameters out of save payload', () => {

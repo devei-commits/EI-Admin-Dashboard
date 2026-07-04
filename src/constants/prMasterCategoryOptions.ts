@@ -1,20 +1,10 @@
 /** PR master — industry category & sub-category (BOM / finished goods registration). */
 
 export const PR_FUNCTIONAL_SUB_CATEGORIES: Record<string, readonly string[]> = {
-  'Skin Care': [
-    'Cream',
-    'Lotion',
-    'Serum',
-    'Toner',
-    'Sunscreen',
-    'Face Mask',
-    'Body Butter',
-    'Eye Cream',
-  ],
-  'Hair Care': ['Shampoo', 'Conditioner', 'Hair Oil', 'Hair Mask', 'Hair Serum'],
-  Cleansing: ['Facewash', 'Body Wash', 'Hand Wash', 'Bar Soap', 'Cleansing Balm'],
-  'Color Cosmetics': ['Lipstick', 'Foundation', 'Compact', 'Eyeliner', 'Mascara'],
-  'Baby / Sensitive': ['Baby Lotion', 'Baby Wash', 'Sensitive Skin Cream'],
+  'Skin Care': ['Cleansers', 'Moisturiser', 'Sunscreens', 'Actives', 'Others'],
+  'Hair Care': ['Shampoos', 'Conditioners', 'Actives', 'Others'],
+  /** Free-text sub-category (no fixed options). */
+  Others: [],
 };
 
 export const PR_CATEGORY_OPTIONS = Object.keys(
@@ -30,6 +20,11 @@ export const PR_SUB_CATEGORY_OPTIONS = [
 
 export type PrSubCategoryOption = (typeof PR_SUB_CATEGORY_OPTIONS)[number];
 
+/** Categories that accept a free-text sub-category instead of a fixed list. */
+export function prCategoryAllowsCustomSubCategory(category: string): boolean {
+  return normalizePrCategoryForSelect(category) === 'Others';
+}
+
 /** Legacy EI-PR-* / composite code prefixes → canonical PR category label. */
 const LEGACY_CODE_PREFIX_TO_CATEGORY: Record<string, PrCategoryOption> = {
   SKC: 'Skin Care',
@@ -37,8 +32,8 @@ const LEGACY_CODE_PREFIX_TO_CATEGORY: Record<string, PrCategoryOption> = {
   BDY: 'Skin Care',
   SUN: 'Skin Care',
   OTC: 'Skin Care',
-  COL: 'Color Cosmetics',
-  MISC: 'Skin Care',
+  COL: 'Others',
+  MISC: 'Others',
 };
 
 const PR_CATEGORY_ALIASES: Record<string, PrCategoryOption> = {
@@ -51,72 +46,54 @@ const PR_CATEGORY_ALIASES: Record<string, PrCategoryOption> = {
   otc: 'Skin Care',
   'hair care': 'Hair Care',
   haircare: 'Hair Care',
-  cleansing: 'Cleansing',
-  cleanser: 'Cleansing',
-  'color cosmetics': 'Color Cosmetics',
-  'colour cosmetics': 'Color Cosmetics',
-  cosmetics: 'Color Cosmetics',
-  makeup: 'Color Cosmetics',
-  'baby / sensitive': 'Baby / Sensitive',
-  'baby sensitive': 'Baby / Sensitive',
-  baby: 'Baby / Sensitive',
-  sensitive: 'Baby / Sensitive',
-  miscellaneous: 'Skin Care',
-  misc: 'Skin Care',
+  'hair cares': 'Hair Care',
+  cleansing: 'Skin Care',
+  cleanser: 'Skin Care',
+  cleansers: 'Skin Care',
+  'color cosmetics': 'Others',
+  'colour cosmetics': 'Others',
+  cosmetics: 'Others',
+  makeup: 'Others',
+  'make-up': 'Others',
+  'baby / sensitive': 'Others',
+  'baby sensitive': 'Others',
+  baby: 'Others',
+  sensitive: 'Others',
+  miscellaneous: 'Others',
+  misc: 'Others',
+  other: 'Others',
+  others: 'Others',
 };
 
 const PR_SUB_CATEGORY_ALIASES: Record<string, string> = {
-  cream: 'Cream',
-  creams: 'Cream',
-  lotion: 'Lotion',
-  lotions: 'Lotion',
-  serum: 'Serum',
-  serums: 'Serum',
-  toner: 'Toner',
-  toners: 'Toner',
-  sunscreen: 'Sunscreen',
-  'sun protection': 'Sunscreen',
-  spf: 'Sunscreen',
-  'face mask': 'Face Mask',
-  mask: 'Face Mask',
-  'body butter': 'Body Butter',
-  'eye cream': 'Eye Cream',
-  shampoo: 'Shampoo',
-  shampoos: 'Shampoo',
-  conditioner: 'Conditioner',
-  conditioners: 'Conditioner',
-  'hair oil': 'Hair Oil',
-  'hair mask': 'Hair Mask',
-  'hair serum': 'Hair Serum',
-  facewash: 'Facewash',
-  'face wash': 'Facewash',
-  'body wash': 'Body Wash',
-  'hand wash': 'Hand Wash',
-  'bar soap': 'Bar Soap',
-  'bath bar': 'Bar Soap',
-  masque: 'Face Mask',
-  soap: 'Bar Soap',
-  'cleansing balm': 'Cleansing Balm',
-  balm: 'Cleansing Balm',
-  lipstick: 'Lipstick',
-  lipsticks: 'Lipstick',
-  foundation: 'Foundation',
-  compact: 'Compact',
-  eyeliner: 'Eyeliner',
-  mascara: 'Mascara',
-  'baby lotion': 'Baby Lotion',
-  'baby wash': 'Baby Wash',
-  'sensitive skin cream': 'Sensitive Skin Cream',
-  hydrating: 'Lotion',
-  'anti-aging': 'Cream',
-  antiaging: 'Cream',
-  brightening: 'Serum',
-  'anti-acne': 'Serum',
-  antiacne: 'Serum',
-  conditioning: 'Conditioner',
-  styling: 'Hair Serum',
-  'make-up': 'Foundation',
-  makeup: 'Foundation',
+  cleanser: 'Cleansers',
+  cleansers: 'Cleansers',
+  cleansing: 'Cleansers',
+  facewash: 'Cleansers',
+  'face wash': 'Cleansers',
+  'body wash': 'Cleansers',
+  'hand wash': 'Cleansers',
+  'bar soap': 'Cleansers',
+  'bath bar': 'Cleansers',
+  soap: 'Cleansers',
+  'cleansing balm': 'Cleansers',
+  balm: 'Cleansers',
+  moisturiser: 'Moisturiser',
+  moisturizer: 'Moisturiser',
+  moisturisers: 'Moisturiser',
+  moisturizers: 'Moisturiser',
+  sunscreen: 'Sunscreens',
+  sunscreens: 'Sunscreens',
+  'sun protection': 'Sunscreens',
+  spf: 'Sunscreens',
+  active: 'Actives',
+  actives: 'Actives',
+  other: 'Others',
+  others: 'Others',
+  shampoo: 'Shampoos',
+  shampoos: 'Shampoos',
+  conditioner: 'Conditioners',
+  conditioners: 'Conditioners',
 };
 
 export function normalizePrCategoryForSelect(raw: string): PrCategoryOption | '' {
@@ -146,6 +123,9 @@ export function normalizePrSubCategoryForSelect(category: string, raw: string): 
   const tryCategory = (cat: string): string => {
     const canon = normalizePrCategoryForSelect(cat);
     if (!canon) return '';
+    if (canon === 'Others') {
+      return detail;
+    }
     const options = PR_FUNCTIONAL_SUB_CATEGORIES[canon] ?? [];
     const lower = detail.toLowerCase().replace(/‑/g, '-');
     const exact = options.find((o) => o.toLowerCase() === lower);
@@ -169,6 +149,7 @@ export function normalizePrSubCategoryForSelect(category: string, raw: string): 
 
 export function inferPrCategoryFromSubCategory(sub: string): PrCategoryOption | '' {
   for (const cat of PR_CATEGORY_OPTIONS) {
+    if (cat === 'Others') continue;
     if (normalizePrSubCategoryForSelect(cat, sub)) return cat;
   }
   return '';

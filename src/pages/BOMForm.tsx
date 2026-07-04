@@ -65,6 +65,7 @@ import {
   inferPrCategoryFromLegacyCode,
   normalizePrCategoryForSelect,
   normalizePrSubCategoryForSelect,
+  prCategoryAllowsCustomSubCategory,
   prSubCategoryOptionsForCategory,
   resolvePrCategoryAndSub,
 } from '../constants/prMasterCategoryOptions';
@@ -1791,6 +1792,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       focusPrField('category');
       return null;
     }
+    if (prCategoryAllowsCustomSubCategory(formData.category) && !formData.prSubCategory.trim()) {
+      setErrors({ prSubCategory: 'Step 1 — Custom sub-category is required for Others' });
+      addToast('error', 'Step 1 — Enter a custom sub-category for Others');
+      setCurrentStage(0);
+      focusPrField('prSubCategory');
+      return null;
+    }
     if (!formData.bomCompositeItem) {
       setErrors({ bomCompositeItem: 'Step 1 — Composite Item selection is required' });
       addToast('error', 'Step 1 — Select whether this is a Composite Item (Yes / No)');
@@ -2282,29 +2290,49 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   {errors.category ? <p className="mt-1 text-xs text-red-600">{errors.category}</p> : null}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub-category</label>
-                  <select
-                    id="prSubCategory"
-                    value={formData.prSubCategory}
-                    onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
-                    disabled={!formData.category.trim()}
-                    aria-invalid={errors.prSubCategory ? true : undefined}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
-                      errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">
-                      {formData.category.trim() ? 'Select sub-category…' : 'Select category first'}
-                    </option>
-                    {prSubCategoryOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
+                  <label htmlFor="prSubCategory" className="block text-sm font-medium text-gray-700 mb-1">
+                    Sub-category
+                    {prCategoryAllowsCustomSubCategory(formData.category) ? (
+                      <span className="text-red-600"> *</span>
+                    ) : null}
+                  </label>
+                  {prCategoryAllowsCustomSubCategory(formData.category) ? (
+                    <input
+                      id="prSubCategory"
+                      type="text"
+                      value={formData.prSubCategory}
+                      onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
+                      disabled={!formData.category.trim()}
+                      placeholder="Enter custom sub-category"
+                      aria-invalid={errors.prSubCategory ? true : undefined}
+                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
+                        errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                      }`}
+                    />
+                  ) : (
+                    <select
+                      id="prSubCategory"
+                      value={formData.prSubCategory}
+                      onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
+                      disabled={!formData.category.trim()}
+                      aria-invalid={errors.prSubCategory ? true : undefined}
+                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
+                        errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                      }`}
+                    >
+                      <option value="">
+                        {formData.category.trim() ? 'Select sub-category…' : 'Select category first'}
+                      </option>
+                      {prSubCategoryOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  )}
                   {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
                 </div>
                 <p className="text-xs text-gray-500 sm:col-span-2">
-                  Pick a product category (Skin Care, Hair Care, Cleansing, …) then the format sub-category (Cream,
-                  Shampoo, Facewash, …).
+                  Pick Skin Care, Hair Care, or Others. Skin Care and Hair Care use fixed sub-categories; Others
+                  accepts a custom sub-category.
                 </p>
                 <div className="sm:col-span-2">
                   <label htmlFor="bomCompositeItem" className="block text-sm font-medium text-gray-700 mb-1">
