@@ -1923,6 +1923,27 @@ const Procurement: React.FC = () => {
         return false;
       }
 
+      // Bump matching pending planning quotation asks so Quote Requests reflects the new qty
+      const matchedAsks = planningQuotationAsksPending.filter((ask) => {
+        if (line.raw_material_id != null && Number(line.raw_material_id) > 0 && ask.rawMaterialId != null) {
+          return Number(ask.rawMaterialId) === Number(line.raw_material_id);
+        }
+        if (line.pack_material_id != null && Number(line.pack_material_id) > 0 && ask.packMaterialId != null) {
+          return Number(ask.packMaterialId) === Number(line.pack_material_id);
+        }
+        return line.itemCode
+          ? String(ask.itemCode ?? '').trim().toLowerCase() === line.itemCode.trim().toLowerCase()
+          : false;
+      });
+      if (matchedAsks.length > 0) {
+        await Promise.all(
+          matchedAsks.map((ask) =>
+            updatePlanningQuotationAsk(ask.id, { quantityRequested: ask.quantityRequested + delta })
+          )
+        );
+        void queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+      }
+
       const targetStock = resolveInventoryStockAfterGapApproval(existingNote);
       const whRows = warehouseInventoryData?.rows ?? [];
       const whRow =
@@ -1990,6 +2011,7 @@ const Procurement: React.FC = () => {
       addToast,
       backendPrArray,
       invalidatePurchaseOrdersQueries,
+      planningQuotationAsksPending,
       purchaseOrdersRaw,
       queryClient,
       user?.name,
@@ -6102,13 +6124,13 @@ const Procurement: React.FC = () => {
                   onClose={() => setPrEditReq(null)}
                   onSave={async (payload) => {
                     const base = prEditReq;
-                    const updatedItems = (base.itemDetails ?? []).map((it, idx) =>
+                    const updatedDetails = (base.itemDetails ?? []).map((it, idx) =>
                       idx === 0
                         ? { ...it, reqQty: payload.qty, plannedPrice: payload.pricePerUnit, leadTimeDays: payload.leadDays }
                         : it,
                     );
                     const res = await updateProcurementRequestApi(base.id, {
-                      items: updatedItems as BackendPRItem[],
+                      items: itemDetailsToProcurementRequestItems(updatedDetails) as BackendPRItem[],
                       preferredVendor: payload.vendor,
                     });
                     if (res.success) {

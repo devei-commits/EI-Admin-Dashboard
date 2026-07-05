@@ -5,7 +5,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import type { ProcurementRequest } from '../../types/procurement.types';
-import { PrPopupShell, PopupSection } from './PrPopupShell';
+import { ProcModalShell, ModalSection } from './ProcModalShell';
 
 export interface WarehouseSih { code: string; name: string; sih: number | null; locations: string; }
 
@@ -65,17 +65,19 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
   };
 
   return (
-    <PrPopupShell
-      title={<span>📦 Stock Audit Request — {item?.itemName ?? req.code}</span>}
-      code={item?.itemCode}
-      subtitle={`System SIH ${totalSih != null ? `${totalSih}` : '—'} · Linked ${req.code}`}
-      primaryLabel="Submit Audit Request"
-      onPrimary={handleSubmit}
-      primaryBusy={busy}
-      primaryDisabled={!canSubmit}
+    <ProcModalShell
+      eyebrow="Stock Audit Request"
+      title={item?.itemName ?? req.code}
+      subtitle={[item?.itemCode, `System SIH ${totalSih != null ? String(totalSih) : '—'}`, req.code].filter(Boolean).join(' · ')}
       onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">Cancel</button>
+          <button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit || busy} className="px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-bold hover:bg-teal-800 disabled:opacity-60">{busy ? 'Submitting…' : 'Submit Audit Request'}</button>
+        </>
+      }
     >
-      <PopupSection title="🏭 SIH by warehouse + location" first>
+      <ModalSection title="SIH by Warehouse + Location">
         {warehousesLoading ? (
           <p className="mb-2 text-[10.5px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
             Loading warehouse locations from master data…
@@ -96,9 +98,9 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
             </div>
           ))}
         </div>
-      </PopupSection>
+      </ModalSection>
 
-      <PopupSection title="📅 Audit request — target warehouse(s) & date">
+      <ModalSection title="Audit Request — Warehouses & Target Date">
         {whs.length === 0 ? (
           <p className="text-xs text-slate-500">Select warehouses once locations are loaded.</p>
         ) : (
@@ -133,9 +135,9 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
             </div>
           </>
         )}
-      </PopupSection>
+      </ModalSection>
 
-      <PopupSection title="📝 Comments & urgency">
+      <ModalSection title="Comments & Urgency">
         <textarea
           value={comments}
           onChange={(e) => setComments(e.target.value)}
@@ -143,11 +145,11 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
           placeholder="Why this audit is needed (e.g. system SIH doesn't match dispense log), urgency, deadline…"
           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
-      </PopupSection>
+      </ModalSection>
 
-      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-[11px] text-emerald-800">
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-[11px] text-emerald-800">
         <b>On Submit:</b> creates an audit request (status <b>REQUESTED</b>) in the Stock Audit tracker and sends a structured request to Warehouse Stock Check with real location codes.
       </div>
-    </PrPopupShell>
+    </ProcModalShell>
   );
 };

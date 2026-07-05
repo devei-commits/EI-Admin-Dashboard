@@ -7,7 +7,8 @@
 import React, { useEffect, useState } from 'react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import { fetchItemPriceList } from '../../services/procurement.service';
-import { PrPopupShell, StatCell, PopupSection } from './PrPopupShell';
+import { StatCell } from './PrPopupShell';
+import { ProcModalShell, ModalSection } from './ProcModalShell';
 
 export interface PriceTier { vendor: string; tier: string; price: number; lead: number; }
 export interface HistoryRow { vendor: string; qty: number; price: number; date: string; }
@@ -82,17 +83,21 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
   const inputCls = 'w-full bg-amber-50 border border-dashed border-amber-400 rounded px-2 py-1 font-mono text-xs text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500';
 
   return (
-    <PrPopupShell
-      title={<span>✏ Edit PR — {req.code}</span>}
-      code={item ? `${item.itemName} · ${item.itemCode}` : undefined}
-      subtitle={isPlanning ? '📋 From Planning' : '⊕ Procurement-raised'}
-      primaryLabel="Save Request"
-      onPrimary={handleSave}
-      primaryBusy={busy}
+    <ProcModalShell
+      eyebrow={isPlanning ? 'Planning Request' : 'Procurement Request'}
+      title={`Edit PR — ${req.code}`}
+      subtitle={item ? `${item.itemName}${item.itemCode ? ` · ${item.itemCode}` : ''}` : undefined}
       onClose={onClose}
+      width="max-w-4xl"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">Cancel</button>
+          <button type="button" onClick={() => void handleSave()} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60">{busy ? 'Saving…' : 'Save Request'}</button>
+        </>
+      }
     >
       {/* Item info (read-only) */}
-      <PopupSection title="📦 Item info (read-only)" first>
+      <ModalSection title="Item Info (read-only)">
         <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
           <StatCell label="Item Code" value={item?.itemCode ?? '—'} />
           <StatCell label="Item Name" value={<span className="text-[11px]">{item?.itemName ?? '—'}</span>} />
@@ -101,10 +106,10 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
           <StatCell label="Planned Qty" value="—" />
           <StatCell label="MOQ" value={item?.moq ?? '—'} />
         </div>
-      </PopupSection>
+      </ModalSection>
 
       {/* Editable PR fields */}
-      <PopupSection title="📝 PR fields (editable)">
+      <ModalSection title="PR Fields (editable)">
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-xs">
             <thead>
@@ -128,10 +133,10 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
           </table>
         </div>
         <p className="mt-1.5 text-[10px] text-slate-400"><span className="inline-block w-3 h-3 align-middle bg-amber-50 border border-dashed border-amber-400 rounded" /> = editable. Picking a price-list tier below auto-fills Vendor / Price / Lead.</p>
-      </PopupSection>
+      </ModalSection>
 
       {/* Dual pane */}
-      <PopupSection title="📑 Price List + 📜 Purchase History (click Pick to auto-fill)">
+      <ModalSection title="Price List + Purchase History">
         <div className="grid md:grid-cols-2 gap-3">
           {/* Price list */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
@@ -183,11 +188,11 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
             )}
           </div>
         </div>
-      </PopupSection>
+      </ModalSection>
 
-      <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-[11px] text-blue-800">
-        <b>On Save:</b> updates the PR row in the inbox. Does not push to PO — that's the 🚚 Draft PO action (§3C).
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-[11px] text-blue-800">
+        <b>On Save:</b> updates the PR row in the inbox. Does not push to PO — that's the Draft PO action.
       </div>
-    </PrPopupShell>
+    </ProcModalShell>
   );
 };

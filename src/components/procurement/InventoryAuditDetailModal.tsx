@@ -87,11 +87,11 @@ export function InventoryAuditDetailModal({
             <h2 id="inventory-audit-detail-title" className="text-lg font-bold text-slate-900 mt-0.5">
               {line.auditRef}
             </h2>
-            <p className="text-sm text-slate-700 mt-1 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs">{line.itemCode}</span>
+            <p className="text-sm text-slate-600 mt-1 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs text-slate-500">{line.itemCode}</span>
               <span className="text-slate-400">·</span>
               <span className="font-medium">{line.itemName}</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border border-slate-200 bg-slate-100 text-slate-700">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border border-slate-300 bg-white text-slate-700">
                 {line.location}
               </span>
             </p>
@@ -266,7 +266,7 @@ export function InventoryAuditDetailModal({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-end gap-2">
+        <div className="px-5 py-3 border-t border-slate-200 bg-white flex flex-wrap items-center justify-end gap-2">
           {canTerminate && !showTerminate ? (
             <button
               type="button"

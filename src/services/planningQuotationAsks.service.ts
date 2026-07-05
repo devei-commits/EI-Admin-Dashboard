@@ -83,7 +83,7 @@ export async function createPlanningQuotationAsk(
 
 export async function updatePlanningQuotationAsk(
   id: number,
-  payload: { status?: 'pending' | 'fulfilled' | 'cancelled'; notes?: string }
+  payload: { status?: 'pending' | 'fulfilled' | 'cancelled'; notes?: string; quantityRequested?: number }
 ): Promise<ServiceResult<PlanningQuotationAsk>> {
   try {
     const data = await api.patch<PlanningQuotationAsk>(`/api/v1/planning-quotation-asks/${id}`, payload);
