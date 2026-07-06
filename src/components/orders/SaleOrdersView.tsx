@@ -564,30 +564,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       setTrackSelectedBprNos(undefined);
     }
   };
-  const hasPlanningBatch = (so: SaleOrder): boolean => {
-    const soKey = normalizeSoKey(so.soNo);
-    const planningResp = planningAvailabilityBySoNo[so.soNo] ?? planningAvailabilityBySoNo[soKey];
-    const planningItems = planningResp?.items ?? [];
-    return planningItems.some((item) => (Number(item.totalBatches) || 0) > 0 || (Number(item.sentCount) || 0) > 0);
-  };
-
-  const isEditLocked = (so: SaleOrder) => {
-    if (hasPlanningBatch(so)) return true;
-    return so.items.some((item) =>
-      item.batchSplits.some((split) =>
-        split.productionBatchId != null ||
-        ['picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(String(split.ffStatus || '').toLowerCase()) ||
-        ['batch_confirmed', 'rm_reserved', 'scheduled', 'rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'cleared'].includes(
-          String(split.bmrStatus || '').toLowerCase()
-        ) ||
-        ['pm_reserved', 'scheduled', 'pm_connected', 'pm_dispensing', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'fg_ready'].includes(
-          String(split.bprStatus || '').toLowerCase()
-        )
-      )
-    );
-  };
-  const editLockReason =
-    'Editing is allowed only before BO/batch confirmation. This order already has confirmed/active batches.';
+  const isEditLocked = (_so: SaleOrder) => false;
+  const editLockReason = '';
 
   const handlePickConfirm = async (data: PickData) => {
     if (!pickModalSO) return;
