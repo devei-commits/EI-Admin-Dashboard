@@ -133,6 +133,7 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
   const [rows, setRows] = useState(initial);
   const { v, set } = useVehicle();
   const [busy, setBusy] = useState(false);
+  const allDispatched = rows.every((r) => r.pending <= 0) && lines.length > 0;
 
   const setRow = (i: number, patch: Partial<{ checked: boolean; qty: string }>) =>
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -165,12 +166,17 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
       footer={<><CancelBtn onClick={onClose} /><PrimaryBtn onClick={submit} busy={busy} disabled={!canSubmit}>Create Shipment + {selected.length} GRN{selected.length !== 1 ? 's' : ''}</PrimaryBtn></>}
     >
       <ModalSection title="PO lines · pick which go on this truck">
+        {allDispatched && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+            <b>All items in this PO are already dispatched.</b> Pending is 0 for every line — either goods are in transit or have been received. To ship additional quantity, raise a new PO or cancel the existing GRN if it was created in error.
+          </div>
+        )}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-500">
-                {['Ship?', 'Item', 'PO Qty', 'Already Shipped', 'Pending', 'This Shipment Qty'].map((h) => (
-                  <th key={h} className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide ${['PO Qty', 'Already Shipped', 'Pending', 'This Shipment Qty'].includes(h) ? 'text-center' : 'text-left'}`}>{h}</th>
+                {['Ship?', 'Item', 'PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].map((h) => (
+                  <th key={h} className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide ${['PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].includes(h) ? 'text-center' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -178,10 +184,17 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
               {lines.map((l, i) => {
                 const r = rows[i];
                 const disabled = r.pending <= 0;
+                const dispatchedFull = disabled && l.alreadyShipped > 0 && l.alreadyShipped >= l.poQty;
+                const noQty = disabled && l.poQty <= 0;
                 return (
                   <tr key={`${l.code}-${i}`} className={r.checked ? 'bg-blue-50/40' : disabled ? 'opacity-50' : ''}>
                     <td className="px-3 py-2 text-center"><input type="checkbox" disabled={disabled} checked={r.checked} onChange={(e) => setRow(i, { checked: e.target.checked })} className="w-4 h-4 accent-blue-600" /></td>
-                    <td className="px-3 py-2"><div className="font-semibold text-slate-800 text-xs">{l.name}</div><div className="text-[10px] text-slate-400 font-mono">{l.code}</div></td>
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-slate-800 text-xs">{l.name}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{l.code}</div>
+                      {dispatchedFull && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">Dispatched</span>}
+                      {noQty && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">No PO qty</span>}
+                    </td>
                     <td className="px-3 py-2 text-center tabular-nums text-xs text-slate-700">{l.poQty.toLocaleString('en-IN')}{l.unit ? ` ${l.unit}` : ''}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-xs text-slate-600">{l.alreadyShipped.toLocaleString('en-IN')}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-xs text-amber-700 font-semibold">{r.pending.toLocaleString('en-IN')}</td>

@@ -992,6 +992,8 @@ export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): Pro
     const lineType: 'RM' | 'PM' =
       d.type === 'PM' || (Number.isFinite(pmId) && pmId > 0) ? 'PM' : 'RM';
     const req = Number(d.reqQty) || 0;
+    const price = d.plannedPrice != null ? Number(d.plannedPrice) : undefined;
+    const ld = d.leadTimeDays != null ? Number(d.leadTimeDays) : undefined;
     return {
       type: lineType,
       code: d.itemCode ?? '',
@@ -1003,6 +1005,8 @@ export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): Pro
       unit: d.unit ?? '',
       raw_material_id: d.raw_material_id != null ? Number(d.raw_material_id) : undefined,
       pack_material_id: d.pack_material_id != null ? Number(d.pack_material_id) : undefined,
+      ...(price != null && price > 0 ? { planned_unit_price: price } : {}),
+      ...(ld != null && ld > 0 ? { lead_time_days: ld } : {}),
     };
   });
 }
