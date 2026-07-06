@@ -98,6 +98,18 @@ export function resolveGrnQcResultOutputType(test: GrnQcTestRow): GrnQualitySpec
 }
 
 export function isThirdPartyQcTest(test: GrnQcTestRow): boolean {
-  const method = String(test.method ?? '').toLowerCase();
-  return method.includes('external') || method.includes('3rd') || method.includes('third-party');
+  const specId = String(test.specId ?? '').toLowerCase();
+  if (specId.includes('3rd-party') || specId.includes('3rd_party')) return true;
+
+  const signal = [test.method, test.acceptance, test.frequency]
+    .map((part) => String(part ?? '').toLowerCase())
+    .join(' ');
+
+  return (
+    signal.includes('external') ||
+    signal.includes('3rd') ||
+    signal.includes('third-party') ||
+    signal.includes('third party') ||
+    signal.includes('outsource')
+  );
 }

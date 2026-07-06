@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   fetchGRNAssignableUsers,
   fetchGRNList,
@@ -11,6 +12,7 @@ import QualityOrderManagementTable from './QualityOrderManagementTable';
 import QualityCheckModal from '../../components/quality/QualityCheckModal';
 
 const OrderManagementQueue: React.FC = () => {
+  const navigate = useNavigate();
   const [grns, setGrns] = useState<QualityOrderManagementInput[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignSavingId, setAssignSavingId] = useState<string | null>(null);
@@ -90,6 +92,7 @@ const OrderManagementQueue: React.FC = () => {
             assigneeOptions={assigneeOptions}
             onClose={() => setActiveQcRow(null)}
             onSaved={() => void loadQueue()}
+            onThirdPartyReleased={() => navigate('/quality/third-party-tracking')}
           />
         ) : null}
       </div>

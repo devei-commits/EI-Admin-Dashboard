@@ -18,6 +18,32 @@ export interface GrnQcTestRow {
   selectOptions?: string[];
   result: string;
   passed: boolean | null;
+  /** Released 3rd-party lab PO + tracking metadata. */
+  thirdPartyOrder?: ThirdPartyOrderMeta;
+}
+
+export type ThirdPartyPoStatus =
+  | 'PO RELEASED'
+  | 'SAMPLE PICKED'
+  | 'IN LAB'
+  | 'REPORT RECEIVED'
+  | 'RESULT ENTERED'
+  | 'CLOSED';
+
+export interface ThirdPartyOrderMeta {
+  poNo: string;
+  poDate: string;
+  labVendorName: string;
+  labVendorCode: string;
+  samplePickupDate: string;
+  expectedReportDate: string;
+  samplePhotoUploaded?: boolean;
+  samplePhotoFileName?: string;
+  samplePhotoAttachmentId?: string;
+  reportUploaded?: boolean;
+  reportFileName?: string;
+  reportAttachmentId?: string;
+  status: ThirdPartyPoStatus;
 }
 
 export interface GrnQcLineSpec {
@@ -150,7 +176,7 @@ export function updateGrnQcTestAt(
   payload: GrnQcSpecsStored,
   lineItemId: string,
   testIndex: number,
-  patch: Partial<Pick<GrnQcTestRow, 'result' | 'passed'>>
+  patch: Partial<Pick<GrnQcTestRow, 'result' | 'passed' | 'acceptance' | 'thirdPartyOrder'>>
 ): GrnQcSpecsStored {
   return {
     ...payload,
@@ -161,6 +187,9 @@ export function updateGrnQcTestAt(
         const next = { ...t, ...patch };
         if ('result' in patch && patch.result !== undefined && !('passed' in patch)) {
           next.passed = deriveAutoPassedFromResult(next);
+        }
+        if ('acceptance' in patch && patch.acceptance !== undefined && /^pending$/i.test(String(next.result ?? ''))) {
+          next.passed = null;
         }
         return next;
       });

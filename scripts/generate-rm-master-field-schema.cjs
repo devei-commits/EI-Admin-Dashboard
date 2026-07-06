@@ -22,6 +22,13 @@ if (start < 0 || end < 0) {
 
 const rmModsExpr = html.slice(start + 'const RM_MODS='.length, end + 1);
 
+const SKIP_LABELS = new Set([
+  'AR Number',
+  'CoA Required',
+  'Acceptance Spec (min)',
+  'Acceptance Spec (max)',
+]);
+
 const EXISTING = {
   'Material Code (SKU)': 'rmSku',
   'INCI Name': 'inciName',
@@ -65,10 +72,6 @@ const EXISTING = {
   'MSDS / SDS Notes & Link': 'msdsSdsNotesLink',
   'Storage Condition': 'storageCondition',
   'Dispensing Direction': 'dispensingDirection',
-  'AR Number': 'arNumber',
-  'CoA Required': 'coaRequired',
-  'Acceptance Spec (min)': 'acceptanceSpecMin',
-  'Acceptance Spec (max)': 'acceptanceSpecMax',
   'Physical Form — Solid': 'physicalFormSolid',
   'Physical Form — Liquid': 'physicalFormLiquid',
   'Preferred Vendor': 'preferredVendor',
@@ -126,7 +129,7 @@ for (const mod of RM_MODS) {
   const fields = [];
   for (const f of mod.f) {
     const label = f.f;
-    if (!label || label.startsWith('__') || f.rmv) continue;
+    if (!label || label.startsWith('__') || f.rmv || SKIP_LABELS.has(label)) continue;
     let key = EXISTING[label] || toCamel(label);
     if (usedKeys.has(key)) key = `rm${key.charAt(0).toUpperCase()}${key.slice(1)}`;
     usedKeys.add(key);

@@ -23,6 +23,7 @@ import {
   fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
   updateBatch as apiBatchUpdate,
   createRworkBatch as apiCreateRworkBatch,
+  splitBatchForVessel as apiSplitBatchForVessel,
   createEquipment as apiCreateEquipment,
   updateEquipment as apiUpdateEquipment,
   deleteEquipment as apiDeleteEquipment,
@@ -130,12 +131,23 @@ import {
 import {
   batchLifecycleLabel,
   canShowPackagingActions,
+  countProductionStatusBuckets,
   formatUnifiedBatchLabel,
   formatUnifiedBatchLabelShort,
   getBatchLifecycleDisplayStage,
   isPackagingPhase,
   type BatchLifecycleStage,
 } from '../lib/batchLifecycle';
+import { ScheduleTeamAssignmentSection } from '../components/production/ScheduleTeamAssignmentSection';
+import {
+  scheduleTeamPayloadFromState,
+  scheduleTeamStateFromBatch,
+  type ScheduleTeamAssignmentState,
+} from '../lib/productionScheduleTeam';
+import {
+  batchEligibleForVesselSplit,
+  proposeVesselSplitSizes,
+} from '../lib/productionVesselSplit';
 import { BatchesView } from '../components/production/BatchesView';
 import { DispensingTrayView } from '../components/production/DispensingTrayView';
 
@@ -180,7 +192,7 @@ interface Batch {
   processType: ProcessType; homogenizer: boolean;
   mainVessel: string; supportingTanks: string[];
   fillingLine: string; fillingType: FillingType; packagingLine: string; monocarton: boolean; shrink: boolean;
-  teamBMR: string[]; teamBPR: string[]; qcOfficerBMR: string; qcOfficerBPR: string;
+  teamBMR: string[]; teamBPR: string[]; shiftLeadBMR: string; shiftLeadBPR: string; qcOfficerBMR: string; qcOfficerBPR: string;
   scheduledMuZone?: string;
   scheduleRemarks?: string;
   mfgDate: string; fillDate: string; packDate: string; fgDate: string; rmConnectDate: string; pmConnectDate: string;
@@ -969,6 +981,12 @@ function canAdjustBatchSize(batch: Batch): boolean {
   return true;
 }
 
+function canSplitBatchForVessel(batch: Batch): boolean {
+  return batch._pk != null
+    && batch.planningBatchId != null
+    && batchEligibleForVesselSplit(batch.bmrStatus, batch.bprStatus);
+}
+
 /* ────────────────────── API HELPERS ─────────────────────────── */
 
 function apiBatchToBatch(r: BatchRow): Batch {
@@ -983,6 +1001,7 @@ function apiBatchToBatch(r: BatchRow): Batch {
     fillingType: (r.fillingType || 'bottle') as FillingType,
     packagingLine: r.packagingLine, monocarton: r.monocarton, shrink: r.shrink,
     teamBMR: r.teamBMR || [], teamBPR: r.teamBPR || [],
+    shiftLeadBMR: r.shiftLeadBMR ?? '', shiftLeadBPR: r.shiftLeadBPR ?? '',
     qcOfficerBMR: r.qcOfficerBMR, qcOfficerBPR: r.qcOfficerBPR,
     scheduledMuZone: r.scheduledMuZone || '',
     scheduleRemarks: r.scheduleRemarks || '',
@@ -1444,6 +1463,114 @@ function AdjustBatchSizeModal({ batch, onClose, onSave }: {
       <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
         <button type="button" onClick={handleSave} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors"><CheckCircle2 size={13} /> Save</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ──────────────── SPLIT BATCH FOR VESSEL CAPACITY ──────────── */
+
+function SplitForVesselModal({
+  batch,
+  vesselCapacityLiters,
+  onClose,
+  onComplete,
+}: {
+  batch: Batch;
+  vesselCapacityLiters: number;
+  onClose: () => void;
+  onComplete: (original: Batch, split: Batch) => void;
+}) {
+  const { addToast } = useToast();
+  const proposal = useMemo(
+    () => proposeVesselSplitSizes(batch.batchSize, batch.requiredVolumeLiters, vesselCapacityLiters),
+    [batch.batchSize, batch.requiredVolumeLiters, vesselCapacityLiters],
+  );
+  const [firstRunKg, setFirstRunKg] = useState(proposal?.firstRunKg ?? batch.batchSize);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (proposal?.firstRunKg) setFirstRunKg(proposal.firstRunKg);
+  }, [proposal?.firstRunKg, batch.bmrNo]);
+
+  const remainderKg = Math.max(0, Math.round((batch.batchSize - firstRunKg) * 1000) / 1000);
+  const canSubmit = batch._pk != null
+    && firstRunKg > 0
+    && firstRunKg < batch.batchSize
+    && remainderKg >= 1
+    && !submitting;
+
+  const handleSplit = async (): Promise<void> => {
+    if (!batch._pk || !canSubmit) return;
+    setSubmitting(true);
+    try {
+      const result = await apiSplitBatchForVessel(batch._pk, firstRunKg, reason.trim() || undefined);
+      const original = apiBatchToBatch(result.original);
+      const split = apiBatchToBatch(result.split);
+      addToast(
+        'success',
+        `Split complete — ${formatUnifiedBatchLabel(original)} (${original.batchSize} KG) + ${formatUnifiedBatchLabel(split)} (${split.batchSize} KG). Schedule the split batch next.`,
+      );
+      onComplete(original, split);
+      onClose();
+    } catch (e) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: string }).message) : 'Failed to split batch';
+      addToast('error', msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      title={`Split for vessel — ${formatUnifiedBatchLabel(batch)}`}
+      subtitle={`${batch.productName} · ${batch.batchSize} KG total · vessel ${vesselCapacityLiters} L`}
+      size="md"
+    >
+      <Tip color="orange" icon={<Layers size={14} />}>
+        When batch volume exceeds vessel capacity (e.g. 800 KG in a 500 L vessel), split into a first run on this batch
+        and a new <b>sp-NN</b> sibling batch for the remainder. RM/PM quantities scale automatically; reschedule the split batch separately.
+      </Tip>
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className={LBL}>First run on this batch (KG)</label>
+          <input
+            className={INP}
+            type="number"
+            min={1}
+            max={batch.batchSize - 1}
+            value={firstRunKg || ''}
+            onChange={(e) => setFirstRunKg(parseFloat(e.target.value) || 0)}
+          />
+        </div>
+        <div>
+          <label className={LBL}>Remainder → new split batch (KG)</label>
+          <input className={INP} type="number" readOnly value={remainderKg || ''} />
+        </div>
+      </div>
+      <div className="mt-3">
+        <label className={LBL}>Reason (optional)</label>
+        <input
+          className={INP}
+          type="text"
+          placeholder="e.g. 500 L vessel — split 800 KG batch"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </div>
+      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => void handleSplit()}
+          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm transition-colors"
+        >
+          {submitting ? <Loader2 size={13} className="animate-spin" /> : <Layers size={13} />}
+          Split &amp; create sp batch
+        </button>
       </div>
     </Modal>
   );
@@ -2049,8 +2176,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
 interface SalesOrderOption { orderId: string; customerName?: string; }
 
-function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange }: {
+function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange }: {
   batch: Batch | null; equipment: EquipmentData; batches: Batch[];
+  team: TeamMember[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   inventoryRows?: WarehouseInventoryRow[];
   sentSummary: SentBatchSummaryRow[];
@@ -2151,6 +2279,9 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
   const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
   const [scheduledMuZone, setScheduledMuZone] = useState(batch?.scheduledMuZone || '');
   const [scheduleRemarks, setScheduleRemarks] = useState(batch?.scheduleRemarks || '');
+  const [teamAssignment, setTeamAssignment] = useState<ScheduleTeamAssignmentState>(() =>
+    scheduleTeamStateFromBatch(initialBatch ?? {}),
+  );
 
   const allProductionZones = useMemo(
     () => productionAreas.flatMap((a) => a.zones || []),
@@ -2182,6 +2313,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
     setSupportingTanks(batch.supportingTanks ?? []);
     setScheduledMuZone(batch.scheduledMuZone || '');
     setScheduleRemarks(batch.scheduleRemarks || '');
+    setTeamAssignment(scheduleTeamStateFromBatch(batch));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     batch?.bmrNo,
@@ -2272,6 +2404,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
       supportingTanks: dates.supportingTanks ?? supportingTanks,
       scheduledMuZone: String(scheduledMuZone || '').trim(),
       scheduleRemarks: String(scheduleRemarks || '').trim(),
+      ...scheduleTeamPayloadFromState(teamAssignment),
       ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     };
   };
@@ -2746,6 +2879,12 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
             )}
           </div>
 
+          <ScheduleTeamAssignmentSection
+            team={team}
+            value={teamAssignment}
+            onChange={setTeamAssignment}
+          />
+
           <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
             <div>
               {isScheduled && (
@@ -2765,13 +2904,15 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, stockRM, stock
 
 /* ──────────── SMART SCHEDULE MODAL (from calendar cell) ─────── */
 
-function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange }: {
+function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, team, stockRM, stockPM, inventoryRows, sentSummary, onClose, onSave, onBatchChange, onRequestVesselSplit }: {
   slot: ScheduleSlot; batch: Batch | null; equipment: EquipmentData; batches: Batch[];
+  team: TeamMember[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   inventoryRows?: WarehouseInventoryRow[];
   sentSummary: SentBatchSummaryRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onBatchChange: (bmrNo: string) => void;
+  onRequestVesselSplit?: (batch: Batch, vesselCapacityLiters: number) => void;
 }) {
   // SOs raised to production = distinct soNo from batches
   const soListRaised = useMemo(() => {
@@ -2893,6 +3034,13 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
   const [vessel, setVessel] = useState(recommendation?.vessel ?? '');
   const [fillLine, setFillLine] = useState(recommendation?.fillLine ?? '');
   const [packLine, setPackLine] = useState(recommendation?.packLine ?? '');
+  const [teamAssignment, setTeamAssignment] = useState<ScheduleTeamAssignmentState>(() =>
+    scheduleTeamStateFromBatch(initialBatch ?? {}),
+  );
+
+  useEffect(() => {
+    if (batch) setTeamAssignment(scheduleTeamStateFromBatch(batch));
+  }, [batch?.bmrNo]);
 
   useEffect(() => {
     if (!recommendation) return;
@@ -2991,6 +3139,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
       ),
       mainVessel: recommendation.vessel, fillingLine: recommendation.fillLine, packagingLine: recommendation.packLine,
       supportingTanks: batch.supportingTanks ?? [],
+      ...scheduleTeamPayloadFromState(teamAssignment),
       ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
@@ -3004,6 +3153,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
       mfgDate, fillDate, packDate, fgDate, rmConnectDate: rmDate, pmConnectDate: pmDate,
       mainVessel: vessel, fillingLine: fillLine, packagingLine: packLine,
       supportingTanks: batch.supportingTanks ?? [],
+      ...scheduleTeamPayloadFromState(teamAssignment),
       ...scheduleSaveBmrStatusPatch(batch, canMoveToScheduled),
     });
     onClose();
@@ -3205,6 +3355,15 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                       {vessel && mfgDate && <span>Total on this vessel/date: <b>{totalWithThis.toFixed(1)} L</b></span>}
                     </div>
                     {overCapacity && <p className="mt-1.5 font-medium">Batch volume exceeds vessel capacity.</p>}
+                    {overCapacity && batch && vesselCap != null && canSplitBatchForVessel(batch) && onRequestVesselSplit && (
+                      <button
+                        type="button"
+                        onClick={() => onRequestVesselSplit(batch, vesselCap)}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold bg-white border border-red-300 text-red-800 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        <Layers size={12} /> Split batch for vessel ({vesselCap} L) &amp; reschedule remainder
+                      </button>
+                    )}
                     {!overCapacity && overTotalCapacity && <p className="mt-1.5 font-medium">Total scheduled volume exceeds vessel capacity.</p>}
                     {!overCapacity && !overTotalCapacity && vesselCap != null && totalWithThis < vesselCap && (
                       <p className="mt-1.5 font-medium text-emerald-600">{Math.max(0, Math.round((vesselCap - totalWithThis) * 10) / 10).toFixed(1)} L more capacity left on this vessel/date.</p>
@@ -3307,7 +3466,14 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, sto
                     </select>
                   </div>
                 </div>
-                <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-blue btn-sm py-2 px-4 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {batch && (
+                  <ScheduleTeamAssignmentSection
+                    team={team}
+                    value={teamAssignment}
+                    onChange={setTeamAssignment}
+                  />
+                )}
+                <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-blue btn-sm py-2 px-4 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-3">
                   Save manual schedule
                 </button>
                 {!scheduleEquipmentValidation.ok && (
@@ -6536,7 +6702,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
     ['Pack Line', batch.packagingLine || '-'], ['Monocarton', batch.monocarton ? 'Yes' : 'No'],
     ['Shrink', batch.shrink ? 'Yes' : 'No'], ['Due Date', batch.dueDate || '-'],
     ['MU bundle (latest)', batch.muDispensingBundleId || '-'],
+    ['Shift Lead (Mfg)', team.find(t => t.id === batch.shiftLeadBMR)?.name || '-'],
     ['Team (Mfg)', (team.filter(t => (batch.teamBMR ?? []).includes(t.id)).map(t => t.name).join(', ')) || '-'],
+    ['Filling Lead', team.find(t => t.id === batch.shiftLeadBPR)?.name || '-'],
     ['Team (Fill)', (team.filter(t => (batch.teamBPR ?? []).includes(t.id)).map(t => t.name).join(', ')) || '-'],
   ];
 
@@ -8897,13 +9065,20 @@ function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose, navIte
 function TopHeader({ batches, onMenuClick, onSchedule }: {
   batches: Batch[]; onMenuClick: () => void; onSchedule: () => void;
 }) {
-  const active = batches.filter(b => b.bmrStatus === 'in_production' || b.bmrStatus === 'dispensing').length;
-  const pending = batches.filter(b => b.bmrStatus === 'draft' || b.bmrStatus === 'batch_confirmed').length;
-  const awaitingQC = batches.filter(b => b.bmrStatus === 'bulk_qc' || b.bprStatus === 'fill_qc' || b.bprStatus === 'pack_qc').length;
-  const qcFailed = batches.filter(b => b.bmrStatus === 'qc_failed' || b.bprStatus === 'qc_failed').length;
-  const filling = batches.filter(b => b.bprStatus === 'filling' || b.bprStatus === 'pm_connected' || b.bprStatus === 'pm_dispensing').length;
-  const fgReady = batches.filter(b => b.bprStatus === 'fg_ready').length;
+  const statusCounts = countProductionStatusBuckets(batches, (b) => ({
+    effectiveRmConnected: Boolean(b.rmConnected),
+    effectivePmConnected: Boolean(b.pmConnected),
+  }));
   const weekLabel = formatWeekLabel(getWeekStart(new Date()));
+
+  const statusBadges: { label: string; count: number; className: string }[] = [
+    { label: 'Batches', count: statusCounts.total, className: 'bg-gray-100 text-gray-600 border-gray-200' },
+    { label: 'Dispensing', count: statusCounts.dispensing, className: 'bg-teal-50 text-teal-700 border-teal-200' },
+    { label: 'Production', count: statusCounts.production, className: 'bg-orange-50 text-orange-600 border-orange-200' },
+    { label: 'Filling', count: statusCounts.filling, className: 'bg-purple-50 text-purple-600 border-purple-200' },
+    { label: 'Packing', count: statusCounts.packing, className: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
+    { label: 'FG Ready', count: statusCounts.fgReady, className: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  ];
 
   return (
     <header className="h-13 bg-white border-b border-gray-100 shadow-xs flex items-center px-5 gap-3 shrink-0 z-20">
@@ -8911,15 +9086,13 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
       <button className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" onClick={onMenuClick}><Menu size={18} /></button>
       <div className="hidden md:flex items-center gap-2">
         <span className="text-[11px] text-gray-400 font-medium tracking-wide">Manufacturing Management</span>
-        <Badge className="bg-gray-100 text-gray-500 border border-gray-200">{batches.length} Batches</Badge>
       </div>
-      <div className="flex items-center gap-1.5 ml-3 overflow-x-auto">
-        {active > 0 && <Badge className="bg-orange-50 text-orange-600 border border-orange-200">{active} Active</Badge>}
-        {filling > 0 && <Badge className="bg-purple-50 text-purple-600 border border-purple-200">{filling} Filling</Badge>}
-        {pending > 0 && <Badge className="bg-amber-50 text-amber-600 border border-amber-200">{pending} Pending</Badge>}
-        {awaitingQC > 0 && <Badge className="bg-sky-50 text-sky-600 border border-sky-200">{awaitingQC} QC</Badge>}
-        {qcFailed > 0 && <Badge className="bg-red-50 text-red-600 border border-red-200">{qcFailed} Failed</Badge>}
-        {fgReady > 0 && <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-200">{fgReady} FG Ready</Badge>}
+      <div className="flex items-center gap-1.5 ml-1 md:ml-3 overflow-x-auto">
+        {statusBadges.map((badge) => (
+          <Badge key={badge.label} className={`${badge.className} whitespace-nowrap`}>
+            {badge.label} · {badge.count}
+          </Badge>
+        ))}
       </div>
       <div className="ml-auto flex items-center gap-3">
         <span className="hidden sm:block text-[11px] text-gray-400 font-medium">{weekLabel}</span>
@@ -8985,6 +9158,7 @@ const Production = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modalBatch, setModalBatch] = useState<Batch | null>(null);
   const [modalType, setModalType] = useState<string | null>(null);
+  const [splitVesselCapLiters, setSplitVesselCapLiters] = useState<number | null>(null);
   const [scheduleSlot, setScheduleSlot] = useState<ScheduleSlot | null>(null);
   const [pendingMtrItems, setPendingMtrItems] = useState<DispensingItem[] | null>(null);
   const [sentSummary, setSentSummary] = useState<SentBatchSummaryRow[]>([]);
@@ -9528,7 +9702,22 @@ const Production = () => {
     }
   }, [modalBatch, modalType, updateBatch, addToast, queryClient]);
 
-  const closeModal = useCallback(() => { setModalBatch(null); setModalType(null); setScheduleSlot(null); setPendingMtrItems(null); }, []);
+  const closeModal = useCallback(() => {
+    setModalBatch(null);
+    setModalType(null);
+    setScheduleSlot(null);
+    setPendingMtrItems(null);
+    setSplitVesselCapLiters(null);
+  }, []);
+
+  const refreshProductionBatches = useCallback(async (): Promise<Batch[]> => {
+    const rows = await fetchBatches();
+    const batches = rows.map(apiBatchToBatch);
+    setState((prev) => ({ ...prev, batches, lastUpdated: new Date().toISOString() }));
+    await queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+    await queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+    return batches;
+  }, [queryClient]);
 
   const schedulableForManual = useMemo(() => state.batches.filter(b =>
     !hasProductionBatchSchedule(b)
@@ -9676,6 +9865,20 @@ const Production = () => {
       {modalBatch && modalType === 'adjustBatch' && (
         <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
       )}
+      {modalBatch && modalType === 'splitForVessel' && splitVesselCapLiters != null && (
+        <SplitForVesselModal
+          batch={modalBatch}
+          vesselCapacityLiters={splitVesselCapLiters}
+          onClose={closeModal}
+          onComplete={async (_original, split) => {
+            const batches = await refreshProductionBatches();
+            const splitBatch = batches.find((b) => b.bmrNo === split.bmrNo) ?? split;
+            setScheduleSlot(null);
+            setModalBatch(splitBatch);
+            setModalType('schedule');
+          }}
+        />
+      )}
       {modalBatch && modalType === 'reserveRM' && (
         <ReserveMaterialModal
           batch={modalBatch}
@@ -9699,7 +9902,7 @@ const Production = () => {
         />
       )}
       {modalType === 'schedule' && scheduleSlot && (
-        <SmartScheduleModal slot={scheduleSlot} batch={modalBatch} equipment={state.equipment} batches={state.batches}
+        <SmartScheduleModal slot={scheduleSlot} batch={modalBatch} equipment={state.equipment} batches={state.batches} team={state.team}
           stockRM={whStockRM} stockPM={whStockPM} inventoryRows={whInventory} sentSummary={sentSummary}
           onClose={closeModal}
           onSave={async (updates) => {
@@ -9710,7 +9913,13 @@ const Production = () => {
               setWeekOffset(offset);
             }
           }}
-          onBatchChange={bmrNo => { const b = state.batches.find(x => x.bmrNo === bmrNo); if (b) setModalBatch(b); }} />
+          onBatchChange={bmrNo => { const b = state.batches.find(x => x.bmrNo === bmrNo); if (b) setModalBatch(b); }}
+          onRequestVesselSplit={(b, vesselCap) => {
+            setModalBatch(b);
+            setSplitVesselCapLiters(vesselCap);
+            setModalType('splitForVessel');
+          }}
+        />
       )}
       {yieldReworkPreflightBatch && (
         <YieldReworkPreflightModal
@@ -9746,7 +9955,7 @@ const Production = () => {
         />
       )}
       {modalType === 'schedule' && !scheduleSlot && (
-        <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches}
+        <ScheduleModal batch={modalBatch} equipment={state.equipment} batches={state.batches} team={state.team}
           stockRM={whStockRM} stockPM={whStockPM} inventoryRows={whInventory} sentSummary={sentSummary}
           onClose={closeModal}
           onSave={async (updates) => {

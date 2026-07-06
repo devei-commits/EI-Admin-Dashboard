@@ -342,16 +342,24 @@ export function buildGrnMatchChecks(input: {
   documentRows: GrnCopyDocumentRow[];
   photoCount: number;
   existingLabelCount?: number;
+  billedQty?: number;
+  verifiedUnitPrice?: number;
 }): GrnMatchCheckRow[] {
   const line = input.grn.lineItem;
   const poQty = Number(line?.poQty) || 0;
   const shippedQty = Number(line?.rcvdQty) || 0;
-  const billedQty = Number(line?.invoiceQty) > 0 ? Number(line?.invoiceQty) : shippedQty;
+  const billedQty =
+    Number(input.billedQty) > 0
+      ? Number(input.billedQty)
+      : Number(line?.invoiceQty) > 0
+        ? Number(line?.invoiceQty)
+        : shippedQty;
   const physicalTotal = input.packRows.reduce((sum, row) => sum + row.actualQty, 0);
   const declaredPacks = input.packRows.length;
   const receivedPacks = input.packRows.filter((row) => row.actualQty > 0).length;
   const poPrice = Number(line?.unitPrice) || 0;
-  const verifiedPrice = poPrice;
+  const verifiedPrice =
+    Number(input.verifiedUnitPrice) > 0 ? Number(input.verifiedUnitPrice) : poPrice;
 
   const invoiceDoc = input.documentRows.find((d) => d.key === 'bill');
   const ewbDoc = input.documentRows.find((d) => d.key === 'waybill');
@@ -420,6 +428,26 @@ export function grnReceiptDocumentsLocked(
   if (!hasLabels) return false;
   // Lock receipt docs after GRN Copy captured all mandatory uploads and generated QR labels.
   return grnReceiptDocsComplete(grn.sourceDocuments);
+}
+
+export function isGrnCoreMatchCheck(label: string): boolean {
+  return (
+    label.includes(' vs ') &&
+    !label.startsWith('Documents') &&
+    !label.startsWith('Shipment photos') &&
+    !label.startsWith('QR labels')
+  );
+}
+
+export function allGrnCoreMatchChecksPass(checks: GrnMatchCheckRow[]): boolean {
+  const core = checks.filter((check) => isGrnCoreMatchCheck(check.label));
+  return core.length > 0 && core.every((check) => check.pass);
+}
+
+export function grnReceiptPrerequisitesMet(checks: GrnMatchCheckRow[]): boolean {
+  const docs = checks.find((check) => check.label.startsWith('Documents received'));
+  const photos = checks.find((check) => check.label.startsWith('Shipment photos'));
+  return Boolean(docs?.pass && photos?.pass);
 }
 
 export function allGrnMatchChecksPass(checks: GrnMatchCheckRow[]): boolean {

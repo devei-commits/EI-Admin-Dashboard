@@ -1,6 +1,7 @@
 export const INBOUND_GRN_RECEIPT_CONFIRMED_STEP = 'Receipt Confirmed';
 export const INBOUND_GRN_SENT_TO_QC_STEP = 'Sent to QC';
 export const INBOUND_GRN_QC_REPORT_SENT_STEP = 'QC Report Sent';
+export const INBOUND_GRN_DOCUMENT_MISMATCH_STEP = 'Document-Physical Mismatch';
 
 export type InboundGrnStatusInput = {
   status?: string | null;
@@ -58,18 +59,15 @@ export function isInboundGrnLanded(grn: InboundGrnStatusInput): boolean {
   return status === 'Under GRN' || status === 'Pending' || status === 'Delayed';
 }
 
+export function isInboundGrnDocumentMismatch(grn: InboundGrnStatusInput): boolean {
+  const steps = Array.isArray(grn.workflowSteps) ? grn.workflowSteps : [];
+  return steps.includes(INBOUND_GRN_DOCUMENT_MISMATCH_STEP);
+}
+
 export function isInboundGrnQuarantined(grn: InboundGrnStatusInput): boolean {
   const status = String(grn.status ?? '').trim();
   if (status === 'On Hold') return true;
-  const line = grn.lineItem;
-  if (!line) return false;
-  if (line.diff != null && Number.isFinite(Number(line.diff)) && Math.abs(Number(line.diff)) > 0.0001) {
-    return true;
-  }
-  const po = Number(line.poQty);
-  const rcvd = Number(line.rcvdQty);
-  if (Number.isFinite(po) && Number.isFinite(rcvd) && Math.abs(rcvd - po) > 0.0001) return true;
-  return false;
+  return isInboundGrnDocumentMismatch(grn);
 }
 
 export function isInboundGrnQcTested(grn: InboundGrnStatusInput): boolean {
@@ -124,6 +122,25 @@ export function inboundGrnSendToQcPayload(existingSteps?: string[] | null): {
     workflowSteps: appendInboundGrnWorkflowStep(existingSteps, INBOUND_GRN_SENT_TO_QC_STEP),
     qcStatus: 'Pending',
   };
+}
+
+export function inboundGrnVerifiedAfterLabelsPayload(
+  existingSteps?: string[] | null,
+): { status: string; workflowSteps: string[] } {
+  let steps = appendInboundGrnWorkflowStep(existingSteps, INBOUND_GRN_RECEIPT_CONFIRMED_STEP);
+  for (const step of ['PO Received', 'Qty Check', 'Label Generation'] as const) {
+    steps = appendInboundGrnWorkflowStep(steps, step);
+  }
+  return { status: 'Verified', workflowSteps: steps };
+}
+
+export function inboundGrnMismatchQuarantinePayload(
+  existingSteps?: string[] | null,
+): { status: string; workflowSteps: string[]; qcStatus: string } {
+  let steps = appendInboundGrnWorkflowStep(existingSteps, INBOUND_GRN_RECEIPT_CONFIRMED_STEP);
+  steps = appendInboundGrnWorkflowStep(steps, INBOUND_GRN_DOCUMENT_MISMATCH_STEP);
+  steps = appendInboundGrnWorkflowStep(steps, INBOUND_GRN_SENT_TO_QC_STEP);
+  return { status: 'On Hold', workflowSteps: steps, qcStatus: 'Pending' };
 }
 
 export function inboundGrnSendQcReportPayload(

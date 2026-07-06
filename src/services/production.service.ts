@@ -125,6 +125,7 @@ export interface BatchRow {
   fillingLine: string; fillingType: string; packagingLine: string;
   monocarton: boolean; shrink: boolean;
   teamBMR: string[]; teamBPR: string[];
+  shiftLeadBMR: string; shiftLeadBPR: string;
   qcOfficerBMR: string; qcOfficerBPR: string;
   /** Manufacturing unit zone (MTR receive) set when scheduling the batch. */
   scheduledMuZone?: string;
@@ -239,6 +240,25 @@ export async function createRworkBatch(baseBatchId: number, reasonOrOptions?: st
   }
   const res = await api.post<BatchRow>(`${BASE}/batches/create-rework`, payload);
   return (res as any)?.data ?? res;
+}
+
+export interface SplitBatchForVesselResult {
+  original: BatchRow;
+  split: BatchRow;
+}
+
+/** Split an oversized batch into vessel-sized first run + sp-NN remainder batch. */
+export async function splitBatchForVessel(
+  baseBatchId: number,
+  firstRunSizeKg: number,
+  reason?: string,
+): Promise<SplitBatchForVesselResult> {
+  const res = await api.post<SplitBatchForVesselResult>(`${BASE}/batches/split-for-vessel`, {
+    baseBatchId,
+    firstRunSizeKg,
+    reason: reason ?? '',
+  });
+  return (res as { data?: SplitBatchForVesselResult }).data ?? (res as SplitBatchForVesselResult);
 }
 
 export async function updateBatch(pk: number, payload: Record<string, unknown>): Promise<BatchRow> {

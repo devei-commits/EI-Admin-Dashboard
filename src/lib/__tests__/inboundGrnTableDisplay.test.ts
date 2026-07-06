@@ -60,18 +60,16 @@ describe('inboundGrnTableDisplay', () => {
     expect(storage.secondary).toBe('GB-2026-0028');
   });
 
-  it('builds quarantined row with mismatch', () => {
+  it('builds quarantined row with document mismatch', () => {
     const view = buildInboundGrnTableRowView({
       grnNo: 'GRN-2026-0294',
       status: 'On Hold',
-      lineItem: { poQty: 5, rcvdQty: 4.8, unit: 'kg', diff: -0.2 },
+      workflowSteps: ['Document-Physical Mismatch', 'Sent to QC'],
+      lineItem: { poQty: 5, rcvdQty: 5, unit: 'kg' },
     });
     expect(view.statusLabel).toBe('QUARANTINED');
-    expect(view.statusSubLabel).toContain('qty mismatch');
-    expect(inboundGrnActionView({ grnNo: 'x', status: 'On Hold' })).toEqual({
-      label: 'Send to QC',
-      prefix: '🚦',
-    });
+    expect(view.statusSubLabel).toBe('document-physical mismatch');
+    expect(view.actionLabel).toBe('Awaiting QC');
   });
 
   it('shows GRN Copy when landed and receipt confirmed', () => {
@@ -144,7 +142,14 @@ describe('inboundGrnTableDisplay', () => {
     });
   });
 
-  it('shows GRN Copy when verified', () => {
+  it('shows Send to QC for quarantined GRN not yet sent', () => {
+    expect(inboundGrnActionView({ grnNo: 'x', status: 'On Hold' })).toEqual({
+      label: 'Send to QC',
+      prefix: '🚦',
+    });
+  });
+
+  it('shows Send to QC when verified with labels', () => {
     const view = buildInboundGrnTableRowView({
       grnNo: 'GRN-2026-0310',
       status: 'Verified',
@@ -154,8 +159,8 @@ describe('inboundGrnTableDisplay', () => {
       lineItem: { poQty: 100, rcvdQty: 100, unit: 'kg' },
     });
     expect(view.statusLabel).toBe('VERIFIED');
-    expect(view.actionLabel).toBe('GRN Copy');
-    expect(view.actionPrefix).toBe('📋');
+    expect(view.actionLabel).toBe('Send to QC');
+    expect(view.actionPrefix).toBe('🚦');
   });
 
   it('shows Assign Rack when QC passed and GRN Copy labels exist', () => {

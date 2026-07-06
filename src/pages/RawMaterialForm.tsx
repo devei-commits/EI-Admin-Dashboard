@@ -126,8 +126,6 @@ const RM_TECHNICAL_REQUIRED_FIELDS = [
   'storageCondition',
 ] as const;
 
-const RM_QUALITY_REQUIRED_FIELDS = ['coaRequired'] as const;
-
 /** Business lifecycle on the RM master — not DB `lifecycle_status` (soft-delete archive). */
 const RM_MASTER_LIFECYCLE_OPTIONS = [
   'Active',
@@ -526,14 +524,6 @@ const RawMaterialRefactored: React.FC = () => {
    });
   }
   if ((RM_TECHNICAL_REQUIRED_FIELDS as readonly string[]).includes(id)) {
-   setErrors((prev) => {
-    if (!prev[id]) return prev;
-    const next = { ...prev };
-    delete next[id];
-    return next;
-   });
-  }
-  if ((RM_QUALITY_REQUIRED_FIELDS as readonly string[]).includes(id)) {
    setErrors((prev) => {
     if (!prev[id]) return prev;
     const next = { ...prev };
@@ -1588,13 +1578,6 @@ const RawMaterialRefactored: React.FC = () => {
     if (rawReturnable === true) (merged as any).rmReturnable = 'Yes';
     else if (rawReturnable === false) (merged as any).rmReturnable = 'No';
     else if (rawReturnable !== 'Yes' && rawReturnable !== 'No') (merged as any).rmReturnable = '';
-
-    const rawCoaRequired: unknown = (merged as { coaRequired?: unknown }).coaRequired;
-    if (rawCoaRequired === true) (merged as { coaRequired: string }).coaRequired = 'Yes';
-    else if (rawCoaRequired === false) (merged as { coaRequired: string }).coaRequired = 'No';
-    else if (rawCoaRequired !== 'Yes' && rawCoaRequired !== 'No') {
-      (merged as { coaRequired: string }).coaRequired = '';
-    }
 
     const preservedProducts = parseRmLinkedProductsFromForm(merged);
     if (preservedProducts.length > 0) {

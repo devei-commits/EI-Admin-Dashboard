@@ -1,0 +1,436 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { createMRN, type MRNRecordFromApi } from '../../services/mrn.service';
+import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
+import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
+import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
+import {
+  buildMaterialTypeaheadOptions,
+  materialTypeaheadLabelForKey,
+  type MaterialTypeaheadOption,
+} from '../../lib/materialTypeahead';
+import {
+  defaultRequiredByDate,
+  flattenTransferZoneOptions,
+  formatTransferQty,
+  sihAtZoneForInventoryRow,
+  type TransferSourceType,
+} from '../../lib/transferRequestLocationStock';
+import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
+
+type TransferRequestLine = {
+  id: string;
+  catalogKey: string;
+  itemCode: string;
+  itemName: string;
+  unit: string;
+  rawMaterialId?: number;
+  packMaterialId?: number;
+  requestedQty: number;
+  notes: string;
+};
+
+type RequestTransferModalProps = {
+  onClose: () => void;
+  onCreated: (mrn: MRNRecordFromApi) => void;
+};
+
+const SOURCE_TYPES: readonly TransferSourceType[] = ['Production', 'Warehouse', 'Internal'];
+
+function createEmptyLine(): TransferRequestLine {
+  return {
+    id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    catalogKey: '',
+    itemCode: '',
+    itemName: '',
+    unit: 'KG',
+    requestedQty: 0,
+    notes: '',
+  };
+}
+
+const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, onCreated }) => {
+  const { addToast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
+  const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
+  const [inventoryRows, setInventoryRows] = useState<WarehouseInventoryRow[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
+  const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
+  const [sourceType, setSourceType] = useState<TransferSourceType>('Production');
+  const [fromZone, setFromZone] = useState('');
+  const [toZone, setToZone] = useState('');
+  const [requiredByDate, setRequiredByDate] = useState(defaultRequiredByDate());
+  const [lines, setLines] = useState<TransferRequestLine[]>([createEmptyLine()]);
+  const [itemQueries, setItemQueries] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fetchFacilityAreas('warehouse'),
+      fetchFacilityAreas('production'),
+      fetchWarehouseInventory(),
+      fetchRawMaterialsList(),
+      fetchPackMaterialsList(),
+    ])
+      .then(([whRes, prodRes, invRes, rmList, pmList]) => {
+        if (cancelled) return;
+        setWarehouseAreas(whRes.data ?? []);
+        setProductionAreas(prodRes.data ?? []);
+        setInventoryRows(invRes.success && invRes.data ? invRes.data.rows : []);
+        setRawMaterials(rmList);
+        setPackMaterials(pmList);
+      })
+      .catch(() => {
+        if (!cancelled) addToast('error', 'Could not load transfer request data.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addToast]);
+
+  const zoneOptions = useMemo(
+    () => flattenTransferZoneOptions(warehouseAreas, productionAreas),
+    [warehouseAreas, productionAreas],
+  );
+
+  useEffect(() => {
+    if (zoneOptions.length === 0) return;
+    const whDefault = zoneOptions.find((z) => z.areaType === 'warehouse');
+    const prodDefault = zoneOptions.find((z) => z.areaType === 'production');
+    setFromZone((prev) => prev || whDefault?.code || zoneOptions[0].code);
+    setToZone((prev) => prev || prodDefault?.code || zoneOptions[1]?.code || zoneOptions[0].code);
+  }, [zoneOptions]);
+
+  const inventoryByCode = useMemo(() => {
+    const map = new Map<string, WarehouseInventoryRow>();
+    inventoryRows.forEach((row) => {
+      map.set(String(row.code).trim().toUpperCase(), row);
+    });
+    return map;
+  }, [inventoryRows]);
+
+  const usedCatalogKeys = useMemo(
+    () => new Set(lines.map((line) => line.catalogKey).filter(Boolean)),
+    [lines],
+  );
+
+  const linesWithStock = useMemo(
+    () =>
+      lines.map((line) => {
+        const inv = line.itemCode
+          ? inventoryByCode.get(line.itemCode.trim().toUpperCase())
+          : undefined;
+        const sihSource = inv ? sihAtZoneForInventoryRow(inv, fromZone) : 0;
+        const sihDest = inv ? sihAtZoneForInventoryRow(inv, toZone) : 0;
+        return { ...line, sihSource, sihDest };
+      }),
+    [lines, inventoryByCode, fromZone, toZone],
+  );
+
+  const updateLine = (lineId: string, patch: Partial<TransferRequestLine>): void => {
+    setLines((prev) => prev.map((line) => (line.id === lineId ? { ...line, ...patch } : line)));
+  };
+
+  const setLineQuery = (lineId: string, query: string): void => {
+    setItemQueries((prev) => ({ ...prev, [lineId]: query }));
+  };
+
+  const clearLineItem = (lineId: string): void => {
+    updateLine(lineId, {
+      catalogKey: '',
+      itemCode: '',
+      itemName: '',
+      unit: 'KG',
+      rawMaterialId: undefined,
+      packMaterialId: undefined,
+    });
+    setLineQuery(lineId, '');
+  };
+
+  const applyMaterialToLine = (lineId: string, opt: MaterialTypeaheadOption): void => {
+    updateLine(lineId, {
+      catalogKey: opt.key,
+      itemCode: opt.code,
+      itemName: opt.name,
+      unit: opt.unit,
+      rawMaterialId: opt.rawMaterialId,
+      packMaterialId: opt.packMaterialId,
+    });
+    setLineQuery(lineId, opt.label);
+  };
+
+  const addEmptyLine = (): void => {
+    const next = createEmptyLine();
+    setLines((prev) => [...prev, next]);
+  };
+
+  const lineItemQuery = (line: TransferRequestLine): string => {
+    if (itemQueries[line.id] !== undefined) return itemQueries[line.id];
+    if (line.catalogKey) {
+      return materialTypeaheadLabelForKey(rawMaterials, packMaterials, line.catalogKey) || line.itemName;
+    }
+    return '';
+  };
+
+  const handleSubmit = async (): Promise<void> => {
+    const payloadLines = linesWithStock.filter((line) => line.itemCode && line.requestedQty > 0);
+    if (!fromZone || !toZone) {
+      addToast('error', 'Select both From and To locations.');
+      return;
+    }
+    if (fromZone === toZone) {
+      addToast('error', 'From and To locations must be different.');
+      return;
+    }
+    if (payloadLines.length === 0) {
+      addToast('error', 'Add at least one item with requested quantity.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await createMRN({
+        requestedBy: `${sourceType} (Transfer Request)`,
+        source: 'TRQ',
+        notes: `Transfer request ${sourceType}: ${fromZone} → ${toZone}`,
+        whDispatchZone: fromZone,
+        muReceiveZone: toZone,
+        requiredByDate,
+        lineItems: payloadLines.map((line, index) => ({
+          id: `trq-${index + 1}`,
+          itemCode: line.itemCode,
+          code: line.itemCode,
+          quantity: materialQtyToNum(sanitizeMrnLineItemQuantity(line.requestedQty)),
+          unit: line.unit,
+          notes: line.notes || line.itemName,
+          ...(line.rawMaterialId ? { raw_material_id: line.rawMaterialId } : {}),
+          ...(line.packMaterialId ? { pack_material_id: line.packMaterialId } : {}),
+        })),
+      });
+      addToast('success', `Transfer request ${created.mrnNo} submitted.`);
+      onCreated(created);
+      onClose();
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to submit transfer request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const zoneLabel = (code: string): string => {
+    const match = zoneOptions.find((z) => z.code === code);
+    return match ? `${match.shortLabel} — ${match.fullLabel}` : code;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+      <div
+        className="relative my-4 w-full max-w-5xl rounded-xl border border-slate-200 bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="request-transfer-title"
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 rounded-t-xl">
+          <div>
+            <h2 id="request-transfer-title" className="text-lg font-bold text-slate-900">
+              Request Transfer
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Raise a request to move material between locations — no production batch required.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={submitting || loading}
+              onClick={() => void handleSubmit()}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? 'Submitting…' : 'Submit Request'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6 px-6 py-5">
+          {loading ? (
+            <p className="text-sm text-slate-500">Loading locations and inventory…</p>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Source Type
+                  </span>
+                  <select
+                    value={sourceType}
+                    onChange={(e) => setSourceType(e.target.value as TransferSourceType)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    {SOURCE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    From Location
+                  </span>
+                  <select
+                    value={fromZone}
+                    onChange={(e) => setFromZone(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    {zoneOptions.map((zone) => (
+                      <option key={`from-${zone.code}`} value={zone.code}>
+                        {zone.shortLabel} — {zone.fullLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    To Location
+                  </span>
+                  <select
+                    value={toZone}
+                    onChange={(e) => setToZone(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    {zoneOptions.map((zone) => (
+                      <option key={`to-${zone.code}`} value={zone.code}>
+                        {zone.shortLabel} — {zone.fullLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Supply Required By
+                  </span>
+                  <input
+                    type="date"
+                    value={requiredByDate}
+                    onChange={(e) => setRequiredByDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Route: <span className="font-medium text-slate-700">{zoneLabel(fromZone)}</span>
+                {' → '}
+                <span className="font-medium text-slate-700">{zoneLabel(toZone)}</span>
+              </p>
+
+              <section className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-slate-800">📦 Items requested</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-white text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">Item</th>
+                        <th className="px-4 py-3 text-right">SIH @ Source</th>
+                        <th className="px-4 py-3 text-right">SIH @ Dest</th>
+                        <th className="px-4 py-3 text-right">Requested Qty</th>
+                        <th className="px-4 py-3">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {linesWithStock.map((line) => (
+                        <tr key={line.id}>
+                          <td className="px-4 py-3 min-w-[16rem]">
+                            <MaterialMasterTypeahead
+                              options={buildMaterialTypeaheadOptions(rawMaterials, packMaterials, {
+                                excludeKeys: usedCatalogKeys,
+                                allowKey: line.catalogKey,
+                              })}
+                              value={lineItemQuery(line)}
+                              selectedId={line.catalogKey}
+                              onValueChange={(query) => setLineQuery(line.id, query)}
+                              onSelect={(opt) => applyMaterialToLine(line.id, opt)}
+                              onClearSelection={() => clearLineItem(line.id)}
+                              loading={loading}
+                              placeholder="Search by name or code…"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
+                            {line.itemCode ? formatTransferQty(line.sihSource, line.unit) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
+                            {line.itemCode ? formatTransferQty(line.sihDest, line.unit) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {line.itemCode ? (
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={line.requestedQty || ''}
+                                onChange={(e) =>
+                                  updateLine(line.id, {
+                                    requestedQty: Math.max(0, Number(e.target.value) || 0),
+                                  })
+                                }
+                                className="w-24 rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="px-4 py-3 min-w-[12rem]">
+                            {line.itemCode ? (
+                              <input
+                                type="text"
+                                value={line.notes}
+                                onChange={(e) => updateLine(line.id, { notes: e.target.value })}
+                                placeholder="e.g. batch reference, shortage note"
+                                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={addEmptyLine}
+                    className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+                  >
+                    + add item
+                  </button>
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default RequestTransferModal;

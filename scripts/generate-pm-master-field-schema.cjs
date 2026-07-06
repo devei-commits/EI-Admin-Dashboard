@@ -22,6 +22,14 @@ if (start < 0 || end < 0) {
 
 const pmModsSource = html.slice(start, end + 2);
 
+const SKIP_LABELS = new Set([
+  'AR Number',
+  'QC Test Plan Reference',
+  'AQL Sampling Plan',
+  'CoA from Vendor Required',
+  'QC Decision Authority',
+]);
+
 const EXISTING = {
   'Material Code (SKU)': 'itemCode',
   'PM Name / Description': 'tradeCommercialName',
@@ -72,8 +80,6 @@ const EXISTING = {
   'Actuator Colour & Style': 'pmActuatorColourStyle',
   'Collar Finish': 'pmCollarFinish',
   'Teat Colour': 'pmTeatColour',
-  'QC Test Plan Reference': 'qaQcTestPlanRef',
-  'CoA from Vendor Required': 'qaCoaRequired',
   'Preferred Vendor': 'preferredVendor',
   'Alternate Vendors': 'alternateVendor',
   'Supply Location': 'pmSupplyLocation',
@@ -125,7 +131,7 @@ for (const mod of PM_MODS) {
   const fields = [];
   for (const f of mod.f) {
     const label = f.f;
-    if (!label || label.startsWith('__')) continue;
+    if (!label || label.startsWith('__') || SKIP_LABELS.has(label)) continue;
     let key = EXISTING[label] || toCamel(label);
     if (usedKeys.has(key)) key = `pm${key.charAt(0).toUpperCase()}${key.slice(1)}`;
     usedKeys.add(key);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allGrnCoreMatchChecksPass,
   allGrnMatchChecksPass,
   allGrnReceiptChecksPass,
   buildGrnCopyDocumentRows,
@@ -8,6 +9,7 @@ import {
   deriveGrnPackRows,
   formatShipmentBatchRef,
   grnReceiptDocumentsLocked,
+  grnReceiptPrerequisitesMet,
   initialGrnCopyDocRefs,
   resolveGrnExistingLabels,
 } from '../grnCopyReceiptDisplay';
@@ -53,7 +55,7 @@ describe('grnCopyReceiptDisplay', () => {
     expect(view.vendorLine).toContain('V-024');
   });
 
-  it('passes match checks when quantities and docs align', () => {
+  it('detects core mismatch when billed qty differs from PO', () => {
     const packRows = deriveGrnPackRows({ rcvdQty: 200, noOfBoxes: 8, unit: 'kg' });
     const documentRows = buildGrnCopyDocumentRows({
       grnNo: 'GRN-1',
@@ -68,10 +70,13 @@ describe('grnCopyReceiptDisplay', () => {
       grn: { grnNo: 'GRN-1', lineItem: { poQty: 200, rcvdQty: 200, invoiceQty: 200, unitPrice: 298, unit: 'kg' } },
       packRows,
       documentRows,
-      photoCount: 3,
+      photoCount: 2,
+      billedQty: 190,
+      verifiedUnitPrice: 298,
     });
-    expect(allGrnReceiptChecksPass(checks)).toBe(true);
-    expect(allGrnMatchChecksPass(checks)).toBe(false);
+    expect(allGrnCoreMatchChecksPass(checks)).toBe(false);
+    expect(grnReceiptPrerequisitesMet(checks)).toBe(true);
+    expect(allGrnReceiptChecksPass(checks)).toBe(false);
   });
 
   it('resolveGrnExistingLabels reads GRN-level and line-level labels', () => {

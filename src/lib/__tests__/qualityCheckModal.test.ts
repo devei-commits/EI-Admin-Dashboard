@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { deriveAutoPassedFromResult, grnQcVerdictLabel } from '../grnQcAutoPass';
+import { deriveAutoPassedFromResult, grnQcVerdictLabel, isThirdPartyQcTest } from '../grnQcAutoPass';
 import type { GrnQcTestRow } from '../grnQcSpecs';
-import { buildQualityCheckHeaderTitle, buildChecklistVerdict, buildQualityCheckAttachments, buildQualityCheckAttachmentSummary } from '../qualityCheckModalDisplay';
+import { buildQualityCheckHeaderTitle, buildChecklistVerdict, buildQualityCheckAttachments, buildQualityCheckAttachmentSummary, thirdPartyActionLabel } from '../qualityCheckModalDisplay';
 
 const testRow = (partial: Partial<GrnQcTestRow> = {}): GrnQcTestRow => ({
   specId: '1',
@@ -33,6 +33,13 @@ describe('grnQcAutoPass', () => {
   it('labels verdict', () => {
     expect(grnQcVerdictLabel(true)).toBe('✓ PASS');
     expect(grnQcVerdictLabel(null)).toBe('awaiting');
+  });
+
+  it('detects third-party tests from method, acceptance, frequency, or spec id', () => {
+    expect(isThirdPartyQcTest(testRow({ method: 'External lab · NABL' }))).toBe(true);
+    expect(isThirdPartyQcTest(testRow({ acceptance: '3rd-party lab COA required' }))).toBe(true);
+    expect(isThirdPartyQcTest(testRow({ specId: 'default-inbound-3rd-party-microbial' }))).toBe(true);
+    expect(isThirdPartyQcTest(testRow({ method: 'Visual', parameter: 'Visual check' }))).toBe(false);
   });
 });
 
@@ -73,5 +80,15 @@ describe('qualityCheckModalDisplay', () => {
     );
     expect(rows).toHaveLength(2);
     expect(buildQualityCheckAttachmentSummary(rows)).toContain('In-house test');
+  });
+
+  it('shows awaiting label when 3rd-party PO is pending', () => {
+    const label = thirdPartyActionLabel({
+      method: 'External lab · NABL',
+      acceptance: 'PO-3P-2026-0042',
+      result: 'pending',
+    });
+    expect(label).toContain('awaiting');
+    expect(label).not.toContain('Trigger');
   });
 });

@@ -1,18 +1,25 @@
 import React, { useState } from 'react';
 import eilogofull from '../assets/logo/eilogofull.svg';
 import AdminMainMenuButton from './AdminMainMenuButton';
+import { QUALITY_DEVELOPMENT_SECTIONS } from '../constants/qualityDevelopmentsStatic';
 
 interface QualitySidebarProps {
   activeSection: string;
   onSectionChange: (sectionId: string) => void;
 }
 
-const NAV_ITEMS: ReadonlyArray<{ id: string; label: string }> = [
+const OPERATIONS_NAV: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'order-management', label: 'Order Management' },
   { id: 'inbound-qc', label: 'Inbound QC' },
   { id: 'qc-history', label: 'QC History' },
+  { id: 'third-party-tracking', label: '3rd-Party Tracking' },
 ];
+
+const DEVELOPMENTS_NAV = QUALITY_DEVELOPMENT_SECTIONS.map((section) => ({
+  id: section.routeId,
+  label: section.navLabel,
+}));
 
 const QualitySidebar: React.FC<QualitySidebarProps> = ({ activeSection, onSectionChange }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -66,7 +73,23 @@ const QualitySidebar: React.FC<QualitySidebarProps> = ({ activeSection, onSectio
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {NAV_ITEMS.map((item) => (
+          {OPERATIONS_NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={linkClass(item.id)}
+              onClick={() => {
+                onSectionChange(item.id);
+                setIsOpen(false);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+          <p className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Developments
+          </p>
+          {DEVELOPMENTS_NAV.map((item) => (
             <button
               key={item.id}
               type="button"

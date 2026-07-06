@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
@@ -1926,6 +1926,7 @@ function mapApiToGRNRecord(r: {
 
 const WarehouseInbound = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const inboundGrnDeepLinkAppliedRef = useRef(false);
   const grnDeepLinkId = searchParams.get('grn')?.trim() ?? '';
   const [activeSourceTab, setActiveSourceTab] = useState<InboundGrnSourceTab>('po');
@@ -2307,6 +2308,9 @@ const WarehouseInbound = () => {
           <p className="text-xs text-slate-500">
             Source-doc set per tab: {inboundSourceDocRequirementLabel(activeSourceTab)}
           </p>
+          <p className="text-xs text-slate-500">
+            Row actions: ✓ Confirm Receipt (LANDED) · 📋 GRN Copy (once confirmed) · 🚦 Send to QC (QUARANTINED or VERIFIED) · 📍 Assign Rack (QC TESTED · PASS)
+          </p>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             {/* Status tabs */}
@@ -2570,6 +2574,7 @@ const WarehouseInbound = () => {
             mode={receiptModal.mode}
             onClose={() => setReceiptModal(null)}
             onSaved={handleReceiptSaved}
+            onQuarantined={() => navigate('/quality/order-management')}
           />
         ) : null}
 

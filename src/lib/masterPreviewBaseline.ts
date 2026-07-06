@@ -267,7 +267,6 @@ export function buildRmPreviewBaselineFromFetch(
     merged.vendors = vendorsMerged;
   }
   merged.rmReturnable = coerceYesNo(merged.rmReturnable);
-  merged.coaRequired = coerceYesNo(merged.coaRequired);
   merged.universalSwapEligibility = coerceYesNo(merged.universalSwapEligibility);
 
   const derivedSourcing = deriveRmSourcingFieldsFromVendors(

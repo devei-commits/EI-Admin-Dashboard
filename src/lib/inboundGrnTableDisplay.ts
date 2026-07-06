@@ -11,6 +11,7 @@ import {
   isInboundGrnQcComplete,
   isInboundGrnQcReportSent,
   isInboundGrnQcTested,
+  isInboundGrnDocumentMismatch,
   isInboundGrnQuarantined,
   isInboundGrnReceiptConfirmed,
   isInboundGrnSentToQc,
@@ -202,21 +203,26 @@ export function buildInboundGrnStatusView(grn: InboundGrnRowInput): {
   if (isInboundGrnQuarantined(grn)) {
     const line = grn.lineItem;
     const unit = String(line?.unit ?? '').trim();
-    let mismatch: number | null = null;
-    if (line?.diff != null && Number.isFinite(Number(line.diff)) && Math.abs(Number(line.diff)) > 0.0001) {
-      mismatch = Number(line.diff);
-    } else if (line) {
-      const po = Number(line.poQty);
-      const rcvd = Number(line.rcvdQty);
-      if (Number.isFinite(po) && Number.isFinite(rcvd) && Math.abs(rcvd - po) > 0.0001) {
-        mismatch = rcvd - po;
+    let subLabel: string | null = null;
+    if (isInboundGrnDocumentMismatch(grn)) {
+      subLabel = 'document-physical mismatch';
+    } else {
+      let mismatch: number | null = null;
+      if (line?.diff != null && Number.isFinite(Number(line.diff)) && Math.abs(Number(line.diff)) > 0.0001) {
+        mismatch = Number(line.diff);
+      } else if (line) {
+        const po = Number(line.poQty);
+        const rcvd = Number(line.rcvdQty);
+        if (Number.isFinite(po) && Number.isFinite(rcvd) && Math.abs(rcvd - po) > 0.0001) {
+          mismatch = rcvd - po;
+        }
       }
+      subLabel =
+        mismatch != null
+          ? `qty mismatch ${mismatch > 0 ? '+' : ''}${mismatch.toLocaleString('en-IN')}${unit ? ` ${unit}` : ''}`
+          : null;
     }
-    const sub =
-      mismatch != null
-        ? `qty mismatch ${mismatch > 0 ? '+' : ''}${mismatch.toLocaleString('en-IN')}${unit ? ` ${unit}` : ''}`
-        : null;
-    return { label: 'QUARANTINED', subLabel: sub, tone: 'quarantine' };
+    return { label: 'QUARANTINED', subLabel, tone: 'quarantine' };
   }
 
   if (isInboundGrnQcTested(grn)) {
@@ -396,10 +402,13 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     return assignRackOrGrnCopy();
   }
   if (statusView.label === 'VERIFIED') {
-    if (isInboundGrnQcTested(grn)) {
-      return assignRackOrGrnCopy();
+    if (isInboundGrnSentToQc(grn)) {
+      if (isInboundGrnQcTested(grn)) {
+        return assignRackOrGrnCopy();
+      }
+      return { label: 'Awaiting QC', prefix: '⏳' };
     }
-    return { label: 'GRN Copy', prefix: '📋' };
+    return { label: 'Send to QC', prefix: '🚦' };
   }
   if (statusView.label === 'LANDED') {
     if (isInboundGrnReceiptConfirmed(grn)) {

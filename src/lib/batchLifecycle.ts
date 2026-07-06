@@ -234,6 +234,10 @@ export function isBatchFgReady(batch: BatchLifecycleInput): boolean {
 /** KPI / filter buckets for Batches view. */
 export type BatchLifecycleFilter =
   | 'all'
+  | 'dispensing'
+  | 'production'
+  | 'filling'
+  | 'packing'
   | 'pending'
   | 'in_mfg'
   | 'bulk_qc'
@@ -241,13 +245,101 @@ export type BatchLifecycleFilter =
   | 'fg_ready'
   | 'qc_failed';
 
-export function batchMatchesLifecycleFilter(
+/** Production header / status bar buckets (mutually exclusive per batch). */
+export type ProductionStatusBucket = 'dispensing' | 'production' | 'filling' | 'packing' | 'fg_ready';
+
+export interface ProductionStatusCounts {
+  total: number;
+  dispensing: number;
+  production: number;
+  filling: number;
+  packing: number;
+  fgReady: number;
+}
+
+const DISPENSING_LIFECYCLE_STAGES = new Set<BatchLifecycleStage>([
+  'rm_connected',
+  'dispensing',
+  'pm_connected',
+  'pm_dispensing',
+]);
+
+const FILLING_LIFECYCLE_STAGES = new Set<BatchLifecycleStage>([
+  'fill_scheduled',
+  'filling',
+  'fill_qc',
+]);
+
+const PACKING_LIFECYCLE_STAGES = new Set<BatchLifecycleStage>(['packaging', 'pack_qc']);
+
+/** Map a batch to a single operational status bucket for header KPIs (null = pre/post ops). */
+export function getProductionStatusBucket(
+  batch: BatchLifecycleInput,
+  displayOptions?: BatchLifecycleDisplayOptions,
+): ProductionStatusBucket | null {
+  if (batch.bprStatus === 'fg_ready') return 'fg_ready';
+  const stage = getBatchLifecycleDisplayStage(batch, displayOptions);
+  if (DISPENSING_LIFECYCLE_STAGES.has(stage)) return 'dispensing';
+  if (stage === 'in_production') return 'production';
+  if (FILLING_LIFECYCLE_STAGES.has(stage)) return 'filling';
+  if (PACKING_LIFECYCLE_STAGES.has(stage)) return 'packing';
+  return null;
+}
+
+export function countProductionStatusBuckets(
+  batches: BatchLifecycleInput[],
+  displayOptionsForBatch?: (batch: BatchLifecycleInput) => BatchLifecycleDisplayOptions,
+): ProductionStatusCounts {
+  const counts: ProductionStatusCounts = {
+    total: batches.length,
+    dispensing: 0,
+    production: 0,
+    filling: 0,
+    packing: 0,
+    fgReady: 0,
+  };
+  for (const batch of batches) {
+    const opts = displayOptionsForBatch?.(batch);
+    const bucket = getProductionStatusBucket(batch, opts);
+    if (bucket === 'dispensing') counts.dispensing += 1;
+    else if (bucket === 'production') counts.production += 1;
+    else if (bucket === 'filling') counts.filling += 1;
+    else if (bucket === 'packing') counts.packing += 1;
+    else if (bucket === 'fg_ready') counts.fgReady += 1;
+  }
+  return counts;
+}
+
+export function batchMatchesProductionStatusFilter(
   batch: BatchLifecycleInput,
   filter: BatchLifecycleFilter,
   displayOptions?: BatchLifecycleDisplayOptions,
 ): boolean {
   if (filter === 'all') return true;
-  const stage = getBatchLifecycleDisplayStage(batch, displayOptions);
+  if (filter === 'fg_ready') return batch.bprStatus === 'fg_ready';
+  if (filter === 'qc_failed') return isBatchLifecycleFailed(batch);
+  const bucket = getProductionStatusBucket(batch, displayOptions);
+  if (filter === 'dispensing') return bucket === 'dispensing';
+  if (filter === 'production') return bucket === 'production';
+  if (filter === 'filling') return bucket === 'filling';
+  if (filter === 'packing') return bucket === 'packing';
+  return false;
+}
+
+export function batchMatchesLifecycleFilter(
+  batch: BatchLifecycleInput,
+  filter: BatchLifecycleFilter,
+  displayOptions?: BatchLifecycleDisplayOptions,
+): boolean {
+  if (
+    filter === 'dispensing' ||
+    filter === 'production' ||
+    filter === 'filling' ||
+    filter === 'packing'
+  ) {
+    return batchMatchesProductionStatusFilter(batch, filter, displayOptions);
+  }
+  if (filter === 'all') return true;
   if (filter === 'fg_ready') return batch.bprStatus === 'fg_ready';
   if (filter === 'qc_failed') {
     return batch.bmrStatus === 'qc_failed' || batch.bprStatus === 'qc_failed';

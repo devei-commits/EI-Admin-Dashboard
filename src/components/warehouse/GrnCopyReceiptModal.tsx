@@ -6,10 +6,12 @@ import {
   grnLineItemDisplayName,
   updateGRN,
   type GeneratedLabel,
+  type UpdateGRNPayload,
 } from '../../services/grn.service';
 import type { InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
 import {
   allGrnReceiptChecksPass,
+  allGrnCoreMatchChecksPass,
   buildGrnCopyDocumentRows,
   buildGrnCopyReceiptHeaderFields,
   buildGrnCopyReceiptHeaderView,
@@ -17,12 +19,17 @@ import {
   deriveGrnPackRows,
   docRefsToSourceDocuments,
   grnReceiptDocumentsLocked,
+  grnReceiptPrerequisitesMet,
   initialGrnCopyDocRefs,
   resolveGrnExistingLabels,
   type GrnCopyDocRefKey,
   type GrnCopyDocUploadKey,
   type GrnPackCheckRow,
 } from '../../lib/grnCopyReceiptDisplay';
+import {
+  inboundGrnMismatchQuarantinePayload,
+  inboundGrnVerifiedAfterLabelsPayload,
+} from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
 
 export type GrnCopyReceiptLineItem = {
@@ -64,6 +71,7 @@ type GrnCopyReceiptModalProps = {
   mode: GrnCopyReceiptModalMode;
   onClose: () => void;
   onSaved: (grn: GrnCopyReceiptGrn) => void;
+  onQuarantined?: () => void;
 };
 
 type ShipmentPhotoTag = 'truck' | 'packs' | 'doc';
@@ -189,6 +197,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   mode,
   onClose,
   onSaved,
+  onQuarantined,
 }) => {
   const { addToast } = useToast();
   const [sourceDocuments, setSourceDocuments] = useState<InboundGrnSourceDocuments>(
@@ -204,6 +213,12 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       unitsPerBox: grn.unitsPerBox,
       unit: lineItem.unit,
     }),
+  );
+  const [billedQty, setBilledQty] = useState(
+    () => Number(lineItem.invoiceQty) || Number(lineItem.rcvdQty) || 0,
+  );
+  const [verifiedUnitPrice, setVerifiedUnitPrice] = useState(
+    () => Number(lineItem.unitPrice) || 0,
   );
   const [photoCount, setPhotoCount] = useState(0);
   const [photoTags, setPhotoTags] = useState<Record<ShipmentPhotoTag, boolean>>({
@@ -233,9 +248,13 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       unitsPerBox: grn.unitsPerBox,
       locationZone: grn.locationZone,
       sourceDocuments: sourceDocumentsWithRefs,
-      lineItem,
+      lineItem: {
+        ...lineItem,
+        invoiceQty: billedQty,
+        unitPrice: verifiedUnitPrice,
+      },
     }),
-    [grn, lineItem, sourceDocumentsWithRefs],
+    [grn, lineItem, sourceDocumentsWithRefs, billedQty, verifiedUnitPrice],
   );
 
   const headerView = useMemo(() => buildGrnCopyReceiptHeaderView(receiptInput), [receiptInput]);
@@ -263,10 +282,14 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         documentRows,
         photoCount,
         existingLabelCount: existingLabels.length,
+        billedQty,
+        verifiedUnitPrice,
       }),
-    [receiptInput, packRows, documentRows, photoCount, existingLabels.length],
+    [receiptInput, packRows, documentRows, photoCount, existingLabels.length, billedQty, verifiedUnitPrice],
   );
   const receiptChecksPass = allGrnReceiptChecksPass(matchChecks);
+  const coreChecksPass = allGrnCoreMatchChecksPass(matchChecks);
+  const prerequisitesMet = grnReceiptPrerequisitesMet(matchChecks);
   const receivedPacks = packRows.filter((row) => row.actualQty > 0).length;
   const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
   const docsLocked = grnReceiptDocumentsLocked(mode, grn);
@@ -328,41 +351,129 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     );
   };
 
+  const buildLineItemsPayload = (physicalTotal: number): UpdateGRNPayload['lineItems'] => {
+    const poQty = Number(lineItem.poQty) || 0;
+    const diff = Math.round((physicalTotal - poQty) * 1000) / 1000;
+    const updatedLine = {
+      id: lineItem.id,
+      item: lineItem.item,
+      itemCode: lineItem.itemCode,
+      poQty: lineItem.poQty,
+      rcvdQty: physicalTotal,
+      invoiceQty: billedQty,
+      unitPrice: verifiedUnitPrice,
+      diff,
+      qcStatus: '',
+      qcBy: '',
+    };
+    if (grn.lineItems?.length) {
+      return grn.lineItems.map((li) =>
+        String(li.itemCode ?? '').trim().toUpperCase() === String(lineItem.itemCode).trim().toUpperCase()
+          ? { ...li, ...updatedLine }
+          : li,
+      ) as UpdateGRNPayload['lineItems'];
+    }
+    return [updatedLine] as UpdateGRNPayload['lineItems'];
+  };
+
+  const persistReceiptDocuments = async (
+    mergedDocs: InboundGrnSourceDocuments,
+    physicalTotal: number,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> => {
+    await updateGRN(grn.id, {
+      sourceDocuments: mergedDocs,
+      noOfBoxes: packRows.length,
+      unitsPerBox: packRows[0]?.actualQty ?? grn.unitsPerBox ?? null,
+      lineItems: buildLineItemsPayload(physicalTotal),
+      ...extra,
+    });
+  };
+
   const handleGenerateLabels = async (): Promise<void> => {
     if (!receiptChecksPass) {
-      addToast('error', 'Complete all match checks and upload at least one shipment photo before generating labels.');
+      addToast(
+        'error',
+        'Complete all match checks and upload at least one shipment photo before generating labels.',
+      );
       return;
     }
     setGenerating(true);
     try {
       const unitsPerBoxList = packRows.map((row) => row.actualQty);
       const mergedDocs = docRefsToSourceDocuments(docRefs, sourceDocuments);
-      await updateGRN(grn.id, {
-        sourceDocuments: mergedDocs,
-        noOfBoxes: packRows.length,
-        unitsPerBox: packRows[0]?.actualQty ?? grn.unitsPerBox ?? null,
-        workflowSteps: ['PO Received', 'Qty Check'],
-        status: 'On Hold',
-      });
+      const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
+      const verifiedPayload = inboundGrnVerifiedAfterLabelsPayload(grn.workflowSteps);
+      await persistReceiptDocuments(mergedDocs, physicalTotal, verifiedPayload);
       const labelRes = await generateGRNLabels(grn.id, {
         noOfBoxes: packRows.length,
         unitsPerBoxList,
         itemCode: lineItem.itemCode,
         productName: grnLineItemDisplayName(lineItem),
       });
-      addToast('success', `${packRows.length} rack labels generated · GRN copy saved · ready to send to QC.`);
+      addToast(
+        'success',
+        `${packRows.length} rack labels generated · GRN verified · use Send to QC when ready.`,
+      );
       onSaved({
         ...grn,
-        status: 'On Hold',
+        status: verifiedPayload.status,
         sourceDocuments: mergedDocs,
         noOfBoxes: packRows.length,
         unitsPerBox: packRows[0]?.actualQty ?? grn.unitsPerBox ?? null,
-        workflowSteps: labelRes.workflowSteps ?? ['PO Received', 'Qty Check', 'Label Generation'],
+        workflowSteps: labelRes.workflowSteps ?? verifiedPayload.workflowSteps,
         generatedLabels: labelRes.labels,
       });
       onClose();
     } catch (e: unknown) {
       addToast('error', e instanceof Error ? e.message : 'Failed to generate labels');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleMismatchQuarantine = async (): Promise<void> => {
+    if (!prerequisitesMet) {
+      addToast('error', 'Upload invoice, EWB, COA, and at least one shipment photo before reporting mismatch.');
+      return;
+    }
+    if (coreChecksPass) {
+      addToast('error', 'All quantity and price checks match — use Generate Labels instead.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const mergedDocs = docRefsToSourceDocuments(docRefs, {
+        ...sourceDocuments,
+      }) as InboundGrnSourceDocuments & {
+        mismatch?: {
+          detectedAt: string;
+          failedChecks: string[];
+          procurementNotifiedAt: string;
+        };
+      };
+      mergedDocs.mismatch = {
+        detectedAt: new Date().toISOString(),
+        failedChecks: matchChecks.filter((check) => !check.pass).map((check) => check.label),
+        procurementNotifiedAt: new Date().toISOString(),
+      };
+      const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
+      const quarantinePayload = inboundGrnMismatchQuarantinePayload(grn.workflowSteps);
+      await persistReceiptDocuments(mergedDocs, physicalTotal, quarantinePayload);
+      addToast(
+        'warning',
+        'Document-physical mismatch · GRN quarantined · Procurement notified · routed to Quality.',
+      );
+      onSaved({
+        ...grn,
+        status: quarantinePayload.status,
+        sourceDocuments: mergedDocs,
+        workflowSteps: quarantinePayload.workflowSteps,
+      });
+      onQuarantined?.();
+      onClose();
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to quarantine GRN');
     } finally {
       setGenerating(false);
     }
@@ -394,7 +505,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 id="grn-copy-receipt-title" className="text-lg font-bold text-slate-900">
-                📋 GRN Copy — {displayGrnNo(headerView.titleGrnNo)} {headerView.itemTitle}
+                {mode === 'confirm-receipt' ? '✓ Confirm Receipt — ' : '📋 '}
+                GRN Copy — {displayGrnNo(headerView.titleGrnNo)} {headerView.itemTitle}
               </h2>
               <p className="mt-1 text-sm text-slate-600">
                 {[headerView.shipmentBatchRef, headerView.poNo, headerView.vendorLine, headerView.warehouseCode, headerView.warehouseName]
@@ -403,6 +515,16 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {!coreChecksPass && prerequisitesMet && !hasExistingLabels ? (
+                <button
+                  type="button"
+                  disabled={generating}
+                  onClick={() => void handleMismatchQuarantine()}
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generating ? 'Processing…' : 'Report Mismatch & Send to QC'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={!receiptChecksPass || generating}
@@ -584,7 +706,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="mt-4 grid gap-3 sm:grid-cols-4 text-sm">
               <div className="rounded-lg bg-slate-50 px-3 py-2">
                 <p className="text-xs text-slate-500 uppercase tracking-wide">Received Packs</p>
                 <p className="font-semibold text-slate-900">{receivedPacks} / {packRows.length}</p>
@@ -596,10 +718,42 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 </p>
               </div>
               <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-500 uppercase tracking-wide">Billed Qty</p>
-                <p className="font-semibold text-slate-900">
-                  {(lineItem.invoiceQty || lineItem.rcvdQty).toLocaleString('en-IN')} {lineItem.unit ?? 'kg'}
-                </p>
+                <label htmlFor="grn-billed-qty" className="text-xs text-slate-500 uppercase tracking-wide">
+                  Billed Qty
+                </label>
+                {docsLocked ? (
+                  <p className="font-semibold text-slate-900">
+                    {billedQty.toLocaleString('en-IN')} {lineItem.unit ?? 'kg'}
+                  </p>
+                ) : (
+                  <input
+                    id="grn-billed-qty"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={billedQty}
+                    onChange={(e) => setBilledQty(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 tabular-nums"
+                  />
+                )}
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-2">
+                <label htmlFor="grn-verified-price" className="text-xs text-slate-500 uppercase tracking-wide">
+                  Per Unit Price (invoice)
+                </label>
+                {docsLocked ? (
+                  <p className="font-semibold text-slate-900">₹{verifiedUnitPrice.toLocaleString('en-IN')}</p>
+                ) : (
+                  <input
+                    id="grn-verified-price"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={verifiedUnitPrice}
+                    onChange={(e) => setVerifiedUnitPrice(Math.max(0, Number(e.target.value) || 0))}
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 tabular-nums"
+                  />
+                )}
               </div>
             </div>
           </section>
@@ -649,14 +803,16 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 </tbody>
               </table>
             </div>
-            <p className={`mt-3 text-sm font-medium ${receiptChecksPass ? 'text-emerald-700' : 'text-amber-700'}`}>
+            <p className={`mt-3 text-sm font-medium ${receiptChecksPass ? 'text-emerald-700' : coreChecksPass ? 'text-amber-700' : 'text-rose-700'}`}>
               {receiptChecksPass
                 ? hasExistingLabels
                   ? '✓ Receipt checks pass. Regenerate Labels is enabled if you need new QRs; otherwise save draft and continue.'
-                  : '✓ All checks pass. Generate Labels is enabled · on click → rack labels print (one per pack) · GRN moves to VERIFIED · ready for QC.'
-                : hasExistingLabels
-                  ? 'Labels are on file. Complete document uploads and shipment photos to enable Regenerate Labels (or save draft and close).'
-                  : 'Complete document uploads, pack counts, and shipment photos to enable Generate Labels.'}
+                  : '✓ All checks pass. Generate Labels is enabled · on click → rack labels print (one per pack) · GRN moves to VERIFIED · ready for QC routing.'
+                : !coreChecksPass && prerequisitesMet
+                  ? '✗ Document-physical mismatch detected. Use Report Mismatch & Send to QC — Procurement will be notified and the GRN routes to Quality.'
+                  : hasExistingLabels
+                    ? 'Labels are on file. Complete document uploads and shipment photos to enable Regenerate Labels (or save draft and close).'
+                    : 'Complete document uploads, pack counts, shipment photos, and billed qty/price before proceeding.'}
             </p>
           </section>
 

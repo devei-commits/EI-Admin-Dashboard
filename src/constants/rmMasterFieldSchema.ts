@@ -480,42 +480,6 @@ export const RM_MASTER_FIELDS: RmMasterFieldDef[] = [
     "required": false
   },
   {
-    "key": "arNumber",
-    "label": "AR Number",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "text",
-    "required": true
-  },
-  {
-    "key": "coaRequired",
-    "label": "CoA Required",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "select",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ]
-  },
-  {
-    "key": "acceptanceSpecMin",
-    "label": "Acceptance Spec (min)",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "text",
-    "required": false
-  },
-  {
-    "key": "acceptanceSpecMax",
-    "label": "Acceptance Spec (max)",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "text",
-    "required": false
-  },
-  {
     "key": "physicalFormSolid",
     "label": "Physical Form — Solid",
     "module": "quality",
@@ -1132,42 +1096,6 @@ export const RM_MASTER_FIELDS_BY_MODULE: Record<RmMasterModuleSlug, RmMasterFiel
   ],
   "quality": [
     {
-      "key": "arNumber",
-      "label": "AR Number",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "text",
-      "required": true
-    },
-    {
-      "key": "coaRequired",
-      "label": "CoA Required",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "select",
-      "required": true,
-      "options": [
-        "Yes",
-        "No"
-      ]
-    },
-    {
-      "key": "acceptanceSpecMin",
-      "label": "Acceptance Spec (min)",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "text",
-      "required": false
-    },
-    {
-      "key": "acceptanceSpecMax",
-      "label": "Acceptance Spec (max)",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "text",
-      "required": false
-    },
-    {
       "key": "physicalFormSolid",
       "label": "Physical Form — Solid",
       "module": "quality",
@@ -1404,10 +1332,6 @@ export const RM_MASTER_FIELD_KEYS = [
   "msdsSdsNotesLink",
   "storageCondition",
   "dispensingDirection",
-  "arNumber",
-  "coaRequired",
-  "acceptanceSpecMin",
-  "acceptanceSpecMax",
   "physicalFormSolid",
   "physicalFormLiquid",
   "preferredVendor",

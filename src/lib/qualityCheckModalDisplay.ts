@@ -17,6 +17,7 @@ import {
   resolveQualitySection,
   type QualityOrderManagementInput,
 } from './qualityOrderManagementTableDisplay';
+import { resolveThirdPartyQcAction } from './thirdPartyLabTest';
 
 export type QcWorkflowStage = 'QC INITIATED' | 'QC COMPLETED' | 'APPROVED' | 'CLOSED';
 
@@ -182,10 +183,5 @@ export function buildQualityCheckAttachmentSummary(rows: QualityCheckAttachmentR
 }
 
 export function thirdPartyActionLabel(test: { method: string; result: string; acceptance?: string }): string | null {
-  if (!isThirdPartyQcTest(test as Parameters<typeof isThirdPartyQcTest>[0])) return null;
-  const poRef = String(test.acceptance ?? '').trim();
-  if (poRef && /PO-/i.test(poRef)) return `3rd Party · ${poRef}`;
-  const result = String(test.result ?? '').trim();
-  if (!result || /^pending$/i.test(result)) return '🧫 Trigger 3rd-party';
-  return null;
+  return resolveThirdPartyQcAction(test as Parameters<typeof resolveThirdPartyQcAction>[0])?.label ?? null;
 }

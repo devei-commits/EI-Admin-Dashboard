@@ -21,9 +21,9 @@ import {
   buildQualityCheckHeaderTitle,
   canCompleteQualityCheck,
   resolveQcWorkflowStages,
-  thirdPartyActionLabel,
   type QcWorkflowStage,
 } from '../../lib/qualityCheckModalDisplay';
+import { resolveThirdPartyQcAction } from '../../lib/thirdPartyLabTest';
 import {
   deriveGrnQcStatusFromSpecs,
   grnQcCompletionBlockers,
@@ -31,10 +31,11 @@ import {
   type GrnQcSpecsStored,
   updateGrnQcTestAt,
 } from '../../lib/grnQcSpecs';
-import { isThirdPartyQcTest } from '../../lib/grnQcAutoPass';
 import { GrnQcResultInput } from './GrnQcResultInput';
 import QualityCheckAttachmentsSection from './QualityCheckAttachmentsSection';
+import ThirdPartyTestModal from './ThirdPartyTestModal';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
+import { extractThirdPartyPoRef, type ThirdPartyReleasePayload } from '../../lib/thirdPartyLabTest';
 
 type QualityCheckModalProps = {
   row: QualityOrderManagementRow;
@@ -43,6 +44,7 @@ type QualityCheckModalProps = {
   readOnly?: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onThirdPartyReleased?: () => void;
 };
 
 type QcStatusLabel = 'Under test' | 'Passed' | 'Rejected';
@@ -62,6 +64,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
   readOnly = false,
   onClose,
   onSaved,
+  onThirdPartyReleased,
 }) => {
   const [grn, setGrn] = useState<GRNRecordFromApi | null>(null);
   const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(null);
@@ -71,6 +74,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [assignedTo, setAssignedTo] = useState('');
   const [qcBy, setQcBy] = useState('');
+  const [thirdPartyTestIdx, setThirdPartyTestIdx] = useState<number | null>(null);
 
   const loadData = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -154,6 +158,24 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
   };
 
   const inputsDisabled = saving || readOnly;
+
+  const thirdPartyModalTest =
+    thirdPartyTestIdx != null && qcLine ? qcLine.tests[thirdPartyTestIdx] ?? null : null;
+
+  const handleThirdPartyReleased = async (payload: ThirdPartyReleasePayload): Promise<void> => {
+    if (!grn || !qcSpecs || !qcLine || thirdPartyTestIdx == null) return;
+    const nextSpecs = updateGrnQcTestAt(qcSpecs, qcLine.lineItemId, thirdPartyTestIdx, {
+      acceptance: payload.poRef,
+      result: 'pending',
+      thirdPartyOrder: payload.order,
+    });
+    setQcSpecs(nextSpecs);
+    await updateGRN(grn.id, {
+      assignedTo: assignedTo || undefined,
+      qcBy: qcBy || undefined,
+      qcSpecs: nextSpecs,
+    });
+  };
 
   const approverOptions = useMemo(() => {
     const set = new Set(assigneeOptions);
@@ -345,7 +367,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                       <tbody>
                         {qcLine.tests.map((test, testIdx) => {
                           const verdict = buildChecklistVerdict(test);
-                          const thirdParty = thirdPartyActionLabel(test);
+                          const thirdPartyAction = resolveThirdPartyQcAction(test);
                           return (
                             <tr key={`${test.specId}-${testIdx}`} className="border-b border-slate-100 align-top">
                               <td className="px-3 py-3 text-slate-500 tabular-nums">{testIdx + 1}</td>
@@ -378,25 +400,32 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                                 {verdict.label}
                               </td>
                               <td className="px-3 py-3">
-                                {isThirdPartyQcTest(test) ? (
-                                  thirdParty ? (
+                                {thirdPartyAction ? (
+                                  thirdPartyAction.mode === 'trigger' ? (
                                     readOnly ? (
-                                      <span className="text-[11px] font-semibold text-violet-800">{thirdParty}</span>
+                                      <span className="text-[11px] text-slate-500">—</span>
                                     ) : (
                                       <button
                                         type="button"
                                         className="text-[11px] font-semibold text-violet-800 hover:underline"
-                                        onClick={() => {
-                                          if (thirdParty.startsWith('🧫')) {
-                                            window.alert('3rd-party lab PO flow will open here (§4B).');
-                                          }
-                                        }}
+                                        onClick={() => setThirdPartyTestIdx(testIdx)}
                                       >
-                                        {thirdParty}
+                                        {thirdPartyAction.label}
                                       </button>
                                     )
+                                  ) : readOnly ? (
+                                    <span className="text-[11px] font-semibold text-violet-800">
+                                      {thirdPartyAction.label}
+                                    </span>
                                   ) : (
-                                    '—'
+                                    <button
+                                      type="button"
+                                      className="text-[11px] font-semibold text-violet-800 hover:underline"
+                                      onClick={() => setThirdPartyTestIdx(testIdx)}
+                                      title="View released PO — new request disabled while result is pending"
+                                    >
+                                      {thirdPartyAction.label}
+                                    </button>
                                   )
                                 ) : (
                                   '—'
@@ -471,6 +500,25 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
           )}
         </div>
       </div>
+
+      {grn && qcLine && thirdPartyModalTest && thirdPartyTestIdx != null ? (
+        <ThirdPartyTestModal
+          row={row}
+          grn={grn}
+          qcLine={qcLine}
+          test={thirdPartyModalTest}
+          testIndex={thirdPartyTestIdx}
+          qcApprover={qcBy || undefined}
+          existingPoRef={
+            extractThirdPartyPoRef(thirdPartyModalTest.acceptance) ??
+            thirdPartyModalTest.thirdPartyOrder?.poNo ??
+            null
+          }
+          onClose={() => setThirdPartyTestIdx(null)}
+          onReleased={handleThirdPartyReleased}
+          onReleasedToTracking={onThirdPartyReleased}
+        />
+      ) : null}
     </div>
   );
 };

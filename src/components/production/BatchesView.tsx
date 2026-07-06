@@ -20,8 +20,11 @@ import {
   batchLifecycleLabel,
   batchMatchesLifecycleFilter,
   canShowPackagingActions,
+  getProductionStatusBucket,
   formatUnifiedBatchLabel,
   type BatchLifecycleFilter,
+  type BmrStatus,
+  type BprStatus,
 } from '../../lib/batchLifecycle';
 import type { MRNRecordFromApi } from '../../services/mrn.service';
 import type { ProductionReservedItemRow } from '../../services/production.service';
@@ -149,25 +152,51 @@ export function BatchesView<T extends BatchesViewBatch>({
     [outboundMrns, effectiveRmConnected, effectivePmConnected],
   );
 
-  const activeBatches = useMemo(
-    () => (filter === 'fg_ready' ? batches : batches.filter((b) => b.bprStatus !== 'fg_ready')),
-    [batches, filter],
-  );
-
-  const productOptions = useMemo(
-    () => Array.from(new Set(activeBatches.map((b) => b.productName).filter(Boolean))).sort(),
-    [activeBatches],
-  );
+  const statusCounts = useMemo(() => {
+    const counts = {
+      total: batches.length,
+      dispensing: 0,
+      production: 0,
+      filling: 0,
+      packing: 0,
+      fgReady: 0,
+    };
+    for (const batch of batches) {
+      const bucket = getProductionStatusBucket(
+        {
+          bmrStatus: batch.bmrStatus as BmrStatus,
+          bprStatus: batch.bprStatus as BprStatus,
+          bulkBatchAccepted: batch.bulkBatchAccepted,
+          fillBatchAccepted: batch.fillBatchAccepted,
+          fgBatchAccepted: batch.fgBatchAccepted,
+        },
+        {
+          effectiveRmConnected: displayOpts.effectiveRmConnected(batch),
+          effectivePmConnected: displayOpts.effectivePmConnected(batch),
+        },
+      );
+      if (bucket === 'dispensing') counts.dispensing += 1;
+      else if (bucket === 'production') counts.production += 1;
+      else if (bucket === 'filling') counts.filling += 1;
+      else if (bucket === 'packing') counts.packing += 1;
+      else if (bucket === 'fg_ready') counts.fgReady += 1;
+    }
+    return counts;
+  }, [batches, displayOpts]);
 
   const statusFiltered = useMemo(() => {
-    const pool = filter === 'all' ? activeBatches : batches;
-    return pool.filter((b) =>
+    return batches.filter((b) =>
       batchMatchesLifecycleFilter(b, filter, {
         effectiveRmConnected: displayOpts.effectiveRmConnected(b),
         effectivePmConnected: displayOpts.effectivePmConnected(b),
       }),
     );
-  }, [filter, activeBatches, batches, displayOpts]);
+  }, [filter, batches, displayOpts]);
+
+  const productOptions = useMemo(
+    () => Array.from(new Set(statusFiltered.map((b) => b.productName).filter(Boolean))).sort(),
+    [statusFiltered],
+  );
 
   const productFiltered = productFilter
     ? statusFiltered.filter((b) => b.productName === productFilter)
@@ -184,20 +213,19 @@ export function BatchesView<T extends BatchesViewBatch>({
       )
     : productFiltered;
 
-  const pendingCount = batches.filter(
-    (b) => b.bmrStatus === 'draft' || b.bmrStatus === 'batch_confirmed',
-  ).length;
-  const inMfgCount = batches.filter((b) =>
-    ['rm_reserved', 'scheduled', 'rm_connected', 'dispensing', 'in_production'].includes(b.bmrStatus),
-  ).length;
-  const bulkQcCount = batches.filter((b) => b.bmrStatus === 'bulk_qc').length;
-  const packagingCount = batches.filter(
-    (b) => canShowPackagingActions(b) && b.bprStatus !== 'fg_ready' && b.bprStatus !== 'draft',
-  ).length;
-  const fgReadyCount = batches.filter((b) => b.bprStatus === 'fg_ready').length;
   const failedCount = batches.filter(
     (b) => b.bmrStatus === 'qc_failed' || b.bprStatus === 'qc_failed',
   ).length;
+
+  const statusChips: { k: BatchLifecycleFilter; l: string; count: number }[] = [
+    { k: 'all', l: 'Batches', count: statusCounts.total },
+    { k: 'dispensing', l: 'Dispensing', count: statusCounts.dispensing },
+    { k: 'production', l: 'Production', count: statusCounts.production },
+    { k: 'filling', l: 'Filling', count: statusCounts.filling },
+    { k: 'packing', l: 'Packing', count: statusCounts.packing },
+    { k: 'fg_ready', l: 'FG Ready', count: statusCounts.fgReady },
+    ...(failedCount ? [{ k: 'qc_failed' as const, l: 'QC Failed', count: failedCount }] : []),
+  ];
 
   const clearFilters = (): void => {
     setFilter('all');
@@ -225,46 +253,23 @@ export function BatchesView<T extends BatchesViewBatch>({
         </div>
       </div>
 
-      <div className="kpi-row grid grid-cols-2 sm:grid-cols-6 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0" id="batches-kpis">
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Pending</div>
-          <div className="kpi-val text-lg font-extrabold text-amber-600">{pendingCount}</div>
-        </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">In Mfg</div>
-          <div className="kpi-val text-lg font-extrabold text-orange-600">{inMfgCount}</div>
-        </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Bulk QC</div>
-          <div className="kpi-val text-lg font-extrabold text-blue-600">{bulkQcCount}</div>
-        </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Packaging</div>
-          <div className="kpi-val text-lg font-extrabold text-purple-600">{packagingCount}</div>
-        </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">FG Ready</div>
-          <div className="kpi-val text-lg font-extrabold text-emerald-600">{fgReadyCount}</div>
-        </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">QC Failed</div>
-          <div className="kpi-val text-lg font-extrabold text-red-600">{failedCount}</div>
-        </div>
+      <div className="kpi-row grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0" id="batches-kpis">
+        {statusChips
+          .filter((s) => s.k !== 'qc_failed')
+          .map((s) => (
+            <div
+              key={s.k}
+              className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"
+            >
+              <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">{s.l}</div>
+              <div className="kpi-val text-lg font-extrabold text-gray-900">{s.count}</div>
+            </div>
+          ))}
       </div>
 
       <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-gray-100 bg-white shrink-0">
         <span className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider">Status:</span>
-        {(
-          [
-            { k: 'all' as const, l: 'Active' },
-            { k: 'pending' as const, l: 'Pending' },
-            { k: 'in_mfg' as const, l: 'In Mfg' },
-            { k: 'bulk_qc' as const, l: 'Bulk QC' },
-            { k: 'packaging' as const, l: 'Packaging' },
-            { k: 'fg_ready' as const, l: 'FG Ready' },
-            ...(failedCount ? [{ k: 'qc_failed' as const, l: `QC Failed (${failedCount})` }] : []),
-          ] as { k: BatchLifecycleFilter; l: string }[]
-        ).map((s) => (
+        {statusChips.map((s) => (
           <button
             key={s.k}
             type="button"
@@ -277,7 +282,7 @@ export function BatchesView<T extends BatchesViewBatch>({
                   : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
             }`}
           >
-            {s.l}
+            {s.l} · {s.count}
           </button>
         ))}
         <div className="w-px h-[18px] bg-gray-200" />

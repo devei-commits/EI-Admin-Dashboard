@@ -2914,63 +2914,6 @@ export const PM_MASTER_FIELDS: PmMasterFieldDef[] = [
     }
   },
   {
-    "key": "arNumber",
-    "label": "AR Number",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "text",
-    "required": true
-  },
-  {
-    "key": "qaQcTestPlanRef",
-    "label": "QC Test Plan Reference",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "text",
-    "required": false
-  },
-  {
-    "key": "aqlSamplingPlan",
-    "label": "AQL Sampling Plan",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "select",
-    "required": true,
-    "options": [
-      "Level I",
-      "Level II (Normal)",
-      "Level III",
-      "Tightened",
-      "Reduced"
-    ]
-  },
-  {
-    "key": "qaCoaRequired",
-    "label": "CoA from Vendor Required",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "select",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ]
-  },
-  {
-    "key": "qcDecisionAuthority",
-    "label": "QC Decision Authority",
-    "module": "quality",
-    "moduleCode": "QUAL",
-    "type": "select",
-    "required": true,
-    "options": [
-      "WH QC",
-      "Plant QA",
-      "Vendor Cert",
-      "R&D"
-    ]
-  },
-  {
     "key": "preferredVendor",
     "label": "Preferred Vendor",
     "module": "vendors",
@@ -5939,65 +5882,7 @@ export const PM_MASTER_FIELDS_BY_MODULE: Record<PmMasterModuleSlug, PmMasterFiel
       }
     }
   ],
-  "quality": [
-    {
-      "key": "arNumber",
-      "label": "AR Number",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "text",
-      "required": true
-    },
-    {
-      "key": "qaQcTestPlanRef",
-      "label": "QC Test Plan Reference",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "text",
-      "required": false
-    },
-    {
-      "key": "aqlSamplingPlan",
-      "label": "AQL Sampling Plan",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "select",
-      "required": true,
-      "options": [
-        "Level I",
-        "Level II (Normal)",
-        "Level III",
-        "Tightened",
-        "Reduced"
-      ]
-    },
-    {
-      "key": "qaCoaRequired",
-      "label": "CoA from Vendor Required",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "select",
-      "required": true,
-      "options": [
-        "Yes",
-        "No"
-      ]
-    },
-    {
-      "key": "qcDecisionAuthority",
-      "label": "QC Decision Authority",
-      "module": "quality",
-      "moduleCode": "QUAL",
-      "type": "select",
-      "required": true,
-      "options": [
-        "WH QC",
-        "Plant QA",
-        "Vendor Cert",
-        "R&D"
-      ]
-    }
-  ],
+  "quality": [],
   "vendors": [
     {
       "key": "preferredVendor",
@@ -6288,11 +6173,6 @@ export const PM_MASTER_FIELD_KEYS = [
   "images",
   "codingTemplateBatchMfgExpMrp",
   "barcodeType",
-  "arNumber",
-  "qaQcTestPlanRef",
-  "aqlSamplingPlan",
-  "qaCoaRequired",
-  "qcDecisionAuthority",
   "preferredVendor",
   "alternateVendor",
   "moqStandard",

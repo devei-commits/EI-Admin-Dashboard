@@ -4,15 +4,25 @@ import QualityOverview from './quality/Overview';
 import InboundQcQueue from './quality/InboundQcQueue';
 import OrderManagementQueue from './quality/OrderManagementQueue';
 import QcHistory from './quality/QcHistory';
+import ThirdPartyTestTracking from './quality/ThirdPartyTestTracking';
+import QualityDevelopmentsSection from './quality/QualityDevelopmentsSection';
+import { qualityDevelopmentSectionByRouteId } from '../constants/qualityDevelopmentsStatic';
 
-const VALID_SECTIONS = ['overview', 'order-management', 'inbound-qc', 'quarantine', 'qc-history'] as const;
+const OPERATIONS_SECTIONS = ['overview', 'order-management', 'inbound-qc', 'quarantine', 'qc-history', 'third-party-tracking'] as const;
+const DEVELOPMENT_ROUTE_IDS = ['rm-developments', 'pm-developments', 'pis-developments'] as const;
 
-type QualitySection = (typeof VALID_SECTIONS)[number];
+type OperationsSection = (typeof OPERATIONS_SECTIONS)[number];
+type QualitySection = OperationsSection | (typeof DEVELOPMENT_ROUTE_IDS)[number];
 
 function sectionFromPathname(pathname: string): QualitySection {
   const segment = pathname.replace(/^\/quality\/?/, '').toLowerCase().split('/')[0] || '';
   if (segment === 'quarantine') return 'order-management';
-  return VALID_SECTIONS.includes(segment as QualitySection) ? (segment as QualitySection) : 'overview';
+  if (DEVELOPMENT_ROUTE_IDS.includes(segment as (typeof DEVELOPMENT_ROUTE_IDS)[number])) {
+    return segment as (typeof DEVELOPMENT_ROUTE_IDS)[number];
+  }
+  return OPERATIONS_SECTIONS.includes(segment as OperationsSection)
+    ? (segment as OperationsSection)
+    : 'overview';
 }
 
 const QualityPage = (): JSX.Element => {
@@ -26,6 +36,11 @@ const QualityPage = (): JSX.Element => {
   };
 
   const renderContent = (): JSX.Element => {
+    const developmentSection = qualityDevelopmentSectionByRouteId(activeSection);
+    if (developmentSection) {
+      return <QualityDevelopmentsSection config={developmentSection} />;
+    }
+
     switch (activeSection) {
       case 'order-management':
       case 'quarantine':
@@ -34,6 +49,8 @@ const QualityPage = (): JSX.Element => {
         return <InboundQcQueue />;
       case 'qc-history':
         return <QcHistory />;
+      case 'third-party-tracking':
+        return <ThirdPartyTestTracking />;
       case 'overview':
       default:
         return <QualityOverview />;

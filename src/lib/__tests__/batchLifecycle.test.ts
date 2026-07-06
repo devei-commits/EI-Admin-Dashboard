@@ -6,10 +6,12 @@ import {
   bmrBulkQcReleased,
   canReservePmForBatchLifecycle,
   canShowPackagingActions,
+  countProductionStatusBuckets,
   formatUnifiedBatchLabel,
   formatUnifiedBatchLabelShort,
   getBatchLifecycleDisplayStage,
   getBatchLifecycleStage,
+  getProductionStatusBucket,
   isPackagingPhase,
   pipelineLifecycleIndex,
 } from '../batchLifecycle';
@@ -109,5 +111,59 @@ describe('batchLifecycle', () => {
     expect(formatUnifiedBatchLabelShort({ batchNo: 'B-2026-007', batchIndex: 2, totalBatches: 3, bmrNo: 'BMR-2026-001' })).toBe(
       'B-2026-007',
     );
+  });
+
+  it('maps batches to production header status buckets', () => {
+    expect(getProductionStatusBucket({ ...baseBatch, bmrStatus: 'dispensing' })).toBe('dispensing');
+    expect(getProductionStatusBucket({ ...baseBatch, bmrStatus: 'in_production' })).toBe('production');
+    expect(
+      getProductionStatusBucket({
+        ...baseBatch,
+        bmrStatus: 'cleared',
+        bprStatus: 'filling',
+        bulkBatchAccepted: true,
+      }),
+    ).toBe('filling');
+    expect(
+      getProductionStatusBucket({
+        ...baseBatch,
+        bmrStatus: 'cleared',
+        bprStatus: 'packaging',
+        bulkBatchAccepted: true,
+      }),
+    ).toBe('packing');
+    expect(getProductionStatusBucket({ ...baseBatch, bprStatus: 'fg_ready' })).toBe('fg_ready');
+    expect(getProductionStatusBucket({ ...baseBatch, bmrStatus: 'draft' })).toBeNull();
+  });
+
+  it('counts production header status buckets across batches', () => {
+    const counts = countProductionStatusBuckets([
+      { ...baseBatch, bmrStatus: 'dispensing' },
+      { ...baseBatch, bmrStatus: 'in_production' },
+      { ...baseBatch, bmrStatus: 'cleared', bprStatus: 'filling', bulkBatchAccepted: true },
+      { ...baseBatch, bmrStatus: 'cleared', bprStatus: 'packaging', bulkBatchAccepted: true },
+      { ...baseBatch, bprStatus: 'fg_ready' },
+      { ...baseBatch, bmrStatus: 'draft' },
+    ]);
+    expect(counts).toEqual({
+      total: 6,
+      dispensing: 1,
+      production: 1,
+      filling: 1,
+      packing: 1,
+      fgReady: 1,
+    });
+  });
+
+  it('filters batches by granular production status', () => {
+    const dispensing = { ...baseBatch, bmrStatus: 'dispensing' as const };
+    expect(batchMatchesLifecycleFilter(dispensing, 'dispensing')).toBe(true);
+    expect(batchMatchesLifecycleFilter(dispensing, 'production')).toBe(false);
+    expect(
+      batchMatchesLifecycleFilter(
+        { ...baseBatch, bmrStatus: 'cleared', bprStatus: 'packaging', bulkBatchAccepted: true },
+        'packing',
+      ),
+    ).toBe(true);
   });
 });

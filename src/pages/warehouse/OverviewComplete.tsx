@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
+import RequestTransferModal from '../../components/warehouse/RequestTransferModal';
 import { parseQtyInputString } from '../../utils/qtyInput';
 import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
 
@@ -242,6 +243,7 @@ const OutboundDashboard = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [initiatingTransfer, setInitiatingTransfer] = useState(false);
   const [initiateModalOpen, setInitiateModalOpen] = useState(false);
+  const [requestTransferOpen, setRequestTransferOpen] = useState(false);
   const [initiateSelectedMrnIds, setInitiateSelectedMrnIds] = useState<Record<string, boolean>>({});
   const [initiateLineSelection, setInitiateLineSelection] = useState<Record<string, boolean>>({});
   const toastTimerRef = useRef<number | null>(null);
@@ -436,6 +438,7 @@ const OutboundDashboard = () => {
         )
       );
       showToast('Changes saved.');
+      closePickPanel();
     } catch (e) {
       showToast(getApiErrorMessage(e) || 'Failed to save changes', 'error');
     }
@@ -786,20 +789,29 @@ const OutboundDashboard = () => {
           <div className="p-6 border-b border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h1 className="text-xl font-bold text-slate-900">Outbound transfers</h1>
-              <button
-                type="button"
-                onClick={openInitiateModal}
-                disabled={savedPickMrns.length === 0}
-                title={
-                  savedPickMrns.length === 0
-                    ? 'No saved picks (In Pick) — assign picker and Save Pick on a request first.'
-                    : 'Dispatch saved pick requests with logistics details.'
-                }
-                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
-              >
-                Initiate Transfer
-                {savedPickMrns.length > 0 ? ` (${savedPickMrns.length})` : ''}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRequestTransferOpen(true)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Request Transfer
+                </button>
+                <button
+                  type="button"
+                  onClick={openInitiateModal}
+                  disabled={savedPickMrns.length === 0}
+                  title={
+                    savedPickMrns.length === 0
+                      ? 'No saved picks (In Pick) — assign picker and Save Pick on a request first.'
+                      : 'Dispatch saved pick requests with logistics details.'
+                  }
+                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
+                >
+                  Initiate Transfer
+                  {savedPickMrns.length > 0 ? ` (${savedPickMrns.length})` : ''}
+                </button>
+              </div>
             </div>
 
             {/* Filter Tabs */}
@@ -1510,6 +1522,15 @@ const OutboundDashboard = () => {
           </div>
         </div>
       )}
+      {requestTransferOpen ? (
+        <RequestTransferModal
+          onClose={() => setRequestTransferOpen(false)}
+          onCreated={(created) => {
+            setMrnData((prev) => [mapApiToMRN(created), ...prev]);
+            showToast(`Transfer request ${created.mrnNo} created`);
+          }}
+        />
+      ) : null}
     </div>
   );
 };
