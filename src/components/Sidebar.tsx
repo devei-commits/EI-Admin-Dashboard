@@ -147,7 +147,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
     '/vendor-client',
     '/universal-swap',
     '/item-groups',
-    '/items-list'
+    '/items-list',
+    '/quality-spec-rules'
   ].includes(location.pathname) || location.pathname.startsWith('/quotations');
 
   // Auto-open dropdown when navigating to enquiry pages, close when navigating away
@@ -759,6 +760,23 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                           </svg>
                           <span>Item Groups</span>
+                        </PreloadNavLink>
+                      </li>
+                    )}
+                    {showInventory && (
+                      <li>
+                        <PreloadNavLink
+                          to="/quality-spec-rules"
+                          className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
+                            ? "text-slate-900 font-medium bg-slate-100/50"
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            }`}
+                          onClick={(e) => handleNavClick(e)}
+                        >
+                          <svg className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Quality Spec Rules</span>
                         </PreloadNavLink>
                       </li>
                     )}

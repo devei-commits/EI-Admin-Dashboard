@@ -8,12 +8,13 @@ import {
   type StockByLocationPayload,
   fetchUsageStats,
   importInventorySummaryExcel,
-  importMainWarehouseSihExcel,
   importMl1SihExcel,
   importMl2SihExcel,
+  postWarehouseSihExcelChunk,
   type WarehouseSihExcelImportResponse,
   inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
+import { parseWarehouseSihWorkbook, chunkWarehouseSihRows } from '../../lib/warehouseSihExcelParse';
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
 import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
@@ -1109,6 +1110,9 @@ const WarehouseInventory = () => {
   const ml2SihFileRef = useRef<HTMLInputElement>(null);
   const [importingInventoryExcel, setImportingInventoryExcel] = useState(false);
   const [importingSihBucket, setImportingSihBucket] = useState<'warehouse' | 'ml1' | 'ml2' | null>(null);
+  /** Percent complete for the chunked main-warehouse SIH upload (null when not running). */
+  const [mainWarehouseSihPercent, setMainWarehouseSihPercent] = useState<number | null>(null);
+  const WAREHOUSE_SIH_CHUNK_SIZE = 200;
 
   const formatSihImportResult = (label: string, res: WarehouseSihExcelImportResponse) => {
     const s = res.summary;
@@ -1160,6 +1164,67 @@ const WarehouseInventory = () => {
       alert(message);
     } finally {
       setImportingSihBucket(null);
+    }
+  };
+
+  /**
+   * Chunked main-warehouse SIH upload: parses the workbook in the browser (see
+   * src/lib/warehouseSihExcelParse.ts) and POSTs bounded row batches, so a large file never
+   * produces one long-running request that can time out / appear stuck.
+   */
+  const handleMainWarehouseSihExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportingSihBucket('warehouse');
+    setMainWarehouseSihPercent(0);
+    try {
+      const buffer = await file.arrayBuffer();
+      const parsed = parseWarehouseSihWorkbook(buffer);
+      if ('error' in parsed) {
+        alert(parsed.error);
+        return;
+      }
+      const { sheetName, rows } = parsed;
+      if (rows.length === 0) {
+        alert(`No data rows found on "${sheetName}". Need sku (or item_name) and SIH.`);
+        return;
+      }
+
+      const chunks = chunkWarehouseSihRows(rows, WAREHOUSE_SIH_CHUNK_SIZE);
+      const aggregated = { rm_updated: 0, pm_updated: 0, pr_updated: 0, created: 0, skipped: 0, errors: 0 };
+
+      for (let i = 0; i < chunks.length; i += 1) {
+        const res = await postWarehouseSihExcelChunk({
+          rows: chunks[i],
+          chunk_index: i,
+          chunk_total: chunks.length,
+        });
+        const s = res.summary;
+        aggregated.rm_updated += s?.rm_updated ?? 0;
+        aggregated.pm_updated += s?.pm_updated ?? 0;
+        aggregated.pr_updated += s?.pr_updated ?? 0;
+        aggregated.created += s?.created ?? 0;
+        aggregated.skipped += s?.skipped ?? 0;
+        aggregated.errors += s?.errors ?? 0;
+        setMainWarehouseSihPercent(res.percent_complete ?? Math.round(((i + 1) / chunks.length) * 100));
+      }
+
+      alert(
+        formatSihImportResult('Main warehouse SIH', {
+          sheet_name: sheetName,
+          rows_total: rows.length,
+          summary: aggregated,
+        })
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
+      refetchWarehouseInventory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Main warehouse SIH import failed';
+      alert(message);
+    } finally {
+      setImportingSihBucket(null);
+      setMainWarehouseSihPercent(null);
     }
   };
   useEffect(() => {
@@ -1530,9 +1595,7 @@ const WarehouseInventory = () => {
                     type="file"
                     accept=".xlsx,.xlsm"
                     className="hidden"
-                    onChange={(e) =>
-                      handleSihBucketExcelChange(e, 'warehouse', importMainWarehouseSihExcel, 'Main warehouse SIH')
-                    }
+                    onChange={handleMainWarehouseSihExcelChange}
                   />
                   <input
                     ref={ml1SihFileRef}
@@ -1562,9 +1625,11 @@ const WarehouseInventory = () => {
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => mainWarehouseSihFileRef.current?.click()}
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
-                    title="Main warehouse workbook — Sheet3 with sku, item_name, SIH"
+                    title="Main warehouse workbook — CONSOLIDATED SIH sheet with sku, item_name, SIH"
                   >
-                    {importingSihBucket === 'warehouse' ? 'Importing…' : 'Upload WH SIH'}
+                    {importingSihBucket === 'warehouse'
+                      ? `Importing… ${mainWarehouseSihPercent ?? 0}%`
+                      : 'Upload WH SIH'}
                   </button>
                   <button
                     type="button"

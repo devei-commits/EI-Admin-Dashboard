@@ -731,6 +731,30 @@ export function importMainWarehouseSihExcel(
   return importSihBucketExcel('warehouse', file, options);
 }
 
+export interface WarehouseSihExcelChunkResponse extends WarehouseSihExcelImportResponse {
+  chunk_index: number;
+  chunk_total: number;
+  percent_complete: number;
+  rows_in_chunk: number;
+}
+
+/**
+ * Chunked variant of the main-warehouse SIH import: the caller parses the workbook client-side
+ * (see src/lib/warehouseSihExcelParse.ts) and POSTs bounded row batches here — avoids one
+ * long-running request for large files (see Inventory.tsx's handleMainWarehouseSihExcelChange).
+ */
+export function postWarehouseSihExcelChunk(body: {
+  rows: Array<{ excel_row: number; sku: string; item_name: string; sih: number | null }>;
+  chunk_index: number;
+  chunk_total: number;
+  details?: boolean;
+}): Promise<WarehouseSihExcelChunkResponse> {
+  return api.post<WarehouseSihExcelChunkResponse>(
+    '/api/v1/warehouse-inventory/import-sih-excel/warehouse/chunk',
+    body
+  );
+}
+
 /** ML1 workbook (STOCK IN HAND sheet): sku, item_name, PHYSICAL QTY → ml1_stock. */
 export function importMl1SihExcel(
   file: File,

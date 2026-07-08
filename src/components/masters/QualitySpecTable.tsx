@@ -86,19 +86,19 @@ export function QualitySpecTable({
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="min-w-[960px] w-full text-xs">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              <th className="px-2 py-2 text-left font-semibold min-w-[9rem]">Parameter</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[7rem]">Spec / Limit</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[7rem]">Method</th>
-              <th className="px-2 py-2 text-center font-semibold w-12">Mand</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[5rem]">Tolerance</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[5.5rem]">Frequency</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[4.5rem]">Sample</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[5.5rem]">Acceptance</th>
-              <th className="px-2 py-2 text-left font-semibold min-w-[6.5rem]">GRN output</th>
-              <th className="px-2 py-2 text-center font-semibold min-w-[9rem]">Attachments</th>
+            <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-500">
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[12rem]">Parameter</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[8.5rem]">Spec / Limit</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[9rem]">Method</th>
+              <th className="px-2 py-2.5 text-center font-semibold w-12">Mand</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Tolerance</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Frequency</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[5.5rem]">Sample</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">Acceptance</th>
+              <th className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">GRN output</th>
+              <th className="px-2 py-2.5 text-center font-semibold min-w-[10rem]">Attachments</th>
               {onEditRow ? (
-                <th className="px-2 py-2 text-center font-semibold w-16">Edit</th>
+                <th className="px-2 py-2.5 text-center font-semibold w-16">Edit</th>
               ) : null}
             </tr>
           </thead>

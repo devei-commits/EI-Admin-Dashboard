@@ -41,6 +41,7 @@ const VendorClient = lazy(() => import('./pages/VendorClient'))
 const UniversalSwap = lazy(() => import('./pages/UniversalSwap'))
 const UniversalSwapPage = lazy(() => import('./pages/UniversalSwapPage'))
 const ItemGroups = lazy(() => import('./pages/ItemGroups'))
+const QualitySpecRulesAdmin = lazy(() => import('./pages/QualitySpecRulesAdmin'))
 const ItemsList = lazy(() => import('./pages/ItemsList'))
 const QuotationsList = lazy(() => import('./pages/quotations/QuotationsList'))
 const QuoteBuilder = lazy(() => import('./pages/quotations/QuoteBuilder'))
@@ -476,6 +477,11 @@ const AppLayout = () => {
                                                  <Route path="/item-groups" element={
                                                         <ProtectedModuleRoute moduleId="inventory">
                                                                <ItemGroups />
+                                                        </ProtectedModuleRoute>
+                                                 } />
+                                                 <Route path="/quality-spec-rules" element={
+                                                        <ProtectedModuleRoute moduleId="inventory">
+                                                               <QualitySpecRulesAdmin />
                                                         </ProtectedModuleRoute>
                                                  } />
                                                  <Route path="/items-list" element={
