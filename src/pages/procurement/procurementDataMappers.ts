@@ -759,23 +759,36 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
   const request = requests.find(
     (r) => r.id === formData.requestId || r.code === formData.requestCode
   );
-  const type: RequestType = request?.type ?? 'RM';
   const items = Array.isArray(po.items) ? po.items : [];
   const rawItems: any[] = Array.isArray((po as any).rawItems) ? (po as any).rawItems : [];
+  const inferredType: RequestType = rawItems.some(
+    (i) => i?.type === 'PM' || i?.category === 'PM' || (i?.pack_material_id != null && Number(i.pack_material_id) > 0),
+  )
+    ? 'PM'
+    : 'RM';
+  const type: RequestType = request?.type ?? inferredType;
   const lineItems: DraftPOLineItem[] = rawItems.length
     ? rawItems.map((i: any, idx: number) => {
-        const qty = Number(i.quantity) || 0;
-        const rate = Number(i.rate ?? i.price) || 0;
-        const gstPct = Number(i.tax) || 18;
-        const subtotal = qty * rate;
+        const qty = Number(i.quantity ?? i.reqQty ?? i.quotedQty) || 0;
+        // Excel / Zoho imports store unitPrice (+ optional itemTotal); UI drafts historically used rate/price.
+        const rate = Number(i.rate ?? i.price ?? i.unitPrice) || 0;
+        const gstPct = Number(i.tax ?? i.taxPercent) || 18;
+        const directTotal = Number(i.itemTotal ?? i.lineTotal ?? NaN);
+        const subtotal =
+          Number.isFinite(directTotal) && directTotal > 0 ? directTotal : qty * rate;
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+        // itemTotal from Zoho is usually pre-tax line amount; still add GST for Draft PO display totals.
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
-        const codeFromApi = String(i.itemCode ?? i.code ?? '').trim();
+        const codeFromApi = String(i.itemCode ?? i.code ?? i.sku ?? '').trim();
         const leadParsed = normalizeLeadTimeDays(i.lead_time_days ?? i.leadTimeDays);
+        const lineType: RequestType =
+          i.type === 'PM' || i.category === 'PM' || (i.pack_material_id != null && Number(i.pack_material_id) > 0)
+            ? 'PM'
+            : type;
         return {
-          item: i.itemName || i.name || String(items[idx] ?? ''),
-          itemCode: codeFromApi || `EI-${type}-${String(idx + 1).padStart(3, '0')}`,
-          type,
+          item: i.itemName || i.name || i.productName || String(items[idx] ?? ''),
+          itemCode: codeFromApi || `EI-${lineType}-${String(idx + 1).padStart(3, '0')}`,
+          type: lineType,
           qty: String(i.quantity ?? qty),
           ...(leadParsed !== undefined ? { leadTimeDays: leadParsed } : {}),
           pricePerUnit: rate,
@@ -784,6 +797,7 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
           lineTotal,
           ...(i.raw_material_id != null ? { raw_material_id: Number(i.raw_material_id) } : {}),
           ...(i.pack_material_id != null ? { pack_material_id: Number(i.pack_material_id) } : {}),
+          ...(i.uom || i.unit ? { unit: String(i.uom ?? i.unit) } : {}),
         };
       })
     : items.map((name, idx) => ({
