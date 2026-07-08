@@ -59,7 +59,13 @@ export type RmMasterSectionContentProps = {
   showRmQualitySpecTable: boolean;
   canEditRmQualityCategory: boolean;
   showRmQualitySubSpecTable: boolean;
-  rmQualitySpecResolved: { categoryDisplayLabel: string; functionalSub: string };
+  rmQualitySpecResolved: {
+    categoryDisplayLabel: string;
+    functionalCategory: string;
+    functionalSub: string;
+    functionalSubSub: string;
+    subSpecPathKey: string;
+  };
   currentSubSpecRows: QualitySpecTableRow[];
   onRmQualitySpecRowsChange: (rows: QualitySpecTableRow[]) => void;
   onRmQualitySubSpecRowsChange: (rows: QualitySpecTableRow[]) => void;
@@ -296,9 +302,10 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
         {showRmQualitySpecTable ? (
           <MasterCustomQualitySpecsSection
             variant="rm"
-            entity="RM"
+            entityType="RM"
             categoryScopeKey={rmQualitySpecResolved.functionalCategory}
-            subScopePathKey={rmQualitySpecResolved.subSpecPathKey}
+            subCategoryKey={rmQualitySpecResolved.functionalSub}
+            subSubCategoryKey={rmQualitySpecResolved.functionalSubSub}
             taxonomyLabel={customFieldsTaxonomyLabel}
             categoryLabel={
               rmQualitySpecResolved.categoryDisplayLabel ||
@@ -306,6 +313,7 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
             }
             categoryScopeLabel={rmQualitySpecResolved.categoryDisplayLabel || '—'}
             subCategoryLabel={rmQualitySpecResolved.functionalSub || '—'}
+            subSubCategoryLabel={rmQualitySpecResolved.functionalSubSub || '—'}
             commonRows={(formData.rmQualitySpecRows as QualitySpecTableRow[]) ?? []}
             subRows={currentSubSpecRows}
             onCommonChange={onRmQualitySpecRowsChange}

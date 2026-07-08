@@ -3,7 +3,7 @@ import { PR_QUALITY_SPEC_SECTIONS } from '../../constants/prQualitySpecSections'
 import type { PrQualitySpecSectionKey } from '../../constants/prQualitySpecSections';
 import { qualitySpecParameterKey } from '../../lib/masterSharedQualitySpecs';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
-import { MasterAddCustomQualitySpecModal } from './MasterAddCustomQualitySpecModal';
+import { MasterAddCustomQualitySpecModal, type QualitySpecAddScope } from './MasterAddCustomQualitySpecModal';
 import { QualitySpecTable } from './QualitySpecTable';
 
 type SectionTablePairProps = {
@@ -127,11 +127,11 @@ export function PrQualitySpecTable({
 }: PrQualitySpecTableProps): React.ReactElement {
   const [activeSection, setActiveSection] = useState<PrQualitySpecSectionKey>('bulkClearance');
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalScope, setModalScope] = useState<'common' | 'specific'>('common');
+  const [modalScope, setModalScope] = useState<'category' | 'subCategory'>('category');
   const [addError, setAddError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{
     row: QualitySpecTableRow;
-    scope: 'common' | 'specific';
+    scope: 'category' | 'subCategory';
   } | null>(null);
 
   const activeMeta = PR_QUALITY_SPEC_SECTIONS.find((s) => s.key === activeSection) ?? PR_QUALITY_SPEC_SECTIONS[0];
@@ -146,14 +146,14 @@ export function PrQualitySpecTable({
         ? showFinalSubTable
         : showDispatchSubTable;
 
-  const openAddModal = useCallback((scope: 'common' | 'specific'): void => {
+  const openAddModal = useCallback((scope: 'category' | 'subCategory'): void => {
     setAddError(null);
     setEditing(null);
     setModalScope(scope);
     setModalOpen(true);
   }, []);
 
-  const openEditModal = useCallback((row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+  const openEditModal = useCallback((row: QualitySpecTableRow, scope: 'category' | 'subCategory'): void => {
     setAddError(null);
     setEditing({ row, scope });
     setModalScope(scope);
@@ -180,16 +180,21 @@ export function PrQualitySpecTable({
     else onDispatchSubChange(rows);
   };
 
-  const handleModalSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): boolean => {
+  const handleModalSave = (row: QualitySpecTableRow, scopeIn: QualitySpecAddScope): boolean => {
     setAddError(null);
     const paramKey = qualitySpecParameterKey(row.parameter);
     if (!paramKey) {
       setAddError('Parameter name is required.');
       return false;
     }
+    // PR has no shared cross-item rule store — "item specific" just means "not shared beyond this
+    // item," which is already true for both PR buckets, so it maps to whichever bucket the
+    // sub-category table availability would otherwise pick.
+    const scope: 'category' | 'subCategory' =
+      scopeIn === 'category' || scopeIn === 'subCategory' ? scopeIn : showSubTableForSection ? 'subCategory' : 'category';
 
     if (editing) {
-      if (scope === 'common') {
+      if (scope === 'category') {
         if (!categoryLabel || categoryLabel === '—') {
           setAddError('Select a PR category before updating this parameter.');
           return false;
@@ -233,7 +238,7 @@ export function PrQualitySpecTable({
       return true;
     }
 
-    if (scope === 'common') {
+    if (scope === 'category') {
       if (!categoryLabel || categoryLabel === '—') {
         setAddError('Select a PR category before adding a common parameter.');
         return false;
@@ -264,10 +269,10 @@ export function PrQualitySpecTable({
     categoryLabel,
     subCategoryLabel,
     readOnly: !activeEditable,
-    onRequestAddCommon: () => openAddModal('common'),
-    onRequestAddSpecific: () => openAddModal('specific'),
-    onEditCommonRow: (row) => openEditModal(row, 'common'),
-    onEditSubRow: (row) => openEditModal(row, 'specific'),
+    onRequestAddCommon: () => openAddModal('category'),
+    onRequestAddSpecific: () => openAddModal('subCategory'),
+    onEditCommonRow: (row) => openEditModal(row, 'category'),
+    onEditSubRow: (row) => openEditModal(row, 'subCategory'),
   };
 
   return (
@@ -378,7 +383,7 @@ export function PrQualitySpecTable({
         taxonomyLabel={taxonomyLabel ?? (categoryLabel !== '—' ? categoryLabel : 'PR master')}
         subCategoryLabel={subCategoryLabel === '—' ? '' : subCategoryLabel}
         categoryScopeLabel={categoryLabel === '—' ? '' : categoryLabel}
-        allowScopeSelection={showSubTableForSection && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
+        allowSubCategoryScope={showSubTableForSection && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
         initialScope={editing?.scope ?? modalScope}
         editRow={editing?.row ?? null}
         onSave={handleModalSave}

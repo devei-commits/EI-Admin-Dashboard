@@ -42,6 +42,12 @@ export type RmQualitySpecResolvedContext = {
   isBulkFunctional: boolean;
   functionalCategory: string;
   functionalSub: string;
+  /**
+   * Raw taxonomy leaf value (before the functionalSub collapse) — a 3rd, more specific
+   * quality-spec rule scope. Some branches map several raw values onto one functionalSub (e.g.
+   * uva/uvb/broad-spectrum all → "UV Filter"), so this can carry real extra granularity.
+   */
+  functionalSubSub: string;
   categoryDisplayLabel: string;
   subSpecPathKey: string;
 };
@@ -76,6 +82,7 @@ export function resolveRmQualitySpecContext(ctx: RmQualitySpecContext): RmQualit
     isBulkFunctional: isBulk && Boolean(unifiedCategory),
     functionalCategory,
     functionalSub,
+    functionalSubSub: unifiedSub,
     categoryDisplayLabel,
     subSpecPathKey:
       functionalCategory && functionalSub
