@@ -3,6 +3,7 @@ import {
   memberDisplayName,
   scheduleTeamPayloadFromState,
   scheduleTeamStateFromBatch,
+  teamMembersForDept,
 } from '../productionScheduleTeam';
 
 describe('productionScheduleTeam', () => {
@@ -37,5 +38,14 @@ describe('productionScheduleTeam', () => {
       shiftLeadBpr: 'T8',
       teamBpr: ['T9'],
     });
+  });
+
+  it('includes Super Admin and Admin in both manufacturing and filling pickers', () => {
+    const team = [
+      { id: 'U1', name: 'Ops Admin', role: 'Admin', dept: 'Manufacturing', avail: true },
+      { id: 'U2', name: 'Line Staff', role: 'Production', dept: 'Filling', avail: true },
+    ];
+    expect(teamMembersForDept(team, 'Manufacturing').map((m) => m.id)).toEqual(['U1']);
+    expect(teamMembersForDept(team, 'Filling').map((m) => m.id)).toEqual(['U1', 'U2']);
   });
 });

@@ -19,6 +19,8 @@ export type QualitySpecTableProps = {
   showAddButton?: boolean;
   /** When set, “+ Add …” opens this handler instead of inserting an empty inline row. */
   onAddClick?: () => void;
+  /** When set, shows an Edit button that opens the custom QC spec modal for the row. */
+  onEditRow?: (row: QualitySpecTableRow) => void;
 };
 
 const inputCls =
@@ -36,6 +38,7 @@ export function QualitySpecTable({
   disabledHint,
   showAddButton = true,
   onAddClick,
+  onEditRow,
 }: QualitySpecTableProps): React.ReactElement {
   const updateRow = (id: string, patch: Partial<QualitySpecTableRow>): void => {
     if (!enabled) return;
@@ -94,12 +97,15 @@ export function QualitySpecTable({
               <th className="px-2 py-2 text-left font-semibold min-w-[5.5rem]">Acceptance</th>
               <th className="px-2 py-2 text-left font-semibold min-w-[6.5rem]">GRN output</th>
               <th className="px-2 py-2 text-center font-semibold min-w-[9rem]">Attachments</th>
+              {onEditRow ? (
+                <th className="px-2 py-2 text-center font-semibold w-16">Edit</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-gray-500">
+                <td colSpan={onEditRow ? 11 : 10} className="px-3 py-6 text-center text-gray-500">
                   <p>{emptyMessage}</p>
                   {enabled && showAddButton ? (
                     <button
@@ -244,6 +250,19 @@ export function QualitySpecTable({
                       onRemoveRow={() => removeRow(row.id)}
                     />
                   </td>
+                  {onEditRow ? (
+                    <td className="px-2 py-2 text-center align-middle">
+                      <button
+                        type="button"
+                        onClick={() => onEditRow(row)}
+                        disabled={!enabled}
+                        className="px-2 py-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        aria-label={`Edit quality spec ${row.parameter || 'row'}`}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

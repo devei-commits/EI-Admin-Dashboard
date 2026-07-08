@@ -4,6 +4,7 @@ import { PmQualitySpecTable } from './PmQualitySpecTable';
 import { RmQualitySpecTable } from './RmQualitySpecTable';
 import {
   addSharedQualitySpec,
+  updateSharedQualitySpec,
   type MasterSharedQualitySpecEntity,
 } from '../../lib/masterSharedQualitySpecs';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
@@ -49,10 +50,80 @@ export function MasterCustomQualitySpecsSection({
 }: MasterCustomQualitySpecsSectionProps): React.ReactElement {
   const [modalOpen, setModalOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{
+    row: QualitySpecTableRow;
+    scope: 'common' | 'specific';
+  } | null>(null);
   const allowScopeSelection = showSubTable && Boolean(subCategoryLabel.trim());
+
+  const closeModal = (): void => {
+    setModalOpen(false);
+    setEditing(null);
+    setAddError(null);
+  };
+
+  const openAddModal = (): void => {
+    setEditing(null);
+    setAddError(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+    setEditing({ row, scope });
+    setAddError(null);
+    setModalOpen(true);
+  };
 
   const handleSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): boolean => {
     setAddError(null);
+    if (editing) {
+      if (scope === 'common') {
+        const scopeKey = categoryScopeKey.trim();
+        if (!scopeKey) {
+          setAddError('Select a category before updating this parameter.');
+          return false;
+        }
+        if (editing.row.custom) {
+          const result = updateSharedQualitySpec(entity, 'common', scopeKey, editing.row.id, row);
+          if (result.ok === false) {
+            if (result.reason === 'duplicate') {
+              setAddError('This parameter already exists for this category.');
+            } else if (result.reason === 'not-found') {
+              setAddError('Could not find this parameter to update.');
+            }
+            return false;
+          }
+        }
+        onCommonChange(
+          commonRows.map((existing) =>
+            existing.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : existing
+          )
+        );
+        return true;
+      }
+      const pathKey = subScopePathKey.trim();
+      if (!pathKey) {
+        setAddError('Select a sub-category before updating this parameter.');
+        return false;
+      }
+      if (editing.row.custom) {
+        const result = updateSharedQualitySpec(entity, 'sub', pathKey, editing.row.id, row);
+        if (result.ok === false) {
+          if (result.reason === 'duplicate') {
+            setAddError('This parameter already exists for this sub-category.');
+          } else if (result.reason === 'not-found') {
+            setAddError('Could not find this parameter to update.');
+          }
+          return false;
+        }
+      }
+      onSubChange(
+        subRows.map((existing) =>
+          existing.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : existing
+        )
+      );
+      return true;
+    }
     if (scope === 'common') {
       const scopeKey = categoryScopeKey.trim();
       if (!scopeKey) {
@@ -60,7 +131,7 @@ export function MasterCustomQualitySpecsSection({
         return false;
       }
       const result = addSharedQualitySpec(entity, 'common', scopeKey, row);
-      if (!result.ok) {
+      if (result.ok === false) {
         if (result.reason === 'duplicate') {
           setAddError('This parameter already exists for this category.');
         }
@@ -75,7 +146,7 @@ export function MasterCustomQualitySpecsSection({
       return false;
     }
     const result = addSharedQualitySpec(entity, 'sub', pathKey, row);
-    if (!result.ok) {
+    if (result.ok === false) {
       if (result.reason === 'duplicate') {
         setAddError('This parameter already exists for this sub-category.');
       }
@@ -98,6 +169,8 @@ export function MasterCustomQualitySpecsSection({
     categoryDisabledHint,
     subTableDisabledHint,
     showAddButton: false,
+    onEditCommonRow: (row) => openEditModal(row, 'common'),
+    onEditSubRow: (row) => openEditModal(row, 'specific'),
   };
 
   return (
@@ -112,7 +185,7 @@ export function MasterCustomQualitySpecsSection({
         </div>
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={openAddModal}
           className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
         >
           + Add Custom Quality Spec
@@ -126,11 +199,13 @@ export function MasterCustomQualitySpecsSection({
       {variant === 'pm' ? <PmQualitySpecTable {...tableProps} /> : <RmQualitySpecTable {...tableProps} />}
       <MasterAddCustomQualitySpecModal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={closeModal}
         taxonomyLabel={taxonomyLabel}
         subCategoryLabel={subCategoryLabel}
         categoryScopeLabel={categoryScopeLabel}
         allowScopeSelection={allowScopeSelection}
+        initialScope={editing?.scope}
+        editRow={editing?.row ?? null}
         onSave={handleSave}
       />
     </div>

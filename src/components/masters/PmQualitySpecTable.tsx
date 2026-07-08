@@ -15,6 +15,8 @@ type PmQualitySpecTableProps = {
   subTableEnabled?: boolean;
   subTableDisabledHint?: string;
   showAddButton?: boolean;
+  onEditCommonRow?: (row: QualitySpecTableRow) => void;
+  onEditSubRow?: (row: QualitySpecTableRow) => void;
 };
 
 export function PmQualitySpecTable({
@@ -30,6 +32,8 @@ export function PmQualitySpecTable({
   subTableEnabled = true,
   subTableDisabledHint,
   showAddButton = true,
+  onEditCommonRow,
+  onEditSubRow,
 }: PmQualitySpecTableProps): React.ReactElement {
   return (
     <div className="space-y-1">
@@ -44,6 +48,7 @@ export function PmQualitySpecTable({
         enabled={categoryTableEnabled}
         disabledHint={categoryDisabledHint}
         showAddButton={showAddButton}
+        onEditRow={onEditCommonRow}
       />
       {showSubTable && onSubChange ? (
         <QualitySpecTable
@@ -61,6 +66,7 @@ export function PmQualitySpecTable({
           enabled={subTableEnabled}
           disabledHint={subTableDisabledHint}
           showAddButton={showAddButton}
+          onEditRow={onEditSubRow}
         />
       ) : null}
     </div>

@@ -51,42 +51,13 @@ export async function deleteEquipment(pk: number) {
 
 export interface TeamMemberRow {
   id: string; userId: number | null; name: string; role: string; dept: string;
-  avail: boolean; _pk: number;
-}
-
-export interface UserSearchResult {
-  userid: number;
-  display_name: string;
-  email: string;
-  department: string | null;
-  role_name: string | null;
-}
-
-export async function searchUsers(query: string): Promise<UserSearchResult[]> {
-  const res = await api.get<UserSearchResult[]>(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
-  const data = (res as any)?.data ?? res;
-  return Array.isArray(data) ? data : [];
+  avail: boolean; _pk: number | null;
 }
 
 export async function fetchTeam(): Promise<TeamMemberRow[]> {
   const res = await api.get<TeamMemberRow[]>(`${BASE}/team`);
   const data = (res as any)?.data ?? res;
   return Array.isArray(data) ? data : [];
-}
-
-export async function createTeamMember(payload: Record<string, unknown>) {
-  const res = await api.post(`${BASE}/team`, payload);
-  return (res as any)?.data ?? res;
-}
-
-export async function updateTeamMember(pk: number, payload: Record<string, unknown>) {
-  const res = await api.patch(`${BASE}/team/${pk}`, payload);
-  return (res as any)?.data ?? res;
-}
-
-export async function deleteTeamMember(pk: number) {
-  const res = await api.delete(`${BASE}/team/${pk}`);
-  return (res as any)?.data ?? res;
 }
 
 /* ── Batches (BMR / BPR) ── */

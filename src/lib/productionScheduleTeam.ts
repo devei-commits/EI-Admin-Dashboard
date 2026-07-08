@@ -6,6 +6,12 @@ export interface ScheduleTeamMemberLike {
   role: string;
   dept: string;
   avail: boolean;
+  userId?: number | null;
+}
+
+/** Super Admin / Admin can be assigned on either manufacturing or filling schedules. */
+function isCrossDeptAssignableLead(member: ScheduleTeamMemberLike): boolean {
+  return /^(super admin|admin)$/i.test(String(member.role || '').trim());
 }
 
 export function teamMembersForDept(
@@ -13,7 +19,12 @@ export function teamMembersForDept(
   dept: string,
 ): ScheduleTeamMemberLike[] {
   const d = dept.toLowerCase();
-  return team.filter((t) => String(t.dept || '').toLowerCase() === d);
+  const scheduleDepts = new Set(['manufacturing', 'filling']);
+  return team.filter((t) => {
+    const memberDept = String(t.dept || '').toLowerCase();
+    if (memberDept === d) return true;
+    return scheduleDepts.has(d) && isCrossDeptAssignableLead(t);
+  });
 }
 
 /** Prefer members whose role looks like a lead; fall back to full dept list. */

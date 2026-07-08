@@ -27,12 +27,7 @@ import {
   createEquipment as apiCreateEquipment,
   updateEquipment as apiUpdateEquipment,
   deleteEquipment as apiDeleteEquipment,
-  createTeamMember as apiCreateTeamMember,
-  updateTeamMember as apiUpdateTeamMember,
-  deleteTeamMember as apiDeleteTeamMember,
-  searchUsers as apiSearchUsers,
   type EquipmentData as APIEquipmentData, type BatchRow, type TeamMemberRow,
-  type UserSearchResult,
   type CreateReworkOptions,
   type QcReferencePayload,
   type QCSpec,
@@ -58,7 +53,6 @@ import {
   qtyMtrFromReserved,
   scaleQty,
 } from '../utils/formatQty';
-import { fetchDepartments } from '../services/department.service';
 import { fetchSalesOrders } from '../services/salesPurchase.service';
 import {
   fetchPlanningExtractedList,
@@ -142,6 +136,7 @@ import { ScheduleTeamAssignmentSection } from '../components/production/Schedule
 import {
   scheduleTeamPayloadFromState,
   scheduleTeamStateFromBatch,
+  teamMembersForDept,
   type ScheduleTeamAssignmentState,
 } from '../lib/productionScheduleTeam';
 import {
@@ -8389,100 +8384,10 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
 
 /* ──────────── TEAM VIEW ────────────────────────────────────── */
 
-function TeamView({ team, onUpdate, onRefresh, canEdit, departmentList }: {
-  team: TeamMember[]; onUpdate: (t: TeamMember[]) => void;
-  onRefresh: () => void; canEdit: boolean; departmentList: string[];
+function TeamView({ team, onRefresh }: {
+  team: TeamMember[];
+  onRefresh: () => void;
 }) {
-  const { addToast } = useToast();
-  const [showAdd, setShowAdd] = useState(false);
-  const [addDept, setAddDept] = useState<Department>('Manufacturing');
-  const [saving, setSaving] = useState(false);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
-  const [addRole, setAddRole] = useState('');
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleSearchChange = (q: string) => {
-    setSearchQuery(q);
-    setSelectedUser(null);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (q.trim().length < 2) { setSearchResults([]); return; }
-    searchTimer.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const results = await apiSearchUsers(q.trim());
-        const existingUserIds = new Set(team.filter(t => t.userId).map(t => t.userId));
-        setSearchResults(results.filter(r => !existingUserIds.has(r.userid)));
-      } catch { setSearchResults([]); }
-      finally { setSearching(false); }
-    }, 300);
-  };
-
-  const handleSelectUser = (user: UserSearchResult) => {
-    setSelectedUser(user);
-    setSearchQuery(user.display_name);
-    setSearchResults([]);
-    setAddRole(user.role_name || '');
-    if (user.department) {
-      const deptMap: Record<string, Department> = {
-        manufacturing: 'Manufacturing', filling: 'Filling', packaging: 'Packaging', quality: 'Quality',
-      };
-      const mapped = deptMap[user.department.toLowerCase()];
-      if (mapped) setAddDept(mapped);
-    }
-  };
-
-  const handleAdd = async () => {
-    if (!selectedUser || !addRole.trim()) return;
-    setSaving(true);
-    try {
-      const memberId = `T${String(team.length + 1).padStart(2, '0')}`;
-      await apiCreateTeamMember({
-        member_id: memberId,
-        user_id: selectedUser.userid,
-        name: selectedUser.display_name,
-        role: addRole.trim(),
-        department: addDept,
-        available: true,
-      });
-      addToast('success', `${selectedUser.display_name} added to team`);
-      setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setAddRole('');
-      onRefresh();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to add team member';
-      addToast('error', msg.includes('already') ? 'This user is already on the production team' : msg);
-    } finally { setSaving(false); }
-  };
-
-  const toggleAvail = async (member: TeamMember) => {
-    if (!canEdit) return;
-    if (member._pk) {
-      try {
-        await apiUpdateTeamMember(member._pk, { available: !member.avail });
-        onRefresh();
-      } catch { addToast('error', 'Failed to update availability'); }
-    } else {
-      onUpdate(team.map(t => t.id === member.id ? { ...t, avail: !t.avail } : t));
-    }
-  };
-
-  const removeMember = async (member: TeamMember) => {
-    if (!canEdit) return;
-    if (!confirm(`Remove ${member.name} from the production team?`)) return;
-    if (member._pk) {
-      try {
-        await apiDeleteTeamMember(member._pk);
-        addToast('success', `${member.name} removed`);
-        onRefresh();
-      } catch { addToast('error', 'Failed to remove team member'); }
-    } else {
-      onUpdate(team.filter(t => t.id !== member.id));
-    }
-  };
-
   const depts: { key: Department; color: string; icon: React.ReactNode }[] = [
     { key: 'Manufacturing', color: 'text-orange-600', icon: <FlaskConical size={14} /> },
     { key: 'Filling', color: 'text-purple-600', icon: <Droplets size={14} /> },
@@ -8494,110 +8399,48 @@ function TeamView({ team, onUpdate, onRefresh, canEdit, departmentList }: {
     <div className="flex flex-col h-full overflow-hidden section" id="section-team">
       <div className="sec-hdr flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
         <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Team Management</div>
-        <div className="flex gap-2">
-          <button type="button" onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"><RotateCcw size={12} /> Refresh</button>
-          {canEdit && (
-            <button type="button" onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Member</button>
-          )}
-        </div>
+        <button type="button" onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+          <RotateCcw size={12} /> Refresh
+        </button>
       </div>
       <div className="flex-1 overflow-auto p-6" id="team-content">
+        <Tip color="blue" icon={<Info size={14} />}>
+          Production team members are active users with <b>Super Admin</b>, <b>Admin</b>, or <b>Production</b> roles.
+          Assign roles in <b>User Management</b> — there is no separate production team list.
+        </Tip>
         {depts.map(dept => {
-          const members = team.filter(t => t.dept === dept.key);
+          const members = teamMembersForDept(team, dept.key);
           return (
-            <div key={dept.key} className="mb-8">
+            <div key={dept.key} className="mb-8 mt-6">
               <h3 className={`flex items-center gap-2 text-sm font-bold ${dept.color} uppercase tracking-wide mb-3`}>
                 {dept.icon}{dept.key}
                 <Badge className="bg-gray-100 text-gray-500 ml-1">{members.length}</Badge>
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {members.map(t => (
-                  <div key={t.id} className={`bg-white rounded-xl border p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md ${t.avail ? 'border-gray-100' : 'border-red-100'}`}>
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${t.avail ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-500 border border-red-200'}`}>
-                      {t.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-gray-800">{t.name}</div>
-                      <div className="text-[10px] text-gray-500">{t.role}</div>
-                      <div className="flex gap-1 mt-1.5 flex-wrap">
-                        <Badge className={t.avail ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}>{t.avail ? 'Available' : 'Unavailable'}</Badge>
-                        <Badge className="bg-gray-100 text-gray-500">{t.id}</Badge>
-                        {t.userId && <Badge className="bg-blue-50 text-blue-500">Linked</Badge>}
+              {members.length === 0 ? (
+                <p className="text-xs text-gray-400">No eligible users for this department.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {members.map(t => (
+                    <div key={`${dept.key}-${t.id}`} className="bg-white rounded-xl border border-gray-100 p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {t.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                       </div>
-                      {canEdit && (
-                        <div className="flex gap-2 mt-2.5">
-                          <button onClick={() => toggleAvail(t)} className="text-[10px] px-2 py-0.5 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">{t.avail ? 'Set Unavail' : 'Set Avail'}</button>
-                          <button onClick={() => removeMember(t)} className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-red-500 border border-red-100 rounded-lg hover:bg-red-50 transition-colors"><X size={10} /></button>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-gray-800">{t.name}</div>
+                        <div className="text-[10px] text-gray-500">{t.role}</div>
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          <Badge className="bg-emerald-100 text-emerald-700">Active</Badge>
+                          {t.userId != null && <Badge className="bg-blue-50 text-blue-500">User #{t.userId}</Badge>}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {canEdit && (
-                  <div onClick={() => { setAddDept(dept.key); setShowAdd(true); }} className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-orange-300 hover:bg-orange-50/20 transition-colors min-h-25">
-                    <Plus size={20} className="text-gray-300" />
-                    <span className="text-xs font-semibold text-gray-400">Add to {dept.key}</span>
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      {showAdd && (
-        <Modal onClose={() => { setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setSearchResults([]); }} title="Add Team Member">
-          <Tip color="blue" icon={<Info size={14} />}>
-            Search for a registered user by name. The person must already exist in <b>User Management</b> before they can be added to the production team.
-          </Tip>
-
-          {/* User search autocomplete */}
-          <div className="relative mb-4">
-            <label className={LBL}>Search User by Name</label>
-            <input className={INP} value={searchQuery} onChange={e => handleSearchChange(e.target.value)}
-              placeholder="Start typing a name..." autoFocus />
-            {searching && <div className="absolute right-3 top-8 text-[10px] text-gray-400">Searching...</div>}
-            {searchResults.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-auto">
-                {searchResults.map(u => (
-                  <button key={u.userid} onClick={() => handleSelectUser(u)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-orange-50 transition-colors border-b border-gray-50 last:border-0">
-                    <div className="text-xs font-semibold text-gray-800">{u.display_name}</div>
-                    <div className="text-[10px] text-gray-400">{u.email}{u.department ? ` · ${u.department}` : ''}{u.role_name ? ` · ${u.role_name}` : ''}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {searchQuery.length >= 2 && !searching && searchResults.length === 0 && !selectedUser && (
-              <div className="text-[10px] text-gray-400 mt-1">No matching registered users found. Add them in User Management first.</div>
-            )}
-          </div>
-
-          {/* Auto-filled fields (read-only except role/dept) */}
-          {selectedUser && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3 mb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Check size={14} className="text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-700">User selected: {selectedUser.display_name}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className={LBL}>Employee ID</label><input value={`EMP-${selectedUser.userid}`} readOnly className="bg-gray-50 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-2 text-xs w-full" /></div>
-                <div><label className={LBL}>Email</label><input value={selectedUser.email} readOnly className="bg-gray-50 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-2 text-xs w-full" /></div>
-                <div><label className={LBL}>Role / Position</label><input className={INP} value={addRole} onChange={e => setAddRole(e.target.value)} placeholder="e.g. Production Executive" /></div>
-                <div><label className={LBL}>Department</label><select className={INP} value={addDept} onChange={e => setAddDept(e.target.value as Department)}>{departmentList.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button onClick={() => { setShowAdd(false); setSearchQuery(''); setSelectedUser(null); setSearchResults([]); }} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-            <button onClick={handleAdd} disabled={saving || !selectedUser || !addRole.trim()}
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
-              {saving ? 'Adding...' : <><Plus size={13} /> Add Member</>}
-            </button>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -9111,7 +8954,6 @@ const Production = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { isAdmin, canPerformAction } = usePermissions();
-  const canEditTeam = isAdmin || canPerformAction('order-management', 'production-team', 'canEdit');
   const canViewBmr = isAdmin || canPerformAction('order-management', 'production-bmr', 'canView');
   const canViewBpr = isAdmin || canPerformAction('order-management', 'production-bpr', 'canView');
   const canViewTransferYield = isAdmin || canPerformAction('order-management', 'production-transfer-yield', 'canView');
@@ -9126,7 +8968,6 @@ const Production = () => {
       }),
     [canViewBmr, canViewBpr, canViewTransferYield]
   );
-  const [deptList, setDeptList] = useState<string[]>(['Manufacturing', 'Filling', 'Packaging', 'Quality']);
 
   const rawSectionParam = searchParams.get('section');
   const legacySection = (rawSectionParam === 'bmr' || rawSectionParam === 'bpr' ? 'batches' : rawSectionParam) as Section | null;
@@ -9236,18 +9077,16 @@ const Production = () => {
         fetchEquipment(),
         fetchTeam(),
         fetchWarehouseInventory(),
-        fetchDepartments(),
         fetchSentBatchSummary(),
         fetchMRNList({ transferType: 'outbound' }),
         fetchProductionReservedItems(),
       ]))
-      .then(([batchRows, equipData, teamRows, invResult, deptRows, sent, outboundList, reservedRows]) => {
+      .then(([batchRows, equipData, teamRows, invResult, sent, outboundList, reservedRows]) => {
         const batches = batchRows.length ? batchRows.map(apiBatchToBatch) : [];
         const equipment = apiEquipToEquipData(equipData);
         const team = teamRows.length ? apiTeamToTeam(teamRows) : DEFAULT_TEAM;
         setState({ batches, equipment, team, lastUpdated: new Date().toISOString() });
         if (invResult.success && invResult.data.rows.length) setWhInventory(invResult.data.rows);
-        if (deptRows.length) setDeptList(deptRows.filter(d => d.is_active).map(d => d.name).sort());
         setSentSummary(Array.isArray(sent) ? sent : []);
         setOutboundMrns(Array.isArray(outboundList) ? outboundList : []);
         setReservedItems(Array.isArray(reservedRows) ? reservedRows : []);
@@ -9842,7 +9681,7 @@ const Production = () => {
       case 'equipment':
         return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
       case 'team':
-        return <TeamView team={state.team} onUpdate={t => setState(prev => ({ ...prev, team: t }))} onRefresh={refreshTeam} canEdit={canEditTeam} departmentList={deptList} />;
+        return <TeamView team={state.team} onRefresh={refreshTeam} />;
     }
   }
 

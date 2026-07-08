@@ -5,6 +5,7 @@ import {
   defaultGrnOutputTypeFromDataType,
   GRN_OUTPUT_TYPE_OPTIONS,
   MASTER_QUALITY_SPEC_TYPE_OPTIONS,
+  parseQualitySpecDataType,
   type GrnQualitySpecOutputType,
   type MasterQualitySpecDataType,
 } from '../../lib/qualitySpecDataType';
@@ -22,6 +23,8 @@ export type MasterAddCustomQualitySpecModalProps = {
   categoryScopeLabel: string;
   /** Pre-select common vs sub-category when the modal opens. */
   initialScope?: 'common' | 'specific';
+  /** When set, modal opens in edit mode with fields pre-filled from this row. */
+  editRow?: QualitySpecTableRow | null;
   onSave: (row: QualitySpecTableRow, scope: 'common' | 'specific') => boolean | void;
 };
 
@@ -41,8 +44,10 @@ export function MasterAddCustomQualitySpecModal({
   allowScopeSelection,
   categoryScopeLabel,
   initialScope,
+  editRow,
   onSave,
 }: MasterAddCustomQualitySpecModalProps): React.ReactElement {
+  const isEditing = Boolean(editRow);
   const [name, setName] = useState('');
   const [dataType, setDataType] = useState<MasterQualitySpecDataType>('text');
   const [outputType, setOutputType] = useState<GrnQualitySpecOutputType>('text');
@@ -60,6 +65,28 @@ export function MasterAddCustomQualitySpecModal({
 
   useEffect(() => {
     if (!isOpen) return;
+    if (editRow) {
+      const parsed = parseQualitySpecDataType(editRow.dataType);
+      const nextDataType =
+        parsed.kind === 'text' ? 'text' : (parsed.kind as MasterQualitySpecDataType);
+      setName(editRow.parameter);
+      setDataType(nextDataType);
+      setOutputType(
+        editRow.outputType ?? defaultGrnOutputTypeFromDataType(nextDataType)
+      );
+      setMandatory(editRow.mandatory);
+      setUnit(parsed.unit ?? '');
+      setOptionsText(editRow.selectOptions?.join(', ') ?? '');
+      setSpec(editRow.specLimit);
+      setMethod(editRow.method);
+      setTolerance(editRow.tolerance);
+      setFrequency(editRow.frequency);
+      setSample(editRow.sample);
+      setAcceptance(editRow.acceptance);
+      setScope(allowScopeSelection ? (initialScope ?? 'specific') : 'common');
+      setError('');
+      return;
+    }
     setName('');
     setDataType('text');
     setOutputType('text');
@@ -74,7 +101,7 @@ export function MasterAddCustomQualitySpecModal({
     setAcceptance('');
     setScope(allowScopeSelection ? (initialScope ?? 'specific') : 'common');
     setError('');
-  }, [isOpen, allowScopeSelection, initialScope]);
+  }, [isOpen, allowScopeSelection, initialScope, editRow]);
 
   const showOptions = dataType === 'select' || outputType === 'select';
   const showUnit = NUMBER_TYPES.includes(dataType);
@@ -111,6 +138,7 @@ export function MasterAddCustomQualitySpecModal({
           : undefined
         : undefined;
     const row = createEmptyQualitySpecRow({
+      id: editRow?.id,
       parameter,
       specLimit: usesTypedInput ? spec.trim() : spec.trim() || 'Per Master',
       method: method.trim() || '—',
@@ -122,7 +150,8 @@ export function MasterAddCustomQualitySpecModal({
       dataType: showUnit && unit.trim() ? `${dataType}|${unit.trim()}` : dataType,
       outputType,
       selectOptions: selectOptions?.length ? selectOptions : undefined,
-      custom: true,
+      attachments: editRow?.attachments ? [...editRow.attachments] : [],
+      custom: editRow?.custom ?? true,
     });
     const shouldClose = onSave(row, allowScopeSelection ? scope : 'common');
     if (shouldClose !== false) onClose();
@@ -132,7 +161,11 @@ export function MasterAddCustomQualitySpecModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`+ Add Custom Quality Spec · ${taxonomyLabel}`}
+      title={
+        isEditing
+          ? `Edit Custom Quality Spec · ${taxonomyLabel}`
+          : `+ Add Custom Quality Spec · ${taxonomyLabel}`
+      }
       size="md"
       footer={
         <>
@@ -148,7 +181,7 @@ export function MasterAddCustomQualitySpecModal({
             onClick={handleSave}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
           >
-            Save QC spec
+            {isEditing ? 'Update QC spec' : 'Save QC spec'}
           </button>
         </>
       }
@@ -333,7 +366,7 @@ export function MasterAddCustomQualitySpecModal({
               className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          {allowScopeSelection ? (
+          {allowScopeSelection && !isEditing ? (
             <div>
               <label htmlFor="mqc-scope" className="block text-sm font-medium text-gray-700 mb-1">
                 Add to group

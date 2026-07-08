@@ -20,6 +20,8 @@ type SectionTablePairProps = {
   readOnly?: boolean;
   onRequestAddCommon: () => void;
   onRequestAddSpecific: () => void;
+  onEditCommonRow?: (row: QualitySpecTableRow) => void;
+  onEditSubRow?: (row: QualitySpecTableRow) => void;
 };
 
 function SectionCommonAndSubTables({
@@ -36,6 +38,8 @@ function SectionCommonAndSubTables({
   readOnly = false,
   onRequestAddCommon,
   onRequestAddSpecific,
+  onEditCommonRow,
+  onEditSubRow,
 }: SectionTablePairProps): React.ReactElement {
   const categoryReady = Boolean(categoryLabel && categoryLabel !== '—');
   const subReady = Boolean(subCategoryLabel && subCategoryLabel !== '—');
@@ -58,6 +62,7 @@ function SectionCommonAndSubTables({
             : `Select PR category in Primary info to add ${scopeLabel.toLowerCase()} common specs.`
         }
         onAddClick={onRequestAddCommon}
+        onEditRow={onEditCommonRow}
       />
       {showSubTable ? (
         <QualitySpecTable
@@ -71,6 +76,7 @@ function SectionCommonAndSubTables({
           enabled={tablesEnabled && subReady}
           disabledHint={subDisabledHint}
           onAddClick={onRequestAddSpecific}
+          onEditRow={onEditSubRow}
         />
       ) : null}
     </>
@@ -123,6 +129,10 @@ export function PrQualitySpecTable({
   const [modalOpen, setModalOpen] = useState(false);
   const [modalScope, setModalScope] = useState<'common' | 'specific'>('common');
   const [addError, setAddError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{
+    row: QualitySpecTableRow;
+    scope: 'common' | 'specific';
+  } | null>(null);
 
   const activeMeta = PR_QUALITY_SPEC_SECTIONS.find((s) => s.key === activeSection) ?? PR_QUALITY_SPEC_SECTIONS[0];
   const canEditSection = (key: PrQualitySpecSectionKey): boolean =>
@@ -138,8 +148,22 @@ export function PrQualitySpecTable({
 
   const openAddModal = useCallback((scope: 'common' | 'specific'): void => {
     setAddError(null);
+    setEditing(null);
     setModalScope(scope);
     setModalOpen(true);
+  }, []);
+
+  const openEditModal = useCallback((row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+    setAddError(null);
+    setEditing({ row, scope });
+    setModalScope(scope);
+    setModalOpen(true);
+  }, []);
+
+  const closeModal = useCallback((): void => {
+    setModalOpen(false);
+    setEditing(null);
+    setAddError(null);
   }, []);
 
   const getActiveCommonRows = (): QualitySpecTableRow[] => rowsBySection[activeSection] ?? [];
@@ -162,6 +186,51 @@ export function PrQualitySpecTable({
     if (!paramKey) {
       setAddError('Parameter name is required.');
       return false;
+    }
+
+    if (editing) {
+      if (scope === 'common') {
+        if (!categoryLabel || categoryLabel === '—') {
+          setAddError('Select a PR category before updating this parameter.');
+          return false;
+        }
+        const existing = getActiveCommonRows();
+        if (
+          existing.some(
+            (r) => r.id !== editing.row.id && qualitySpecParameterKey(r.parameter) === paramKey
+          )
+        ) {
+          setAddError('This parameter already exists in common specs for this section.');
+          return false;
+        }
+        onSectionChange(
+          activeSection,
+          existing.map((r) =>
+            r.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : r
+          )
+        );
+        return true;
+      }
+
+      if (!showSubTableForSection || !subCategoryLabel || subCategoryLabel === '—') {
+        setAddError('Select a PR sub-category before updating this parameter.');
+        return false;
+      }
+      const existing = getActiveSubRows();
+      if (
+        existing.some(
+          (r) => r.id !== editing.row.id && qualitySpecParameterKey(r.parameter) === paramKey
+        )
+      ) {
+        setAddError('This parameter already exists in sub-category specs for this section.');
+        return false;
+      }
+      appendToActiveSubRows(
+        existing.map((r) =>
+          r.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : r
+        )
+      );
+      return true;
     }
 
     if (scope === 'common') {
@@ -197,6 +266,8 @@ export function PrQualitySpecTable({
     readOnly: !activeEditable,
     onRequestAddCommon: () => openAddModal('common'),
     onRequestAddSpecific: () => openAddModal('specific'),
+    onEditCommonRow: (row) => openEditModal(row, 'common'),
+    onEditSubRow: (row) => openEditModal(row, 'specific'),
   };
 
   return (
@@ -303,12 +374,13 @@ export function PrQualitySpecTable({
 
       <MasterAddCustomQualitySpecModal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={closeModal}
         taxonomyLabel={taxonomyLabel ?? (categoryLabel !== '—' ? categoryLabel : 'PR master')}
         subCategoryLabel={subCategoryLabel === '—' ? '' : subCategoryLabel}
         categoryScopeLabel={categoryLabel === '—' ? '' : categoryLabel}
         allowScopeSelection={showSubTableForSection && Boolean(subCategoryLabel && subCategoryLabel !== '—')}
-        initialScope={modalScope}
+        initialScope={editing?.scope ?? modalScope}
+        editRow={editing?.row ?? null}
         onSave={handleModalSave}
       />
     </div>

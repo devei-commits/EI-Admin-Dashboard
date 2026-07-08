@@ -102,6 +102,46 @@ export function getSharedQualitySpecs(
   return Array.isArray(bucket) ? bucket.map(cloneRow) : [];
 }
 
+export function updateSharedQualitySpec(
+  entity: MasterSharedQualitySpecEntity,
+  scope: MasterSharedQualitySpecScope,
+  scopeKey: string,
+  rowId: string,
+  row: QualitySpecTableRow
+): { ok: true } | { ok: false; reason: 'empty-key' | 'empty-parameter' | 'not-found' | 'duplicate' } {
+  const key = scopeKey.trim();
+  const id = rowId.trim();
+  const parameter = normCustomFieldLabel(row.parameter);
+  if (!key) return { ok: false, reason: 'empty-key' };
+  if (!parameter) return { ok: false, reason: 'empty-parameter' };
+  if (!id) return { ok: false, reason: 'not-found' };
+
+  const paramKey = qualitySpecParameterKey(parameter);
+  const store = readStore();
+  const entityStore = store[entity];
+  const scopeBucket = scope === 'common' ? entityStore.common : entityStore.sub;
+  const existing = [...(scopeBucket[key] ?? [])];
+  const index = existing.findIndex((r) => r.id === id);
+  if (index < 0) return { ok: false, reason: 'not-found' };
+
+  if (
+    existing.some((r, i) => i !== index && qualitySpecParameterKey(r.parameter) === paramKey)
+  ) {
+    return { ok: false, reason: 'duplicate' };
+  }
+
+  const nextRow = cloneRow({ ...row, parameter, custom: true });
+  existing[index] = nextRow;
+  scopeBucket[key] = existing;
+  store[entity] = {
+    ...entityStore,
+    [scope === 'common' ? 'common' : 'sub']: { ...scopeBucket },
+  };
+  writeStore(store);
+  notifyMasterSharedQualitySpecsChanged();
+  return { ok: true };
+}
+
 export function addSharedQualitySpec(
   entity: MasterSharedQualitySpecEntity,
   scope: MasterSharedQualitySpecScope,
