@@ -1,23 +1,29 @@
 import React, { useState } from 'react';
-import { MasterAddCustomQualitySpecModal } from './MasterAddCustomQualitySpecModal';
+import { MasterAddCustomQualitySpecModal, type QualitySpecAddScope } from './MasterAddCustomQualitySpecModal';
 import { PmQualitySpecTable } from './PmQualitySpecTable';
 import { RmQualitySpecTable } from './RmQualitySpecTable';
-import {
-  addSharedQualitySpec,
-  updateSharedQualitySpec,
-  type MasterSharedQualitySpecEntity,
-} from '../../lib/masterSharedQualitySpecs';
+import { addRowToQualitySpecRule, type QualitySpecRuleEntityType } from '../../services/qualitySpecRules.service';
 import type { QualitySpecTableRow } from '../../types/qualitySpecTable';
+
+/** The 2-table UI only ever edits a row as belonging to the category or sub-category display —
+ * sub-sub-category-scoped rows are folded into the sub-category table on read (see the backend's
+ * resolveEntityQualitySpecs), so editing one re-saves it at sub-category scope. */
+type EditScope = 'category' | 'subCategory';
 
 export type MasterCustomQualitySpecsSectionProps = {
   variant: 'pm' | 'rm';
-  entity: MasterSharedQualitySpecEntity;
+  entityType: QualitySpecRuleEntityType;
+  /** Resolved category (functionalCategory) — the "category" rule scope key. */
   categoryScopeKey: string;
-  subScopePathKey: string;
+  /** Resolved sub-category (functionalSub) — the "sub-category" rule scope key. */
+  subCategoryKey: string;
+  /** Resolved sub-sub-category (RM only) — the "sub-sub-category" rule scope key. */
+  subSubCategoryKey?: string;
   taxonomyLabel: string;
   categoryLabel: string;
   categoryScopeLabel: string;
   subCategoryLabel: string;
+  subSubCategoryLabel?: string;
   commonRows: QualitySpecTableRow[];
   subRows: QualitySpecTableRow[];
   onCommonChange: (rows: QualitySpecTableRow[]) => void;
@@ -31,13 +37,15 @@ export type MasterCustomQualitySpecsSectionProps = {
 
 export function MasterCustomQualitySpecsSection({
   variant,
-  entity,
+  entityType,
   categoryScopeKey,
-  subScopePathKey,
+  subCategoryKey,
+  subSubCategoryKey = '',
   taxonomyLabel,
   categoryLabel,
   categoryScopeLabel,
   subCategoryLabel,
+  subSubCategoryLabel,
   commonRows,
   subRows,
   onCommonChange,
@@ -50,11 +58,13 @@ export function MasterCustomQualitySpecsSection({
 }: MasterCustomQualitySpecsSectionProps): React.ReactElement {
   const [modalOpen, setModalOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<{
     row: QualitySpecTableRow;
-    scope: 'common' | 'specific';
+    scope: EditScope;
   } | null>(null);
-  const allowScopeSelection = showSubTable && Boolean(subCategoryLabel.trim());
+  const allowSubCategoryScope = showSubTable && Boolean(subCategoryKey.trim());
+  const allowSubSubCategoryScope = allowSubCategoryScope && Boolean(subSubCategoryKey.trim());
 
   const closeModal = (): void => {
     setModalOpen(false);
@@ -68,90 +78,109 @@ export function MasterCustomQualitySpecsSection({
     setModalOpen(true);
   };
 
-  const openEditModal = (row: QualitySpecTableRow, scope: 'common' | 'specific'): void => {
+  const openEditModal = (row: QualitySpecTableRow, scope: EditScope): void => {
     setEditing({ row, scope });
     setAddError(null);
     setModalOpen(true);
   };
 
-  const handleSave = (row: QualitySpecTableRow, scope: 'common' | 'specific'): boolean => {
+  const handleSave = async (row: QualitySpecTableRow, scope: QualitySpecAddScope): Promise<boolean> => {
     setAddError(null);
+
     if (editing) {
-      if (scope === 'common') {
-        const scopeKey = categoryScopeKey.trim();
-        if (!scopeKey) {
-          setAddError('Select a category before updating this parameter.');
+      // Edits always re-save at the table's own scope (category or sub-category) — see EditScope note above.
+      const isCategory = editing.scope === 'category';
+      const scopeKey = isCategory ? categoryScopeKey.trim() : subCategoryKey.trim();
+      if (!scopeKey) {
+        setAddError(`Select a ${isCategory ? 'category' : 'sub-category'} before updating this parameter.`);
+        return false;
+      }
+      if (editing.row.custom) {
+        setSaving(true);
+        const result = await addRowToQualitySpecRule(
+          entityType,
+          categoryScopeKey.trim(),
+          isCategory ? '' : scopeKey,
+          '',
+          row
+        );
+        setSaving(false);
+        if (result.ok === false && result.reason === 'duplicate') {
+          setAddError(`This parameter already exists for this ${isCategory ? 'category' : 'sub-category'}.`);
           return false;
         }
-        if (editing.row.custom) {
-          const result = updateSharedQualitySpec(entity, 'common', scopeKey, editing.row.id, row);
-          if (result.ok === false) {
-            if (result.reason === 'duplicate') {
-              setAddError('This parameter already exists for this category.');
-            } else if (result.reason === 'not-found') {
-              setAddError('Could not find this parameter to update.');
-            }
-            return false;
-          }
-        }
+      }
+      if (isCategory) {
         onCommonChange(
           commonRows.map((existing) =>
             existing.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : existing
           )
         );
-        return true;
+      } else {
+        onSubChange(
+          subRows.map((existing) =>
+            existing.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : existing
+          )
+        );
       }
-      const pathKey = subScopePathKey.trim();
-      if (!pathKey) {
-        setAddError('Select a sub-category before updating this parameter.');
-        return false;
-      }
-      if (editing.row.custom) {
-        const result = updateSharedQualitySpec(entity, 'sub', pathKey, editing.row.id, row);
-        if (result.ok === false) {
-          if (result.reason === 'duplicate') {
-            setAddError('This parameter already exists for this sub-category.');
-          } else if (result.reason === 'not-found') {
-            setAddError('Could not find this parameter to update.');
-          }
-          return false;
-        }
-      }
-      onSubChange(
-        subRows.map((existing) =>
-          existing.id === editing.row.id ? { ...row, custom: editing.row.custom ?? true } : existing
-        )
-      );
       return true;
     }
-    if (scope === 'common') {
-      const scopeKey = categoryScopeKey.trim();
-      if (!scopeKey) {
-        setAddError('Select a category before adding a shared parameter.');
-        return false;
-      }
-      const result = addSharedQualitySpec(entity, 'common', scopeKey, row);
+
+    if (scope === 'item') {
+      // No shared rule involved — just this item's own rows (existing per-item custom behavior).
+      if (showSubTable) onSubChange([...subRows, { ...row, custom: true }]);
+      else onCommonChange([...commonRows, { ...row, custom: true }]);
+      return true;
+    }
+
+    const catKey = categoryScopeKey.trim();
+    if (!catKey) {
+      setAddError('Select a category before adding a shared parameter.');
+      return false;
+    }
+    if (scope === 'category') {
+      setSaving(true);
+      const result = await addRowToQualitySpecRule(entityType, catKey, '', '', row);
+      setSaving(false);
       if (result.ok === false) {
-        if (result.reason === 'duplicate') {
-          setAddError('This parameter already exists for this category.');
-        }
+        if (result.reason === 'duplicate') setAddError('This parameter already exists for this category.');
         return false;
       }
       onCommonChange([...commonRows, { ...row, custom: true }]);
       return true;
     }
-    const pathKey = subScopePathKey.trim();
-    if (!pathKey) {
+
+    const subKey = subCategoryKey.trim();
+    if (!subKey) {
       setAddError('Select a sub-category before adding a shared parameter.');
       return false;
     }
-    const result = addSharedQualitySpec(entity, 'sub', pathKey, row);
-    if (result.ok === false) {
-      if (result.reason === 'duplicate') {
-        setAddError('This parameter already exists for this sub-category.');
+    if (scope === 'subCategory') {
+      setSaving(true);
+      const result = await addRowToQualitySpecRule(entityType, catKey, subKey, '', row);
+      setSaving(false);
+      if (result.ok === false) {
+        if (result.reason === 'duplicate') setAddError('This parameter already exists for this sub-category.');
+        return false;
       }
+      onSubChange([...subRows, { ...row, custom: true }]);
+      return true;
+    }
+
+    // scope === 'subSubCategory'
+    const subSubKey = subSubCategoryKey.trim();
+    if (!subSubKey) {
+      setAddError('Select a sub-sub-category before adding a shared parameter.');
       return false;
     }
+    setSaving(true);
+    const result = await addRowToQualitySpecRule(entityType, catKey, subKey, subSubKey, row);
+    setSaving(false);
+    if (result.ok === false) {
+      if (result.reason === 'duplicate') setAddError('This parameter already exists for this sub-sub-category.');
+      return false;
+    }
+    // Sub-sub-category rows are folded into the sub-category table on read — display them there too.
     onSubChange([...subRows, { ...row, custom: true }]);
     return true;
   };
@@ -169,8 +198,8 @@ export function MasterCustomQualitySpecsSection({
     categoryDisabledHint,
     subTableDisabledHint,
     showAddButton: false,
-    onEditCommonRow: (row) => openEditModal(row, 'common'),
-    onEditSubRow: (row) => openEditModal(row, 'specific'),
+    onEditCommonRow: (row) => openEditModal(row, 'category'),
+    onEditSubRow: (row) => openEditModal(row, 'subCategory'),
   };
 
   return (
@@ -202,11 +231,14 @@ export function MasterCustomQualitySpecsSection({
         onClose={closeModal}
         taxonomyLabel={taxonomyLabel}
         subCategoryLabel={subCategoryLabel}
+        subSubCategoryLabel={subSubCategoryLabel}
         categoryScopeLabel={categoryScopeLabel}
-        allowScopeSelection={allowScopeSelection}
+        allowSubCategoryScope={allowSubCategoryScope}
+        allowSubSubCategoryScope={allowSubSubCategoryScope}
         initialScope={editing?.scope}
         editRow={editing?.row ?? null}
         onSave={handleSave}
+        saving={saving}
       />
     </div>
   );

@@ -6,7 +6,14 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { normalizeStageAssignees } from '../constants/masterApprovalStatus';
-import { canEditPrTeamAssignSlot, type PrTeamKey } from '../lib/prMasterTeamApproval';
+import {
+  canEditPrTeamAssignSlot,
+  getPrTeamAssignStatus,
+  normalizePrApprovalTeamPending,
+  PR_TEAM_ASSIGN_STATUSES,
+  type PrTeamAssignStatus,
+  type PrTeamKey,
+} from '../lib/prMasterTeamApproval';
 import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterPrTeamAssignCell } from '../components/masters/MasterPrTeamAssignCell';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
@@ -91,6 +98,8 @@ const BOMDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [statusTab, setStatusTab] = useState<PrStatusTab>('all');
+  const [rmAssignStatusFilter, setRmAssignStatusFilter] = useState<'all' | PrTeamAssignStatus>('all');
+  const [packAssignStatusFilter, setPackAssignStatusFilter] = useState<'all' | PrTeamAssignStatus>('all');
   const [selectedProduct, setSelectedProduct] = useState<PRProductDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -857,7 +866,7 @@ const BOMDashboard: React.FC = () => {
   useEffect(() => {
     // Reset to page 1 whenever filters/search/page size change.
     setCurrentPage(1);
-  }, [searchTerm, selectedCategory, statusTab, pageSize, sortColumn, sortDirection]);
+  }, [searchTerm, selectedCategory, statusTab, rmAssignStatusFilter, packAssignStatusFilter, pageSize, sortColumn, sortDirection]);
 
   const togglePrSort = useCallback((column: PrListSortColumn) => {
     if (sortColumn === column) {
@@ -889,9 +898,16 @@ const BOMDashboard: React.FC = () => {
           : statusTab === 'Discontinued'
             ? String(p.status ?? '').trim() === 'Discontinued'
             : normalizeMasterApprovalStatus(p.status) === statusTab;
-      return matchSearch && matchCat && matchStatus;
+      const assignees = normalizeStageAssignees(p.approval_stage_assignees);
+      const pending = normalizePrApprovalTeamPending(p.approval_team_pending);
+      const matchRmStatus =
+        rmAssignStatusFilter === 'all' || getPrTeamAssignStatus('rm_team', assignees, pending) === rmAssignStatusFilter;
+      const matchPackStatus =
+        packAssignStatusFilter === 'all' ||
+        getPrTeamAssignStatus('pack_team', assignees, pending) === packAssignStatusFilter;
+      return matchSearch && matchCat && matchStatus && matchRmStatus && matchPackStatus;
     });
-  }, [list, searchTerm, selectedCategory, statusTab]);
+  }, [list, searchTerm, selectedCategory, statusTab, rmAssignStatusFilter, packAssignStatusFilter]);
 
   const sortedFilteredList = useMemo(() => {
     if (!sortColumn) return filteredList;
@@ -1042,6 +1058,30 @@ const BOMDashboard: React.FC = () => {
                 <option>All Categories</option>
                 {[...new Set(list.map((p) => p.category).filter(Boolean))].map((c) => (
                   <option key={c}>{c}</option>
+                ))}
+              </select>
+
+              <select
+                value={rmAssignStatusFilter}
+                onChange={(e) => setRmAssignStatusFilter(e.target.value as 'all' | PrTeamAssignStatus)}
+                title="Filter by RM team assign status"
+                className="px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all"
+              >
+                <option value="all">RM status: All</option>
+                {PR_TEAM_ASSIGN_STATUSES.map((s) => (
+                  <option key={s} value={s}>RM: {s}</option>
+                ))}
+              </select>
+
+              <select
+                value={packAssignStatusFilter}
+                onChange={(e) => setPackAssignStatusFilter(e.target.value as 'all' | PrTeamAssignStatus)}
+                title="Filter by Pack team assign status"
+                className="px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white transition-all"
+              >
+                <option value="all">Pack status: All</option>
+                {PR_TEAM_ASSIGN_STATUSES.map((s) => (
+                  <option key={s} value={s}>Pack: {s}</option>
                 ))}
               </select>
 

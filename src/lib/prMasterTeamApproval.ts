@@ -97,6 +97,35 @@ export function prTeamAssigneeSummary(assignees: MasterApprovalStageAssignees): 
   return `RM: ${rm} · Pack: ${pack}`;
 }
 
+export const PR_TEAM_ASSIGN_STATUSES = ['Not Started', 'Ongoing', 'Completed'] as const;
+export type PrTeamAssignStatus = (typeof PR_TEAM_ASSIGN_STATUSES)[number];
+
+/**
+ * Per-team progress on a PR master: no assignee → Not Started; assigned but this
+ * team hasn't signed the current pending advance → Ongoing; signed → Completed.
+ */
+export function getPrTeamAssignStatus(
+  team: PrTeamKey,
+  assignees: MasterApprovalStageAssignees,
+  pending: PrApprovalTeamPending | null
+): PrTeamAssignStatus {
+  if (!assignees[team]?.user_id) return 'Not Started';
+  const signedAt = team === 'rm_team' ? pending?.rm_signed_at : pending?.pack_signed_at;
+  return signedAt ? 'Completed' : 'Ongoing';
+}
+
+export function prTeamAssignStatusBadgeClass(status: PrTeamAssignStatus): string {
+  switch (status) {
+    case 'Completed':
+      return 'bg-green-100 text-green-700 border-green-200';
+    case 'Ongoing':
+      return 'bg-amber-100 text-amber-700 border-amber-200';
+    case 'Not Started':
+    default:
+      return 'bg-gray-100 text-gray-600 border-gray-200';
+  }
+}
+
 /** RM team assignee may only edit rm_team; Pack team assignee may only edit pack_team. */
 export function canEditPrTeamAssignSlot(
   team: PrTeamKey,

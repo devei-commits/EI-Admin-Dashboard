@@ -14,19 +14,38 @@ import { QualitySpecLimitInput } from './QualitySpecLimitInput';
 
 export type { MasterQualitySpecDataType };
 
+/**
+ * Where a new/edited row is saved: the category/sub-category/sub-sub-category rule (so it
+ * applies to every unlocked item at that scope), or just this one item (no shared rule at all —
+ * only this item's own saved quality specs get it).
+ */
+export type QualitySpecAddScope = 'category' | 'subCategory' | 'subSubCategory' | 'item';
+
 export type MasterAddCustomQualitySpecModalProps = {
   isOpen: boolean;
   onClose: () => void;
   taxonomyLabel: string;
   subCategoryLabel: string;
-  allowScopeSelection: boolean;
+  subSubCategoryLabel?: string;
   categoryScopeLabel: string;
-  /** Pre-select common vs sub-category when the modal opens. */
-  initialScope?: 'common' | 'specific';
+  /** Whether a sub-category-scoped option should be offered (false when no sub-category is resolved). */
+  allowSubCategoryScope: boolean;
+  /** Whether a sub-sub-category-scoped option should be offered (RM only today). */
+  allowSubSubCategoryScope?: boolean;
+  /** Pre-select a scope when the modal opens. */
+  initialScope?: QualitySpecAddScope;
   /** When set, modal opens in edit mode with fields pre-filled from this row. */
   editRow?: QualitySpecTableRow | null;
-  onSave: (row: QualitySpecTableRow, scope: 'common' | 'specific') => boolean | void;
+  onSave: (row: QualitySpecTableRow, scope: QualitySpecAddScope) => boolean | void | Promise<boolean | void>;
+  /** True while onSave's async work (category/sub-category scopes hit the backend) is in flight. */
+  saving?: boolean;
 };
+
+function defaultAddScope(allowSubCategoryScope: boolean, allowSubSubCategoryScope: boolean): QualitySpecAddScope {
+  if (allowSubSubCategoryScope) return 'subSubCategory';
+  if (allowSubCategoryScope) return 'subCategory';
+  return 'category';
+}
 
 const NUMBER_TYPES: MasterQualitySpecDataType[] = [
   'number',
@@ -41,11 +60,14 @@ export function MasterAddCustomQualitySpecModal({
   onClose,
   taxonomyLabel,
   subCategoryLabel,
-  allowScopeSelection,
+  subSubCategoryLabel,
+  allowSubCategoryScope,
+  allowSubSubCategoryScope = false,
   categoryScopeLabel,
   initialScope,
   editRow,
   onSave,
+  saving = false,
 }: MasterAddCustomQualitySpecModalProps): React.ReactElement {
   const isEditing = Boolean(editRow);
   const [name, setName] = useState('');
@@ -60,7 +82,7 @@ export function MasterAddCustomQualitySpecModal({
   const [frequency, setFrequency] = useState('');
   const [sample, setSample] = useState('');
   const [acceptance, setAcceptance] = useState('');
-  const [scope, setScope] = useState<'common' | 'specific'>('specific');
+  const [scope, setScope] = useState<QualitySpecAddScope>('category');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -83,7 +105,7 @@ export function MasterAddCustomQualitySpecModal({
       setFrequency(editRow.frequency);
       setSample(editRow.sample);
       setAcceptance(editRow.acceptance);
-      setScope(allowScopeSelection ? (initialScope ?? 'specific') : 'common');
+      setScope(initialScope ?? defaultAddScope(allowSubCategoryScope, allowSubSubCategoryScope));
       setError('');
       return;
     }
@@ -99,9 +121,9 @@ export function MasterAddCustomQualitySpecModal({
     setFrequency('');
     setSample('');
     setAcceptance('');
-    setScope(allowScopeSelection ? (initialScope ?? 'specific') : 'common');
+    setScope(initialScope ?? defaultAddScope(allowSubCategoryScope, allowSubSubCategoryScope));
     setError('');
-  }, [isOpen, allowScopeSelection, initialScope, editRow]);
+  }, [isOpen, allowSubCategoryScope, allowSubSubCategoryScope, initialScope, editRow]);
 
   const showOptions = dataType === 'select' || outputType === 'select';
   const showUnit = NUMBER_TYPES.includes(dataType);
@@ -153,8 +175,14 @@ export function MasterAddCustomQualitySpecModal({
       attachments: editRow?.attachments ? [...editRow.attachments] : [],
       custom: editRow?.custom ?? true,
     });
-    const shouldClose = onSave(row, allowScopeSelection ? scope : 'common');
-    if (shouldClose !== false) onClose();
+    const result = onSave(row, scope);
+    if (result && typeof (result as Promise<boolean | void>).then === 'function') {
+      (result as Promise<boolean | void>).then((shouldClose) => {
+        if (shouldClose !== false) onClose();
+      });
+      return;
+    }
+    if (result !== false) onClose();
   };
 
   return (
@@ -172,16 +200,18 @@ export function MasterAddCustomQualitySpecModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+            disabled={saving}
+            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            disabled={saving}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
           >
-            {isEditing ? 'Update QC spec' : 'Save QC spec'}
+            {saving ? 'Saving…' : isEditing ? 'Update QC spec' : 'Save QC spec'}
           </button>
         </>
       }
@@ -366,7 +396,7 @@ export function MasterAddCustomQualitySpecModal({
               className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          {allowScopeSelection && !isEditing ? (
+          {!isEditing ? (
             <div>
               <label htmlFor="mqc-scope" className="block text-sm font-medium text-gray-700 mb-1">
                 Add to group
@@ -374,13 +404,21 @@ export function MasterAddCustomQualitySpecModal({
               <select
                 id="mqc-scope"
                 value={scope}
-                onChange={(e) => setScope(e.target.value as 'common' | 'specific')}
+                onChange={(e) => setScope(e.target.value as QualitySpecAddScope)}
                 className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="specific">
-                  Sub-cat specific (only for {subCategoryLabel || 'this sub-category'})
-                </option>
-                <option value="common">Common (all sub-cats of {categoryScopeLabel || 'this category'})</option>
+                <option value="category">Category (all of {categoryScopeLabel || 'this category'})</option>
+                {allowSubCategoryScope ? (
+                  <option value="subCategory">
+                    Sub-category (all of {subCategoryLabel || 'this sub-category'})
+                  </option>
+                ) : null}
+                {allowSubCategoryScope && allowSubSubCategoryScope ? (
+                  <option value="subSubCategory">
+                    Sub-sub-category (only {subSubCategoryLabel || 'this sub-sub-category'})
+                  </option>
+                ) : null}
+                <option value="item">Item specific (only this item)</option>
               </select>
             </div>
           ) : null}

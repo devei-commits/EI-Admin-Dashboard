@@ -61,7 +61,7 @@ export type PmMasterSectionContentProps = {
   showPmQualitySpecTable: boolean;
   canEditPmQualityCategory: boolean;
   showPmQualitySubSpecTable: boolean;
-  pmQualitySpecResolved: { categoryDisplayLabel: string; functionalSub: string };
+  pmQualitySpecResolved: { categoryDisplayLabel: string; functionalCategory: string; functionalSub: string };
   currentPmSubSpecRows: QualitySpecTableRow[];
   onPmQualitySpecRowsChange: (rows: QualitySpecTableRow[]) => void;
   onPmQualitySubSpecRowsChange: (rows: QualitySpecTableRow[]) => void;
@@ -339,9 +339,14 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
         {showPmQualitySpecTable ? (
           <MasterCustomQualitySpecsSection
             variant="pm"
-            entity="PM"
+            entityType="PM"
             categoryScopeKey={pmQualitySpecResolved.functionalCategory}
-            subScopePathKey={pmQualitySpecResolved.subSpecPathKey}
+            // PM's backend rule resolver only supports category-level rules today (no authoritative
+            // mapping to sub-category quality-spec labels yet — see qualitySpecRules/pmCategoryResolve.js).
+            // Passing '' here disables the sub-category/sub-sub-category "Add to group" scopes so we
+            // never create a rule row that no item would ever read; the sub-category TABLE still works
+            // via subRows/onSubChange for item-specific rows.
+            subCategoryKey=""
             taxonomyLabel={customFieldsTaxonomyLabel}
             categoryLabel={
               pmQualitySpecResolved.categoryDisplayLabel ||

@@ -18,7 +18,7 @@ type QualitySpecAttachmentsCellProps = {
 };
 
 const inputCls =
-  'w-full min-w-0 px-2 py-1 border border-gray-300 rounded text-[10px] focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white';
+  'w-full min-w-0 px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs leading-normal focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white';
 
 function attachmentLabel(att: QualitySpecAttachment): string {
   if (att.name.trim()) return att.name.trim();

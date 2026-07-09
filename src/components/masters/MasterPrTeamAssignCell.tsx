@@ -5,7 +5,13 @@ import {
   type MasterApprovalStageAssignees,
   type MasterApprovalStageSlot,
 } from '../../constants/masterApprovalStatus';
-import { normalizePrApprovalTeamPending, type PrTeamKey } from '../../lib/prMasterTeamApproval';
+import {
+  getPrTeamAssignStatus,
+  normalizePrApprovalTeamPending,
+  prTeamAssignStatusBadgeClass,
+  type PrTeamAssignStatus,
+  type PrTeamKey,
+} from '../../lib/prMasterTeamApproval';
 import { MasterPrTeamAssignModal } from './MasterPrTeamAssignModal';
 
 export type MasterPrTeamAssignCellProps = {
@@ -18,21 +24,26 @@ export type MasterPrTeamAssignCellProps = {
   onSaved?: (assignees: MasterApprovalStageAssignees) => void;
 };
 
-function teamSignedPending(team: PrTeamKey, pending: ReturnType<typeof normalizePrApprovalTeamPending>): boolean {
-  if (!pending) return false;
-  return team === 'rm_team' ? !!pending.rm_signed_at : !!pending.pack_signed_at;
+function StatusBadge({ status }: { status: PrTeamAssignStatus }): JSX.Element {
+  return (
+    <span
+      className={`inline-block mt-1 px-1.5 py-0.5 rounded border text-[9px] font-semibold uppercase tracking-wide ${prTeamAssignStatusBadgeClass(status)}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function TeamAssignButton({
   label,
   slot,
-  pendingSigned,
+  status,
   accentClass,
   onClick,
 }: {
   label: string;
   slot: MasterApprovalStageSlot;
-  pendingSigned: boolean;
+  status: PrTeamAssignStatus;
   accentClass: string;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
 }): JSX.Element {
@@ -55,9 +66,7 @@ function TeamAssignButton({
       ) : (
         <span className="block text-[11px] text-gray-500 italic">Open</span>
       )}
-      {pendingSigned ? (
-        <span className="block text-[10px] font-semibold text-amber-700 mt-0.5">Signed ✓</span>
-      ) : null}
+      <StatusBadge status={status} />
     </button>
   );
 }
@@ -65,11 +74,11 @@ function TeamAssignButton({
 function TeamAssignReadonly({
   label,
   slot,
-  pendingSigned,
+  status,
 }: {
   label: string;
   slot: MasterApprovalStageSlot;
-  pendingSigned: boolean;
+  status: PrTeamAssignStatus;
 }): JSX.Element {
   return (
     <div className="min-w-[7rem] max-w-[10rem] text-[10px] text-gray-600">
@@ -81,7 +90,7 @@ function TeamAssignReadonly({
       ) : (
         <p className="text-gray-400 italic">Open</p>
       )}
-      {pendingSigned ? <p className="text-amber-700 font-semibold">Signed ✓</p> : null}
+      <StatusBadge status={status} />
     </div>
   );
 }
@@ -104,10 +113,10 @@ export function MasterPrTeamAssignCell({
     team === 'rm_team'
       ? 'border-indigo-300 bg-indigo-50/60 focus:ring-indigo-400'
       : 'border-violet-300 bg-violet-50/60 focus:ring-violet-400';
-  const pendingSigned = teamSignedPending(team, pending);
+  const status = getPrTeamAssignStatus(team, assignees, pending);
 
   if (!canAssign) {
-    return <TeamAssignReadonly label={label} slot={slot} pendingSigned={pendingSigned} />;
+    return <TeamAssignReadonly label={label} slot={slot} status={status} />;
   }
 
   return (
@@ -115,7 +124,7 @@ export function MasterPrTeamAssignCell({
       <TeamAssignButton
         label={label}
         slot={slot}
-        pendingSigned={pendingSigned}
+        status={status}
         accentClass={accentClass}
         onClick={(e) => {
           e.stopPropagation();

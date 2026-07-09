@@ -69,7 +69,7 @@ export function QualitySpecLimitInput({
           disabled={!enabled}
           step="any"
         />
-        {unit ? <span className="shrink-0 text-[10px] text-gray-500">{unit}</span> : null}
+        {unit ? <span className="shrink-0 text-xs text-gray-500">{unit}</span> : null}
       </div>
     );
   }

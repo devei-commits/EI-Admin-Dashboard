@@ -24,7 +24,7 @@ export type QualitySpecTableProps = {
 };
 
 const inputCls =
-  'w-full min-w-0 px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white disabled:bg-gray-100 disabled:text-gray-500';
+  'w-full min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white disabled:bg-gray-100 disabled:text-gray-500';
 
 export function QualitySpecTable({
   title,
@@ -84,7 +84,7 @@ export function QualitySpecTable({
       ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-[960px] w-full text-xs">
+        <table className="min-w-[1100px] w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-500">
               <th className="px-2 py-2.5 text-left font-semibold min-w-[12rem]">Parameter</th>
@@ -121,7 +121,7 @@ export function QualitySpecTable({
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-b border-gray-100 align-top hover:bg-gray-50/50">
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-parameter`}>
                       Parameter
                     </label>
@@ -135,7 +135,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-specLimit`}>
                       Spec / Limit
                     </label>
@@ -147,7 +147,7 @@ export function QualitySpecTable({
                       onChange={(specLimit) => updateRow(row.id, { specLimit })}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-method`}>
                       Method
                     </label>
@@ -161,7 +161,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2 text-center">
+                  <td className="px-2 py-2.5 text-center">
                     <label className="sr-only" htmlFor={`${row.id}-mandatory`}>
                       Mandatory
                     </label>
@@ -174,7 +174,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-tolerance`}>
                       Tolerance
                     </label>
@@ -188,7 +188,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-frequency`}>
                       Frequency
                     </label>
@@ -202,7 +202,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-sample`}>
                       Sample
                     </label>
@@ -216,7 +216,7 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-acceptance`}>
                       Acceptance
                     </label>
@@ -230,19 +230,19 @@ export function QualitySpecTable({
                       disabled={!enabled}
                     />
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     {row.outputType ? (
                       <span
-                        className="inline-block max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                        className="inline-block max-w-full rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
                         title={grnOutputTypeLabel(row.outputType) ?? row.outputType}
                       >
                         {grnOutputTypeLabel(row.outputType) ?? row.outputType}
                       </span>
                     ) : (
-                      <span className="text-[10px] text-gray-400">—</span>
+                      <span className="text-xs text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2.5">
                     <QualitySpecAttachmentsCell
                       rowId={row.id}
                       attachments={row.attachments}
@@ -256,7 +256,7 @@ export function QualitySpecTable({
                         type="button"
                         onClick={() => onEditRow(row)}
                         disabled={!enabled}
-                        className="px-2 py-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         aria-label={`Edit quality spec ${row.parameter || 'row'}`}
                       >
                         Edit

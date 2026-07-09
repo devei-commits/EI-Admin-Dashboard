@@ -21,11 +21,6 @@ import {
 } from '../constants/rmQualitySpecFields';
 import { parseGrnOutputType } from './qualitySpecDataType';
 import {
-  mergeDisplayQualitySpecRows,
-  readHiddenQualitySpecParameters,
-  readHiddenQualitySpecParametersByPath,
-} from './qualitySpecSharedMerge';
-import {
   createEmptyQualitySpecRow,
   createQualitySpecAttachment,
   type QualitySpecAttachment,
@@ -42,6 +37,12 @@ export type RmQualitySpecResolvedContext = {
   isBulkFunctional: boolean;
   functionalCategory: string;
   functionalSub: string;
+  /**
+   * Raw taxonomy leaf value (before the functionalSub collapse) — a 3rd, more specific
+   * quality-spec rule scope. Some branches map several raw values onto one functionalSub (e.g.
+   * uva/uvb/broad-spectrum all → "UV Filter"), so this can carry real extra granularity.
+   */
+  functionalSubSub: string;
   categoryDisplayLabel: string;
   subSpecPathKey: string;
 };
@@ -76,6 +77,7 @@ export function resolveRmQualitySpecContext(ctx: RmQualitySpecContext): RmQualit
     isBulkFunctional: isBulk && Boolean(unifiedCategory),
     functionalCategory,
     functionalSub,
+    functionalSubSub: unifiedSub,
     categoryDisplayLabel,
     subSpecPathKey:
       functionalCategory && functionalSub
@@ -196,53 +198,39 @@ function parseQualitySpecRows(raw: unknown): QualitySpecTableRow[] {
     .filter((r): r is QualitySpecTableRow => r !== null);
 }
 
-function keepCustomQualitySpecRows(rows: QualitySpecTableRow[]): QualitySpecTableRow[] {
-  return rows.filter((row) => row.custom === true);
-}
-
-/** Load item-persisted common tabular rows — only user-added custom specs (no template defaults). */
+/**
+ * Load item-persisted common tabular rows. The backend already resolves these fully (category
+ * rule rows when unlocked, the item's own saved rows when locked — see
+ * src/qualitySpecRules/resolveForItem.js), so this is a plain parse with no custom-only filter:
+ * filtering here used to assume a separate localStorage "shared defaults" layer would supply the
+ * non-custom rows on top, which is no longer how this works and silently hid resolved rows.
+ */
 export function hydrateRmQualitySpecRows(source: Record<string, unknown>): QualitySpecTableRow[] {
   const nested = source.rmQualitySpecRows;
   if (!Array.isArray(nested) || nested.length === 0) return [];
-  return keepCustomQualitySpecRows(parseQualitySpecRows(nested));
+  return parseQualitySpecRows(nested);
 }
 
-/** Merge taxonomy-shared definitions with item rows for the current RM category / sub-category. */
+/**
+ * Pass-through for the current RM category / sub-category context — the backend already merged
+ * category + sub-category rule rows (and the item's own saved rows once locked) server-side, so
+ * there is nothing left to merge client-side. Kept as a function (rather than inlining at call
+ * sites) so the resolved context / path key are still computed in one place.
+ */
 export function applyRmQualitySpecTaxonomyDisplay(
   source: Record<string, unknown>,
-  ctx: RmQualitySpecContext
+  _ctx: RmQualitySpecContext
 ): {
   rmQualitySpecRows: QualitySpecTableRow[];
   rmQualitySubSpecRowsByPath: Record<string, QualitySpecTableRow[]>;
 } {
-  const resolved = resolveRmQualitySpecContext(ctx);
-  const itemCommon = hydrateRmQualitySpecRows(source);
-  const itemByPath = hydrateRmQualitySubSpecRowsByPath(source);
-  const hiddenCommon = readHiddenQualitySpecParameters(source, 'rmQualitySpecHiddenParameters');
-  const hiddenByPath = readHiddenQualitySpecParametersByPath(source, 'rmQualitySubSpecHiddenByPath');
-
-  const categoryKey = resolved.functionalCategory;
-  const pathKey = resolved.subSpecPathKey;
-
-  const rmQualitySpecRows = categoryKey
-    ? mergeDisplayQualitySpecRows('RM', 'common', categoryKey, itemCommon, hiddenCommon)
-    : [];
-
-  const rmQualitySubSpecRowsByPath = { ...itemByPath };
-  if (pathKey) {
-    rmQualitySubSpecRowsByPath[pathKey] = mergeDisplayQualitySpecRows(
-      'RM',
-      'sub',
-      pathKey,
-      itemByPath[pathKey] ?? [],
-      hiddenByPath[pathKey] ?? []
-    );
-  }
-
-  return { rmQualitySpecRows, rmQualitySubSpecRowsByPath };
+  return {
+    rmQualitySpecRows: hydrateRmQualitySpecRows(source),
+    rmQualitySubSpecRowsByPath: hydrateRmQualitySubSpecRowsByPath(source),
+  };
 }
 
-/** Load sub-category tabular rows keyed by `Category::SubCategory` — custom specs only. */
+/** Load sub-category tabular rows keyed by `Category::SubCategory` — see hydrateRmQualitySpecRows. */
 export function hydrateRmQualitySubSpecRowsByPath(
   source: Record<string, unknown>
 ): Record<string, QualitySpecTableRow[]> {
@@ -250,7 +238,7 @@ export function hydrateRmQualitySubSpecRowsByPath(
   if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return {};
   const out: Record<string, QualitySpecTableRow[]> = {};
   for (const [pathKey, rawRows] of Object.entries(nested as Record<string, unknown>)) {
-    const rows = keepCustomQualitySpecRows(parseQualitySpecRows(rawRows));
+    const rows = parseQualitySpecRows(rawRows);
     if (rows.length > 0) out[pathKey] = rows;
   }
   return out;
@@ -320,10 +308,16 @@ function flattenQualitySpecAttachments(attachments: QualitySpecAttachment[]): Qu
     .filter((att) => att.name.length > 0 || att.url.length > 0);
 }
 
+/**
+ * Persists exactly what's currently on screen (no custom-only filter) — once an item's quality
+ * specs are edited it locks (see quality_specs_locked / RM_QUALITY_SPEC_EDIT_KEYS) and stops
+ * tracking rule changes, so the saved snapshot must include the inherited rule rows the item
+ * displayed at edit time, not just the user's new additions.
+ */
 export function flattenRmQualitySpecRowsForPayload(
   rows: QualitySpecTableRow[]
 ): QualitySpecTableRow[] {
-  return keepCustomQualitySpecRows(rows)
+  return rows
     .map((row) => ({
       ...row,
       parameter: row.parameter.trim(),
