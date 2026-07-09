@@ -34,6 +34,9 @@ export type MasterAddCustomQualitySpecModalProps = {
   allowSubSubCategoryScope?: boolean;
   /** Pre-select a scope when the modal opens. */
   initialScope?: QualitySpecAddScope;
+  /** Hide the "Add to group" scope picker — for callers where the destination is already fixed
+   * (e.g. adding a row directly to one already-selected rule) and there's no per-item scope. */
+  hideScopeSelector?: boolean;
   /** When set, modal opens in edit mode with fields pre-filled from this row. */
   editRow?: QualitySpecTableRow | null;
   onSave: (row: QualitySpecTableRow, scope: QualitySpecAddScope) => boolean | void | Promise<boolean | void>;
@@ -65,6 +68,7 @@ export function MasterAddCustomQualitySpecModal({
   allowSubSubCategoryScope = false,
   categoryScopeLabel,
   initialScope,
+  hideScopeSelector = false,
   editRow,
   onSave,
   saving = false,
@@ -396,7 +400,7 @@ export function MasterAddCustomQualitySpecModal({
               className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          {!isEditing ? (
+          {!isEditing && !hideScopeSelector ? (
             <div>
               <label htmlFor="mqc-scope" className="block text-sm font-medium text-gray-700 mb-1">
                 Add to group

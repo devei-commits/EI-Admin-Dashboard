@@ -25,6 +25,9 @@ import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermissio
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import { normalizePrApprovalTeamPending } from '../lib/prMasterTeamApproval';
+import { emptyPrTrackApprovals, normalizePrTrackApprovals } from '../lib/prTrackApproval';
+import { MasterPrTrackApprovalCell } from '../components/masters/MasterPrTrackApprovalCell';
+import { claimPrTrackOwnership } from '../services/masterApproval.service';
 import {
   canEditPrFormSubsection,
   normalizePrProcessStepKind,
@@ -220,6 +223,25 @@ interface BOMFormState {
   claimsSubstantiation: string;
   prFacilityLicences: PrFacilityLicenceRecord[];
   masterApprovalStatus: string;
+}
+
+/** Serialize the RM-owned fields (formula + SKU BOM + production-kind process steps) to detect when the RM section is touched. */
+function serializeRmSection(f: BOMFormState): string {
+  return JSON.stringify([
+    f.formulaIngredients,
+    f.skuBomLines,
+    f.skuBomLimitQty ?? null,
+    f.skuBomLimitUom ?? null,
+    f.processSteps.filter((s) => normalizePrProcessStepKind(s.stepKind) === 'production'),
+  ]);
+}
+
+/** Serialize the PM-owned fields (pack BOM + packaging-kind process steps) to detect when the PM section is touched. */
+function serializePmSection(f: BOMFormState): string {
+  return JSON.stringify([
+    f.packingComponents,
+    f.processSteps.filter((s) => normalizePrProcessStepKind(s.stepKind) === 'packaging'),
+  ]);
 }
 
 function emptyBomForm(): BOMFormState {
@@ -463,7 +485,10 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
   };
 }
 
-function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
+function buildPrUpdateBody(
+  fd: BOMFormState,
+  sectionsTouched?: { rm: boolean; pm: boolean }
+): Record<string, unknown> {
   const prQualitySpecRowsBySection = flattenPrQualitySpecRowsBySectionForPayload(
     fd.prQualitySpecRowsBySection ?? hydratePrQualitySpecRowsBySection({})
   );
@@ -528,6 +553,14 @@ function buildPrUpdateBody(fd: BOMFormState): Record<string, unknown> {
       dermatologically_tested: fd.dermatologicallyTested || null,
       cruelty_free_vegan: fd.crueltyFreeVegan || null,
       bom_composite_item: fd.bomCompositeItem === 'Yes',
+      // Explicit "did the user actually touch this section" signal computed client-side by
+      // diffing the current form state against the pristine as-loaded snapshot (both sides in
+      // the same BOMFormState shape). The backend prefers this over its own value-diff against
+      // the stored BOM row, which is unreliable here: rm_lines/pm_lines/process_steps are always
+      // resent in full on every save, and GET-side enrichment (live category resolution, joined
+      // display fields) doesn't always round-trip byte-identical to what's actually stored — so a
+      // pure value-diff can flag a section as "changed" when the user never opened that tab.
+      ...(sectionsTouched ? { sections_touched: sectionsTouched } : {}),
     },
     form_data: buildMasterCustomFieldsPersistPayload('PR', fd as unknown as Record<string, unknown>),
   };
@@ -812,6 +845,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     useState<MasterApprovalStageAssignees>(emptyStageAssignees);
   const [editApprovalTeamPending, setEditApprovalTeamPending] =
     useState<import('../lib/prMasterTeamApproval').PrApprovalTeamPending | null>(null);
+  const [editTrackApprovals, setEditTrackApprovals] = useState<
+    import('../lib/prTrackApproval').PrTrackApprovals
+  >(() => emptyPrTrackApprovals());
+  // Snapshots of the RM/PM sections at load; a divergence means the user touched that section.
+  // These are re-armed to the current value each time a touch is detected (see the two effects
+  // below) — good for "fire the claim-on-touch toast once per change", useless at submit time.
+  const rmSectionBaselineRef = useRef<string | null>(null);
+  const pmSectionBaselineRef = useRef<string | null>(null);
+  // Pristine as-loaded snapshots — set once on load and never mutated again. Submit compares the
+  // current form state against these to tell the backend which section(s) actually changed.
+  const rmSectionPristineRef = useRef<string | null>(null);
+  const pmSectionPristineRef = useRef<string | null>(null);
+  const claimInFlightRef = useRef<{ rm: boolean; pm: boolean }>({ rm: false, pm: false });
+  const assigneesRef = useRef<MasterApprovalStageAssignees>(emptyStageAssignees());
   const { canApproveAtStatus } = useMasterApprovalPermission('PR');
   const { isAdmin } = usePermissions();
   const { user } = useAuth();
@@ -845,6 +892,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     setCurrentStage(0);
     setEditApprovalStageAssignees(emptyStageAssignees());
     setEditApprovalTeamPending(null);
+    setEditTrackApprovals(emptyPrTrackApprovals());
+    rmSectionBaselineRef.current = null;
+    pmSectionBaselineRef.current = null;
+    rmSectionPristineRef.current = null;
+    pmSectionPristineRef.current = null;
   }, []);
 
   const handleReset = () => {
@@ -878,13 +930,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const isEditingPr = Boolean(effectiveProductId);
   const approvalSubmitAction = getMasterApprovalSubmitAction(formData.masterApprovalStatus);
   const approvalRevertAction = getMasterApprovalRevertAction(formData.masterApprovalStatus);
-  const canShowApprovalSubmit =
-    approvalSubmitAction != null &&
-    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees, editApprovalTeamPending);
-  const canShowApprovalRevert =
-    !!effectiveProductId &&
-    approvalRevertAction != null &&
-    canApproveAtStatus(formData.masterApprovalStatus, editApprovalStageAssignees, editApprovalTeamPending);
+  // PR masters advance through the dual RM/PM approval tracks (see the approval panel above the
+  // form), not the linear Submit/Revert. Keep Save for create/update; hide linear advance/revert
+  // so the two mechanisms can't diverge.
+  const canShowApprovalSubmit = false;
+  const canShowApprovalRevert = false;
   const canShowResetForm = isMasterApprovalDraft(formData.masterApprovalStatus);
   const canAdvancePastPrimary =
     !isNewProduct ||
@@ -1107,7 +1157,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   useEffect(() => {
     if (!effectiveProductId) {
       setEditApprovalStageAssignees(emptyStageAssignees());
-    setEditApprovalTeamPending(null);
+      setEditApprovalTeamPending(null);
+      rmSectionBaselineRef.current = null;
+      pmSectionBaselineRef.current = null;
+      rmSectionPristineRef.current = null;
+      pmSectionPristineRef.current = null;
     }
   }, [effectiveProductId]);
 
@@ -1143,7 +1197,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             ?.masterCustomFields
         );
         setFormData(next);
+        // Baseline the RM/PM sections so the first user edit (not this load) triggers a claim.
+        rmSectionBaselineRef.current = serializeRmSection(next);
+        pmSectionBaselineRef.current = serializePmSection(next);
+        // Pristine copies for submit-time "what did the user actually touch" — never reassigned again.
+        rmSectionPristineRef.current = rmSectionBaselineRef.current;
+        pmSectionPristineRef.current = pmSectionBaselineRef.current;
         setEditApprovalStageAssignees(normalizeStageAssignees(d.approval_stage_assignees));
+        setEditTrackApprovals(
+          normalizePrTrackApprovals((d as { pr_track_approvals?: unknown }).pr_track_approvals)
+        );
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(d.approval_team_pending));
       }
     }).catch(() => {
@@ -1151,6 +1214,75 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     });
     return () => { cancelled = true; };
   }, [effectiveProductId]);
+
+  // Keep a ref mirror of the assignees so the claim effects read the latest owner without
+  // re-subscribing to it.
+  useEffect(() => {
+    assigneesRef.current = editApprovalStageAssignees;
+  }, [editApprovalStageAssignees]);
+
+  // Diff current form state against the pristine as-loaded snapshot — tells the backend exactly
+  // which section(s) the user actually touched, independent of what got resent on the wire.
+  const computeSectionsTouched = useCallback((): { rm: boolean; pm: boolean } | undefined => {
+    if (rmSectionPristineRef.current == null || pmSectionPristineRef.current == null) return undefined;
+    return {
+      rm: serializeRmSection(formData) !== rmSectionPristineRef.current,
+      pm: serializePmSection(formData) !== pmSectionPristineRef.current,
+    };
+  }, [formData]);
+
+  // Claim an open RM/PM section for the current user the moment they touch its fields.
+  const claimSectionOnTouch = useCallback(
+    (track: 'rm' | 'pm') => {
+      if (!effectiveProductId || isAdmin) return; // admins don't grab ownership
+      const stageKey = track === 'rm' ? 'rm_team' : 'pack_team';
+      if (assigneesRef.current[stageKey]?.user_id) return; // already owned (by me or someone)
+      if (claimInFlightRef.current[track]) return;
+      claimInFlightRef.current[track] = true;
+      void claimPrTrackOwnership(effectiveProductId, track)
+        .then((res) => {
+          if (res.success && res.data) {
+            setEditApprovalStageAssignees(res.data.approval_stage_assignees);
+            addToast('info', `You now own the ${track.toUpperCase()} section of this PR.`);
+            // Same staleness gap as the track-approval widget: this only updates local modal
+            // state, so the RM/Pack assign columns on the PR Masters table go stale otherwise.
+            onSaved?.();
+          } else if (res.error) {
+            addToast('error', res.error);
+          }
+        })
+        .finally(() => {
+          claimInFlightRef.current[track] = false;
+        });
+    },
+    [effectiveProductId, isAdmin, addToast, onSaved]
+  );
+
+  // RM section touched?
+  useEffect(() => {
+    if (!effectiveProductId || rmSectionBaselineRef.current == null) return;
+    const cur = serializeRmSection(formData);
+    if (cur === rmSectionBaselineRef.current) return;
+    rmSectionBaselineRef.current = cur;
+    claimSectionOnTouch('rm');
+  }, [
+    formData.formulaIngredients,
+    formData.skuBomLines,
+    formData.skuBomLimitQty,
+    formData.skuBomLimitUom,
+    formData.processSteps,
+    effectiveProductId,
+    claimSectionOnTouch,
+  ]);
+
+  // PM section touched?
+  useEffect(() => {
+    if (!effectiveProductId || pmSectionBaselineRef.current == null) return;
+    const cur = serializePmSection(formData);
+    if (cur === pmSectionBaselineRef.current) return;
+    pmSectionBaselineRef.current = cur;
+    claimSectionOnTouch('pm');
+  }, [formData.packingComponents, formData.processSteps, effectiveProductId, claimSectionOnTouch]);
 
   const prQualitySpecCtx = useMemo(
     () => ({
@@ -1854,7 +1986,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     if (effectiveProductId) {
       return {
         mode: 'update' as const,
-        body: withMasterDraftApprovalStatus(buildPrUpdateBody(formData), formData.masterApprovalStatus),
+        body: withMasterDraftApprovalStatus(
+          buildPrUpdateBody(formData, computeSectionsTouched()),
+          formData.masterApprovalStatus
+        ),
       };
     }
     return {
@@ -1873,7 +2008,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     if (effectiveProductId) {
       return {
         mode: 'update',
-        body: withMasterDraftApprovalStatus(buildPrUpdateBody(formData), formData.masterApprovalStatus),
+        body: withMasterDraftApprovalStatus(
+          buildPrUpdateBody(formData, computeSectionsTouched()),
+          formData.masterApprovalStatus
+        ),
       };
     }
     return {
@@ -1895,6 +2033,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+        setEditTrackApprovals(
+          normalizePrTrackApprovals((res.data as { pr_track_approvals?: unknown }).pr_track_approvals)
+        );
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
         addToast('success', 'Draft saved. Continue editing and submit for review when ready.');
         onSaved?.();
@@ -1931,6 +2072,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         });
         setFormData((prev) => ({ ...prev, masterApprovalStatus: intentStatus }));
         setEditApprovalStageAssignees(normalizeStageAssignees(fresh.data.approval_stage_assignees));
+        setEditTrackApprovals(
+          normalizePrTrackApprovals((fresh.data as { pr_track_approvals?: unknown }).pr_track_approvals)
+        );
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(fresh.data.approval_team_pending));
         setSubmitPreviewBaseline(productDetailToBomForm(fresh.data) as unknown as Record<string, unknown>);
       } else {
@@ -1985,6 +2129,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         setFormData(productDetailToBomForm(res.data));
         setEditApprovalStageAssignees(normalizeStageAssignees(res.data.approval_stage_assignees));
+        setEditTrackApprovals(
+          normalizePrTrackApprovals((res.data as { pr_track_approvals?: unknown }).pr_track_approvals)
+        );
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(res.data.approval_team_pending));
         savedProductCode = formData.skuCode.trim() || savedProductCode;
       } else {
@@ -2002,6 +2149,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       const freshAfterSave = recordId ? await fetchPRProductDetail(recordId) : null;
       if (freshAfterSave?.success && freshAfterSave.data) {
         setEditApprovalStageAssignees(normalizeStageAssignees(freshAfterSave.data.approval_stage_assignees));
+        setEditTrackApprovals(
+          normalizePrTrackApprovals(
+            (freshAfterSave.data as { pr_track_approvals?: unknown }).pr_track_approvals
+          )
+        );
         setEditApprovalTeamPending(normalizePrApprovalTeamPending(freshAfterSave.data.approval_team_pending));
       }
 
@@ -3717,6 +3869,36 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
   const prFormBody = (
       <MasterCustomFieldsProvider entity="PR" taxonomyKey={prCustomFieldsTaxonomyKey}>
+      {effectiveProductId ? (
+        <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-xs font-semibold text-gray-700">
+                Approval — RM &amp; PM must both approve to go Active
+              </p>
+              <p className="text-[11px] text-gray-500">
+                Save your edits first. Any change to RM or PM details resets both approvals.
+              </p>
+            </div>
+            <MasterPrTrackApprovalCell
+              itemId={effectiveProductId}
+              trackApprovals={editTrackApprovals}
+              stageAssignees={editApprovalStageAssignees}
+              currentUserId={user?.id}
+              isAdmin={isAdmin}
+              layout="inline"
+              onUpdated={(tracks, overall) => {
+                setEditTrackApprovals(tracks);
+                setFormData((prev) => ({ ...prev, masterApprovalStatus: overall }));
+                // Send/Approve here only touches this modal's local state — without this, the
+                // PR Masters table (and any other open view of this product) goes stale until a
+                // full form Save or a manual page refresh.
+                onSaved?.();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
       <MasterFormBase
         title={effectiveProductId ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
         stages={stages}

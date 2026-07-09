@@ -14,8 +14,9 @@ import {
   type PrTeamAssignStatus,
   type PrTeamKey,
 } from '../lib/prMasterTeamApproval';
-import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalStatusCell';
 import { MasterPrTeamAssignCell } from '../components/masters/MasterPrTeamAssignCell';
+import { MasterPrTrackApprovalCell } from '../components/masters/MasterPrTrackApprovalCell';
+import { masterApprovalStatusBadgeClass } from '../constants/masterApprovalStatus';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
 import {
@@ -1254,6 +1255,8 @@ const BOMDashboard: React.FC = () => {
                       onSort={togglePrSort}
                       accent="cyan"
                     />
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM approval</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">PM approval</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">RM assign</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Pack assign</th>
                     <SortableTableTh
@@ -1271,7 +1274,7 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={17} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={19} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
@@ -1309,10 +1312,48 @@ const BOMDashboard: React.FC = () => {
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-indigo-600 text-center">{p.rm_ingredients_count ?? 0}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-amber-600 text-center">{p.pack_items_count ?? 0}</td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <MasterApprovalStatusCell
-                            kind="PR"
+                          <span
+                            className={`inline-flex w-fit items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border ${masterApprovalStatusBadgeClass(p.status ?? 'Draft')}`}
+                          >
+                            {p.status ?? 'Draft'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterPrTrackApprovalCell
+                            track="rm"
                             itemId={p.product_id}
-                            status={p.status ?? 'Draft'}
+                            trackApprovals={p.pr_track_approvals}
+                            stageAssignees={p.approval_stage_assignees}
+                            currentUserId={user?.id}
+                            isAdmin={isAdmin}
+                            onUpdated={(tracks, overall) => {
+                              setList((prev) =>
+                                prev.map((row) =>
+                                  row.product_id === p.product_id
+                                    ? { ...row, status: overall, lifecycle_status: overall, pr_track_approvals: tracks }
+                                    : row
+                                )
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <MasterPrTrackApprovalCell
+                            track="pm"
+                            itemId={p.product_id}
+                            trackApprovals={p.pr_track_approvals}
+                            stageAssignees={p.approval_stage_assignees}
+                            currentUserId={user?.id}
+                            isAdmin={isAdmin}
+                            onUpdated={(tracks, overall) => {
+                              setList((prev) =>
+                                prev.map((row) =>
+                                  row.product_id === p.product_id
+                                    ? { ...row, status: overall, lifecycle_status: overall, pr_track_approvals: tracks }
+                                    : row
+                                )
+                              );
+                            }}
                           />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useToast } from '../context/ToastContext';
 import { QualitySpecTable } from '../components/masters/QualitySpecTable';
+import { MasterAddCustomQualitySpecModal } from '../components/masters/MasterAddCustomQualitySpecModal';
 import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../types/qualitySpecTable';
 import {
   fetchQualitySpecRules,
@@ -23,6 +24,9 @@ export default function QualitySpecRulesAdmin() {
   const [editSubCategory, setEditSubCategory] = useState('');
   const [editRows, setEditRows] = useState<QualitySpecTableRow[]>([]);
   const [saving, setSaving] = useState(false);
+
+  const [specModalOpen, setSpecModalOpen] = useState(false);
+  const [editingSpecRow, setEditingSpecRow] = useState<QualitySpecTableRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +82,29 @@ export default function QualitySpecRulesAdmin() {
       addToast('error', e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openAddSpecRow = (): void => {
+    setEditingSpecRow(null);
+    setSpecModalOpen(true);
+  };
+
+  const openEditSpecRow = (row: QualitySpecTableRow): void => {
+    setEditingSpecRow(row);
+    setSpecModalOpen(true);
+  };
+
+  const closeSpecModal = (): void => {
+    setSpecModalOpen(false);
+    setEditingSpecRow(null);
+  };
+
+  const saveSpecRow = (row: QualitySpecTableRow): void => {
+    if (editingSpecRow) {
+      setEditRows(editRows.map((existing) => (existing.id === editingSpecRow.id ? row : existing)));
+    } else {
+      setEditRows([...editRows, row]);
     }
   };
 
@@ -214,11 +241,14 @@ export default function QualitySpecRulesAdmin() {
             <div className="mt-5">
               <QualitySpecTable
                 title="Quality spec rows"
-                addButtonLabel="+ Add row"
+                addButtonLabel="+ Add Custom Quality Spec"
                 emptyMessage="No rows yet — add the first quality spec parameter."
                 rows={editRows}
                 onChange={setEditRows}
                 idPrefix="rule"
+                showAddButton
+                onAddClick={openAddSpecRow}
+                onEditRow={openEditSpecRow}
               />
             </div>
 
@@ -242,6 +272,26 @@ export default function QualitySpecRulesAdmin() {
           </div>
         </div>
       )}
+
+      <MasterAddCustomQualitySpecModal
+        isOpen={specModalOpen}
+        onClose={closeSpecModal}
+        taxonomyLabel={
+          [
+            QUALITY_SPEC_RULE_ENTITY_TYPES.find((o) => o.value === entityType)?.label,
+            editCategory.trim(),
+            editSubCategory.trim(),
+          ]
+            .filter(Boolean)
+            .join(' → ')
+        }
+        categoryScopeLabel={editCategory.trim() || 'this category'}
+        subCategoryLabel={editSubCategory.trim() || 'this sub-category'}
+        allowSubCategoryScope={false}
+        hideScopeSelector
+        editRow={editingSpecRow}
+        onSave={saveSpecRow}
+      />
     </div>
   );
 }

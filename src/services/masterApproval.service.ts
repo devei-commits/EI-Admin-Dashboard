@@ -5,11 +5,13 @@ import type {
 } from '../constants/masterApprovalStatus';
 import { normalizeStageAssignees } from '../constants/masterApprovalStatus';
 import { normalizePrApprovalTeamPending, type PrApprovalTeamPending } from '../lib/prMasterTeamApproval';
+import { normalizePrTrackApprovals, type PrTrackApprovals, type PrTrackKey } from '../lib/prTrackApproval';
 
 export type PatchMasterApprovalPayload =
   | { status: string; note?: string }
   | { advance: true; note?: string }
   | { revert: true; note?: string }
+  | { track: PrTrackKey; action: 'send' | 'approve' | 'revert'; note?: string }
   | { approval_stage_assignees: MasterApprovalStageAssignees }
   | {
       approval_assigned_user_id: number | null;
@@ -24,6 +26,7 @@ export type PatchMasterApprovalResult = {
     approval_assigned_user_id: number | null;
     approval_assigned_display_name: string | null;
     approval_team_pending?: PrApprovalTeamPending | null;
+    pr_track_approvals?: PrTrackApprovals | null;
   } | null;
   error: string | null;
 };
@@ -139,6 +142,8 @@ export async function patchMasterApprovalStatus(
         approval_assigned_display_name: approver?.display_name ?? null,
         approval_team_pending:
           kind === 'PR' ? normalizePrApprovalTeamPending(body?.approval_team_pending) : null,
+        pr_track_approvals:
+          kind === 'PR' ? normalizePrTrackApprovals(body?.pr_track_approvals) : null,
       },
       error: null,
     };
@@ -146,4 +151,48 @@ export async function patchMasterApprovalStatus(
     const message = e instanceof Error ? e.message : 'Failed to update approval status';
     return { success: false, data: null, error: message };
   }
+}
+
+/**
+ * Claim ownership of an open RM/PM section (called when a user first touches its fields).
+ * No-op if already the owner; fails with the owner's name if someone else owns it.
+ */
+export async function claimPrTrackOwnership(
+  itemId: string | number,
+  track: PrTrackKey
+): Promise<PatchMasterApprovalResult> {
+  try {
+    const id = encodeURIComponent(String(itemId));
+    const body = await api.patch<Record<string, unknown>>(
+      `/api/v1/products/${id}/approval-track-claim`,
+      { track }
+    );
+    return {
+      success: true,
+      data: {
+        status: readStatusFromResponse('PR', body ?? {}),
+        approval_stage_assignees: readAssigneesFromResponse(body ?? {}),
+        approval_assigned_user_id: readAssigneesFromResponse(body ?? {}).approver?.user_id ?? null,
+        approval_assigned_display_name:
+          readAssigneesFromResponse(body ?? {}).approver?.display_name ?? null,
+        pr_track_approvals: normalizePrTrackApprovals(body?.pr_track_approvals),
+      },
+      error: null,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to claim section ownership';
+    return { success: false, data: null, error: message };
+  }
+}
+
+/**
+ * PR dual-track workflow action — Send for / Approve / Revert the RM or PM approval track.
+ */
+export async function patchPrTrackApproval(
+  itemId: string | number,
+  track: PrTrackKey,
+  action: 'send' | 'approve' | 'revert',
+  note?: string
+): Promise<PatchMasterApprovalResult> {
+  return patchMasterApprovalStatus('PR', itemId, { track, action, ...(note ? { note } : {}) });
 }

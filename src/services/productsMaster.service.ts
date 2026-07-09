@@ -36,6 +36,9 @@ export interface PRProductListItem {
   open_sos_count: number;
   approval_stage_assignees?: unknown;
   approval_team_pending?: unknown;
+  /** PR dual-track approval state { rm, pm }; drives the derived overall status. */
+  pr_track_approvals?: unknown;
+  lifecycle_status?: string;
   approval_assigned_user_id?: number | null;
   approval_assigned_display_name?: string | null;
 }
