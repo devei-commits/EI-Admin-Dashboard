@@ -15,6 +15,7 @@ import {
   inventoryAdjustChangeLines,
 } from '../../services/warehouseInventory.service';
 import { parseWarehouseSihWorkbook, chunkWarehouseSihRows } from '../../lib/warehouseSihExcelParse';
+import { exportToExcel } from '../../lib/exportUtils';
 import { useWarehouseInventory } from '../../hooks/useWarehouseInventory';
 import { queryKeys } from '../../lib/queryClient';
 import { fetchItemsInvolved } from '../../services/planningExtracted.service';
@@ -1126,6 +1127,51 @@ const WarehouseInventory = () => {
       .join(' ');
   };
 
+  /** Human-readable reason for a skipped/error SIH import row_log entry. */
+  const humanizeSihSkipReason = (entry: Record<string, unknown>): string => {
+    const reason = String(entry.reason ?? '');
+    switch (reason) {
+      case 'invalid_sih':
+        return 'Invalid or missing quantity value';
+      case 'missing_sku_and_item_name':
+        return 'Missing SKU and item name';
+      case 'master_not_found':
+        return 'SKU / item name not found in our database';
+      case 'ambiguous_master': {
+        const matches = Array.isArray(entry.matches)
+          ? (entry.matches as Array<{ kind?: string; code?: string }>)
+          : [];
+        const list = matches.map((m) => `${m.kind ?? '?'}:${m.code ?? '?'}`).join(', ');
+        return `Mismatch — multiple matching items found${list ? ` (${list})` : ''}`;
+      }
+      default:
+        return reason || 'Unknown error';
+    }
+  };
+
+  /**
+   * Exports skipped/error rows from a SIH import's row_log as a downloadable Excel file, so the
+   * user can review and fix items that were missing from our masters or ambiguously matched.
+   * Returns the number of rows exported (0 if none, in which case no file is downloaded).
+   */
+  const exportSkippedSihRows = (
+    rowLog: Array<Record<string, unknown>> | undefined,
+    labelForFilename: string
+  ): number => {
+    const rows = (rowLog ?? []).filter((r) => r.action === 'skipped' || r.action === 'error');
+    if (!rows.length) return 0;
+    const exportRows = rows.map((r) => ({
+      'Excel Row': r.excel_row ?? '',
+      SKU: r.sku ?? '',
+      'Item Name': r.item_name ?? '',
+      Status: r.action === 'error' ? 'Error' : 'Skipped',
+      Reason: humanizeSihSkipReason(r),
+    }));
+    const safeLabel = labelForFilename.replace(/[^a-z0-9]+/gi, '_');
+    exportToExcel(exportRows, `${safeLabel}_skipped_items`, 'Skipped Items');
+    return rows.length;
+  };
+
   const handleInventorySummaryExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -1133,7 +1179,11 @@ const WarehouseInventory = () => {
     setImportingInventoryExcel(true);
     try {
       const res = await importInventorySummaryExcel(file, { details: true });
-      alert(formatSihImportResult('Zoho Inventory Summary', res));
+      const skippedCount = exportSkippedSihRows(res.row_log, 'Zoho_Inventory_Summary');
+      alert(
+        formatSihImportResult('Zoho Inventory Summary', res) +
+          (skippedCount ? ` ${skippedCount} skipped/error row(s) exported to Excel.` : '')
+      );
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1156,7 +1206,11 @@ const WarehouseInventory = () => {
     setImportingSihBucket(bucket);
     try {
       const res = await importer(file, { details: true });
-      alert(formatSihImportResult(label, res));
+      const skippedCount = exportSkippedSihRows(res.row_log, label);
+      alert(
+        formatSihImportResult(label, res) +
+          (skippedCount ? ` ${skippedCount} skipped/error row(s) exported to Excel.` : '')
+      );
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1193,12 +1247,14 @@ const WarehouseInventory = () => {
 
       const chunks = chunkWarehouseSihRows(rows, WAREHOUSE_SIH_CHUNK_SIZE);
       const aggregated = { rm_updated: 0, pm_updated: 0, pr_updated: 0, created: 0, skipped: 0, errors: 0 };
+      const rowLogAll: Array<Record<string, unknown>> = [];
 
       for (let i = 0; i < chunks.length; i += 1) {
         const res = await postWarehouseSihExcelChunk({
           rows: chunks[i],
           chunk_index: i,
           chunk_total: chunks.length,
+          details: true,
         });
         const s = res.summary;
         aggregated.rm_updated += s?.rm_updated ?? 0;
@@ -1207,15 +1263,17 @@ const WarehouseInventory = () => {
         aggregated.created += s?.created ?? 0;
         aggregated.skipped += s?.skipped ?? 0;
         aggregated.errors += s?.errors ?? 0;
+        if (res.row_log?.length) rowLogAll.push(...res.row_log);
         setMainWarehouseSihPercent(res.percent_complete ?? Math.round(((i + 1) / chunks.length) * 100));
       }
 
+      const skippedCount = exportSkippedSihRows(rowLogAll, 'Main_Warehouse_SIH');
       alert(
         formatSihImportResult('Main warehouse SIH', {
           sheet_name: sheetName,
           rows_total: rows.length,
           summary: aggregated,
-        })
+        }) + (skippedCount ? ` ${skippedCount} skipped/error row(s) exported to Excel.` : '')
       );
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
