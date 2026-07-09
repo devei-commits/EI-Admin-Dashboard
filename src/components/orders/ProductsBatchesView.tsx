@@ -62,6 +62,13 @@ interface ProductsBatchesViewProps {
 
 type Row = { so: SaleOrder; item: OrderItem; split: BatchSplit };
 
+type GroupedRow = {
+  key: string;
+  so: SaleOrder;
+  item: OrderItem;
+  splits: BatchSplit[];
+};
+
 type BatchSortColumn =
   | 'saleOrder'
   | 'customer'
@@ -88,37 +95,36 @@ function batchCompletionPct(split: BatchSplit): number {
 function sortValueForBatchRow(row: Row, column: BatchSortColumn): string | number {
   const { so, item, split } = row;
   switch (column) {
-    case 'saleOrder':
-      return so.soNo.toLowerCase();
-    case 'customer':
-      return String(so.customer || '').toLowerCase();
-    case 'product':
-      return item.productName.toLowerCase();
-    case 'bmrBpr':
-      return `${split.bmrNo} ${split.bprNo}`.toLowerCase();
-    case 'orderDate':
-      return new Date(so.orderDate).getTime() || 0;
-    case 'dueDate':
-      return new Date(so.dueDate).getTime() || 0;
-    case 'plannedQty':
-      return Number(split.plannedQty) || 0;
-    case 'fgOutput':
-      return Number(split.fgQty ?? split.fgOutput ?? split.fgYield ?? 0) || 0;
-    case 'completion':
-      return batchCompletionPct(split);
-    case 'fgLocation':
-      return (split.fgLocation || '').toLowerCase();
-    case 'picked':
-      return Number(split.pickedQty) || 0;
-    case 'invoice':
-      return String(split.invoiceNo || '').toLowerCase();
-    case 'awb':
-      return [split.awbNo, split.courier].filter(Boolean).join(' ').toLowerCase();
-    case 'status':
-      return split.ffStatus;
-    default:
-      return '';
+    case 'saleOrder':   return so.soNo.toLowerCase();
+    case 'customer':    return String(so.customer || '').toLowerCase();
+    case 'product':     return item.productName.toLowerCase();
+    case 'bmrBpr':      return `${split.bmrNo} ${split.bprNo}`.toLowerCase();
+    case 'orderDate':   return new Date(so.orderDate).getTime() || 0;
+    case 'dueDate':     return new Date(so.dueDate).getTime() || 0;
+    case 'plannedQty':  return Number(split.plannedQty) || 0;
+    case 'fgOutput':    return Number(split.fgQty ?? split.fgOutput ?? split.fgYield ?? 0) || 0;
+    case 'completion':  return batchCompletionPct(split);
+    case 'fgLocation':  return (split.fgLocation || '').toLowerCase();
+    case 'picked':      return Number(split.pickedQty) || 0;
+    case 'invoice':     return String(split.invoiceNo || '').toLowerCase();
+    case 'awb':         return [split.awbNo, split.courier].filter(Boolean).join(' ').toLowerCase();
+    case 'status':      return split.ffStatus;
+    default:            return '';
   }
+}
+
+function groupSortedRows(rows: Row[]): GroupedRow[] {
+  const map = new Map<string, GroupedRow>();
+  const order: string[] = [];
+  rows.forEach(({ so, item, split }) => {
+    const key = `${so.soNo}|${item.sku}`;
+    if (!map.has(key)) {
+      map.set(key, { key, so, item, splits: [] });
+      order.push(key);
+    }
+    map.get(key)!.splits.push(split);
+  });
+  return order.map((k) => map.get(k)!);
 }
 
 export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
@@ -194,6 +200,8 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     return rows;
   }, [tableRows, sortColumn, sortDirection]);
 
+  const groupedRows = useMemo(() => groupSortedRows(sortedTableRows), [sortedTableRows]);
+
   const toggleBatchSort = (column: BatchSortColumn) => {
     if (sortColumn === column) {
       setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -224,20 +232,11 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     if (!so) return;
     setDetailModalSO(null);
     switch (action) {
-      case 'pick':
-        setPickModalSO(so);
-        break;
-      case 'invoice':
-        setInvoiceModalSO(so);
-        break;
-      case 'ship':
-        setShipModalSO(so);
-        break;
-      case 'track':
-        setTrackModalSO(so);
-        break;
-      default:
-        break;
+      case 'pick':    setPickModalSO(so);    break;
+      case 'invoice': setInvoiceModalSO(so); break;
+      case 'ship':    setShipModalSO(so);    break;
+      case 'track':   setTrackModalSO(so);   break;
+      default: break;
     }
   };
 
@@ -276,9 +275,8 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
               <SortableTableTh label="Sale Order" column="saleOrder" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Customer" column="customer" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Product / SKU" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
-              <SortableTableTh label="BMR / BPR" column="bmrBpr" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
-              <SortableTableTh label="Order Date" column="orderDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Due" column="dueDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+              <SortableTableTh label="Batch" column="bmrBpr" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Planned Qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
               <SortableTableTh label="FG Output" column="fgOutput" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
               <SortableTableTh label="Completion" column="completion" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
@@ -291,9 +289,9 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {sortedTableRows.length === 0 ? (
+            {groupedRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-12 text-center text-gray-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
                   <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                   <p className="font-medium">No batches found</p>
                   <p className="text-xs mt-1">
@@ -304,45 +302,191 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                 </td>
               </tr>
             ) : (
-              sortedTableRows.map(({ so, item, split }: Row) => (
-                <BatchRow
-                  key={`${so.soNo}-${split.bprNo}`}
-                  so={so}
-                  item={item}
-                  split={split}
-                  onPick={() => handlePickBatch(split.bprNo)}
-                  onInvoice={() => handleInvoiceBatch(split.bprNo)}
-                  onShip={() => handleShipBatch(split.bprNo)}
-                  onTrack={() => handleTrackBatch(split.bprNo)}
-                  onViewSO={handleViewSO}
-                  onViewYield={onViewYieldSplit ? () => {
-                    const plannedQty = Number(split.plannedQty) || 0;
-                    const bmrYieldKg = Number(split.bulkYield) || 0;
-                    const bprBulkUnits = Number(split.fillYield) || 0;
-                    const actualOutputUnits = Number(split.fgYield) || bprBulkUnits;
-                    const bmrWasteKg = Math.max(0, plannedQty - bmrYieldKg);
-                    const bprWasteUnits = Math.max(0, bprBulkUnits - actualOutputUnits);
-                    const overallWasteUnits = Math.max(0, plannedQty - actualOutputUnits);
-                    const bmrYieldPct = plannedQty > 0 ? (bmrYieldKg / plannedQty) * 100 : 0;
-                    const completionPercent = plannedQty > 0 ? Math.min(100, (actualOutputUnits / plannedQty) * 100) : 0;
-                    onViewYieldSplit({
-                      bmrNo: split.bmrNo,
-                      bprNo: split.bprNo,
-                      productName: item.productName,
-                      soNo: so.soNo,
-                      plannedQty,
-                      bmrYieldKg,
-                      bprBulkUnits,
-                      actualOutputUnits,
-                      bmrWasteKg,
-                      bprWasteUnits,
-                      overallWasteUnits,
-                      bmrYieldPct,
-                      completionPercent,
-                    });
-                  } : undefined}
-                />
-              ))
+              groupedRows.map((group) =>
+                group.splits.map((split, splitIdx) => {
+                  const isFirst = splitIdx === 0;
+                  const rowSpan = group.splits.length;
+                  const daysLeft = getDaysLeft(group.so.dueDate);
+                  const daysLeftFormatted = formatDaysLeft(daysLeft);
+
+                  return (
+                    <tr
+                      key={`${group.so.soNo}-${split.bprNo || splitIdx}`}
+                      className={`hover:bg-gray-50 transition-colors ${
+                        splitIdx < rowSpan - 1 ? 'border-b border-dashed border-gray-100' : ''
+                      }`}
+                    >
+                      {/* SO-level cells — only on first split row */}
+                      {isFirst && (
+                        <>
+                          <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
+                            <button
+                              type="button"
+                              onClick={() => handleViewSO(group.so.soNo)}
+                              className="font-mono text-xs font-bold text-blue-600 hover:underline text-left"
+                            >
+                              {group.so.soNo}
+                            </button>
+                            {group.so.priority === 'high' && (
+                              <span className="block text-[10px] font-bold text-red-600 mt-0.5">High</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
+                            <div className="font-semibold text-gray-800 text-xs">{group.so.customer}</div>
+                            <div className="text-[11px] text-gray-500">{group.so.customerCity || '—'}</div>
+                          </td>
+                          <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
+                            <div className="font-semibold text-gray-800 text-xs leading-snug">{group.item.productName}</div>
+                            <div className="flex gap-1 mt-0.5 flex-wrap">
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+                                {group.item.sku}
+                              </span>
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+                                {group.item.pack}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1">
+                              {group.item.orderedQty} units ordered
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
+                            <div className={`text-xs font-bold ${daysLeftFormatted.color}`}>
+                              {formatDate(group.so.dueDate)}
+                            </div>
+                            <div className={`text-[10px] ${daysLeftFormatted.color}`}>
+                              {daysLeftFormatted.text}
+                            </div>
+                          </td>
+                        </>
+                      )}
+
+                      {/* Batch-level cells — repeated per split */}
+                      <td className="px-4 py-3">
+                        {split.bprNo ? (
+                          <>
+                            <div className="font-mono text-[10px] text-blue-600">{split.bmrNo}</div>
+                            <div className="font-mono text-[10px] text-purple-600">{split.bprNo}</div>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 italic">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {formatNumber(split.plannedQty)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {split.fgQty != null && split.fgQty > 0 ? (
+                          <span className="font-mono text-xs font-bold text-emerald-600">
+                            {formatNumber(split.fgQty)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 min-w-52">
+                        <BatchTimelineCell split={split} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {split.fgLocation ? (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-100 text-teal-700 border border-teal-200">
+                            {split.fgLocation}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-[10.5px]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                        {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600">
+                        {split.invoiceNo != null ? String(split.invoiceNo) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600">
+                        {split.awbNo || split.courier
+                          ? [split.awbNo, split.courier].filter(Boolean).join(' / ')
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={split.ffStatus} type="ff" size="sm" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1 flex-wrap">
+                          {split.ffStatus === 'fg_ready' && (
+                            <Button size="sm" variant="secondary" onClick={() => handlePickBatch(split.bprNo)} className="whitespace-nowrap">
+                              <Package className="h-3.5 w-3.5 mr-1" />
+                              Pick
+                            </Button>
+                          )}
+                          {split.ffStatus === 'picking' && (
+                            <Button size="sm" variant="secondary" onClick={() => handleInvoiceBatch(split.bprNo)} className="whitespace-nowrap">
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              Invoice
+                            </Button>
+                          )}
+                          {split.ffStatus === 'invoiced' && (
+                            <Button size="sm" variant="secondary" onClick={() => handleShipBatch(split.bprNo)} className="whitespace-nowrap">
+                              <Truck className="h-3.5 w-3.5 mr-1" />
+                              Ship
+                            </Button>
+                          )}
+                          {split.ffStatus === 'shipped' && (
+                            <Button size="sm" variant="secondary" onClick={() => handleTrackBatch(split.bprNo)} className="whitespace-nowrap">
+                              <MapPin className="h-3.5 w-3.5 mr-1" />
+                              Track
+                            </Button>
+                          )}
+                          {['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) && (
+                            <span className="text-[9.5px] text-gray-500">In Production</span>
+                          )}
+                          {split.ffStatus === 'fg_ready' &&
+                            ((Number(split.bulkYield) || 0) > 0 ||
+                              (Number(split.fillYield) || 0) > 0 ||
+                              (Number(split.fgYield) || 0) > 0) &&
+                            onViewYieldSplit && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  const plannedQty = Number(split.plannedQty) || 0;
+                                  const bmrYieldKg = Number(split.bulkYield) || 0;
+                                  const bprBulkUnits = Number(split.fillYield) || 0;
+                                  const actualOutputUnits = Number(split.fgYield) || bprBulkUnits;
+                                  onViewYieldSplit({
+                                    bmrNo: split.bmrNo,
+                                    bprNo: split.bprNo,
+                                    productName: group.item.productName,
+                                    soNo: group.so.soNo,
+                                    plannedQty,
+                                    bmrYieldKg,
+                                    bprBulkUnits,
+                                    actualOutputUnits,
+                                    bmrWasteKg: Math.max(0, plannedQty - bmrYieldKg),
+                                    bprWasteUnits: Math.max(0, bprBulkUnits - actualOutputUnits),
+                                    overallWasteUnits: Math.max(0, plannedQty - actualOutputUnits),
+                                    bmrYieldPct: plannedQty > 0 ? (bmrYieldKg / plannedQty) * 100 : 0,
+                                    completionPercent: plannedQty > 0 ? Math.min(100, (actualOutputUnits / plannedQty) * 100) : 0,
+                                  });
+                                }}
+                                className="whitespace-nowrap"
+                              >
+                                <Activity className="h-3.5 w-3.5 mr-1" />
+                                Yield
+                              </Button>
+                            )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleViewSO(group.so.soNo)}
+                            title="View Sale Order Details"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )
             )}
           </tbody>
         </table>
@@ -381,161 +525,6 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
     </div>
   );
 };
-
-function BatchRow({
-  so,
-  item,
-  split,
-  onPick,
-  onInvoice,
-  onShip,
-  onTrack,
-  onViewSO,
-  onViewYield,
-}: {
-  so: SaleOrder;
-  item: OrderItem;
-  split: BatchSplit;
-  onPick: () => void;
-  onInvoice: () => void;
-  onShip: () => void;
-  onTrack: () => void;
-  onViewSO: (soNo: string) => void;
-  onViewYield?: () => void;
-}) {
-  const daysLeft = getDaysLeft(so.dueDate);
-  const daysLeftFormatted = formatDaysLeft(daysLeft);
-
-  return (
-    <tr className="hover:bg-gray-50 transition-colors">
-      <td className="px-4 py-3">
-        <button
-          type="button"
-          onClick={() => onViewSO(so.soNo)}
-          className="font-mono text-xs font-bold text-blue-600 hover:underline text-left"
-        >
-          {so.soNo}
-        </button>
-        {so.priority === 'high' && (
-          <span className="block text-[10px] font-bold text-red-600 mt-0.5">High</span>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        <div className="font-semibold text-gray-800 text-xs">{so.customer}</div>
-        <div className="text-[11px] text-gray-500">{so.customerCity || '—'}</div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="font-semibold text-gray-800 text-xs">{item.productName}</div>
-        <div className="flex gap-1 mt-0.5 flex-wrap">
-          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
-            {item.sku}
-          </span>
-          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
-            {item.pack}
-          </span>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="font-mono text-[10px] text-blue-600">{split.bmrNo}</div>
-        <div className="font-mono text-[10px] text-purple-600">{split.bprNo}</div>
-      </td>
-      <td className="px-4 py-3 text-[10.5px] text-gray-500">
-        {formatDate(so.orderDate)}
-      </td>
-      <td className="px-4 py-3">
-        <div className={`text-xs font-bold ${daysLeftFormatted.color}`}>
-          {formatDate(so.dueDate)}
-        </div>
-        <div className={`text-[10px] ${daysLeftFormatted.color}`}>
-          {daysLeftFormatted.text}
-        </div>
-      </td>
-      <td className="px-4 py-3 text-right font-mono text-xs">
-        {formatNumber(split.plannedQty)}
-      </td>
-      <td className="px-4 py-3 text-right">
-        {split.fgQty != null && split.fgQty > 0 ? (
-          <span className="font-mono text-xs font-bold text-emerald-600">
-            {formatNumber(split.fgQty)}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        )}
-      </td>
-      <td className="px-4 py-3 min-w-52">
-        <BatchTimelineCell split={split} />
-      </td>
-      <td className="px-4 py-3">
-        {split.fgLocation ? (
-          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-100 text-teal-700 border border-teal-200">
-            {split.fgLocation}
-          </span>
-        ) : (
-          <span className="text-gray-400 text-[10.5px]">—</span>
-        )}
-      </td>
-      <td className="px-4 py-3 font-mono text-xs text-gray-500">
-        {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
-      </td>
-      <td className="px-4 py-3">
-        {split.invoiceNo != null ? String(split.invoiceNo) : '—'}
-      </td>
-      <td className="px-4 py-3">
-        {split.awbNo || split.courier
-          ? [split.awbNo, split.courier].filter(Boolean).join(' / ')
-          : '—'}
-      </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={split.ffStatus} type="ff" size="sm" />
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex gap-1 flex-wrap">
-          {split.ffStatus === 'fg_ready' && (
-            <Button size="sm" variant="secondary" onClick={onPick} className="whitespace-nowrap">
-              <Package className="h-3.5 w-3.5 mr-1" />
-              Pick
-            </Button>
-          )}
-          {split.ffStatus === 'picking' && (
-            <Button size="sm" variant="secondary" onClick={onInvoice} className="whitespace-nowrap">
-              <FileText className="h-3.5 w-3.5 mr-1" />
-              Invoice
-            </Button>
-          )}
-          {split.ffStatus === 'invoiced' && (
-            <Button size="sm" variant="secondary" onClick={onShip} className="whitespace-nowrap">
-              <Truck className="h-3.5 w-3.5 mr-1" />
-              Ship
-            </Button>
-          )}
-          {split.ffStatus === 'shipped' && (
-            <Button size="sm" variant="secondary" onClick={onTrack} className="whitespace-nowrap">
-              <MapPin className="h-3.5 w-3.5 mr-1" />
-              Track
-            </Button>
-          )}
-          {['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) && (
-            <span className="text-[9.5px] text-gray-500">In Production</span>
-          )}
-          {split.ffStatus === 'fg_ready' && ((Number(split.bulkYield) || 0) > 0 || (Number(split.fillYield) || 0) > 0 || (Number(split.fgYield) || 0) > 0) && onViewYield && (
-            <Button size="sm" variant="secondary" onClick={onViewYield} className="whitespace-nowrap">
-              <Activity className="h-3.5 w-3.5 mr-1" />
-              Yield
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onViewSO(so.soNo)}
-            title="View Sale Order Details"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </td>
-    </tr>
-  );
-}
 
 function BatchTimelineCell({ split }: { split: BatchSplit }) {
   const planned = Number(split.plannedQty || 0) || 0;
