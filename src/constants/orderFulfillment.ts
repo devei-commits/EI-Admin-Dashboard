@@ -22,6 +22,7 @@ import {
   Search,
   ThumbsUp,
   XCircle,
+  Ban,
 } from 'lucide-react';
 import type { FFStatus, SOStatus, CommercialStatus } from '../types/orderFulfillment';
 
@@ -353,6 +354,13 @@ export const COMMERCIAL_STATUS_CONFIG: Record<CommercialStatus, {
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
   },
+  cancelled: {
+    label: 'Cancelled',
+    icon: Ban,
+    color: 'text-gray-500',
+    bgColor: 'bg-gray-100',
+    borderColor: 'border-gray-300',
+  },
 };
 
 export const COMMERCIAL_STATUS_FILTER_OPTIONS: { key: CommercialStatus | 'all'; label: string }[] = [
@@ -364,6 +372,7 @@ export const COMMERCIAL_STATUS_FILTER_OPTIONS: { key: CommercialStatus | 'all'; 
   { key: 'partial_closed', label: 'Partial Closed' },
   { key: 'closed', label: 'Closed' },
   { key: 'on_hold', label: 'On Hold' },
+  { key: 'cancelled', label: 'Cancelled' },
 ];
 
 export const BATCH_STAGE_FILTER_OPTIONS = [

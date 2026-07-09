@@ -28,6 +28,7 @@ export type SOStatus =
   | 'shipped'
   | 'delivered'
   | 'closed'
+  | 'cancelled'
   | 'SO_New'
   | 'SO_Pending'
   | 'SO_InProd'
@@ -308,7 +309,8 @@ export type CommercialStatus =
   | 'approved'
   | 'partial_closed'
   | 'closed'
-  | 'on_hold';
+  | 'on_hold'
+  | 'cancelled';
 
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD TYPES
