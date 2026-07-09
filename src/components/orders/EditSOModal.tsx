@@ -356,16 +356,23 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     return nextErrors;
   };
 
+  // Keep a stable ref to items so the customer-change effect doesn't need items in its dep array
+  // (avoids re-running price lookup on every qty / pack keystroke).
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
   useEffect(() => {
     if (!selectedCustomerId || !isOpen) return;
     const timer = window.setTimeout(() => {
-      const snap = [...items];
+      const snap = [...itemsRef.current];
       snap.forEach((_, index) => {
         void resolveLinePrice(index, snap, selectedCustomerId);
       });
     }, 280);
     return () => window.clearTimeout(timer);
-  }, [selectedCustomerId, items, isOpen, resolveLinePrice]);
+    // intentionally omit `items` — we want this to fire only when customer or open state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomerId, isOpen, resolveLinePrice]);
 
   const handleSave = async () => {
     if (!canEdit || isSaving) return;
@@ -563,6 +570,15 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             </button>
           </div>
           <div className="p-3 space-y-2">
+            {/* Column headings */}
+            <div className="grid grid-cols-12 gap-2 pb-1 border-b border-gray-100">
+              <div className="col-span-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Product</div>
+              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">SKU</div>
+              <div className="col-span-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pack</div>
+              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Qty (units)</div>
+              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price (₹)</div>
+              <div className="col-span-2" />
+            </div>
             {items.map((item, index) => (
               <div key={`edit-so-item-${index}`} className="grid grid-cols-12 gap-2">
                 <input
@@ -570,7 +586,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                     productInputRefs.current[index] = el;
                   }}
                   className="col-span-3 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
-                  placeholder="Search product (FG) by name or SKU"
+                  placeholder="Search by product name or SKU…"
                   value={item.productName}
                   disabled={!canEdit}
                   autoComplete="off"
@@ -580,16 +596,54 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                     updateItem(index, { productName: e.target.value });
                   }}
                 />
-                <input className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="SKU" value={item.sku} disabled={!canEdit} onChange={(e) => updateItem(index, { sku: e.target.value })} />
-                <input className="col-span-1 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="Pack" value={item.pack} disabled={!canEdit} onChange={(e) => updateItem(index, { pack: e.target.value })} />
-                <input type="number" min={1} className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="Qty" value={item.orderedQty} disabled={!canEdit} onChange={(e) => updateItem(index, { orderedQty: Number(e.target.value || 0) })} />
-                <input type="number" min={0.01} step="0.01" className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100" placeholder="Unit price" value={item.unitPrice} disabled={!canEdit} onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })} />
-                <button type="button" onClick={() => removeItem(index)} disabled={!canEdit || items.length === 1} className="col-span-2 inline-flex items-center justify-center gap-1 border border-red-200 rounded px-2 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60">
+                <input
+                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-gray-50"
+                  placeholder="Auto-filled"
+                  value={item.sku}
+                  disabled
+                  readOnly
+                  title="SKU is filled automatically when a product is selected"
+                />
+                <input
+                  className="col-span-1 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-gray-50"
+                  placeholder="—"
+                  value={item.pack}
+                  disabled
+                  readOnly
+                  title="Pack size is filled automatically when a product is selected"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+                  placeholder="0"
+                  value={item.orderedQty || ''}
+                  disabled={!canEdit}
+                  onChange={(e) => updateItem(index, { orderedQty: Number(e.target.value || 0) })}
+                />
+                <input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+                  placeholder="0.00"
+                  value={item.unitPrice || ''}
+                  disabled={!canEdit}
+                  onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeItem(index)}
+                  disabled={!canEdit || items.length === 1}
+                  className="col-span-2 inline-flex items-center justify-center gap-1 border border-red-200 rounded px-2 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                >
                   <Trash2 size={13} />
                   Remove
                 </button>
                 {priceHints[index] ? (
-                  <div className="col-span-12 text-[11px] text-gray-500">{priceHints[index]}</div>
+                  <div className="col-span-12 text-[11px] text-blue-600 flex items-center gap-1">
+                    <span>💡</span>{priceHints[index]}
+                  </div>
                 ) : null}
               </div>
             ))}
