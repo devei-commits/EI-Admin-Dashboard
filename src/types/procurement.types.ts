@@ -4,7 +4,7 @@ export type RequestStatus = 'New' | 'Quoted' | 'PO Draft' | 'PO Released' | 'Del
 export type QuoteStatus = 'Confirmed' | 'Not Selected' | 'Pending Review';
 export type MainTab = 'Procurement';
 export type SideSection =
-  | 'Requests'
+  | 'Procurement Requests'
   | 'Purchase Orders'
   | 'Quote Requests'
   | 'Stock Audit'

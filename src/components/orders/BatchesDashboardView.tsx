@@ -384,7 +384,7 @@ export const BatchesDashboardView: React.FC = () => {
                             <span className="block h-full rounded-full bg-blue-400" style={{ width: `${Math.min(100, cov)}%` }} />
                           </span>
                           <span className="text-[9px] text-gray-400 whitespace-nowrap">
-                            {row.fgQty > 0 ? `${fmtNum(batchQty)} u` : 'planned'} · {cov}% cov
+                            {fmtNum(row.batch.plannedQty)} / {fmtNum(ordered)} · {cov}% cov
                           </span>
                         </div>
                         {row.batch.bmrNo && <p className="text-[9px] text-gray-400 mt-0.5">BMR {row.batch.bmrNo}</p>}

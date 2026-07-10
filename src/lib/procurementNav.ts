@@ -2,7 +2,7 @@ import type { MainTab, SideSection } from '../types/procurement.types';
 
 /** Five procurement views per spec (§1–§7). */
 export const PROCUREMENT_SECTIONS: SideSection[] = [
-  'Requests',
+  'Procurement Requests',
   'Purchase Orders',
   'Quote Requests',
   'Stock Audit',
@@ -18,7 +18,8 @@ export const PROCUREMENT_OPERATIONS_SECTIONS: SideSection[] = [];
 export const PROCUREMENT_MAIN_TABS: MainTab[] = ['Procurement'];
 
 const LEGACY_SECTION_ALIASES: Record<string, SideSection> = {
-  Overview: 'Requests',
+  Overview: 'Procurement Requests',
+  Requests: 'Procurement Requests',
   Quotations: 'Quote Requests',
   'Draft POs': 'Purchase Orders',
   'Issued POs': 'Purchase Orders',
@@ -27,9 +28,9 @@ const LEGACY_SECTION_ALIASES: Record<string, SideSection> = {
 };
 
 export function normalizeProcurementSection(raw: string | null | undefined): SideSection {
-  if (!raw) return 'Requests';
+  if (!raw) return 'Procurement Requests';
   if ((PROCUREMENT_SECTIONS as string[]).includes(raw)) return raw as SideSection;
-  return LEGACY_SECTION_ALIASES[raw] ?? 'Requests';
+  return LEGACY_SECTION_ALIASES[raw] ?? 'Procurement Requests';
 }
 
 export function procurementSectionPath(section: SideSection): string {
@@ -38,7 +39,7 @@ export function procurementSectionPath(section: SideSection): string {
 }
 
 export function procurementMainTabPath(_tab: MainTab = 'Procurement'): string {
-  return procurementSectionPath('Requests');
+  return procurementSectionPath('Procurement Requests');
 }
 
 export function parseProcurementRoute(search: string): { tab: MainTab; section: SideSection } {

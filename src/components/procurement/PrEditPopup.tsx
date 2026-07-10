@@ -47,6 +47,7 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
   const [busy, setBusy] = useState(false);
   const [loadedTiers, setLoadedTiers] = useState<PriceTier[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
+  const [tiersError, setTiersError] = useState<string | null>(null);
 
   // Fetch the real vendor × MOQ price tiers for this item on open.
   useEffect(() => {
@@ -55,8 +56,10 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
     const pmId = item?.pack_material_id ?? null;
     if (rmId == null && pmId == null) return;
     setTiersLoading(true);
+    setTiersError(null);
     fetchItemPriceList({ rawMaterialId: rmId, packMaterialId: pmId })
       .then((tiers) => { if (!cancelled) setLoadedTiers(tiers); })
+      .catch(() => { if (!cancelled) setTiersError('Could not load price tiers — check your connection and reopen.'); })
       .finally(() => { if (!cancelled) setTiersLoading(false); });
     return () => { cancelled = true; };
   }, [item?.raw_material_id, item?.pack_material_id]);
@@ -143,6 +146,8 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
             <div className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Price List · vendor × MOQ tiers</div>
             {tiersLoading ? (
               <p className="text-[11px] text-slate-400 py-3 text-center">Loading price list…</p>
+            ) : tiersError ? (
+              <p className="text-[11px] text-red-500 py-3 text-center">{tiersError}</p>
             ) : tiers.length === 0 ? (
               <p className="text-[11px] text-slate-400 py-3 text-center">No price-list tiers on record for this item.</p>
             ) : (
