@@ -61,6 +61,8 @@ export interface PlanningExtractedRow {
   product_id?: number;
   /** Indices of batches already sent to production */
   sentBatchIndices?: number[];
+  /** Indices of buffer / over-production batches (made above the SO qty) */
+  bufferBatchIndices?: number[];
   batchCount?: number | null;
   customBatches?: { sizeKg: number }[] | null;
   /** Single BOM-level Specific Gravity chosen at first-batch confirmation (null until BOM is confirmed). */
@@ -126,6 +128,7 @@ export interface UpdatePlanningExtractedPayload {
   bomSpecificGravity?: number | null;
   customBatches?: CustomBatch[];
   sentBatchIndices?: number[];
+  bufferBatchIndices?: number[];
 }
 
 export interface PlanningExtractedRowWithBatch extends PlanningExtractedRow {
