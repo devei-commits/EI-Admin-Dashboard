@@ -1582,6 +1582,8 @@ interface SalesOrder {
   productId?: number;
   /** Indices of batches already sent to production (history); gray out in Plan Batches */
   sentBatchIndices?: number[];
+  /** Indices of buffer / over-production batches (made above the SO qty). */
+  bufferBatchIndices?: number[];
   batchCount?: number | null;
   customBatches?: { sizeKg: number }[] | null;
 }
@@ -1666,6 +1668,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     color: row.color,
     productId: row.product_id,
     sentBatchIndices: Array.isArray(row.sentBatchIndices) ? row.sentBatchIndices : [],
+    bufferBatchIndices: Array.isArray(row.bufferBatchIndices) ? row.bufferBatchIndices : [],
     batchCount: row.batchCount ?? null,
     customBatches: Array.isArray(row.customBatches) ? row.customBatches : null,
   };
@@ -3134,12 +3137,14 @@ const Planning = () => {
         !autoAddedNextBatchRef.current
       ) {
         const sentIdx = selectedSOForBatch?.sentBatchIndices ?? [];
+        const bufferIdx = new Set((selectedSOForBatch?.bufferBatchIndices ?? []).map(Number));
         const allSent = planningBatches.every((_, i) => sentIdx.includes(i));
         const oq = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
         const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
         const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
+        // SO remaining excludes buffer / over-production batches (they sit above the SO qty).
         const sentKg = (planningBatches as PlanningBatchRow[]).reduce(
-          (s, b, i) => (sentIdx.includes(i) ? s + (Number(b.sizeKg) || 0) : s),
+          (s, b, i) => (sentIdx.includes(i) && !bufferIdx.has(i) ? s + (Number(b.sizeKg) || 0) : s),
           0
         );
         const pendingUnits = kpu > 0 ? Math.max(0, (tk - sentKg) / kpu) : 0;
@@ -3151,6 +3156,9 @@ const Planning = () => {
                 mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
                 queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
                 setSelectedBatchId(Number(newBatch.id));
+                // Seed the new (SO) batch's Preview qty to the remaining SO units (release 100 → next batch 900).
+                setFeasibilityPreviewQty(Math.round(pendingUnits));
+                lastAppliedPreviewQtyRef.current = null;
               } else {
                 autoAddedNextBatchRef.current = false;
               }
@@ -3297,26 +3305,36 @@ const Planning = () => {
     })));
   }, [selectedBatchId, selectedBatchData]);
 
+  /** Index (into customBatches / planning_batches) of the current working batch. -1 when none. */
+  const workingBatchPlanIndex = useMemo(() => {
+    if (selectedBatchId == null || !planningBatches?.length) return -1;
+    return (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId));
+  }, [planningBatches, selectedBatchId]);
+
+  /** Set of batch indices flagged as buffer / over-production (made above the SO qty). */
+  const bufferBatchIndexSet = useMemo(
+    () => new Set((selectedSOForBatch?.bufferBatchIndices ?? []).map((n) => Number(n))),
+    [selectedSOForBatch?.bufferBatchIndices]
+  );
+
   /**
-   * Sum of kg already committed by sent batches. Memoized so that edits to UNSENT batches
-   * (which don't affect "remaining after sent batches") do not cause the preview-qty sync
-   * effect below to re-fire and overwrite the user's working preview quantity — that was
-   * causing "Pending to plan" to flicker while typing in Preview qty (Effect A ↔ Effect B
-   * feedback loop through `customBatches`).
+   * Kg committed to the SO by every batch EXCEPT the current working batch (whose in-progress size is
+   * the live Preview qty, added separately). Buffer / over-production batches are excluded — they sit
+   * above the SO qty and must not reduce the remaining. A batch counts as soon as it exists (a non-working
+   * batch is always already released), so a just-released batch reduces the remaining immediately — it no
+   * longer waits for Production to lock it. Memoized on stable primitives to avoid preview-qty flicker.
    */
   const sentKgForPlanBatches = useMemo(() => {
     if (!selectedSOForBatch) return 0;
-    const sent = selectedSOForBatch.sentBatchIndices ?? [];
-    if (sent.length === 0) return 0;
+    // While the modal is open the working batch's size is the live Preview qty (added separately), so
+    // exclude it here. When closed there is no in-progress batch, so count every SO batch.
+    const excludeIdx = planBatchesModalOpen ? workingBatchPlanIndex : -1;
     return customBatches.reduce(
       (sum, b, idx) =>
-        sent.includes(idx) && isSentBatchIndexLocked(idx) ? sum + (Number(b.sizeKg) || 0) : sum,
+        idx !== excludeIdx && !bufferBatchIndexSet.has(idx) ? sum + (Number(b.sizeKg) || 0) : sum,
       0
     );
-    // Depend only on the sent-index array (primitive-identity stable when unchanged) and customBatches;
-    // the whole `selectedSOForBatch` object is not needed and its identity churn was causing this memo
-    // to recompute more often than necessary.
-  }, [customBatches, selectedSOForBatch?.sentBatchIndices, isSentBatchIndexLocked]);
+  }, [customBatches, selectedSOForBatch, workingBatchPlanIndex, bufferBatchIndexSet, planBatchesModalOpen]);
 
   // Sync preview qty to "remaining after sent batches" — only before the Plan Batches modal opens.
   // While editing in the modal, auto-sync would overwrite manual preview / unit inputs.
@@ -3372,13 +3390,13 @@ const Planning = () => {
   }, [selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg]);
 
   /**
-   * Order vs planned batches: pending kg/units and unsent batch count (Plan Batches modal).
+   * Order vs planned batches: SO pending kg/units, buffer (over-production) kg/units, and unsent count.
    *
-   * Pending = orderTotalKg − sentKg − previewKg (negative = buffer/over-production vs SO)
-   *
-   * Preview is read directly here instead of being folded back into `customBatches` by Effect B,
-   * which decouples this memo from that sync. That's why changing the preview no longer triggers
-   * a customBatches → summary → preview loop.
+   * SO batches fulfil the order; buffer batches sit above the SO qty and are tracked separately.
+   * Each batch counts at its stored size, except the current working batch which uses the live Preview
+   * qty (previewKg). SO pending = orderTotalKg − soAllocKg. `allocKg`/`allocUnits` = total to make
+   * (SO + buffer). Preview is read directly here (not folded into customBatches) to avoid a
+   * preview → customBatches → summary loop.
    */
   const planBatchesAllocationSummary = useMemo(() => {
     if (!selectedSOForBatch) return null;
@@ -3387,17 +3405,24 @@ const Planning = () => {
     const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
 
-    const sentKg = customBatches.reduce(
-      (s, b, i) =>
-        sent.includes(i) && isSentBatchIndexLocked(i) ? s + (Number(b.sizeKg) || 0) : s,
-      0
-    );
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
     const previewKg = Math.max(0, previewUnits * kpu);
+    const workingInList = workingBatchPlanIndex >= 0 && workingBatchPlanIndex < customBatches.length;
 
-    const allocKg = sentKg + previewKg;
-    const pendKg = tk - allocKg;
+    let soAllocKg = 0;
+    let bufferKg = 0;
+    customBatches.forEach((b, i) => {
+      const size = workingInList && i === workingBatchPlanIndex ? previewKg : Number(b.sizeKg) || 0;
+      if (bufferBatchIndexSet.has(i)) bufferKg += size;
+      else soAllocKg += size;
+    });
+    // First batch not yet in customBatches → the preview is an SO batch about to be created.
+    if (!workingInList) soAllocKg += previewKg;
+
+    const allocKg = soAllocKg + bufferKg;
+    const pendKg = tk - soAllocKg;
     const pendUnits = kpu > 0 ? pendKg / kpu : 0;
+    const bufferUnits = kpu > 0 ? bufferKg / kpu : 0;
     const allocUnits = kpu > 0 ? allocKg / kpu : 0;
     const unsentCount = customBatches.filter((_, i) => !sent.includes(i)).length;
     return {
@@ -3405,6 +3430,9 @@ const Planning = () => {
       orderTotalKg: tk,
       kgPerUnit: kpu,
       allocKg,
+      soAllocKg,
+      bufferKg,
+      bufferUnits,
       pendKg,
       pendUnits,
       allocUnits,
@@ -3419,7 +3447,8 @@ const Planning = () => {
     selectedSOForBatch?.sentBatchIndices,
     customBatches,
     feasibilityPreviewQty,
-    isSentBatchIndexLocked,
+    workingBatchPlanIndex,
+    bufferBatchIndexSet,
   ]);
 
   // When preview qty changes, reflect it once into the next active batch-units input in Batch Plan.
@@ -4008,10 +4037,7 @@ const Planning = () => {
   const feasibilityPmCoversUnits = feasibilityPmRows.length > 0 ? Math.min(...feasibilityPmRows.map((r) => r.maxUnits)) : 0;
   const feasibilityExecutableUnits = Math.min(feasibilityRmCoversUnits, feasibilityPmCoversUnits);
 
-  const selectedBatchPlanIndex = useMemo(() => {
-    if (selectedBatchId == null || !planningBatches?.length) return -1;
-    return (planningBatches as PlanningBatchRow[]).findIndex((b) => Number(b.id) === Number(selectedBatchId));
-  }, [planningBatches, selectedBatchId]);
+  const selectedBatchPlanIndex = workingBatchPlanIndex;
 
   const isSelectedBatchAlreadySent = useMemo((): boolean => {
     if (selectedBatchPlanIndex < 0) return false;
@@ -6375,11 +6401,13 @@ const Planning = () => {
     setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: mergedSent, bomStatus: 'Production Released' } : prev));
     const batchLabel = `B-${String(batchIndex + 1).padStart(2, '0')}`;
     const nextBatchIndex = batchesForSend.findIndex((_, idx) => !mergedSent.includes(idx));
-    const sentKg = batchesForSend.reduce(
-      (sum, b, idx) => (mergedSent.includes(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
+    // SO remaining excludes buffer / over-production batches (they sit above the SO qty).
+    const bufferSet = new Set((selectedSOForBatch.bufferBatchIndices ?? []).map((n) => Number(n)));
+    const sentSoKg = batchesForSend.reduce(
+      (sum, b, idx) => (mergedSent.includes(idx) && !bufferSet.has(idx) ? sum + (Number(b.sizeKg) || 0) : sum),
       0
     );
-    const remainingKg = Math.max(0, orderTotalKg - sentKg);
+    const remainingKg = Math.max(0, orderTotalKg - sentSoKg);
     const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : 0;
     return { batchLabel, nextBatchIndex, remainingUnits };
   };
@@ -9395,22 +9423,27 @@ const Planning = () => {
                 <p className="text-xs text-gray-500 mt-1">{selectedSOForBatch.soNumber} · {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg}</p>
                 {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                   <p className="text-xs text-slate-600 mt-1.5">
-                    <span className="font-semibold text-slate-800">
-                      {planBatchesAllocationSummary.pendKg < -0.01 ? 'Buffer planned:' : 'Pending to plan:'}
-                    </span>{' '}
-                    {planBatchesAllocationSummary.pendKg < -0.01 ? (
-                      <>
-                        +{Number.isInteger(-planBatchesAllocationSummary.pendUnits)
-                          ? Math.round(-planBatchesAllocationSummary.pendUnits).toLocaleString()
-                          : (-planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
-                        units ({formatQtyExact(Math.abs(planBatchesAllocationSummary.pendKg), 'kg')} kg over SO)
-                      </>
+                    <span className="font-semibold text-slate-800">Pending to plan:</span>{' '}
+                    {planBatchesAllocationSummary.pendKg <= 0.01 ? (
+                      <span className="text-emerald-700 font-semibold">SO fully planned</span>
                     ) : (
                       <>
                         {Number.isInteger(planBatchesAllocationSummary.pendUnits)
                           ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
                           : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
                         units ({formatQtyExact(planBatchesAllocationSummary.pendKg, 'kg')} kg)
+                      </>
+                    )}
+                    {planBatchesAllocationSummary.bufferKg > 0.01 && (
+                      <>
+                        {' · '}
+                        <span className="font-semibold text-amber-700">Buffer:</span>{' '}
+                        <span className="text-amber-700">
+                          +{Number.isInteger(planBatchesAllocationSummary.bufferUnits)
+                            ? Math.round(planBatchesAllocationSummary.bufferUnits).toLocaleString()
+                            : planBatchesAllocationSummary.bufferUnits.toFixed(1)}{' '}
+                          units ({formatQtyExact(planBatchesAllocationSummary.bufferKg, 'kg')} kg over SO)
+                        </span>
                       </>
                     )}
                     {' · '}
@@ -9577,6 +9610,48 @@ const Planning = () => {
                     + Add
                   </button>
                   )}
+                  {!isEditingExistingBatch && (
+                  <button
+                    type="button"
+                    disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
+                    onClick={async () => {
+                      if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
+                        addToast('error', 'Send the latest batch to production before adding another.');
+                        return;
+                      }
+                      if (!selectedSOForBatch) return;
+                      const newIndex = planningBatches.length;
+                      try {
+                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                        if (!newBatch) {
+                          addToast('error', 'Failed to add buffer batch');
+                          return;
+                        }
+                        mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
+                        queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
+                        setSelectedBatchId(Number(newBatch.id));
+                        const nextBuffer = [
+                          ...new Set([...(selectedSOForBatch.bufferBatchIndices ?? []).map(Number), newIndex]),
+                        ].sort((a, b) => a - b);
+                        await updatePlanningExtracted(selectedSOForBatch.id, { bufferBatchIndices: nextBuffer });
+                        setSelectedSOForBatch((prev) => (prev ? { ...prev, bufferBatchIndices: nextBuffer } : prev));
+                        setFeasibilityPreviewQty(0);
+                        addToast('success', `Added buffer batch ${newBatch.batchCode ?? ''} (over SO qty). Set buffer units in Preview qty.`);
+                      } catch (e) {
+                        console.error('[Planning] add buffer batch', e);
+                        addToast('error', e instanceof Error ? e.message : 'Failed to add buffer batch');
+                      }
+                    }}
+                    className="px-2 py-2 text-amber-600 hover:bg-amber-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title={
+                      planningBatches.length > 0 && !canAddAnotherPlanningBatch
+                        ? 'Send the latest batch to production before adding a buffer batch'
+                        : 'Add buffer / over-production batch (above the SO qty)'
+                    }
+                  >
+                    + Buffer
+                  </button>
+                  )}
                 </div>
                 {selectedBatchId != null && (
                   <span className="text-xs text-gray-600">
@@ -9602,27 +9677,17 @@ const Planning = () => {
                     {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                       <div className="flex-1 min-w-[130px]">
                         <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">PENDING PLAN</div>
-                        <div className={`text-lg font-bold ${planBatchesAllocationSummary.pendKg > 0.01 ? 'text-amber-700' : planBatchesAllocationSummary.pendKg < -0.01 ? 'text-cyan-700' : 'text-emerald-600'}`}>
-                          {planBatchesAllocationSummary.pendKg < -0.01 ? (
-                            <>
-                              +{Number.isInteger(-planBatchesAllocationSummary.pendUnits)
-                                ? Math.round(-planBatchesAllocationSummary.pendUnits).toLocaleString()
-                                : (-planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
-                              <span className="text-gray-500 text-xs font-normal">buffer units</span>
-                            </>
-                          ) : (
-                            <>
-                              {Number.isInteger(planBatchesAllocationSummary.pendUnits)
-                                ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
-                                : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
-                              <span className="text-gray-500 text-xs font-normal">units</span>
-                            </>
-                          )}
+                        <div className={`text-lg font-bold ${planBatchesAllocationSummary.pendKg > 0.01 ? 'text-amber-700' : 'text-emerald-600'}`}>
+                          {Number.isInteger(planBatchesAllocationSummary.pendUnits)
+                            ? Math.round(Math.max(0, planBatchesAllocationSummary.pendUnits)).toLocaleString()
+                            : Math.max(0, planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
+                          <span className="text-gray-500 text-xs font-normal">units</span>
                         </div>
                         <div className="text-[10px] text-gray-500">
-                          {planBatchesAllocationSummary.pendKg < -0.01
-                            ? `${Math.abs(planBatchesAllocationSummary.pendKg).toFixed(1)} kg over SO (buffer / wastage margin)`
-                            : `${planBatchesAllocationSummary.pendKg.toFixed(1)} kg left`}
+                          {`${Math.max(0, planBatchesAllocationSummary.pendKg).toFixed(1)} kg left`}
+                          {planBatchesAllocationSummary.bufferKg > 0.01
+                            ? ` · +${Math.round(planBatchesAllocationSummary.bufferUnits).toLocaleString()} buffer`
+                            : ''}
                           {planBatchesAllocationSummary.unsentCount > 0
                             ? ` · ${planBatchesAllocationSummary.unsentCount} unsent`
                             : ''}
@@ -9782,10 +9847,13 @@ const Planning = () => {
                     const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
                     const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
                     const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : (orderTotalKg || 1);
-                    const batchTotal = customBatches.reduce((sum, b) => sum + (b.sizeKg || 0), 0);
+                    const soBatchTotal = customBatches.reduce((sum, b, i) => sum + (bufferBatchIndexSet.has(i) ? 0 : (b.sizeKg || 0)), 0);
+                    const bufferBatchTotal = customBatches.reduce((sum, b, i) => sum + (bufferBatchIndexSet.has(i) ? (b.sizeKg || 0) : 0), 0);
+                    const batchTotal = soBatchTotal + bufferBatchTotal;
                     const batchTotalUnits = kgPerUnit > 0 ? batchTotal / kgPerUnit : 0;
-                    const remaining = orderTotalKg - batchTotal;
+                    const remaining = orderTotalKg - soBatchTotal; // SO remaining only (buffer sits above SO)
                     const remainingUnits = kgPerUnit > 0 ? remaining / kgPerUnit : 0;
+                    const bufferBannerUnits = kgPerUnit > 0 ? bufferBatchTotal / kgPerUnit : 0;
                     const addBatch = async () => {
                       if (planningBatches.length > 0 && !canAddAnotherPlanningBatch) {
                         addToast('error', 'Send the latest batch to production before adding another.');
@@ -9868,17 +9936,23 @@ const Planning = () => {
                               {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units ordered</>}
                             </span>
                           </p>
-                          {Math.abs(remaining) >= 0.01 && (
-                            <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-700' : 'text-cyan-700'}`}>
-                              {remaining > 0 ? `${Math.round(remainingUnits).toLocaleString()} units remaining to allocate` : `${Math.round(-remainingUnits).toLocaleString()} units buffer / over-production (allowed for wastage margin)`}
+                          {remaining > 0.01 ? (
+                            <p className="text-xs mt-1 text-amber-700">
+                              {Math.round(remainingUnits).toLocaleString()} SO units remaining to allocate
+                            </p>
+                          ) : (
+                            <p className="text-xs text-emerald-700 mt-1">SO fully allocated to order qty.</p>
+                          )}
+                          {bufferBatchTotal > 0.01 && (
+                            <p className="text-xs mt-1 text-amber-700">
+                              +{Math.round(bufferBannerUnits).toLocaleString()} buffer units over SO ({bufferBatchTotal.toFixed(1)} kg over-production)
                             </p>
                           )}
-                          {Math.abs(remaining) < 0.01 && <p className="text-xs text-emerald-700 mt-1">Fully allocated to order qty.</p>}
                           <p className="text-xs mt-1.5 text-slate-700">
                             {(() => {
                               const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                               const unsent = customBatches.filter((_, i) => !sentBatchIndices.includes(i)).length;
-                              const pendKgLine = remaining > 0.01 ? `${remaining.toFixed(1)} kg still to allocate` : remaining < -0.01 ? `${Math.abs(remaining).toFixed(1)} kg buffer over SO qty` : 'Matches order total kg';
+                              const pendKgLine = remaining > 0.01 ? `${remaining.toFixed(1)} kg still to allocate` : 'SO matches order total kg';
                               return (
                                 <>
                                   <span className="font-semibold">{unsent}</span> batch{unsent !== 1 ? 'es' : ''} not sent
@@ -9928,15 +10002,21 @@ const Planning = () => {
                               const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                               const isSent = sentBatchIndices.includes(originalIndex);
                               const isLockedSent = isSent && isSentBatchIndexLocked(originalIndex);
+                              const isBuffer = bufferBatchIndexSet.has(originalIndex);
                               const batchUnits = kgPerUnit > 0 ? batch.sizeKg / kgPerUnit : 0;
                               const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
                               const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
                               return (
-                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-gray-200 bg-gray-100 opacity-90' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-gray-200 bg-gray-100 opacity-90' : isBuffer ? 'border-amber-300 bg-amber-50/30' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
                                   <div className="flex items-center gap-3 p-4">
                                     {isSent && (
                                       <span className={`shrink-0 text-xs font-semibold px-2 py-1 rounded ${isLockedSent ? 'text-gray-500 bg-gray-200' : 'text-amber-800 bg-amber-100'}`}>
                                         {isLockedSent ? 'Sent' : 'Sent · editable'}
+                                      </span>
+                                    )}
+                                    {isBuffer && (
+                                      <span className="shrink-0 text-xs font-bold px-2 py-1 rounded text-amber-800 bg-amber-100" title="Buffer / over-production batch (above the SO qty)">
+                                        BUFFER
                                       </span>
                                     )}
                                     <div
