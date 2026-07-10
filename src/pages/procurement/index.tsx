@@ -6185,11 +6185,18 @@ const Procurement: React.FC = () => {
               {sideSection === 'Quote Requests' && (
                 <QuoteRequestsView
                   vendorQuotes={quotesForQuotationsSection}
+                  vendors={vendorClientList ?? []}
+                  vendorsLoading={vendorClientsLoading}
                   onEditQuote={(quote) => {
                     const req = requests.find((r) => String(r.id) === String(quote.requestId));
                     if (req) openRecordQuoteFromRequest(req);
                   }}
                   onNewQuoteRequest={() => applyRouteState('Procurement', 'Requests')}
+                  onQuoteRecorded={() => {
+                    void queryClient.refetchQueries({ queryKey: ['items-list-page', 'RM'], type: 'active' });
+                    void queryClient.refetchQueries({ queryKey: ['items-list-page', 'PM'], type: 'active' });
+                    addToast('success', 'Quotation recorded to the Items List (price list).');
+                  }}
                 />
               )}
 

@@ -1159,6 +1159,7 @@ const BOMDashboard: React.FC = () => {
                 <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Sr No</th>
                     <SortableTableTh
                       label="Code"
                       column="code"
@@ -1274,13 +1275,14 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-200">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={19} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={20} className="px-4 py-12 text-center text-gray-500">
                         No Products found. <Link to="/bom/new" className="text-blue-600 hover:text-blue-700 font-semibold">Create one</Link> to get started.
                       </td>
                     </tr>
                   ) : (
-                    pagedFilteredList.map((p) => (
+                    pagedFilteredList.map((p, idx) => (
                       <tr key={p.product_id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => handleViewItem(p)}>
+                        <td className="px-4 py-3 text-sm text-gray-500">{startIndex + idx + 1}</td>
                         <td className="px-4 py-3 text-sm font-mono font-semibold text-gray-900">{p.product_code || '—'}</td>
                         <td className="px-4 py-3 text-sm">
                           {p.pr_record_type === 'temporary' ? (

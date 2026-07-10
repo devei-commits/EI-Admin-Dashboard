@@ -76,6 +76,33 @@ const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boole
  );
 };
 
+const STATUS_OPTIONS: VendorClientType['status'][] = ['active', 'inactive', 'pending'];
+
+const STATUS_BADGE_CLASS: Record<VendorClientType['status'], string> = {
+ active: 'bg-green-50 text-green-700 border-green-200',
+ inactive: 'bg-gray-100 text-gray-600 border-gray-200',
+ pending: 'bg-amber-50 text-amber-700 border-amber-200',
+};
+
+const StatusSelect: React.FC<{
+ value: VendorClientType['status'];
+ onChange: (next: VendorClientType['status']) => void;
+}> = ({ value, onChange }) => {
+ const current = value || 'pending';
+ return (
+  <select
+   value={current}
+   onClick={(e) => e.stopPropagation()}
+   onChange={(e) => onChange(e.target.value as VendorClientType['status'])}
+   className={`px-2 py-1 rounded-lg border text-xs font-semibold capitalize cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${STATUS_BADGE_CLASS[current]}`}
+  >
+   {STATUS_OPTIONS.map((opt) => (
+    <option key={opt} value={opt}>{opt}</option>
+   ))}
+  </select>
+ );
+};
+
 const VendorClientSection: React.FC<{ title: string; icon?: string; children: React.ReactNode }> = ({ title, icon, children }) => (
  <div className="mt-6">
   <div className="flex items-center gap-2 mb-3">
@@ -595,6 +622,7 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
@@ -610,11 +638,12 @@ const VendorClient: React.FC = () => {
         <tbody>
          {vendorTotal === 0 ? (
           <tr>
-           <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
+           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
           </tr>
          ) : (
-          sortedPagedVendors.map((v) => (
+          sortedPagedVendors.map((v, idx) => (
            <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
+            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{vendorOffset + idx + 1}</td>
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.zohoId || (v.data as any)?.zohoId || '-')}</td>
@@ -622,7 +651,9 @@ const VendorClient: React.FC = () => {
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.location || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(v.status || '-')}</td>
+            <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+             <StatusSelect value={v.status} onChange={(next) => handleStatusChange(v.id, next)} />
+            </td>
             <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
@@ -662,7 +693,7 @@ const VendorClient: React.FC = () => {
             <p className="font-semibold text-gray-800 truncate">{v.name}</p>
             <p className="text-sm text-slate-800">{v.category}</p>
            </div>
-           <span className="text-xs font-medium text-gray-600">{v.status || '-'}</span>
+           <StatusSelect value={v.status} onChange={(next) => handleStatusChange(v.id, next)} />
           </div>
           <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
            <div className="flex justify-between">
@@ -833,6 +864,7 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
+          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
@@ -848,11 +880,12 @@ const VendorClient: React.FC = () => {
         <tbody>
          {clientTotal === 0 ? (
           <tr>
-           <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
+           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
           </tr>
          ) : (
-          sortedPagedClients.map((c) => (
+          sortedPagedClients.map((c, idx) => (
            <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
+            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{clientOffset + idx + 1}</td>
             <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.zohoId || (c.data as any)?.zohoId || '-')}</td>
@@ -860,7 +893,9 @@ const VendorClient: React.FC = () => {
             <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>
             <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.location || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700">{renderCellValue(c.status || '-')}</td>
+            <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+             <StatusSelect value={c.status} onChange={(next) => handleStatusChange(c.id, next)} />
+            </td>
             <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
@@ -900,7 +935,7 @@ const VendorClient: React.FC = () => {
             <p className="font-semibold text-gray-800 truncate">{c.name}</p>
             <p className="text-sm text-slate-800">{c.category}</p>
            </div>
-           <span className="text-xs font-medium text-gray-600">{c.status || '-'}</span>
+           <StatusSelect value={c.status} onChange={(next) => handleStatusChange(c.id, next)} />
           </div>
           <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
            <div className="flex justify-between">
@@ -1056,7 +1091,10 @@ const VendorClient: React.FC = () => {
         <VendorClientField label="Phone" value={viewing.phone} />
         <VendorClientField label="State" value={viewing.location} />
         <VendorClientField label="Country" value={viewing.country} />
-        <VendorClientField label="Status" value={viewing.status} />
+        <VendorClientField
+         label="Status"
+         value={<StatusSelect value={viewing.status} onChange={(next) => handleStatusChange(viewing.id, next)} />}
+        />
         <VendorClientField label="Payment Terms" value={viewing.paymentTerms} />
         <VendorClientField label="Created" value={viewing.createdAt ? new Date(viewing.createdAt).toLocaleString() : ''} />
         <VendorClientField label="Last Updated" value={viewing.lastModified ? new Date(viewing.lastModified).toLocaleString() : ''} />

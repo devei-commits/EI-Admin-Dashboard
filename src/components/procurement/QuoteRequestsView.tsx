@@ -11,7 +11,11 @@ import {
   type QuoteStatus, type PrSource,
 } from '../../constants/procurement';
 import { quoteSlaLevel } from '../../lib/procurementSla';
-import { RfqTemplatePopup, type RfqTemplateData } from './RfqTemplatePopup';
+import { RfqTemplatePopup, type RfqTemplateData, type RfqRecordedQuote } from './RfqTemplatePopup';
+import { QuotationEditPopup } from './QuotationEditPopup';
+import { recordQuotationToPriceList, type RecordedQuoteInput } from '../../utils/recordQuotationToPriceList';
+import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
+import type { VendorClientRecord } from '../../services/vendorClient.service';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -55,16 +59,24 @@ interface QuoteRow {
 export interface QuoteRequestsViewProps {
   /** Procurement-recorded vendor quotations (from parent React Query). */
   vendorQuotes?: VendorQuote[];
+  /** Vendor master records for the Record-Quotation popup (typeahead + auto-fill). */
+  vendors?: VendorClientRecord[];
+  vendorsLoading?: boolean;
   onEditQuote?: (quote: VendorQuote) => void;
   onNewQuoteRequest?: () => void;
   onExport?: () => void;
+  /** Fired after a quotation is recorded into the Items List (parent refetches price list). */
+  onQuoteRecorded?: () => void;
 }
 
 export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   vendorQuotes = [],
+  vendors = [],
+  vendorsLoading,
   onEditQuote,
   onNewQuoteRequest,
   onExport,
+  onQuoteRecorded,
 }) => {
   const [asks, setAsks] = useState<PlanningQuotationAsk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +84,10 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
-  const [templateFor, setTemplateFor] = useState<RfqTemplateData | null>(null);
+  // Two-step flow: record the quotation first, then review + send the email (which saves to the price list).
+  const [recordingFor, setRecordingFor] = useState<RfqTemplateData | null>(null);
+  const [emailingFor, setEmailingFor] = useState<{ data: RfqTemplateData; quote: RecordedQuoteInput } | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -107,6 +122,12 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
         needBy: null,
         comments: a.notes || undefined,
+        itemType: a.itemType,
+        rawMaterialId: a.rawMaterialId,
+        packMaterialId: a.packMaterialId,
+        askId: a.id,
+        moqHint: a.moqHint,
+        quantityToQuote: a.quantityRequested,
       },
     }));
 
@@ -133,6 +154,12 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
           qtyTiers,
           needBy: null,
           comments: q.note || undefined,
+          itemType: q.requestType === 'RM' || q.requestType === 'PM' ? q.requestType : undefined,
+          rawMaterialId: q.lines[0]?.raw_material_id ?? null,
+          packMaterialId: q.lines[0]?.pack_material_id ?? null,
+          askId: null,
+          moqHint: null,
+          quantityToQuote: q.lines[0]?.qty != null && q.lines[0].qty !== '' ? Number(q.lines[0].qty) : null,
         },
       };
     });
@@ -248,14 +275,27 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                     <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>{SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d</span><span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span></td>
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1">
-                        {linkedQuote && onEditQuote && (
-                          <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
-                            <Pencil size={12} /> Edit
-                          </button>
-                        )}
-                        <button onClick={() => setTemplateFor(r.templateData)} title="Generate RFQ template" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
-                          <FileText size={12} /> Template
-                        </button>
+                        {(() => {
+                          const canRecord = r.status !== 'completed' && r.status !== 'terminated';
+                          const showEdit = linkedQuote && onEditQuote;
+                          if (!canRecord && !showEdit) {
+                            return <span className="text-xs text-slate-300">—</span>;
+                          }
+                          return (
+                            <>
+                              {showEdit && (
+                                <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
+                                  <Pencil size={12} /> Edit
+                                </button>
+                              )}
+                              {canRecord && (
+                                <button onClick={() => { setSendError(null); setRecordingFor(r.templateData); }} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
+                                  <FileText size={12} /> Record Quote
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>
@@ -266,7 +306,71 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         </div>
       )}
 
-      {templateFor && <RfqTemplatePopup data={templateFor} onClose={() => setTemplateFor(null)} />}
+      {/* Step 1 — record the quotation (vendor + price/MOQ/lead time/terms). */}
+      {recordingFor && (
+        <QuotationEditPopup
+          data={recordingFor}
+          vendors={vendors}
+          vendorsLoading={vendorsLoading}
+          onClose={() => setRecordingFor(null)}
+          onContinue={(quote) => {
+            setEmailingFor({ data: recordingFor, quote });
+            setRecordingFor(null);
+          }}
+        />
+      )}
+
+      {/* Step 2 — review + send the email; sending writes the price into the Items List. */}
+      {emailingFor && (
+        <RfqTemplatePopup
+          data={emailingFor.data}
+          recordedQuote={buildRecordedQuote(emailingFor.quote)}
+          onClose={() => setEmailingFor(null)}
+          onApprove={async () => {
+            const { data, quote } = emailingFor;
+            const itemType = data.itemType;
+            const materialId = itemType === 'RM' ? data.rawMaterialId : data.packMaterialId;
+            if (!itemType || materialId == null) {
+              setSendError('This item is not linked to a material master, so it cannot be priced.');
+              return;
+            }
+            const res = await recordQuotationToPriceList({
+              itemType,
+              materialId,
+              askId: data.askId ?? null,
+              quote,
+            });
+            if (!res.success) {
+              setSendError(res.error ?? 'Failed to update the price list.');
+              return;
+            }
+            setEmailingFor(null);
+            setSendError(null);
+            onQuoteRecorded?.();
+            void load();
+          }}
+        />
+      )}
+
+      {sendError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[130] rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 shadow-lg">
+          {sendError}
+        </div>
+      )}
     </div>
   );
 };
+
+/** Map the recorded quote input into the email step's display/quote payload. */
+function buildRecordedQuote(quote: RecordedQuoteInput): RfqRecordedQuote {
+  return {
+    vendorName: quote.vendorName,
+    vendorEmail: quote.vendorEmail,
+    pricePerUnit: quote.pricePerUnit,
+    moq: quote.moq,
+    moqMax: quote.moqMax,
+    leadTimeDays: quote.leadTimeDays,
+    paymentTermsLabel: quote.paymentTerms ? formatStagedPaymentTermsSummary(quote.paymentTerms) : undefined,
+    validTill: quote.validTill,
+  };
+}
