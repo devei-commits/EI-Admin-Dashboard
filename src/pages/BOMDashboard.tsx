@@ -1749,7 +1749,7 @@ const BOMDashboard: React.FC = () => {
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2 w-24">Type</th><th className="text-left p-2">INCI / Group</th><th className="text-left p-2">RM / Group Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                              <thead><tr className="bg-gray-50"><th className="text-left p-2 w-12">Sr No</th><th className="text-left p-2 w-24">Type</th><th className="text-left p-2">INCI / Group</th><th className="text-left p-2">RM / Group Code</th><th className="text-right p-2 w-16">% w/w</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                               <tbody>
                                 {phase.ingredients.map((ing, i) => {
                                   const isGroupLine =
@@ -1927,7 +1927,7 @@ const BOMDashboard: React.FC = () => {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="bg-gray-50">
-                              <th className="text-left p-2 w-8">#</th>
+                              <th className="text-left p-2 w-12">Sr No</th>
                               <th className="text-left p-2">INCI / Name</th>
                               <th className="text-left p-2">RM Code</th>
                               <th className="text-right p-2">Required / unit (kg)</th>
@@ -1983,7 +1983,7 @@ const BOMDashboard: React.FC = () => {
                       )}
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-8">#</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Category</th><th className="text-left p-2">Sub-category</th><th className="text-left p-2">Sub-sub category</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
+                          <thead><tr className="bg-gray-50"><th className="text-left p-2 w-12">Sr No</th><th className="text-left p-2">PM Description</th><th className="text-left p-2">PM Code</th><th className="text-left p-2">Category</th><th className="text-left p-2">Sub-category</th><th className="text-left p-2">Sub-sub category</th><th className="text-left p-2">Pack Type</th><th className="text-right p-2">Qty/Unit</th><th className="text-left p-2">UOM</th>{isEditMode && <th className="w-8" />}</tr></thead>
                           <tbody>
                             {packList.map((row, i) => {
                               const subCategoryOpts = pmDetailSubCategoryOptionsForSkuCategory(row.pm_sku_category ?? '');

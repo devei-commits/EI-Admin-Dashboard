@@ -2644,7 +2644,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[860px] grid-cols-12 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[860px] grid-cols-13 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                    <div className="col-span-1 min-w-0">Sr No</div>
                     <div className="col-span-3 min-w-0">INCI / Group name</div>
                     <div className="col-span-2 min-w-0">SKU / Group code</div>
                     <div className="col-span-2 min-w-0">Phase</div>
@@ -2653,7 +2654,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div className="col-span-2 min-w-0">UOM</div>
                   </div>
                   <div className="space-y-2">
-                    {formData.formulaIngredients.map((ing) => {
+                    {formData.formulaIngredients.map((ing, i) => {
                       const isEditing = ing.id === editingIngredientId;
                       const inlineSku =
                         selectedRmId && isEditing
@@ -2664,8 +2665,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         return (
                           <div
                             key={ing.id}
-                            className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-start p-2 rounded bg-blue-50 ring-2 ring-blue-200 sm:min-w-0"
+                            className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-start p-2 rounded bg-blue-50 ring-2 ring-blue-200 sm:min-w-0"
                           >
+                            <div className="col-span-1 min-w-0 pt-1.5 text-slate-400 font-mono">{i + 1}</div>
                             <div className="col-span-3 min-w-0 space-y-1">
                               <select
                                 value={formulaLineKind}
@@ -2791,8 +2793,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       return (
                         <div
                           key={ing.id}
-                          className="grid min-w-[860px] grid-cols-12 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                          className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
                         >
+                          <div className="col-span-1 min-w-0 text-slate-400 font-mono">{i + 1}</div>
                           <div className="col-span-3 min-w-0 text-slate-900 break-words">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span>{ing.inciName}</span>
@@ -3070,6 +3073,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 <table className="w-full text-sm min-w-[560px]">
                   <thead>
                     <tr className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase">
+                      <th className="text-left p-2 w-12">Sr No</th>
                       <th className="text-left p-2">INCI / Raw Material</th>
                       <th className="text-right p-2">Required / unit (kg)</th>
                       <th className="text-right p-2">Required / unit (Std UoM)</th>
@@ -3078,12 +3082,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   <tbody>
                     {formData.skuBomLines.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="p-4 text-center text-sm text-slate-500">
+                        <td colSpan={4} className="p-4 text-center text-sm text-slate-500">
                           Import from Formula BOM to populate this list.
                         </td>
                       </tr>
                     ) : (
-                      formData.skuBomLines.map((row) => {
+                      formData.skuBomLines.map((row, i) => {
                         const rmMaster = row.rawMaterialId
                           ? rawMaterialById.get(String(row.rawMaterialId))
                           : row.rmCode
@@ -3096,6 +3100,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         });
                         return (
                           <tr key={row.id} className="border-t border-slate-100">
+                            <td className="p-2 text-slate-400 font-mono">{i + 1}</td>
                             <td className="p-2 text-slate-900">
                               {row.inciName}
                               {row.rmCode ? (
@@ -3130,7 +3135,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[980px] grid-cols-8 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[980px] grid-cols-9 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                    <div>Sr No</div>
                     <div className="col-span-2">PM Description</div>
                     <div>SKU</div>
                     <div>Category</div>
@@ -3140,7 +3146,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <div>Qty / Unit</div>
                   </div>
                   <div className="space-y-2">
-                    {formData.packingComponents.map((comp) => {
+                    {formData.packingComponents.map((comp, i) => {
                       const isEditing = comp.id === editingComponentId;
                       const inlineSku =
                         selectedPmId && isEditing
@@ -3327,8 +3333,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       return (
                       <div
                         key={comp.id}
-                        className="grid min-w-[980px] grid-cols-8 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                        className="grid min-w-[980px] grid-cols-9 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
                       >
+                        <div className="text-slate-400 font-mono">{i + 1}</div>
                         <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
                         <div className="text-slate-600 font-mono text-xs break-all">
                           {getPackComponentSku(comp) || '—'}
