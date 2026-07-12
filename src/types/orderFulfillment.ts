@@ -84,6 +84,7 @@ export interface OrderItem {
   orderedQty: number;
   rate: number;
   unitPrice: number;
+  mrp?: number | null;
   batchSplits: BatchSplit[];
 }
 
@@ -276,6 +277,7 @@ export interface NewSOItemData {
   pack: string;
   orderedQty: number;
   unitPrice: number;
+  mrp?: number | null;
   bmrNo: string;
 }
 

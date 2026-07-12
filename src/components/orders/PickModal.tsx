@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Package, MapPin, Check, User, Calendar, File, StickyNote, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { PickModalProps } from '../../types/orderFulfillment';
-import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
+import { formatNumber, getTodayISO, cleanAddress } from '../../utils/orderFulfillmentUtils';
 
 export const PickModal: React.FC<PickModalProps> = ({
   isOpen,
@@ -136,7 +136,7 @@ export const PickModal: React.FC<PickModalProps> = ({
                 {saleOrder.customer}
               </strong>
               <br />
-              {saleOrder.shipAddress}
+              <span className="whitespace-pre-wrap">{cleanAddress(saleOrder.shipAddress, saleOrder.customer)}</span>
             </address>
           </div>
         </div>

@@ -108,6 +108,9 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
           <StatCell label="SIH" value={sih != null ? `${sih}` : '—'} tone={sih != null && sih <= 0 ? 'bad' : 'default'} />
           <StatCell label="Planned Qty" value="—" />
           <StatCell label="MOQ" value={item?.moq ?? '—'} />
+          {req.planningProductMrp != null && Number(req.planningProductMrp) > 0 ? (
+            <StatCell label="MRP (read-only)" value={`₹${Number(req.planningProductMrp).toLocaleString('en-IN')}`} />
+          ) : null}
         </div>
       </ModalSection>
 

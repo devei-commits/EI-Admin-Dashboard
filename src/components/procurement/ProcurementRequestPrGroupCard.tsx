@@ -147,6 +147,11 @@ export function ProcurementRequestPrGroupCard({
                   : ''}
               </span>
             ) : null}
+            {request.planningProductMrp != null && Number(request.planningProductMrp) > 0 ? (
+              <span className="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 font-semibold text-[10px]">
+                MRP ₹{Number(request.planningProductMrp).toLocaleString('en-IN')}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>

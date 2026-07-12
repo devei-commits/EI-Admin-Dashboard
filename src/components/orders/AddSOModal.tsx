@@ -12,7 +12,7 @@ const LEAD_DAYS_PRODUCT = 45;
 const LEAD_DAYS_CUSTOMISATION = 90;
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { AddSOModalProps } from '../../types/orderFulfillment';
-import { getTodayISO, addDays, isValidPackSize } from '../../utils/orderFulfillmentUtils';
+import { getTodayISO, addDays, isValidPackSize, cleanAddress } from '../../utils/orderFulfillmentUtils';
 import {
   resolveStagedPaymentTermsFromCustomerMaster,
   serializeStagedPaymentTerms,
@@ -88,6 +88,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     pack: '',
     orderedQty: 1000,
     unitPrice: 0,
+    mrp: 0,
     bmrNo: ''
   }]);
 
@@ -304,8 +305,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setSelectedCustomerId(selected.id);
     setCustomerCode(selected.code || '');
     setCustomerCity(selected.city || '');
-    setShipAddress(selected.shippingAddress || '');
-    setBillingAddress(selected.billingAddress || '');
+    setShipAddress(cleanAddress(selected.shippingAddress || '', selected.name));
+    setBillingAddress(cleanAddress(selected.billingAddress || '', selected.name));
     setCustomerEmail(selected.email || '');
     setCustomerPhone(selected.phone || '');
     setCustomerCountry(selected.country || '');
@@ -327,7 +328,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   };
 
   const handleAddItem = () => {
-    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
+    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '' }]);
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
@@ -339,6 +340,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       if (selected) {
         newItems[index].sku = selected.sku;
         newItems[index].pack = packSizeFromProductRecord(selected);
+        newItems[index].mrp = selected.price > 0 ? selected.price : 0;
         if (!selectedCustomerId && selected.price > 0) {
           newItems[index].unitPrice = selected.price;
         } else {
@@ -348,6 +350,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         newItems[index].sku = '';
         newItems[index].pack = '';
         newItems[index].unitPrice = 0;
+        newItems[index].mrp = 0;
       }
     }
     setItems(newItems);
@@ -433,6 +436,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       items: items.map((it) => ({
         ...it,
         pack: String(it.pack ?? '').trim(),
+        mrp: it.mrp > 0 ? it.mrp : null,
       })),
     };
 
@@ -461,7 +465,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomerCreditLimit('');
     applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
-    setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, bmrNo: '' }]);
+    setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '' }]);
     setSelectedCustomerId(null);
     setPriceHints({});
     setErrors([]);
@@ -631,7 +635,15 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   <Input label="Primary contact" value={customerContactLine} onChange={(e) => setCustomerContactLine(e.target.value)} />
                   <Input label="Credit limit (₹)" value={customerCreditLimit} onChange={(e) => setCustomerCreditLimit(e.target.value)} />
                 </div>
-                <Input label="Billing address" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Billing address</label>
+                  <textarea
+                    value={billingAddress}
+                    onChange={(e) => setBillingAddress(e.target.value)}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-800"
+                  />
+                </div>
                 <p className="text-xs text-slate-500">Prefilled when you pick a customer; edit as needed for this order.</p>
               </div>
 
@@ -660,7 +672,14 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               <p className="text-xs text-gray-500 -mt-2">Due date defaults to order date + lead days; adjust if needed.</p>
 
               <div>
-                <Input label="Shipping address" placeholder="Enter full shipping address" value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Shipping address</label>
+                <textarea
+                  value={shipAddress}
+                  onChange={(e) => setShipAddress(e.target.value)}
+                  placeholder="Enter full shipping address"
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-800"
+                />
                 <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
               </div>
 
@@ -747,6 +766,17 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       ) : (
                         <p className="text-xs text-amber-700 mt-1">Select a customer to load price from Items List.</p>
                       )}
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <Input
+                        label="MRP (₹)"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={item.mrp}
+                        onChange={(e) => handleItemChange(index, 'mrp', parseFloat(e.target.value) || 0)}
+                      />
+                      <p className="text-xs text-slate-400 mt-1">From product master — editable</p>
                     </div>
                     <div className="col-span-12 md:col-span-1">
                       {items.length > 1 && (

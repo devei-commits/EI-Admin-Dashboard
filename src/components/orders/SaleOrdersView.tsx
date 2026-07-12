@@ -153,7 +153,7 @@ interface SaleOrdersViewProps {
       shipAddress: string;
       paymentTerms: string;
       notes: string;
-      items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number }>;
+      items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
     }
   ) => Promise<void> | void;
   /** Returns updated order on success so we can open Invoice modal with fresh data. */

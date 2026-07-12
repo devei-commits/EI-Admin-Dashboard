@@ -557,6 +557,7 @@ export function mapBackendPrToRequest(pr: BackendPR & { preferredVendor?: string
     planningCustomerName: pr.planningCustomerName ?? null,
     planningProductName: pr.planningProductName ?? null,
     planningProductCode: pr.planningProductCode ?? null,
+    planningProductMrp: (pr as { planningProductMrp?: number | null }).planningProductMrp ?? null,
     itemDetails: items.map(
       (i: {
         code?: string;

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Truck, Check, Package, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import type { ShipModalProps } from '../../types/orderFulfillment';
-import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
+import { formatNumber, getTodayISO, cleanAddress } from '../../utils/orderFulfillmentUtils';
 import { fetchTransporters, type TransporterOption } from '../../services/fulfillment.service';
 
 function addDays(dateStr: string, days: number): string {
@@ -104,7 +104,7 @@ export const ShipModal: React.FC<ShipModalProps> = ({
           <div>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Delivering To</p>
             <p className="text-sm font-bold text-gray-800 mt-1">{saleOrder.customer}</p>
-            <p className="text-xs text-gray-500">{saleOrder.shipAddress}</p>
+            <p className="text-xs text-gray-500 whitespace-pre-wrap">{cleanAddress(saleOrder.shipAddress, saleOrder.customer)}</p>
           </div>
         </div>
 

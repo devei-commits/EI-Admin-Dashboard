@@ -196,6 +196,7 @@ export interface ProductOption {
   sku: string;
   pack: string;
   category: string;
+  /** MRP price from products.mrp_price — used as reference ceiling, not sale price */
   price: number;
   /** Master approval workflow status — all stages visible in SO picker */
   approvalStatus?: string;

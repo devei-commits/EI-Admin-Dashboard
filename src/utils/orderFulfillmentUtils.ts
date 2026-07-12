@@ -8,6 +8,97 @@ import { DATE_FORMAT_OPTIONS } from '../constants/orderFulfillment';
 import { computeOrderItemExecutionPercent } from '../lib/fulfillmentExecutionPct';
 
 // ═══════════════════════════════════════════════════════════
+// ADDRESS UTILITIES
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Cleans a raw address string for display:
+ * - Collapses multiple consecutive commas (common from legacy Zoho exports)
+ * - Trims leading/trailing commas and spaces from each line
+ * - Removes blank lines
+ * - Deduplicates consecutive identical lines (case-insensitive)
+ * - Optionally strips the customer name from the top (it's shown separately as a heading)
+ */
+export function cleanAddress(raw: string, stripName?: string): string {
+  if (!raw) return '';
+
+  const nameKey = stripName ? stripName.trim().toLowerCase() : '';
+
+  // Fix float pincodes stored as numbers (e.g. 560094.0 → 560094)
+  let working = raw.replace(/\b(\d{4,6})\.0\b/g, '$1');
+
+  // ── FLAT-STRING: double-name at the very start ──────────────────────────────
+  // Handles "Dr X Dr X, rest..." or "Dr XDr X, rest..." when the address was
+  // stored as a single flat line (no newlines) with the name duplicated at start.
+  if (nameKey) {
+    const esc = nameKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    working = working.replace(
+      new RegExp(`^(${esc})\\s*(${esc}(?=[,\\s]|$))`, 'i'),
+      '$2',
+    );
+  }
+
+  // Collapse consecutive commas then split on newlines
+  const collapsed = working.replace(/,{2,}/g, ',');
+  const lines = collapsed
+    .split(/[\n\r]+/)
+    .map((l) => l.replace(/^[,\s]+|[,\s]+$/g, '').trim())
+    .filter(Boolean);
+
+  // Deduplicate adjacent identical lines (case-insensitive)
+  const deduped: string[] = [];
+  for (const line of lines) {
+    if (deduped[deduped.length - 1]?.toLowerCase() === line.toLowerCase()) continue;
+    deduped.push(line);
+  }
+
+  // ── GENERAL HEURISTIC: standalone name line followed by "name, rest…" ──────
+  // Catches the Zoho import pattern where formatAddressRowPlain emits the
+  // customer name as its own line AND again as a prefix of the address line —
+  // even when stripName doesn't match (e.g. SO customer name ≠ address name).
+  if (deduped.length >= 2) {
+    const l0 = deduped[0].toLowerCase();
+    const l1 = deduped[1].toLowerCase();
+    if (l0.length <= 60 && !/\d/.test(l0) && l1.startsWith(l0 + ',')) {
+      deduped.shift();
+      deduped[0] = deduped[0].slice(l0.length).replace(/^[,\s]+/, '').trim();
+      if (!deduped[0]) deduped.shift();
+    }
+  }
+
+  // Strip customer name when it is the entire first line
+  if (nameKey && deduped.length > 0 && deduped[0].toLowerCase() === nameKey) {
+    deduped.shift();
+  }
+
+  // Strip customer name when it is a prefix of the first line ("Dr X, Ground floor...")
+  if (nameKey && deduped.length > 0 && deduped[0].toLowerCase().startsWith(nameKey + ',')) {
+    deduped[0] = deduped[0].slice(stripName!.trim().length).replace(/^[,\s]+/, '').trim();
+    if (!deduped[0]) deduped.shift();
+  }
+
+  // Remove lines whose word-set is fully contained in another line's word-set.
+  // Also dedup lines with identical word-sets (same words, different order/formatting —
+  // e.g. billing vs shipping city lines with pincode/country in different positions).
+  const wordSets = deduped.map(
+    (l) => new Set(l.toLowerCase().split(/[\s,]+/).filter((w) => w.length > 1))
+  );
+  const seenWordKeys = new Set<string>();
+  const result = deduped.filter((_, i) => {
+    if (wordSets[i].size === 0) return false;
+    const key = [...wordSets[i]].sort().join('|');
+    if (seenWordKeys.has(key)) return false;
+    seenWordKeys.add(key);
+    return !wordSets.some((other, j) => {
+      if (j === i || other.size <= wordSets[i].size) return false;
+      return [...wordSets[i]].every((w) => other.has(w));
+    });
+  });
+
+  return result.join('\n').trim();
+}
+
+// ═══════════════════════════════════════════════════════════
 // DATE UTILITIES
 // ═══════════════════════════════════════════════════════════
 

@@ -19,6 +19,7 @@ import {
   getDaysLeft,
   formatDaysLeft,
   calculateOrderValue,
+  cleanAddress,
 } from '../../utils/orderFulfillmentUtils';
 import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 
@@ -183,8 +184,8 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               Deliver To
             </div>
             <div className="text-[12.5px] font-bold mt-0.5">{saleOrder.customer}</div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">
-              {saleOrder.shipAddress || '—'}
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+              {cleanAddress(saleOrder.shipAddress, saleOrder.customer) || '—'}
             </div>
           </div>
         </div>
@@ -287,6 +288,11 @@ function ItemWithBatches({
             <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
               {formatCurrency(item.unitPrice)}/unit
             </span>
+            {item.mrp != null && item.mrp > 0 && (
+              <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                MRP ₹{item.mrp.toLocaleString('en-IN')}
+              </span>
+            )}
           </div>
         </div>
         <div className="text-right">

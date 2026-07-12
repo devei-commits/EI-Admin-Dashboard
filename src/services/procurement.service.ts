@@ -47,6 +47,8 @@ export interface ProcurementRequest {
   planningCustomerName?: string | null;
   planningProductName?: string | null;
   planningProductCode?: string | null;
+  /** MRP from products.mrp_price — read-only reference, not editable via PR */
+  planningProductMrp?: number | null;
 }
 
 export interface CreateProcurementPayload {
