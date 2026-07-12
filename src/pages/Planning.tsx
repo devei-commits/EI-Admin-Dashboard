@@ -3424,6 +3424,15 @@ const Planning = () => {
     const pendUnits = kpu > 0 ? pendKg / kpu : 0;
     const bufferUnits = kpu > 0 ? bufferKg / kpu : 0;
     const allocUnits = kpu > 0 ? allocKg / kpu : 0;
+    // Over-production from over-filling SO batches above the order total (e.g. bumping the
+    // working batch's preview qty past what the order needs). Without this the excess just
+    // drives SO pending negative and gets clamped to 0, hiding it. Surface it as buffer so the
+    // summary reflects the extra units instead of silently showing "pending 0".
+    const soOverKg = Math.max(0, soAllocKg - tk);
+    const soOverUnits = kpu > 0 ? soOverKg / kpu : 0;
+    // What the UI shows as buffer / over-production = explicitly-flagged buffer batches + SO over-fill.
+    const totalBufferKg = bufferKg + soOverKg;
+    const totalBufferUnits = bufferUnits + soOverUnits;
     const unsentCount = customBatches.filter((_, i) => !sent.includes(i)).length;
     return {
       orderQty: oq,
@@ -3433,6 +3442,10 @@ const Planning = () => {
       soAllocKg,
       bufferKg,
       bufferUnits,
+      soOverKg,
+      soOverUnits,
+      totalBufferKg,
+      totalBufferUnits,
       pendKg,
       pendUnits,
       allocUnits,
@@ -9434,15 +9447,15 @@ const Planning = () => {
                         units ({formatQtyExact(planBatchesAllocationSummary.pendKg, 'kg')} kg)
                       </>
                     )}
-                    {planBatchesAllocationSummary.bufferKg > 0.01 && (
+                    {planBatchesAllocationSummary.totalBufferKg > 0.01 && (
                       <>
                         {' · '}
                         <span className="font-semibold text-amber-700">Buffer:</span>{' '}
                         <span className="text-amber-700">
-                          +{Number.isInteger(planBatchesAllocationSummary.bufferUnits)
-                            ? Math.round(planBatchesAllocationSummary.bufferUnits).toLocaleString()
-                            : planBatchesAllocationSummary.bufferUnits.toFixed(1)}{' '}
-                          units ({formatQtyExact(planBatchesAllocationSummary.bufferKg, 'kg')} kg over SO)
+                          +{Number.isInteger(planBatchesAllocationSummary.totalBufferUnits)
+                            ? Math.round(planBatchesAllocationSummary.totalBufferUnits).toLocaleString()
+                            : planBatchesAllocationSummary.totalBufferUnits.toFixed(1)}{' '}
+                          units ({formatQtyExact(planBatchesAllocationSummary.totalBufferKg, 'kg')} kg over SO)
                         </span>
                       </>
                     )}
@@ -9676,17 +9689,40 @@ const Planning = () => {
                     </div>
                     {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                       <div className="flex-1 min-w-[130px]">
-                        <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">PENDING PLAN</div>
-                        <div className={`text-lg font-bold ${planBatchesAllocationSummary.pendKg > 0.01 ? 'text-amber-700' : 'text-emerald-600'}`}>
-                          {Number.isInteger(planBatchesAllocationSummary.pendUnits)
-                            ? Math.round(Math.max(0, planBatchesAllocationSummary.pendUnits)).toLocaleString()
-                            : Math.max(0, planBatchesAllocationSummary.pendUnits).toFixed(1)}{' '}
-                          <span className="text-gray-500 text-xs font-normal">units</span>
+                        {/* Once the SO is fully planned (no pending) but there's over-production,
+                            show the buffer as the headline (+N units) instead of a bare 0. */}
+                        <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                          {planBatchesAllocationSummary.pendKg <= 0.01 && planBatchesAllocationSummary.totalBufferUnits > 0.01
+                            ? 'BUFFER PLANNED'
+                            : 'PENDING PLAN'}
                         </div>
+                        {planBatchesAllocationSummary.pendKg > 0.01 ? (
+                          <div className="text-lg font-bold text-amber-700">
+                            {Number.isInteger(planBatchesAllocationSummary.pendUnits)
+                              ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
+                              : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
+                            <span className="text-gray-500 text-xs font-normal">units</span>
+                          </div>
+                        ) : planBatchesAllocationSummary.totalBufferUnits > 0.01 ? (
+                          <div className="text-lg font-bold text-amber-700">
+                            +{Number.isInteger(planBatchesAllocationSummary.totalBufferUnits)
+                              ? Math.round(planBatchesAllocationSummary.totalBufferUnits).toLocaleString()
+                              : planBatchesAllocationSummary.totalBufferUnits.toFixed(1)}{' '}
+                            <span className="text-gray-500 text-xs font-normal">units</span>
+                          </div>
+                        ) : (
+                          <div className="text-lg font-bold text-emerald-600">
+                            0 <span className="text-gray-500 text-xs font-normal">units</span>
+                          </div>
+                        )}
                         <div className="text-[10px] text-gray-500">
-                          {`${Math.max(0, planBatchesAllocationSummary.pendKg).toFixed(1)} kg left`}
-                          {planBatchesAllocationSummary.bufferKg > 0.01
-                            ? ` · +${Math.round(planBatchesAllocationSummary.bufferUnits).toLocaleString()} buffer`
+                          {planBatchesAllocationSummary.pendKg > 0.01
+                            ? `${planBatchesAllocationSummary.pendKg.toFixed(1)} kg left`
+                            : planBatchesAllocationSummary.totalBufferKg > 0.01
+                              ? `${planBatchesAllocationSummary.totalBufferKg.toFixed(1)} kg over SO`
+                              : '0.0 kg left'}
+                          {planBatchesAllocationSummary.pendKg > 0.01 && planBatchesAllocationSummary.totalBufferKg > 0.01
+                            ? ` · +${Math.round(planBatchesAllocationSummary.totalBufferUnits).toLocaleString()} buffer`
                             : ''}
                           {planBatchesAllocationSummary.unsentCount > 0
                             ? ` · ${planBatchesAllocationSummary.unsentCount} unsent`
