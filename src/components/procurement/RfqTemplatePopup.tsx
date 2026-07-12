@@ -7,9 +7,8 @@
  * no email is sent. Save as PDF remains for a printable record.
  * Tool-native modal chrome; the document area is a clean print-friendly sheet.
  */
-import React, { useMemo, useState, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ProcModalShell } from './ProcModalShell';
-import type { Vendor } from '../../types/procurement.types';
 
 export interface RfqTemplateData {
   qtId: string;
@@ -17,8 +16,8 @@ export interface RfqTemplateData {
   vendor: string;
   itemCode: string;
   itemName: string;
-  qtyTiers: string[];
-  targetPrice?: string;
+  qtyTiers: string[];   // e.g. ["200 kg", "500 kg"]
+  targetPrice?: string; // e.g. "≤ ₹295 / kg"
   needBy?: string | null;
   comments?: string;
   /** Item-master linkage — lets the quotation edit popup write into the right Items List row. */
@@ -56,55 +55,15 @@ function fmtMoney(n: number): string {
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
-export interface RfqEditedFields {
-  vendor: string;
-  qtyTiers: string[];
-  targetPrice: string;
-  needBy: string;
-  comments: string;
-}
-
 export interface RfqTemplatePopupProps {
   data: RfqTemplateData;
   /** The recorded quotation (from the record-quotation step). */
   recordedQuote?: RfqRecordedQuote;
-  vendors?: Vendor[];
   onClose: () => void;
   /** Approves the quotation and writes the price into the Items List (price list). No email is sent. */
   onApprove?: () => Promise<void> | void;
 }
 
-export const RfqTemplatePopup: React.FC<RfqTemplatePopupProps> = ({
-  data, vendors = [], onClose, onSave, onApprove, onSent,
-}) => {
-  const [vendorName, setVendorName] = useState(data.vendor || '');
-  const [qtyTiersRaw, setQtyTiersRaw] = useState(data.qtyTiers.filter(Boolean).join(', '));
-  const [needBy, setNeedBy] = useState(data.needBy ?? '');
-  const [targetPrice, setTargetPrice] = useState(data.targetPrice ?? '');
-  const [comments, setComments] = useState(data.comments ?? '');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [approving, setApproving] = useState(false);
-
-  const tiers = useMemo(() => qtyTiersRaw.split(',').map((s) => s.trim()).filter(Boolean), [qtyTiersRaw]);
-
-  const selectedVendor = useMemo(
-    () => vendors.find((v) => v.name === vendorName) ?? null,
-    [vendors, vendorName],
-  );
-
-  const handleVendorChange = (name: string) => {
-    setVendorName(name);
-  };
-
-  const sendEmail = () => {
-    const subject = encodeURIComponent(`Request for Quotation — ${data.qtId} (${data.itemName})`);
-    const body = encodeURIComponent(
-      buildEmailBody({ ...data, vendor: vendorName, qtyTiers: tiers, targetPrice, needBy, comments }),
-    );
-    const emailTo = selectedVendor?.email ? encodeURIComponent(selectedVendor.email) : '';
-    window.open(`mailto:${emailTo}?subject=${subject}&body=${body}`, '_blank');
-    onSent?.();
 export const RfqTemplatePopup: React.FC<RfqTemplatePopupProps> = ({ data, recordedQuote, onClose, onApprove }) => {
   const tiers = useMemo(() => data.qtyTiers.filter(Boolean), [data.qtyTiers]);
   const [saving, setSaving] = useState(false);
@@ -122,60 +81,15 @@ export const RfqTemplatePopup: React.FC<RfqTemplatePopupProps> = ({ data, record
     }
   };
 
-  const handleSave = async () => {
-    if (!onSave) return;
-    setSaving(true); setSaved(false);
-    try {
-      await onSave({ vendor: vendorName, qtyTiers: tiers, targetPrice, needBy, comments });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally { setSaving(false); }
-  };
-
-  const handleApprove = async () => {
-    if (!onApprove) return;
-    setApproving(true);
-    try { await onApprove(); } finally { setApproving(false); }
-  };
-
-  const inputCls = 'w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white';
-
   return (
     <ProcModalShell
-      eyebrow="RFQ · review & approve"
+      eyebrow="Quote request · review & approve"
       title={`RFQ — ${data.qtId}`}
       subtitle={<>{data.itemName} <span className="font-mono text-xs text-slate-500">{data.itemCode}</span></>}
       width="max-w-2xl"
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">
-            Close
-          </button>
-          {onSave && (
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : saved ? '✓ Saved' : '💾 Save Changes'}
-            </button>
-          )}
-          <button onClick={() => window.print()} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">
-            Save as PDF
-          </button>
-          <button onClick={sendEmail} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
-            📧 Send Email
-          </button>
-          {onApprove && (
-            <button
-              onClick={handleApprove}
-              disabled={approving}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {approving ? 'Approving…' : '✓ Approve Quote'}
-            </button>
-          )}
           <button onClick={onClose} disabled={saving} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60">Close</button>
           <button onClick={savePdf} disabled={saving} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60">💾 Save as PDF</button>
           <button onClick={approveAndSave} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60">
@@ -184,85 +98,7 @@ export const RfqTemplatePopup: React.FC<RfqTemplatePopupProps> = ({ data, record
         </>
       }
     >
-      {/* ── Vendor selector + details ─────────────────────────────────── */}
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 mb-4">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Customise before sending</p>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Vendor</label>
-            {vendors.length > 0 ? (
-              <select
-                value={vendorName}
-                onChange={(e) => handleVendorChange(e.target.value)}
-                className={inputCls}
-              >
-                <option value="">— Select vendor —</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.name}>{v.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                className={inputCls}
-                placeholder="Vendor name"
-              />
-            )}
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Target Price</label>
-            <input value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} className={inputCls} placeholder="e.g. ≤ ₹295 / kg" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qty Tiers (comma-separated)</label>
-            <input value={qtyTiersRaw} onChange={(e) => setQtyTiersRaw(e.target.value)} className={inputCls} placeholder="e.g. 200 kg, 500 kg" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Need-By Date</label>
-            <input type="date" value={needBy} onChange={(e) => setNeedBy(e.target.value)} className={inputCls} />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Comments</label>
-          <textarea value={comments} onChange={(e) => setComments(e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Additional instructions for vendor…" />
-        </div>
-
-        {/* Vendor details card */}
-        {selectedVendor && (
-          <div className="rounded-md border border-slate-200 bg-white p-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-            <p className="col-span-2 text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Vendor Details</p>
-            {selectedVendor.vendorCode && (
-              <div><span className="text-slate-400">Code </span><span className="font-mono text-slate-700">{selectedVendor.vendorCode}</span></div>
-            )}
-            {selectedVendor.city && (
-              <div><span className="text-slate-400">City </span><span className="text-slate-700">{selectedVendor.city}</span></div>
-            )}
-            {selectedVendor.contact && (
-              <div><span className="text-slate-400">Contact </span><span className="text-slate-700">{selectedVendor.contact}</span></div>
-            )}
-            {selectedVendor.phone && (
-              <div><span className="text-slate-400">Phone </span><span className="text-slate-700">{selectedVendor.phone}</span></div>
-            )}
-            {selectedVendor.email && (
-              <div className="col-span-2"><span className="text-slate-400">Email </span><span className="text-slate-700">{selectedVendor.email}</span></div>
-            )}
-            {selectedVendor.paymentTerms && (
-              <div><span className="text-slate-400">Payment Terms </span><span className="text-slate-700">{selectedVendor.paymentTerms}</span></div>
-            )}
-            {selectedVendor.avgLeadTime > 0 && (
-              <div><span className="text-slate-400">Avg Lead </span><span className="text-slate-700">{selectedVendor.avgLeadTime}d</span></div>
-            )}
-            {selectedVendor.rating > 0 && (
-              <div><span className="text-slate-400">Rating </span><span className="text-slate-700">{'★'.repeat(Math.round(selectedVendor.rating))}{'☆'.repeat(Math.max(0, 5 - Math.round(selectedVendor.rating)))}</span></div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── RFQ document preview ──────────────────────────────────────── */}
+      {/* Document sheet */}
       <div className="rounded-lg border border-slate-200 bg-white p-5 text-slate-800" style={{ fontFamily: 'Georgia, serif' }}>
         <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3 mb-3">
           <div>
@@ -317,7 +153,7 @@ export const RfqTemplatePopup: React.FC<RfqTemplatePopupProps> = ({ data, record
 
         <p className="mt-3 text-sm">Awaiting your earliest response.</p>
         <p className="mt-2 text-sm font-bold">Regards,<br />Procurement Team · Esthetic Insights</p>
-        <p className="mt-3 text-[10px] text-slate-400 italic">Auto-generated · {data.qtId}</p>
+        <p className="mt-3 text-[10px] text-slate-400 italic">Auto-generated from Procurement → Track Quote Requests · {data.qtId}</p>
       </div>
 
       <p className="text-[10.5px] text-slate-500">
