@@ -59,23 +59,10 @@ export interface SoActionModalsHandle {
   isEditLocked: (so: SaleOrder) => boolean;
 }
 
-const EDIT_LOCK_REASON =
-  'Editing is allowed only before BO/batch confirmation. This order already has confirmed/active batches.';
-
-/** Edit is locked once any split is linked to production or has progressed past planning. */
-function computeEditLocked(so: SaleOrder): boolean {
-  return so.items.some((item) =>
-    item.batchSplits.some((split) =>
-      split.productionBatchId != null ||
-      ['picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(String(split.ffStatus || '').toLowerCase()) ||
-      ['batch_confirmed', 'rm_reserved', 'scheduled', 'rm_connected', 'dispensing', 'in_production', 'bulk_qc', 'cleared'].includes(
-        String(split.bmrStatus || '').toLowerCase()
-      ) ||
-      ['pm_reserved', 'scheduled', 'pm_connected', 'pm_dispensing', 'filling', 'fill_qc', 'packaging', 'pack_qc', 'fg_ready'].includes(
-        String(split.bprStatus || '').toLowerCase()
-      )
-    )
-  );
+// Edit is always allowed — no lock regardless of batch / production status.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function computeEditLocked(_so: SaleOrder): boolean {
+  return false;
 }
 
 export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsProps>(function SoActionModals(
@@ -158,8 +145,8 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
         onClose={() => setDetailModalSO(null)}
         saleOrder={detailModalSO}
         onEditSO={(soNo) => { const so = findSo(soNo); if (so) setEditModalSO(so); }}
-        editDisabled={detailModalSO ? computeEditLocked(detailModalSO) : false}
-        editDisabledReason={EDIT_LOCK_REASON}
+        editDisabled={false}
+        editDisabledReason={undefined}
         onAction={(action, _soNo, split) => {
           if (!detailModalSO) return;
           const bprNos = split ? [split.bprNo] : undefined;
@@ -176,8 +163,8 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
       <EditSOModal
         isOpen={!!editModalSO}
         saleOrder={editModalSO}
-        canEdit={editModalSO ? !computeEditLocked(editModalSO) : false}
-        lockReason={EDIT_LOCK_REASON}
+        canEdit={true}
+        lockReason={undefined}
         isSaving={editSaving}
         onClose={() => setEditModalSO(null)}
         onSave={async (payload) => {

@@ -35,7 +35,11 @@ function StagePill({ stage, onClick }: { stage: string; onClick?: () => void }) 
   );
 }
 
-export const GrnTrackerView: React.FC = () => {
+interface GrnTrackerViewProps {
+  onCountChange?: (n: number) => void;
+}
+
+export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange }) => {
   const [rows, setRows] = useState<GrnTrackerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,10 +50,14 @@ export const GrnTrackerView: React.FC = () => {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setRows(await fetchGrnTracker()); }
+    try {
+      const data = await fetchGrnTracker();
+      setRows(data);
+      onCountChange?.(data.length);
+    }
     catch (e) { setError('Failed to load GRN tracker'); console.error(e); }
     finally { setLoading(false); }
-  }, []);
+  }, [onCountChange]);
   useEffect(() => { void load(); }, [load]);
 
   const vendors = useMemo(() => Array.from(new Set(rows.map((r) => r.vendor).filter(Boolean) as string[])).sort(), [rows]);

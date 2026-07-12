@@ -213,8 +213,6 @@ const PROCUREMENT_LIVE_KEY = 'eiadmin.procurement.live.v1';
 const ENABLE_PROCUREMENT_LOCAL_PERSISTENCE =
   typeof import.meta.env?.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === 'string'
     && import.meta.env.VITE_ENABLE_PROCUREMENT_LOCAL_PERSISTENCE === '1';
-const DEBUG_PROC_RELEASE = import.meta.env.DEV;
-
 /** Query roots used on this screen — `useIsFetching` predicate so the global loader tracks refetches too. */
 const PROCUREMENT_PAGE_QUERY_ROOTS = new Set<string>([
   'procurement-requests',
@@ -403,7 +401,7 @@ function resolveMasterIdsFromRawItem(raw: any): {
 
 const MAIN_TABS: MainTab[] = ['Procurement'];
 const SIDE_SECTIONS: SideSection[] = [
-  'Requests',
+  'Procurement Requests',
   'Purchase Orders',
   'Quote Requests',
   'Stock Audit',
@@ -1049,6 +1047,7 @@ const Procurement: React.FC = () => {
   const [grnSortColumn, setGrnSortColumn] = useState<GrnMonitorSortColumn | null>('receivedDate');
   const [grnSortDirection, setGrnSortDirection] = useState<SortDirection>('desc');
   const [grnMonitorPage, setGrnMonitorPage] = useState(1);
+  const [grnTrackerCount, setGrnTrackerCount] = useState(0);
   const [grnMonitorPageSize, setGrnMonitorPageSize] = useState<number>(25);
   const [quotationsPage, setQuotationsPage] = useState(1);
   const [quotationsPageSize, setQuotationsPageSize] = useState<number>(10);
@@ -1646,7 +1645,7 @@ const Procurement: React.FC = () => {
   const needItemsListForQuotesOrDraftPO =
     sideSection === 'Quote Requests' ||
     sideSection === 'Purchase Orders' ||
-    sideSection === 'Requests' ||
+    sideSection === 'Procurement Requests' ||
     !!selectedDraftPO ||
     !!selectedRequest;
   const { data: itemsListRm = [] } = useQuery({
@@ -2674,7 +2673,7 @@ const Procurement: React.FC = () => {
   };
 
   const applyRouteState = (tab: MainTab, section?: SideSection) => {
-    const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Requests';
+    const nextSection = tab === 'Procurement' ? section ?? sideSection : 'Procurement Requests';
     setMainTab(tab);
     setSideSection(nextSection);
 
@@ -2816,7 +2815,7 @@ const Procurement: React.FC = () => {
         return false;
       }
 
-      if (sideSection === 'Requests') {
+      if (sideSection === 'Procurement Requests') {
         const linkedRequest = requests.find((request) => request.id === quote.requestId);
         if (!linkedRequest || !requestStatusIsPreDraftPipeline(linkedRequest.status)) {
           return false;
@@ -3431,11 +3430,17 @@ const Procurement: React.FC = () => {
               : etaDays < 0 || (request.priority === 'High' && etaDays <= 2)
                 ? 'At Risk'
                 : 'Released';
+            const hasTs = (v: string | null | undefined) => v != null && String(v).trim() !== '';
             return {
               request,
               poNumber: String(linkedPO.poNumber ?? draftOverlay?.dpoNumber ?? request.code).replace('DPO', 'PO'),
               vendor: linkedPO.vendorName ?? draftOverlay?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
               status: rowStatus,
+              poWorkflowStatus: hasTs(tr?.grnCompleteAt) ? 'completed' as const
+                : (hasTs(tr?.underGrnAt) || hasTs(tr?.deliveredAt)) ? 'accepted' as const
+                : hasTs(tr?.shippedAt) ? 'issued' as const
+                : hasTs(tr?.advancePaidAt) ? 'awaiting_payment' as const
+                : 'issued' as const,
               etaDays,
               etaDateDisplay,
               lineItems,
@@ -3569,6 +3574,7 @@ const Procurement: React.FC = () => {
         lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
       });
 
+      const hasTs2 = (v: string | null | undefined) => v != null && String(v).trim() !== '';
       return {
         request: placeholderRequest,
         poNumber: String(po.poNumber ?? po.reference ?? '').replace('DPO', 'PO'),
@@ -3576,6 +3582,11 @@ const Procurement: React.FC = () => {
         status: (ov?.shipped || ov?.delivered || ov?.underGrn || tracking?.shippedAt || tracking?.deliveredAt || tracking?.underGrnAt || tracking?.grnCompleteAt)
           ? ('In Transit' as const)
           : ('Released' as const),
+        poWorkflowStatus: hasTs2(tracking?.grnCompleteAt) ? 'completed' as const
+          : (hasTs2(tracking?.underGrnAt) || hasTs2(tracking?.deliveredAt) || ov?.underGrn || ov?.delivered) ? 'accepted' as const
+          : (hasTs2(tracking?.shippedAt) || ov?.shipped) ? 'issued' as const
+          : hasTs2(tracking?.advancePaidAt) ? 'awaiting_payment' as const
+          : 'issued' as const,
         backendPoId,
         etaDays: unlinkedEta.etaDays,
         etaDateDisplay: unlinkedEta.etaDateDisplay,
@@ -3647,21 +3658,17 @@ const Procurement: React.FC = () => {
   /** Sidebar badges: each number is a direct count from its own dataset (no derived math like max-of-two). */
   const sideCounts = useMemo(
     () => ({
-      Requests: procurementRequestTabCounts.active,
+      'Procurement Requests': procurementRequestTabCounts.active,
       'Purchase Orders': purchaseOrderViewRecords.length,
-      'Quote Requests':
-        quotes.length +
-        filteredPlanningQuotationAsks.length +
-        planningQuotationRequestsAwaitingQuote.length,
+      'Quote Requests': quotes.length + planningQuotationAsksPending.length,
       'Stock Audit': buildInventoryAuditLines(procurementRequestsList).length,
-      'GRN Tracker': (grnListFromApi ?? []).length,
+      'GRN Tracker': grnTrackerCount,
     }),
     [
       purchaseOrderViewRecords.length,
-      grnListFromApi,
+      grnTrackerCount,
       procurementRequestsList,
-      filteredPlanningQuotationAsks.length,
-      planningQuotationRequestsAwaitingQuote.length,
+      planningQuotationAsksPending.length,
       procurementRequestTabCounts,
       quotes,
     ],
@@ -4845,16 +4852,6 @@ const Procurement: React.FC = () => {
     }
 
     const backendRequestId = resolveBackendProcurementRequestId(target);
-    if (DEBUG_PROC_RELEASE) {
-      console.log('[PROC-RELEASE] resolveBackendProcurementRequestId', {
-        dpoId: target.id,
-        dpoNumber: target.dpoNumber,
-        target_requestId: target.requestId,
-        target_requestCode: target.requestCode,
-        resolved_backendRequestId: backendRequestId,
-        requestCodes_in_state_sample: requests.slice(0, 5).map((r) => ({ id: r.id, code: r.code, status: r.status })),
-      });
-    }
     if (!backendRequestId) {
       // Planning-created draft POs (from Planning > Items Involved) may not be linked to a procurement_requests row.
       // In that case, we can still release the underlying purchase order and show it in "Issued POs".
@@ -4863,12 +4860,6 @@ const Procurement: React.FC = () => {
       return true;
     }
 
-    if (DEBUG_PROC_RELEASE) {
-      console.log('[PROC-RELEASE] calling updateRequestStatus', {
-        backendRequestId,
-        status: 'PO Released',
-      });
-    }
     // Always skip items: PO lines are already persisted on the purchase order; re-sending PR lines can fail MOQ validation
     // and leave procurement_requests.status stuck while the UI still showed release success.
     const ok = await updateRequestStatus(backendRequestId, 'PO Released', { skipItems: true, silentToast: true });
@@ -5024,23 +5015,7 @@ const Procurement: React.FC = () => {
         return;
       }
     }
-    if (DEBUG_PROC_RELEASE) {
-      console.log('[PROC-RELEASE] submitReleasePO called', {
-        dpoId: draft.id,
-        dpoNumber: draft.dpoNumber,
-        draft_requestId: draft.requestId,
-        draft_requestCode: draft.requestCode,
-        draft_backendPoId: draft.backendPoId,
-        draft_status: draft.status,
-      });
-    }
-
     // Update PO table: set status to Released and ensure request link is stored
-    if (import.meta.env.DEV && !draft.backendPoId) {
-      console.warn(
-        '[EI po-qty debug] No draft.backendPoId — skipping PUT purchase-orders (items never hit DB; warehouse PO Qty will not change from this release).',
-      );
-    }
     if (draft.backendPoId) {
       const backendRequestId = resolveBackendProcurementRequestId(draft);
       const prItemsForLines = resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
@@ -5055,53 +5030,15 @@ const Procurement: React.FC = () => {
         return;
       }
       const poItemsPayload = draftLineItemsToPurchaseOrderItems(draft.lineItems, prItemsForLines);
-      if (DEBUG_PROC_RELEASE) {
-        console.log('[PROC-RELEASE] updatePurchaseOrder formData request linkage', {
-          backendPoId: draft.backendPoId,
-          dpoNumber: draft.dpoNumber,
-          draft_requestId: draft.requestId,
-          draft_requestCode: draft.requestCode,
-          resolved_backendRequestId: backendRequestId,
-        });
-      }
-      if (import.meta.env.DEV) {
-        const pl = poItemsPayload as Record<string, unknown>[];
-        console.log('[EI po-qty debug] release → PUT purchase-orders payload', {
-          backendPoId: draft.backendPoId,
-          prItemsForLinesCount: prItemsForLines.length,
-          payloadLineCount: pl.length,
-          lines: pl.map((l) => ({
-            quantity: l.quantity,
-            raw_material_id: l.raw_material_id,
-            pack_material_id: l.pack_material_id,
-            itemCode: l.itemCode,
-          })),
-        });
-        if (pl.length > 0 && pl.every((l) => l.raw_material_id == null && l.pack_material_id == null)) {
-          console.warn(
-            '[EI po-qty debug] WARNING: no raw_material_id / pack_material_id on any line — warehouse PO Qty sums only lines with these FKs. Check PR link / assignPrItemToDraftLines.',
-          );
-        }
-      }
       const updateResult = await updatePurchaseOrder(draft.backendPoId, {
         status: 'Released',
         formData: { requestId: backendRequestId || draft.requestId, requestCode: draft.requestCode },
         items: poItemsPayload,
       });
-      if (DEBUG_PROC_RELEASE) {
-        console.log('[PROC-RELEASE] updatePurchaseOrder result', {
-          backendPoId: draft.backendPoId,
-          success: updateResult.success,
-          error: updateResult.error,
-        });
-      }
       if (!updateResult.success) {
         const err = updateResult.error;
         addToast('error', typeof err === 'string' ? err : (err?.message ?? 'Failed to update purchase order'));
         return;
-      }
-      if (import.meta.env.DEV && updateResult.data?.items) {
-        console.log('[EI po-qty debug] release ← PUT purchase-orders response items', updateResult.data.items);
       }
       const backendPoIdNormalized = String(draft.backendPoId).replace(/^PO-/, '').trim();
       const poReleasedAt = new Date().toISOString().slice(0, 10);
@@ -5126,10 +5063,6 @@ const Procurement: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoIdNormalized] });
       await queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
       await queryClient.invalidateQueries({ queryKey: ['treasury-purchase-orders'] });
-      // PO lines + Released status are persisted — warehouse inventory PO Qty column reads from purchase_orders
-      if (import.meta.env.DEV) {
-        console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (after PO Released + items saved)');
-      }
       void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     }
 
@@ -5179,9 +5112,6 @@ const Procurement: React.FC = () => {
     }));
 
     void invalidatePurchaseOrdersQueries();
-    if (import.meta.env.DEV) {
-      console.log('[EI po-qty debug] invalidateQueries warehouse-inventory (end of submitReleasePO)');
-    }
     void queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
     if (draft.paymentTerms?.trim()) {
       addToast('success', `${draft.dpoNumber} released; sent to Treasury for advance.`);
@@ -5849,25 +5779,8 @@ const Procurement: React.FC = () => {
           (backendPrArray.find((p: { id: string }) => String(p.id) === requestId) as { items?: BackendPRItem[] } | undefined)?.items ??
           ([] as BackendPRItem[]),
       };
-    if (DEBUG_PROC_RELEASE) {
-      console.log('[PROC-RELEASE] PATCH /api/v1/procurement/:id about to run', {
-        requestId,
-        status,
-        payload: {
-          status: payload.status,
-          itemsCount: Array.isArray((payload as any).items) ? (payload as any).items.length : null,
-        },
-      });
-    }
     const res = await updateProcurementRequestApi(requestId, payload);
     if (!res.success) {
-      if (DEBUG_PROC_RELEASE) {
-        console.log('[PROC-RELEASE] PATCH /api/v1/procurement/:id failed', {
-          requestId,
-          status,
-          error: res.error,
-        });
-      }
       addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update request status'));
       return false;
     }
@@ -6102,7 +6015,7 @@ const Procurement: React.FC = () => {
           <>
             <div className="space-y-4">
 
-              {sideSection === 'Requests' && (
+              {sideSection === 'Procurement Requests' && (
                 <PrInboxView
                   requests={procurementRequestsList}
                   onEdit={(req) => setPrEditReq(req)}
@@ -6399,12 +6312,30 @@ const Procurement: React.FC = () => {
                       addToast('success', 'Shipment batch + GRN(s) created — moved to In Transit.');
                     }}
                     onOpenGrnForPo={() => applyRouteState('Procurement', 'GRN Tracker')}
+                    onExport={() => {
+                      const cols = ['PO #', 'Vendor', 'Status', 'Value (INR)', 'Created Date', 'Payment Terms'];
+                      const rows = filteredPurchaseOrderRecords.map((r) => [
+                        r.poNumber,
+                        `"${(r.vendor ?? '').replace(/"/g, '""')}"`,
+                        r.poWorkflowStatus ?? r.status,
+                        r.grandTotal ?? 0,
+                        r.createdDate ?? '',
+                        `"${(r.paymentTerms ?? '').replace(/"/g, '""')}"`,
+                      ].join(','));
+                      const csv = [cols.join(','), ...rows].join('\n');
+                      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
                   />
                 </>
               )}
 
 
-              {sideSection === 'GRN Tracker' && <GrnTrackerView />}
+              {sideSection === 'GRN Tracker' && <GrnTrackerView onCountChange={setGrnTrackerCount} />}
 
               {sideSection === 'Stock Audit' && (
                 <StockAuditTrackerView

@@ -447,6 +447,16 @@ export async function updateCommercialStatus(id: number, status: CommercialStatu
   await api.patch(`${BASE}/${id}/commercial-status`, { status, reason });
 }
 
+/* ── Cancel / Manual Fulfill ── */
+
+export async function cancelFulfillmentOrder(id: number): Promise<void> {
+  await api.patch(`${BASE}/${id}/cancel`, {});
+}
+
+export async function manualFulfillFulfillmentOrder(id: number): Promise<void> {
+  await api.patch(`${BASE}/${id}/manual-fulfill`, {});
+}
+
 export async function fetchSoPlanningAvailability(soNo: string): Promise<SoPlanningAvailabilityResponse> {
   const cacheKey = String(soNo || '').trim().toUpperCase();
   const cached = soPlanningAvailabilityCache.get(cacheKey);

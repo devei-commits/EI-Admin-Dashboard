@@ -101,9 +101,8 @@ function StageTimeLog({ logs }: { logs: StageLogEntry[] }) {
   );
 }
 
-/* ── Build flat one-row-per-batch list (deduped + sorted by due) ──────────── */
-function buildFlatRows(rows: BatchDashboardRow[]): BatchDashboardRow[] {
-  // Group by SO + product line so we can drop sync-race duplicates / placeholders within a line.
+/* ── Deduplicate flat rows (drop sync-race duplicates / stale placeholders) ── */
+function dedupRows(rows: BatchDashboardRow[]): BatchDashboardRow[] {
   const groups = new Map<string, BatchDashboardRow[]>();
   for (const r of rows) {
     const key = `${r.soNo}__${r.product.code}__${r.product.name}`;
@@ -123,17 +122,55 @@ function buildFlatRows(rows: BatchDashboardRow[]): BatchDashboardRow[] {
       out.push(s);
     }
   }
+  return out;
+}
 
-  // Sort: overdue first, then approaching, then due date ascending (oldest first).
-  out.sort((a, b) => {
-    if (a.slaFlag.overdue !== b.slaFlag.overdue) return a.slaFlag.overdue ? -1 : 1;
-    if (a.slaFlag.approaching !== b.slaFlag.approaching) return a.slaFlag.approaching ? -1 : 1;
-    const da = a.dueDate ?? '9999-12-31';
-    const db = b.dueDate ?? '9999-12-31';
+/* ── Group deduped rows by SO + product — one visual record per line item ─── */
+type GroupedBatchRow = {
+  key: string;
+  representative: BatchDashboardRow; // first batch — used for SO/client/product/due cells
+  batches: BatchDashboardRow[];
+  worstSla: { overdue: boolean; approaching: boolean; daysOverdue: number };
+};
+
+function groupRows(rows: BatchDashboardRow[]): GroupedBatchRow[] {
+  const map = new Map<string, GroupedBatchRow>();
+  const order: string[] = [];
+
+  for (const r of rows) {
+    const key = `${r.soNo}__${r.product.code}__${r.product.name}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        representative: r,
+        batches: [],
+        worstSla: { overdue: false, approaching: false, daysOverdue: 0 },
+      });
+      order.push(key);
+    }
+    const g = map.get(key)!;
+    g.batches.push(r);
+    // Aggregate worst SLA across all batches in the group
+    if (r.slaFlag.overdue) {
+      g.worstSla.overdue = true;
+      g.worstSla.daysOverdue = Math.max(g.worstSla.daysOverdue, r.slaFlag.daysOverdue);
+    }
+    if (r.slaFlag.approaching && !g.worstSla.overdue) {
+      g.worstSla.approaching = true;
+    }
+  }
+
+  // Sort groups: overdue first, then approaching, then due date ascending
+  const sorted = order.map((k) => map.get(k)!);
+  sorted.sort((a, b) => {
+    if (a.worstSla.overdue !== b.worstSla.overdue) return a.worstSla.overdue ? -1 : 1;
+    if (a.worstSla.approaching !== b.worstSla.approaching) return a.worstSla.approaching ? -1 : 1;
+    const da = a.representative.dueDate ?? '9999-12-31';
+    const db = b.representative.dueDate ?? '9999-12-31';
     return da < db ? -1 : da > db ? 1 : 0;
   });
 
-  return out;
+  return sorted;
 }
 
 /* ── Main component ───────────────────────────────────────────────────────── */
@@ -177,8 +214,9 @@ export const BatchesDashboardView: React.FC = () => {
     return () => clearTimeout(t);
   }, [load, search]);
 
-  const flatRows = useMemo(() => buildFlatRows(rows), [rows]);
-  const overdueCount = useMemo(() => flatRows.filter((r) => r.slaFlag.overdue).length, [flatRows]);
+  const grouped = useMemo(() => groupRows(dedupRows(rows)), [rows]);
+  const totalBatches = useMemo(() => grouped.reduce((s, g) => s + g.batches.length, 0), [grouped]);
+  const overdueCount = useMemo(() => grouped.filter((g) => g.worstSla.overdue).length, [grouped]);
 
   return (
     <>
@@ -222,7 +260,8 @@ export const BatchesDashboardView: React.FC = () => {
         </div>
         <div className="flex justify-between items-center">
           <span className="text-xs text-gray-500">
-            {flatRows.length} batch{flatRows.length !== 1 ? 'es' : ''}
+            {grouped.length} product line{grouped.length !== 1 ? 's' : ''}
+            {totalBatches !== grouped.length && <span className="ml-1 text-gray-400">({totalBatches} batch{totalBatches !== 1 ? 'es' : ''})</span>}
             {overdueCount > 0 && <span className="ml-2 text-red-600 font-semibold">🚩 {overdueCount} overdue</span>}
           </span>
           <button
@@ -245,127 +284,146 @@ export const BatchesDashboardView: React.FC = () => {
           <p className="text-red-500 text-sm mb-3">{error}</p>
           <button onClick={load} className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">Retry</button>
         </div>
-      ) : flatRows.length === 0 ? (
+      ) : grouped.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-gray-400">
           <Package size={32} className="mb-2 opacity-30" />
           <p className="text-sm">No batches found</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-sm text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                {['SO #', 'Client', 'Product', 'Order Qty', 'Due Date', 'Batch Planning', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', ''].map((h, i) => (
+                {['SO #', 'Client', 'Product', 'Order Qty', 'Due Date', 'Batch', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', ''].map((h, i) => (
                   <th key={i} className={`px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === 'Order Qty' ? 'text-right' : ''} ${h === '' ? 'w-8' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {flatRows.map((row) => {
-                const ordered = row.product.orderedQty || 0;
-                // Batch qty (units): produced FG units when available, else fall back to order qty.
-                const batchQty = row.fgQty > 0 ? row.fgQty : ordered;
-                const cov = ordered > 0 && batchQty > 0 ? Math.min(100, Math.round((batchQty / ordered) * 100)) : row.batch.coveragePct;
-                const dtg = daysToGo(row.dueDate);
+            <tbody>
+              {grouped.map((group) => {
+                const rep = group.representative;
+                const ordered = rep.product.orderedQty || 0;
+                const dtg = daysToGo(rep.dueDate);
+                const rowSpan = group.batches.length;
 
-                return (
-                  <tr key={row.id} className={`hover:bg-orange-50/30 transition-colors ${row.slaFlag.overdue ? 'bg-red-50/40' : ''}`}>
-                    {/* SO # + date */}
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                      <p className="text-xs font-semibold text-gray-800">{row.soNo}</p>
-                      <p className="text-[10px] text-gray-400">{fmtDate(row.soDate)}</p>
-                    </td>
+                return group.batches.map((row, batchIdx) => {
+                  const isFirst = batchIdx === 0;
+                  const batchQty = row.fgQty > 0 ? row.fgQty : ordered;
+                  const cov = ordered > 0 && batchQty > 0
+                    ? Math.min(100, Math.round((batchQty / ordered) * 100))
+                    : row.batch.coveragePct;
 
-                    {/* Client */}
-                    <td className="px-3 py-2.5 align-top max-w-[130px]">
-                      <p className="text-xs text-gray-800 truncate" title={row.client.name}>{row.client.name}</p>
-                      {row.client.code && <p className="text-[10px] text-gray-400 font-mono">{row.client.code}</p>}
-                    </td>
-
-                    {/* Product */}
-                    <td className="px-3 py-2.5 align-top max-w-[150px]">
-                      <p className="text-xs text-gray-800 truncate" title={row.product.name}>{row.product.name}</p>
-                      <p className="text-[10px] text-gray-400 font-mono">{row.product.code}</p>
-                    </td>
-
-                    {/* Order Qty */}
-                    <td className="px-3 py-2.5 whitespace-nowrap text-right align-top">
-                      <span className="text-xs tabular-nums font-semibold text-gray-800">{fmtNum(ordered)}</span>
-                    </td>
-
-                    {/* Due Date — carries the SLA flag per spec §4.1 / §7.3 */}
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                      {row.slaFlag.overdue ? (
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`transition-colors ${group.worstSla.overdue ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-orange-50/30'} ${
+                        batchIdx < rowSpan - 1 ? 'border-b border-dashed border-gray-100' : 'border-b border-gray-100'
+                      }`}
+                    >
+                      {/* SO-level cells — rendered once with rowSpan */}
+                      {isFirst && (
                         <>
-                          <p className="text-xs font-bold text-red-600 flex items-center gap-1">
-                            <AlertCircle size={11} className="shrink-0" />{fmtDate(row.dueDate)}
-                          </p>
-                          <p className="text-[10px] text-red-500 font-semibold">{row.slaFlag.daysOverdue}d overdue</p>
-                        </>
-                      ) : row.slaFlag.approaching ? (
-                        <>
-                          <p className="text-xs font-semibold text-amber-600 flex items-center gap-1">
-                            <Clock size={11} className="shrink-0" />{fmtDate(row.dueDate)}
-                          </p>
-                          <p className="text-[10px] text-amber-600">{dtg != null ? `${dtg}d to go` : ''}</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-xs text-gray-700">{fmtDate(row.dueDate)}</p>
-                          {dtg != null && dtg >= 0 && <p className="text-[10px] text-gray-400">{dtg}d to go</p>}
+                          {/* SO # */}
+                          <td className="px-3 py-2.5 whitespace-nowrap align-top" rowSpan={rowSpan}>
+                            <p className="text-xs font-semibold text-gray-800">{rep.soNo}</p>
+                            <p className="text-[10px] text-gray-400">{fmtDate(rep.soDate)}</p>
+                          </td>
+
+                          {/* Client */}
+                          <td className="px-3 py-2.5 align-top max-w-[130px]" rowSpan={rowSpan}>
+                            <p className="text-xs text-gray-800 truncate" title={rep.client.name}>{rep.client.name}</p>
+                            {rep.client.code && <p className="text-[10px] text-gray-400 font-mono">{rep.client.code}</p>}
+                          </td>
+
+                          {/* Product */}
+                          <td className="px-3 py-2.5 align-top max-w-[150px]" rowSpan={rowSpan}>
+                            <p className="text-xs text-gray-800 leading-snug" title={rep.product.name}>{rep.product.name}</p>
+                            <p className="text-[10px] text-gray-400 font-mono">{rep.product.code}</p>
+                          </td>
+
+                          {/* Order Qty */}
+                          <td className="px-3 py-2.5 whitespace-nowrap text-right align-top" rowSpan={rowSpan}>
+                            <span className="text-xs tabular-nums font-semibold text-gray-800">{fmtNum(ordered)}</span>
+                          </td>
+
+                          {/* Due Date */}
+                          <td className="px-3 py-2.5 whitespace-nowrap align-top" rowSpan={rowSpan}>
+                            {group.worstSla.overdue ? (
+                              <>
+                                <p className="text-xs font-bold text-red-600 flex items-center gap-1">
+                                  <AlertCircle size={11} className="shrink-0" />{fmtDate(rep.dueDate)}
+                                </p>
+                                <p className="text-[10px] text-red-500 font-semibold">{group.worstSla.daysOverdue}d overdue</p>
+                              </>
+                            ) : group.worstSla.approaching ? (
+                              <>
+                                <p className="text-xs font-semibold text-amber-600 flex items-center gap-1">
+                                  <Clock size={11} className="shrink-0" />{fmtDate(rep.dueDate)}
+                                </p>
+                                <p className="text-[10px] text-amber-600">{dtg != null ? `${dtg}d to go` : ''}</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs text-gray-700">{fmtDate(rep.dueDate)}</p>
+                                {dtg != null && dtg >= 0 && <p className="text-[10px] text-gray-400">{dtg}d to go</p>}
+                              </>
+                            )}
+                          </td>
                         </>
                       )}
-                    </td>
 
-                    {/* Batch Planning */}
-                    <td className="px-3 py-2.5 align-top min-w-[130px]">
-                      <p className="text-xs font-semibold text-gray-700">
-                        {row.batch.batchNo || row.batch.bprNo || <span className="italic text-gray-400">Pending</span>}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="inline-block w-10 h-1 rounded-full bg-gray-100 overflow-hidden shrink-0">
-                          <span className="block h-full rounded-full bg-blue-400" style={{ width: `${Math.min(100, cov)}%` }} />
-                        </span>
-                        <span className="text-[9px] text-gray-400 whitespace-nowrap">
-                          {row.fgQty > 0 ? `${fmtNum(batchQty)} u` : 'planned'} · {cov}% cov
-                        </span>
-                      </div>
-                      {row.batch.bmrNo && <p className="text-[9px] text-gray-400 mt-0.5">BMR {row.batch.bmrNo}</p>}
-                    </td>
+                      {/* Batch-level cells — repeated per batch */}
 
-                    {/* FG / Packed / Invoiced / Shipped — % vs batch qty */}
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.fgQty} denom={batchQty} color="bg-orange-400" /></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.packedQty} denom={batchQty} color="bg-amber-400" /></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.invoicedQty} denom={batchQty} color="bg-purple-400" /></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.shippedQty} denom={batchQty} color="bg-teal-400" /></td>
-
-                    {/* Batch Status */}
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                      <StageBadge stage={row.batch.stage} label={row.batch.stageLabel} />
-                    </td>
-
-                    {/* Stage Time Log */}
-                    <td className="px-3 py-2.5 align-top">
-                      <StageTimeLog logs={row.stageLogs} />
-                    </td>
-
-                    {/* History & Comments */}
-                    <td className="px-3 py-2.5 align-top">
-                      <button
-                        onClick={() => setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` })}
-                        className="relative p-1.5 rounded-lg hover:bg-orange-100 text-gray-400 hover:text-orange-600 transition-colors"
-                        title="History & comments"
-                      >
-                        <MessageSquare size={14} />
-                        {row.commentCount > 0 && (
-                          <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
-                            {row.commentCount > 9 ? '9+' : row.commentCount}
+                      {/* Batch Planning */}
+                      <td className="px-3 py-2.5 align-top min-w-[130px]">
+                        <p className="text-xs font-semibold text-gray-700">
+                          {row.batch.batchNo || row.batch.bprNo || <span className="italic text-gray-400 font-normal">Pending</span>}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="inline-block w-10 h-1 rounded-full bg-gray-100 overflow-hidden shrink-0">
+                            <span className="block h-full rounded-full bg-blue-400" style={{ width: `${Math.min(100, cov)}%` }} />
                           </span>
-                        )}
-                      </button>
-                    </td>
-                  </tr>
-                );
+                          <span className="text-[9px] text-gray-400 whitespace-nowrap">
+                            {fmtNum(row.batch.plannedQty)} / {fmtNum(ordered)} · {cov}% cov
+                          </span>
+                        </div>
+                        {row.batch.bmrNo && <p className="text-[9px] text-gray-400 mt-0.5">BMR {row.batch.bmrNo}</p>}
+                      </td>
+
+                      {/* FG / Packed / Invoiced / Shipped */}
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.fgQty} denom={batchQty} color="bg-orange-400" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.packedQty} denom={batchQty} color="bg-amber-400" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.invoicedQty} denom={batchQty} color="bg-purple-400" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.shippedQty} denom={batchQty} color="bg-teal-400" /></td>
+
+                      {/* Batch Status */}
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top">
+                        <StageBadge stage={row.batch.stage} label={row.batch.stageLabel} />
+                      </td>
+
+                      {/* Stage Time Log */}
+                      <td className="px-3 py-2.5 align-top">
+                        <StageTimeLog logs={row.stageLogs} />
+                      </td>
+
+                      {/* History & Comments */}
+                      <td className="px-3 py-2.5 align-top">
+                        <button
+                          onClick={() => setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` })}
+                          className="relative p-1.5 rounded-lg hover:bg-orange-100 text-gray-400 hover:text-orange-600 transition-colors"
+                          title="History & comments"
+                        >
+                          <MessageSquare size={14} />
+                          {row.commentCount > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                              {row.commentCount > 9 ? '9+' : row.commentCount}
+                            </span>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                });
               })}
             </tbody>
           </table>

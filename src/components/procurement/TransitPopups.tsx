@@ -68,14 +68,18 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
   const [qty, setQty] = useState(String(pending));
   const { v, set } = useVehicle();
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const thisQty = toNum(qty);
   const canSubmit = thisQty > 0 && thisQty <= pending;
 
   const submit = async () => {
     if (!canSubmit) return;
+    setSubmitError(null);
     try {
       setBusy(true);
       await onSubmit({ poId, poNo, vendor, item: { code: item.code, name: item.name, type: item.type }, shippedQty: thisQty, vehicle: v });
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to create shipment. Please try again.');
     } finally { setBusy(false); }
   };
 
@@ -105,6 +109,11 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
         <VehicleFields v={v} set={set} />
       </ModalSection>
 
+      {submitError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
+          {submitError}
+        </div>
+      )}
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-[11px] text-slate-600">
         On create: a <b>Shipment Batch (SB)</b> + one <b>GRN</b> are generated (stage <b>In Transit</b>) and appear in the GRN tracker.
       </div>
@@ -133,6 +142,7 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
   const [rows, setRows] = useState(initial);
   const { v, set } = useVehicle();
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const allDispatched = rows.every((r) => r.pending <= 0) && lines.length > 0;
 
   const setRow = (i: number, patch: Partial<{ checked: boolean; qty: string }>) =>
@@ -146,6 +156,7 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
 
   const submit = async () => {
     if (!canSubmit) return;
+    setSubmitError(null);
     try {
       setBusy(true);
       await onSubmit({
@@ -153,6 +164,8 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
         lines: selected.map(({ r, line }) => ({ code: line.code, name: line.name, type: line.type, shippedQty: toNum(r.qty) })),
         vehicle: v,
       });
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to create shipment. Please try again.');
     } finally { setBusy(false); }
   };
 
@@ -217,6 +230,11 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
         <VehicleFields v={v} set={set} />
       </ModalSection>
 
+      {submitError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
+          {submitError}
+        </div>
+      )}
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-[11px] text-slate-600">
         On create: <b>one Shipment Batch</b> with <b>{selected.length || 'N'}</b> child GRN{selected.length !== 1 ? 's' : ''} (all stage <b>In Transit</b>, same truck) — they share the SB# in the GRN tracker.
       </div>

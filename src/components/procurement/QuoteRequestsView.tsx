@@ -1,21 +1,32 @@
 /**
  * Track Quote Requests — Procurement spec View 3 (§4).
- * Planning-originated RFQs and Procurement-initiated quote requests in one inbox.
+ * Actions per row:
+ *   📄 Template → opens editable RFQ document popup; editing + approve happen there
+ *   ✓ Approve  → confirms the quote (planning: fulfilled / proc: Confirmed)
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, MessageSquare, Loader2, FileText, Pencil, Plus, Download } from 'lucide-react';
-import { fetchPlanningQuotationAsks, type PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
-import type { VendorQuote } from '../../types/procurement.types';
+import {
+  Search, RefreshCw, MessageSquare, Loader2, FileText,
+  Plus, Download, CheckCircle, Tag,
+} from 'lucide-react';
+import {
+  fetchPlanningQuotationAsks,
+  updatePlanningQuotationAsk,
+  type PlanningQuotationAsk,
+} from '../../services/planningQuotationAsks.service';
+import { updateProcurementQuotation } from '../../services/procurementQuotations.service';
+import type { VendorQuote, Vendor } from '../../types/procurement.types';
 import {
   QUOTE_STATUS_CONFIG, PR_SOURCE_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
   type QuoteStatus, type PrSource,
 } from '../../constants/procurement';
 import { quoteSlaLevel } from '../../lib/procurementSla';
-import { RfqTemplatePopup, type RfqTemplateData, type RfqRecordedQuote } from './RfqTemplatePopup';
+import { RfqTemplatePopup, type RfqTemplateData, type RfqRecordedQuote, type RfqEditedFields } from './RfqTemplatePopup';
 import { QuotationEditPopup } from './QuotationEditPopup';
 import { recordQuotationToPriceList, type RecordedQuoteInput } from '../../utils/recordQuotationToPriceList';
 import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
+import { UpdatePriceListPopup } from './UpdatePriceListPopup';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -43,10 +54,14 @@ function mapVendorQuoteStatus(s: VendorQuote['status']): QuoteStatus {
 
 interface QuoteRow {
   id: string;
-  qtId: string;
+  rawId: number;
   source: PrSource;
+  qtId: string;
   itemName: string;
   itemCode: string;
+  itemType: 'RM' | 'PM';
+  rawMaterialId?: number | null;
+  packMaterialId?: number | null;
   vendors: string;
   qtyTiers: string[];
   targetPrice: number | null;
@@ -57,12 +72,12 @@ interface QuoteRow {
 }
 
 export interface QuoteRequestsViewProps {
-  /** Procurement-recorded vendor quotations (from parent React Query). */
   vendorQuotes?: VendorQuote[];
   /** Vendor master records for the Record-Quotation popup (typeahead + auto-fill). */
   vendors?: VendorClientRecord[];
   vendorsLoading?: boolean;
-  onEditQuote?: (quote: VendorQuote) => void;
+  vendors?: Vendor[];
+  asks?: PlanningQuotationAsk[];
   onNewQuoteRequest?: () => void;
   onExport?: () => void;
   /** Fired after a quotation is recorded into the Items List (parent refetches price list). */
@@ -73,50 +88,65 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   vendorQuotes = [],
   vendors = [],
   vendorsLoading,
-  onEditQuote,
+  vendors = [],
+  asks: propAsks,
   onNewQuoteRequest,
   onExport,
   onQuoteRecorded,
 }) => {
-  const [asks, setAsks] = useState<PlanningQuotationAsk[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [internalAsks, setInternalAsks] = useState<PlanningQuotationAsk[]>([]);
+  const [loading, setLoading] = useState(propAsks === undefined);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
   // Two-step flow: record the quotation first, then review + send the email (which saves to the price list).
-  const [recordingFor, setRecordingFor] = useState<RfqTemplateData | null>(null);
+  const [recordingFor, setRecordingFor] = useState<QuoteRow | null>(null);
+  const [priceListFor, setPriceListFor] = useState<QuoteRow | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = sessionStorage.getItem('qr-approved-ids');
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
   const [emailingFor, setEmailingFor] = useState<{ data: RfqTemplateData; quote: RecordedQuoteInput } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (propAsks !== undefined) return;   // parent owns asks — skip internal fetch
     setLoading(true); setError(null);
     try {
       const res = await fetchPlanningQuotationAsks();
-      if (res.success) setAsks(res.data ?? []);
+      if (res.success) setInternalAsks(res.data ?? []);
       else setError('Failed to load quote requests');
     } catch (e) { setError('Failed to load quote requests'); console.error(e); }
     finally { setLoading(false); }
-  }, []);
+  }, [propAsks]);
   useEffect(() => { void load(); }, [load]);
+  const asks = propAsks ?? internalAsks;
 
   const rows = useMemo((): QuoteRow[] => {
     const planningRows: QuoteRow[] = asks.map((a) => ({
       id: `planning-${a.id}`,
-      qtId: `QT-${new Date(a.createdAt ?? Date.now()).getFullYear()}-${String(a.id).padStart(4, '0')}`,
+      rawId: a.id,
       source: 'planning' as PrSource,
+      qtId: `QT-${new Date(a.createdAt ?? Date.now()).getFullYear()}-${String(a.id).padStart(4, '0')}`,
       itemName: a.itemName ?? '—',
       itemCode: a.itemCode ?? '',
+      itemType: a.itemType,
+      rawMaterialId: a.rawMaterialId,
+      packMaterialId: a.packMaterialId,
       vendors: a.vendorHint || 'Any (broadcast)',
       qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
       targetPrice: null,
-      status: mapPlanningStatus(a.status),
+      status: approvedIds.has(`planning-${a.id}`) ? 'completed' : mapPlanningStatus(a.status),
       requestDate: a.createdAt ?? null,
       daysOpen: daysSince(a.createdAt),
       templateData: {
         qtId: `QT-${String(a.id).padStart(4, '0')}`,
         requestDate: a.createdAt,
-        vendor: a.vendorHint || 'Any (broadcast)',
+        vendor: a.vendorHint || '',
         itemCode: a.itemCode || '',
         itemName: a.itemName || '—',
         qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
@@ -135,14 +165,18 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
       const qtyTiers = q.lines.map((l) => l.qty).filter(Boolean);
       return {
         id: `proc-${q.id}`,
-        qtId: `QT-${new Date(q.createdAt ?? q.quotedOn ?? Date.now()).getFullYear()}-${String(q.id).padStart(4, '0')}`,
+        rawId: Number(q.id),
         source: 'procurement' as PrSource,
+        qtId: `QT-${new Date(q.createdAt ?? q.quotedOn ?? Date.now()).getFullYear()}-${String(q.id).padStart(4, '0')}`,
         itemName: q.lines[0]?.item ?? q.requestCode,
         itemCode: q.lines[0]?.itemId ?? '',
+        itemType: q.requestType,
+        rawMaterialId: q.lines[0]?.raw_material_id ?? null,
+        packMaterialId: q.lines[0]?.pack_material_id ?? null,
         vendors: q.vendor,
         qtyTiers: qtyTiers.length ? qtyTiers : ['—'],
         targetPrice: q.lines[0]?.pricePerUnit ?? null,
-        status: mapVendorQuoteStatus(q.status),
+        status: approvedIds.has(`proc-${q.id}`) ? 'completed' : mapVendorQuoteStatus(q.status),
         requestDate: q.createdAt ?? q.quotedOn ?? null,
         daysOpen: daysSince(q.createdAt ?? q.quotedOn),
         templateData: {
@@ -171,10 +205,10 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
       if (q && !`${r.qtId} ${r.itemName} ${r.itemCode} ${r.vendors}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    const rank: Record<QuoteStatus, number> = { requested: 0, draft: 1, completed: 2, terminated: 3 };
+    const rank: Partial<Record<QuoteStatus, number>> = { requested: 0, completed: 1, terminated: 2 };
     merged.sort((a, b) => (rank[a.status] - rank[b.status]) || (b.daysOpen - a.daysOpen));
     return merged;
-  }, [asks, vendorQuotes, search, statusFilter, sourceFilter]);
+  }, [asks, vendorQuotes, search, statusFilter, sourceFilter, approvedIds]);
 
   const awaiting = rows.filter((r) => r.status === 'requested').length;
   const breached = rows.filter((r) => r.status === 'requested' && quoteSlaLevel(r.daysOpen) === 'bad').length;
@@ -185,8 +219,45 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
       active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
     }`;
 
+  const handleApprove = async (row: QuoteRow) => {
+    setApprovingId(row.id);
+    try {
+      if (row.source === 'planning') {
+        await updatePlanningQuotationAsk(row.rawId, { status: 'fulfilled' });
+      } else {
+        await updateProcurementQuotation(row.rawId, { status: 'Confirmed' });
+      }
+      setApprovedIds((prev) => {
+        const next = new Set([...prev, row.id]);
+        try { sessionStorage.setItem('qr-approved-ids', JSON.stringify([...next])); } catch {}
+        return next;
+      });
+      if (templateFor?.id === row.id) setTemplateFor(null);
+    } catch (e) {
+      console.error('Approve failed:', e);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleSave = async (row: QuoteRow, edited: RfqEditedFields) => {
+    if (row.source === 'planning') {
+      const qty = parseFloat(edited.qtyTiers[0]);
+      await updatePlanningQuotationAsk(row.rawId, {
+        notes: edited.comments || undefined,
+        ...(Number.isFinite(qty) && qty > 0 ? { quantityRequested: qty } : {}),
+      });
+    } else {
+      await updateProcurementQuotation(row.rawId, {
+        notes: edited.comments || null,
+        validTill: edited.needBy || null,
+      });
+    }
+  };
+
   return (
     <div className="space-y-3">
+      {/* ── Header bar ────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
         <div className="text-xs text-slate-600">
           💬 <b className="text-slate-800">Quote Requests</b> · {rows.length} active · {awaiting} awaiting response
@@ -210,6 +281,7 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         </div>
       </div>
 
+      {/* ── Filters ───────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-bold text-slate-400 uppercase">Source</span>
@@ -228,25 +300,34 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
             <option value="all">All Statuses</option>
-            {(Object.keys(QUOTE_STATUS_CONFIG) as QuoteStatus[]).map((s) => (
+            {(['requested', 'completed', 'terminated'] as QuoteStatus[]).map((s) => (
               <option key={s} value={s}>{QUOTE_STATUS_CONFIG[s].label}</option>
             ))}
           </select>
         </div>
       </div>
 
+      {/* ── Table ─────────────────────────────────────────────────────── */}
       {loading && rows.length === 0 ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-blue-500 mr-2" /><span className="text-sm text-slate-500">Loading quote requests…</span></div>
+        <div className="flex items-center justify-center py-16">
+          <Loader2 size={22} className="animate-spin text-blue-500 mr-2" />
+          <span className="text-sm text-slate-500">Loading…</span>
+        </div>
       ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center"><p className="text-red-500 text-sm mb-3">{error}</p><button onClick={() => void load()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Retry</button></div>
+        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center">
+          <p className="text-red-500 text-sm mb-3">{error}</p>
+          <button onClick={() => void load()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Retry</button>
+        </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm"><MessageSquare size={30} className="mx-auto mb-2 opacity-30" />No quote requests.</div>
+        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">
+          <MessageSquare size={30} className="mx-auto mb-2 opacity-30" />No quote requests.
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['Req Date', 'QT Req ID', 'Source', 'Item', 'Vendor(s)', 'Req Qty', 'Target Price', 'Quote Status', 'SLA', 'Actions'].map((h) => (
+                {['Req Date', 'QT ID', 'Source', 'Item', 'Vendor(s)', 'Req Qty', 'Target Price', 'Status', 'SLA', 'Actions'].map((h) => (
                   <th key={h} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -256,23 +337,42 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                 const sc = QUOTE_STATUS_CONFIG[r.status];
                 const src = PR_SOURCE_CONFIG[r.source];
                 const slaLevel = quoteSlaLevel(r.daysOpen);
-                const linkedQuote = r.id.startsWith('proc-') ? vendorQuotes.find((q) => `proc-${q.id}` === r.id) : undefined;
+                const isTerminal = r.status === 'completed' || r.status === 'terminated';
+                const isApproving = approvingId === r.id;
+
                 return (
                   <tr key={r.id} className="hover:bg-blue-50/30 transition-colors">
                     <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.requestDate)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-blue-600">{r.qtId}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${src.text} ${src.bg} ${src.border}`}>{src.emoji} {src.label}</span>
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${src.text} ${src.bg} ${src.border}`}>
+                        {src.emoji} {src.label}
+                      </span>
                     </td>
                     <td className="px-3 py-2.5 max-w-[170px]">
                       <p className="text-xs font-semibold text-slate-800 truncate" title={r.itemName}>{r.itemName}</p>
                       <p className="text-[10px] text-slate-400 font-mono">{r.itemCode}</p>
                     </td>
-                    <td className="px-3 py-2.5 max-w-[130px]"><p className="text-xs text-slate-700 truncate">{r.vendors}</p></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.qtyTiers.join(' / ')}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : '—'}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sc.text} ${sc.bg} ${sc.border}`}>{sc.label}</span></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>{SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d</span><span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span></td>
+                    <td className="px-3 py-2.5 max-w-[130px]">
+                      <p className="text-xs text-slate-700 truncate">{r.vendors}</p>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">
+                      {r.qtyTiers.join(' / ')}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">
+                      {r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sc.text} ${sc.bg} ${sc.border}`}>
+                        {sc.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>
+                        {SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span>
+                    </td>
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1">
                         {(() => {

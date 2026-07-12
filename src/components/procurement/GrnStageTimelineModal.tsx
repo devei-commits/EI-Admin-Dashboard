@@ -83,6 +83,7 @@ export const GrnStageTimelineModal: React.FC<GrnStageTimelineModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [succeeded, setSucceeded] = useState(false);
   const [steps, setSteps] = useState<GrnWorkflowStep[]>([]);
   const [currentStage, setCurrentStage] = useState(row.stage);
 
@@ -130,6 +131,7 @@ export const GrnStageTimelineModal: React.FC<GrnStageTimelineModalProps> = ({
     try {
       await advanceGrnStage(row.id, nextStage, actorName);
       await load();
+      setSucceeded(true);
       onAdvanced?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to advance stage');
@@ -224,6 +226,9 @@ export const GrnStageTimelineModal: React.FC<GrnStageTimelineModalProps> = ({
           )}
 
           {error ? <p className="mt-3 text-xs text-red-600">{error}</p> : null}
+          {succeeded && !error ? (
+            <p className="mt-3 text-xs text-emerald-700 font-semibold">Stage advanced successfully.</p>
+          ) : null}
         </div>
 
         <div className="px-5 py-3 border-t border-slate-200 bg-white flex flex-wrap items-center justify-end gap-2">
