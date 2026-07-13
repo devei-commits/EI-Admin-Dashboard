@@ -68,6 +68,8 @@ export type ProcurementRequest = {
   planningCustomerName?: string | null;
   planningProductName?: string | null;
   planningProductCode?: string | null;
+  /** MRP from products.mrp_price for the planning FG product — read-only reference */
+  planningProductMrp?: number | null;
 };
 
 export type QuoteLine = {

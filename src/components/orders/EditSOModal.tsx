@@ -16,6 +16,7 @@ import {
   serializeStagedPaymentTerms,
   validateStagedPercents,
 } from '../../lib/stagedPaymentTerms';
+import { cleanAddress } from '../../utils/orderFulfillmentUtils';
 import { computeSuggestPanelRect, getScrollParents, type SuggestPanelRect } from '../../utils/suggestPanelPosition';
 
 interface EditableItem {
@@ -24,6 +25,7 @@ interface EditableItem {
   pack: string;
   orderedQty: number;
   unitPrice: number;
+  mrp?: number | null;
 }
 
 interface EditSOModalProps {
@@ -42,7 +44,7 @@ interface EditSOModalProps {
     shipAddress: string;
     paymentTerms: string;
     notes: string;
-    items: EditableItem[];
+    items: Array<EditableItem & { mrp?: number | null }>;
   }) => Promise<void> | void;
 }
 
@@ -75,6 +77,7 @@ function toEditableItems(order: SaleOrder | null): EditableItem[] {
     pack: String(item.pack || ''),
     orderedQty: Number(item.orderedQty || 0),
     unitPrice: Number(item.unitPrice || 0),
+    mrp: item.mrp ?? null,
   }));
 }
 
@@ -117,7 +120,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     setOrderDate(String(saleOrder.orderDate || ''));
     setDueDate(String(saleOrder.dueDate || ''));
     setPriority(saleOrder.priority === 'high' ? 'high' : 'normal');
-    setShipAddress(String(saleOrder.shipAddress || ''));
+    setShipAddress(cleanAddress(String(saleOrder.shipAddress || ''), String(saleOrder.customer || '')));
     const staged = parseStagedPaymentTerms(String(saleOrder.paymentTerms || '')) || DEFAULT_STAGED;
     setAdvancePctStr(String(staged.advance_pct));
     setPreShipmentPctStr(String(staged.pre_shipment_pct));
@@ -307,6 +310,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             sku: selected.sku,
             pack: packSizeFromProductRecord(selected),
             unitPrice: selectedCustomerId ? 0 : Number(selected.price || 0),
+            mrp: selected.price > 0 ? Number(selected.price) : null,
           };
         } else {
           next[index] = {
@@ -314,6 +318,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             sku: '',
             pack: '',
             unitPrice: 0,
+            mrp: null,
           };
         }
       }
@@ -324,7 +329,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      { sku: '', productName: '', pack: '', orderedQty: 1, unitPrice: 0 },
+      { sku: '', productName: '', pack: '', orderedQty: 1, unitPrice: 0, mrp: null },
     ]);
   };
 
@@ -408,6 +413,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
         pack: item.pack.trim(),
         orderedQty: Number(item.orderedQty || 0),
         unitPrice: Number(item.unitPrice || 0),
+        mrp: item.mrp ?? null,
       })),
     });
   };
@@ -538,7 +544,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
           </div>
           <div className="md:col-span-3">
             <label className="block text-xs font-semibold text-gray-600 mb-1">Shipping address</label>
-            <input value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
+            <textarea value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} disabled={!canEdit} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 resize-none" />
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-gray-600 mb-1">Payment terms (staged)</label>
@@ -577,7 +583,8 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               <div className="col-span-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pack</div>
               <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Qty (units)</div>
               <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price (₹)</div>
-              <div className="col-span-2" />
+              <div className="col-span-1 text-[10px] font-semibold text-amber-600 uppercase tracking-wide">MRP (₹)</div>
+              <div className="col-span-1" />
             </div>
             {items.map((item, index) => (
               <div key={`edit-so-item-${index}`} className="grid grid-cols-12 gap-2">
@@ -631,14 +638,24 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   disabled={!canEdit}
                   onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })}
                 />
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className="col-span-1 border border-amber-200 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-amber-50 text-amber-900"
+                  placeholder="0.00"
+                  value={item.mrp ?? ''}
+                  disabled={!canEdit}
+                  title="MRP from product master — editable per SO"
+                  onChange={(e) => updateItem(index, { mrp: e.target.value === '' ? null : Number(e.target.value) })}
+                />
                 <button
                   type="button"
                   onClick={() => removeItem(index)}
                   disabled={!canEdit || items.length === 1}
-                  className="col-span-2 inline-flex items-center justify-center gap-1 border border-red-200 rounded px-2 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                  className="col-span-1 inline-flex items-center justify-center gap-1 border border-red-200 rounded px-2 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
                 >
                   <Trash2 size={13} />
-                  Remove
                 </button>
                 {priceHints[index] ? (
                   <div className="col-span-12 text-[11px] text-blue-600 flex items-center gap-1">

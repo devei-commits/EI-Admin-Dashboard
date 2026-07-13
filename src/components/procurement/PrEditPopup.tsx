@@ -5,6 +5,7 @@
  * Purchase History dual pane — "Pick" auto-fills the editable fields above.
  */
 import React, { useEffect, useState } from 'react';
+import { AlertTriangle, FileQuestion } from 'lucide-react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import { fetchItemPriceList } from '../../services/procurement.service';
 import { StatCell } from './PrPopupShell';
@@ -26,7 +27,8 @@ export interface PrEditPopupProps {
   priceList?: PriceTier[];
   purchaseHistory?: HistoryRow[];
   onClose: () => void;
-  onSave: (payload: PrEditPayload) => void | Promise<void>;
+  onSave: (payload: PrEditPayload) => void | Promise<void | { moqError?: string }>;
+  onRaiseQuoteRequest?: (payload: PrEditPayload) => void | Promise<void>;
 }
 
 function toNum(v: unknown): number {
@@ -34,7 +36,7 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], purchaseHistory = [], onClose, onSave }) => {
+export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], purchaseHistory = [], onClose, onSave, onRaiseQuoteRequest }) => {
   const item = req.itemDetails?.[0] ?? null;
   const isPlanning = !!(req.planningProductCode || req.planningSoNumber || req.batchId);
 
@@ -45,6 +47,8 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
   const [paymentTerms, setPaymentTerms] = useState<string>('Net 30');
   const [pickedTier, setPickedTier] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [moqError, setMoqError] = useState<string | null>(null);
+  const [moqPayload, setMoqPayload] = useState<PrEditPayload | null>(null);
   const [loadedTiers, setLoadedTiers] = useState<PriceTier[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
   const [tiersError, setTiersError] = useState<string | null>(null);
@@ -74,9 +78,15 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
   };
 
   const handleSave = async () => {
+    const payload = { vendor: vendor.trim(), qty: toNum(qty), pricePerUnit: toNum(price), leadDays: toNum(leadDays), paymentTerms: paymentTerms.trim() };
     try {
       setBusy(true);
-      await onSave({ vendor: vendor.trim(), qty: toNum(qty), pricePerUnit: toNum(price), leadDays: toNum(leadDays), paymentTerms: paymentTerms.trim() });
+      setMoqError(null);
+      const result = await onSave(payload);
+      if (result && typeof result === 'object' && 'moqError' in result && result.moqError) {
+        setMoqError(result.moqError);
+        setMoqPayload(payload);
+      }
     } finally {
       setBusy(false);
     }
@@ -108,6 +118,9 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
           <StatCell label="SIH" value={sih != null ? `${sih}` : '—'} tone={sih != null && sih <= 0 ? 'bad' : 'default'} />
           <StatCell label="Planned Qty" value="—" />
           <StatCell label="MOQ" value={item?.moq ?? '—'} />
+          {req.planningProductMrp != null && Number(req.planningProductMrp) > 0 ? (
+            <StatCell label="MRP (read-only)" value={`₹${Number(req.planningProductMrp).toLocaleString('en-IN')}`} />
+          ) : null}
         </div>
       </ModalSection>
 
@@ -137,6 +150,27 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
         </div>
         <p className="mt-1.5 text-[10px] text-slate-400"><span className="inline-block w-3 h-3 align-middle bg-amber-50 border border-dashed border-amber-400 rounded" /> = editable. Picking a price-list tier below auto-fills Vendor / Price / Lead.</p>
       </ModalSection>
+
+      {moqError && (
+        <div className="mx-0 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 flex items-start gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-amber-800 mb-0.5">Quantity below vendor MOQ — save blocked</p>
+            <p className="text-[11px] text-amber-700">{moqError}</p>
+            <p className="text-[11px] text-amber-600 mt-0.5">Adjust the qty to meet the minimum, or raise a Quote Request to ask the vendor for a special allowance.</p>
+            {onRaiseQuoteRequest && moqPayload && (
+              <button
+                type="button"
+                onClick={() => void onRaiseQuoteRequest(moqPayload)}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700"
+              >
+                <FileQuestion className="h-3.5 w-3.5" />
+                Raise Quote Request for {moqPayload.qty} {item?.unit ?? ''}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Dual pane */}
       <ModalSection title="Price List + Purchase History">
