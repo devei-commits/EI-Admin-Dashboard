@@ -8,6 +8,7 @@ export type InventoryAuditDetailModalProps = {
   onApproveGap?: (line: InventoryAuditLine) => Promise<void>;
   onReAudit?: (line: InventoryAuditLine, comment: string) => Promise<void>;
   onTerminate?: (line: InventoryAuditLine, reason: string) => Promise<void>;
+  onSubmitPhysicalCount?: (line: InventoryAuditLine, physicalQty: number, remarks: string, completedBy: string) => Promise<void>;
   approving?: boolean;
   reAuditing?: boolean;
   terminating?: boolean;
@@ -39,6 +40,7 @@ export function InventoryAuditDetailModal({
   onApproveGap,
   onReAudit,
   onTerminate,
+  onSubmitPhysicalCount,
   approving = false,
   reAuditing = false,
   terminating = false,
@@ -47,6 +49,11 @@ export function InventoryAuditDetailModal({
   const [terminateReason, setTerminateReason] = useState('');
   const [showReAudit, setShowReAudit] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
+  const [showSubmitCount, setShowSubmitCount] = useState(false);
+  const [physicalQtyInput, setPhysicalQtyInput] = useState('');
+  const [countRemarks, setCountRemarks] = useState('');
+  const [countCompletedBy, setCountCompletedBy] = useState('');
+  const [submittingCount, setSubmittingCount] = useState(false);
 
   const consumedAtAudit =
     line.physicalQty != null && line.systemQty != null
@@ -65,6 +72,11 @@ export function InventoryAuditDetailModal({
     onReAudit != null;
 
   const canTerminate = onTerminate != null && line.stockCheckStatus.trim().toLowerCase() !== 'cancelled';
+
+  const canSubmitCount =
+    onSubmitPhysicalCount != null &&
+    line.stockCheckStatus.trim().toLowerCase() !== 'completed' &&
+    line.stockCheckStatus.trim().toLowerCase() !== 'cancelled';
 
   return (
     <div
@@ -238,6 +250,63 @@ export function InventoryAuditDetailModal({
             </div>
           ) : null}
 
+          {showSubmitCount ? (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-teal-900 uppercase tracking-wide">Submit Physical Count</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-600 block mb-1">Physical Qty ({line.unit})</label>
+                  <input
+                    type="number"
+                    value={physicalQtyInput}
+                    onChange={(e) => setPhysicalQtyInput(e.target.value)}
+                    className="w-full border border-teal-300 rounded-lg px-2 py-1.5 text-xs font-mono"
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-600 block mb-1">Counted by</label>
+                  <input
+                    type="text"
+                    value={countCompletedBy}
+                    onChange={(e) => setCountCompletedBy(e.target.value)}
+                    className="w-full border border-teal-300 rounded-lg px-2 py-1.5 text-xs"
+                    placeholder="Name"
+                  />
+                </div>
+              </div>
+              <textarea
+                value={countRemarks}
+                onChange={(e) => setCountRemarks(e.target.value)}
+                rows={2}
+                className="w-full border border-teal-200 rounded-lg px-2 py-1.5 text-xs"
+                placeholder="Remarks (optional)…"
+              />
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowSubmitCount(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button
+                  type="button"
+                  disabled={!physicalQtyInput.trim() || submittingCount}
+                  onClick={async () => {
+                    const qty = parseFloat(physicalQtyInput);
+                    if (!Number.isFinite(qty) || qty < 0) return;
+                    setSubmittingCount(true);
+                    try {
+                      await onSubmitPhysicalCount?.(line, qty, countRemarks.trim(), countCompletedBy.trim());
+                      setShowSubmitCount(false);
+                    } finally {
+                      setSubmittingCount(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold bg-teal-700 text-white rounded-lg disabled:opacity-60"
+                >
+                  {submittingCount ? 'Submitting…' : 'Submit Count'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {line.remarks ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
               <p className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide mb-1">WH remarks</p>
@@ -270,16 +339,25 @@ export function InventoryAuditDetailModal({
           {canTerminate && !showTerminate ? (
             <button
               type="button"
-              onClick={() => { setShowTerminate(true); setShowReAudit(false); }}
+              onClick={() => { setShowTerminate(true); setShowReAudit(false); setShowSubmitCount(false); }}
               className="px-3 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 mr-auto"
             >
               ⛔ Terminate
             </button>
           ) : null}
+          {canSubmitCount && !showSubmitCount ? (
+            <button
+              type="button"
+              onClick={() => { setShowSubmitCount(true); setShowReAudit(false); setShowTerminate(false); }}
+              className="px-3 py-2 rounded-lg border border-teal-300 text-teal-800 text-sm font-semibold hover:bg-teal-50"
+            >
+              📦 Enter Physical Count
+            </button>
+          ) : null}
           {canReAudit && !showReAudit ? (
             <button
               type="button"
-              onClick={() => { setShowReAudit(true); setShowTerminate(false); }}
+              onClick={() => { setShowReAudit(true); setShowTerminate(false); setShowSubmitCount(false); }}
               className="px-3 py-2 rounded-lg border border-sky-300 text-sky-800 text-sm font-semibold hover:bg-sky-50"
             >
               🔁 Re-Audit

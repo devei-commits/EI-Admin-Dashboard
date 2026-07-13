@@ -142,6 +142,9 @@ import {
 import { parseBulkSpecificGravity } from '../lib/skuBomMath';
 import {
   itemHasOpenPlanningQuotationPr,
+  getItemsInvolvedProcurementDisplay,
+  badgeToneClass,
+  type PlannedLineForItem,
 } from '../lib/itemsInvolvedPipelineDisplay';
 
 function effectivePrSpecBulk(
@@ -7812,6 +7815,14 @@ const Planning = () => {
                           item,
                           procurementRequests
                         );
+                        const procDisplay = getItemsInvolvedProcurementDisplay(
+                          item,
+                          procurementRequests,
+                          plannedLinesFromBackend as PlannedLineForItem[]
+                        );
+                        const prStatusLines = procDisplay.poInfo.lines.filter(
+                          (l) => l.startsWith('PR #')
+                        );
                         const quotationAskUi = resolvePlanningQuotationAskUiStatus(
                           planningQuotationAsks,
                           quotationItemTarget,
@@ -7988,6 +7999,14 @@ const Planning = () => {
                                     title="Planning fulfilled — no open shortage vs TOTAL REQ."
                                   >
                                     No shortage
+                                  </span>
+                                )}
+                                {prStatusLines.length > 0 && (
+                                  <span
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border w-full justify-center ${badgeToneClass(procDisplay.currentStatus.badgeTone)}`}
+                                    title={prStatusLines.join('\n')}
+                                  >
+                                    {prStatusLines[0]}
                                   </span>
                                 )}
                                 <button

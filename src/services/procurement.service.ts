@@ -110,6 +110,12 @@ export interface UpdateProcurementPayload {
   stockCheckNotes?: string | null;
 }
 
+export interface MoqErrorBody {
+  code: 'MOQ_NOT_MET';
+  message: string;
+  details: { index: number; message: string }[];
+}
+
 export async function updateProcurementRequest(
   id: string,
   payload: UpdateProcurementPayload
@@ -118,10 +124,21 @@ export async function updateProcurementRequest(
     const data = await api.patch<ProcurementRequest>(`/api/v1/procurement/${id}`, payload);
     return { data: data ?? null, error: null, success: true };
   } catch (error) {
+    const err = error as Error & { body?: { code?: string; error?: string; details?: unknown[] } };
+    if (err?.body?.code === 'MOQ_NOT_MET') {
+      return {
+        data: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        error: { code: 'MOQ_NOT_MET', message: err.body.error ?? 'MOQ validation failed', details: err.body.details ?? [] } as any,
+        success: false,
+      };
+    }
     const apiMsg = extractApiErrorMessage(error);
-    if (apiMsg) return { data: null, error: apiMsg, success: false };
-    const err = error instanceof Error ? error.message : 'Failed to update procurement request';
-    return { data: null, error: err, success: false };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (apiMsg) return { data: null, error: apiMsg as any, success: false };
+    const errMsg = error instanceof Error ? error.message : 'Failed to update procurement request';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { data: null, error: errMsg as any, success: false };
   }
 }
 
@@ -159,5 +176,34 @@ export async function fetchItemPriceList(params: {
     return Array.isArray(data?.tiers) ? data.tiers : [];
   } catch {
     return [];
+  }
+}
+
+// ─── Stock audit result submission (warehouse → procurement) ─────────────────
+export interface StockCheckResultLine {
+  itemCode: string;
+  itemName?: string;
+  physicalQty: number;
+  location?: string;
+  zone?: string;
+  batchNo?: string;
+  remarks?: string;
+}
+
+export async function submitStockCheckResult(
+  prId: string,
+  payload: { lines: StockCheckResultLine[]; completedBy: string; outcome?: 'all_ok' | 'not_ok' }
+): Promise<ServiceResult<ProcurementRequest>> {
+  try {
+    const data = await api.post<ProcurementRequest>(
+      `/api/v1/procurement/${prId}/stock-check-result`,
+      payload,
+    );
+    return { data: data ?? null, error: null, success: true };
+  } catch (error) {
+    const apiMsg = extractApiErrorMessage(error);
+    if (apiMsg) return { data: null, error: apiMsg, success: false };
+    const err = error instanceof Error ? error.message : 'Failed to submit stock check result';
+    return { data: null, error: err, success: false };
   }
 }

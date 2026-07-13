@@ -4,9 +4,11 @@
  *    Received / Billed / Return quantities (computed from the GRN list, since
  *    these rollups aren't stored anywhere today).
  *  - Tab 2 Items (next step): one row per PO line with per-GRN breakdown.
+ *
+ * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, Truck, Download, ChevronRight } from 'lucide-react';
+import { Search, Pencil, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import type { IssuedPOViewRecord } from './IssuedPOsView';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -102,13 +104,22 @@ export interface PurchaseOrdersViewProps {
 type PoTab = 'po-wise' | 'items';
 
 export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
-  records, grnList, vendorOptions, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport,
+  records, grnList, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport,
 }) => {
   const [tab, setTab] = useState<PoTab>('po-wise');
   const [search, setSearch] = useState('');
-  const [vendorFilter, setVendorFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | PoStatus>('all');
   const [itemFilter, setItemFilter] = useState<string | null>(null); // "Other POs" drill
+  const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
+
+  const toggleVendor = (vendor: string) => {
+    setCollapsedVendors((prev) => {
+      const next = new Set(prev);
+      if (next.has(vendor)) next.delete(vendor);
+      else next.add(vendor);
+      return next;
+    });
+  };
 
   // Initiate-Transit popups (§4A per-line, §4B consolidated)
   const [transit, setTransit] = useState<
@@ -157,13 +168,12 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     const q = search.trim().toLowerCase();
     return records
       .filter((r) => {
-        if (vendorFilter !== 'all' && r.vendor !== vendorFilter) return false;
         if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) return false;
         if (q && !`${r.poNumber} ${r.vendor}`.toLowerCase().includes(q)) return false;
         return true;
       })
       .map((r) => ({ record: r, rollup: computeRollup(r, grnByPo) }));
-  }, [records, grnByPo, search, vendorFilter, statusFilter]);
+  }, [records, grnByPo, search, statusFilter]);
 
   // ── Items tab: one row per PO line, with matched GRNs + "other POs" count ──
   const lineRows = useMemo(() => {
@@ -184,7 +194,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     }> = [];
     const now = Date.now();
     for (const r of records) {
-      if (vendorFilter !== 'all' && r.vendor !== vendorFilter) continue;
       if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) continue;
       const grns = grnByPo.get(normPo(r.poNumber)) ?? [];
       const poDate = r.createdDate ? new Date(r.createdDate).getTime() : now;
@@ -215,7 +224,37 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     // Default sort: item code asc, then PO date desc (siblings sit together — §4.4).
     out.sort((a, b) => a.itemKey.localeCompare(b.itemKey) || (b.record.createdDate || '').localeCompare(a.record.createdDate || ''));
     return out;
-  }, [records, grnByPo, search, vendorFilter, statusFilter, itemFilter]);
+  }, [records, grnByPo, search, statusFilter, itemFilter]);
+
+  // ── Vendor-grouped rows for PO-wise tab ──
+  const vendorGroups = useMemo(() => {
+    const map = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const v = row.record.vendor || 'Unknown Vendor';
+      if (!map.has(v)) map.set(v, []);
+      map.get(v)!.push(row);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([vendor, vendorRows]) => ({
+        vendor,
+        vendorRows,
+        vendorTotal: vendorRows.reduce((s, r) => s + (r.record.grandTotal || 0), 0),
+      }));
+  }, [rows]);
+
+  // ── Vendor-grouped rows for Items tab ──
+  const lineVendorGroups = useMemo(() => {
+    const map = new Map<string, typeof lineRows>();
+    for (const lr of lineRows) {
+      const v = lr.record.vendor || 'Unknown Vendor';
+      if (!map.has(v)) map.set(v, []);
+      map.get(v)!.push(lr);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([vendor, vendorLineRows]) => ({ vendor, vendorLineRows }));
+  }, [lineRows]);
 
   const totalValue = records.reduce((s, r) => s + (r.grandTotal || 0), 0);
   const inTransitCount = rows.filter((x) => x.rollup.inTransit > 0).length;
@@ -251,11 +290,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO #, item, vendor…"
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
             </div>
-            <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-              <option value="all">All Vendors</option>
-              {vendorOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
             {itemFilter && (
               <button onClick={() => setItemFilter(null)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
                 item {itemFilter} · clear ✕
@@ -275,69 +309,91 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {lineRows.map((lr, idx) => {
-                    const ps = derivePurchaseStatus(lr.received, lr.billed);
-                    const psCfg = ps ? PURCHASE_STATUS_CONFIG[ps] : null;
-                    const fullyReceived = lr.received >= lr.poQty && lr.poQty > 0;
-                    const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
-                      : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
-                      : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
-                    const slaText = fullyReceived ? '✓ received' : slaLevel === 'bad' ? `🚩 ${lr.daysOpen}d / ${lr.leadDays}d lead` : slaLevel === 'warn' ? `⚠ ${lr.daysOpen}d / ${lr.leadDays}d` : '✓ within lead';
-                    const slaCls = slaLevel === 'bad' ? 'text-red-600 font-bold' : slaLevel === 'warn' ? 'text-amber-600 font-semibold' : 'text-emerald-600';
-                    return (
-                      <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} className="hover:bg-blue-50/30 transition-colors align-top">
-                        <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(lr.record.createdDate)}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-blue-600 hover:underline decoration-dotted">{lr.record.poNumber}</button>
-                        </td>
-                        <td className="px-3 py-2.5 max-w-[120px]"><p className="text-xs text-slate-700 truncate" title={lr.record.vendor}>{lr.record.vendor}</p></td>
-                        <td className="px-3 py-2.5 max-w-[150px]">
-                          <p className="text-xs font-semibold text-slate-800 truncate" title={lr.item}>{lr.item}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{lr.itemCode}</p>
-                        </td>
-                        <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-slate-700">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
-                        <td className="px-3 py-2.5 min-w-[130px]">
-                          {lr.grnLines.length === 0 ? (
-                            <span className="text-[10.5px] text-slate-400">— no shipments yet</span>
-                          ) : (
-                            <div className="space-y-0.5 font-mono text-[10.5px]">
-                              {lr.grnLines.map((g, i) => (
-                                <div key={i}><span className="text-blue-600">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {lr.grnLines.length === 0 ? <span className="text-slate-300 text-xs">—</span> : (
-                            <div className="flex flex-col gap-0.5">
-                              {lr.grnLines.map((g, i) => {
-                                const c = GRN_STAGE_CONFIG[g.stage];
-                                return <span key={i} className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${c.text} ${c.bg} ${c.border}`}>{c.label}</span>;
-                              })}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-slate-400">— pending</span>}
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
-                        <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                          {lr.otherPos > 0 ? (
-                            <button onClick={() => setItemFilter(lr.itemKey)} className="inline-flex items-center gap-0.5 text-[10.5px] text-blue-600 font-semibold hover:underline">
-                              <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
-                            </button>
-                          ) : <span className="text-slate-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex gap-1">
-                            <button onClick={() => onEdit(lr.record)} title="Edit PO" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"><Pencil size={12} /></button>
-                            <button onClick={() => openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })} title="Initiate Transit (per line)" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"><Truck size={12} /></button>
+                <tbody>
+                  {lineVendorGroups.map(({ vendor, vendorLineRows }) => (
+                    <React.Fragment key={vendor}>
+                      {/* Vendor header row */}
+                      <tr
+                        className="bg-slate-100/80 border-y border-slate-200 hover:bg-slate-100 cursor-pointer select-none"
+                        onClick={() => toggleVendor(`items:${vendor}`)}
+                      >
+                        <td colSpan={11} className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown
+                              size={13}
+                              className={`text-slate-500 transition-transform ${collapsedVendors.has(`items:${vendor}`) ? '-rotate-90' : ''}`}
+                            />
+                            <span className="text-xs font-bold text-slate-800">{vendor}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {vendorLineRows.length} line{vendorLineRows.length !== 1 ? 's' : ''}
+                            </span>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
+                      {!collapsedVendors.has(`items:${vendor}`) && vendorLineRows.map((lr, idx) => {
+                        const ps = derivePurchaseStatus(lr.received, lr.billed);
+                        const psCfg = ps ? PURCHASE_STATUS_CONFIG[ps] : null;
+                        const fullyReceived = lr.received >= lr.poQty && lr.poQty > 0;
+                        const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
+                          : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
+                          : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
+                        const slaText = fullyReceived ? '✓ received' : slaLevel === 'bad' ? `🚩 ${lr.daysOpen}d / ${lr.leadDays}d lead` : slaLevel === 'warn' ? `⚠ ${lr.daysOpen}d / ${lr.leadDays}d` : '✓ within lead';
+                        const slaCls = slaLevel === 'bad' ? 'text-red-600 font-bold' : slaLevel === 'warn' ? 'text-amber-600 font-semibold' : 'text-emerald-600';
+                        return (
+                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} className="hover:bg-blue-50/30 transition-colors align-top border-b border-slate-100">
+                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(lr.record.createdDate)}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-blue-600 hover:underline decoration-dotted">{lr.record.poNumber}</button>
+                            </td>
+                            <td className="px-3 py-2.5 max-w-[120px]"><p className="text-xs text-slate-700 truncate" title={lr.record.vendor}>{lr.record.vendor}</p></td>
+                            <td className="px-3 py-2.5 max-w-[150px]">
+                              <p className="text-xs font-semibold text-slate-800 truncate" title={lr.item}>{lr.item}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{lr.itemCode}</p>
+                            </td>
+                            <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-slate-700">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
+                            <td className="px-3 py-2.5 min-w-[130px]">
+                              {lr.grnLines.length === 0 ? (
+                                <span className="text-[10.5px] text-slate-400">— no shipments yet</span>
+                              ) : (
+                                <div className="space-y-0.5 font-mono text-[10.5px]">
+                                  {lr.grnLines.map((g, i) => (
+                                    <div key={i}><span className="text-blue-600">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {lr.grnLines.length === 0 ? <span className="text-slate-300 text-xs">—</span> : (
+                                <div className="flex flex-col gap-0.5">
+                                  {lr.grnLines.map((g, i) => {
+                                    const c = GRN_STAGE_CONFIG[g.stage];
+                                    return <span key={i} className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${c.text} ${c.bg} ${c.border}`}>{c.label}</span>;
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-slate-400">— pending</span>}
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
+                            <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                              {lr.otherPos > 0 ? (
+                                <button onClick={() => setItemFilter(lr.itemKey)} className="inline-flex items-center gap-0.5 text-[10.5px] text-blue-600 font-semibold hover:underline">
+                                  <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
+                                </button>
+                              ) : <span className="text-slate-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex gap-1">
+                                <button onClick={() => onEdit(lr.record)} title="Edit PO" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"><Pencil size={12} /></button>
+                                <button onClick={() => openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })} title="Initiate Transit (per line)" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"><Truck size={12} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -359,11 +415,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                 <option key={s} value={s}>{PO_STATUS_CONFIG[s].label}</option>
               ))}
             </select>
-            <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-              <option value="all">All Vendors</option>
-              {vendorOptions.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
           </div>
 
           {/* Table */}
@@ -379,44 +430,67 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.map(({ record: r, rollup }) => {
-                    const wf = resolvePoWorkflowStatus(r);
-                    const st = PO_STATUS_CONFIG[wf];
-                    const shippable = isShippable(r);
-                    return (
-                      <tr key={r.poNumber} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.createdDate)}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline decoration-dotted">{r.poNumber}</button>
-                        </td>
-                        <td className="px-3 py-2.5 max-w-[150px]"><p className="text-xs text-slate-700 truncate" title={r.vendor}>{r.vendor}</p></td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{st.label}</span>
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                          <div className="text-xs font-bold text-slate-800 tabular-nums">{fmtMoney(r.grandTotal)}</div>
-                          <div className="text-[9.5px] text-slate-400">{r.lineItems.length} item{r.lineItems.length !== 1 ? 's' : ''}</div>
-                        </td>
-                        <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.inTransit} ordered={rollup.ordered} onClick={onOpenGrnForPo ? () => onOpenGrnForPo(r.poNumber) : undefined} /></td>
-                        <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.received} ordered={rollup.ordered} /></td>
-                        <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.billed} ordered={rollup.ordered} /></td>
-                        <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-red-600 tabular-nums">{rollup.returned}</span> : <span className="text-slate-300 text-xs">0</span>}</td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex gap-1">
-                            <button onClick={() => onEdit(r)} title="Edit PO" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
-                            <button
-                              onClick={() => shippable && openConsolidated(r)}
-                              disabled={!shippable}
-                              title={shippable ? 'Initiate Shipment' : 'Available once PO is Issued/Accepted'}
-                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' : 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'}`}>
-                              <Truck size={12} /> Initiate Shipment
-                            </button>
+                <tbody>
+                  {vendorGroups.map(({ vendor, vendorRows, vendorTotal }) => (
+                    <React.Fragment key={vendor}>
+                      {/* Vendor header row */}
+                      <tr
+                        className="bg-slate-100/80 border-y border-slate-200 hover:bg-slate-100 cursor-pointer select-none"
+                        onClick={() => toggleVendor(`po:${vendor}`)}
+                      >
+                        <td colSpan={10} className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown
+                              size={13}
+                              className={`text-slate-500 transition-transform ${collapsedVendors.has(`po:${vendor}`) ? '-rotate-90' : ''}`}
+                            />
+                            <span className="text-xs font-bold text-slate-800">{vendor}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {vendorRows.length} PO{vendorRows.length !== 1 ? 's' : ''}
+                            </span>
+                            <span className="ml-auto text-xs font-mono font-bold text-slate-700">{fmtMoney(vendorTotal)}</span>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
+                      {!collapsedVendors.has(`po:${vendor}`) && vendorRows.map(({ record: r, rollup }) => {
+                        const wf = resolvePoWorkflowStatus(r);
+                        const st = PO_STATUS_CONFIG[wf];
+                        const shippable = isShippable(r);
+                        return (
+                          <tr key={r.poNumber} className="hover:bg-blue-50/30 transition-colors border-b border-slate-100">
+                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.createdDate)}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline decoration-dotted">{r.poNumber}</button>
+                            </td>
+                            <td className="px-3 py-2.5 max-w-[150px]"><p className="text-xs text-slate-700 truncate" title={r.vendor}>{r.vendor}</p></td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{st.label}</span>
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                              <div className="text-xs font-bold text-slate-800 tabular-nums">{fmtMoney(r.grandTotal)}</div>
+                              <div className="text-[9.5px] text-slate-400">{r.lineItems.length} item{r.lineItems.length !== 1 ? 's' : ''}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.inTransit} ordered={rollup.ordered} onClick={onOpenGrnForPo ? () => onOpenGrnForPo(r.poNumber) : undefined} /></td>
+                            <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.received} ordered={rollup.ordered} /></td>
+                            <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.billed} ordered={rollup.ordered} /></td>
+                            <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-red-600 tabular-nums">{rollup.returned}</span> : <span className="text-slate-300 text-xs">0</span>}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex gap-1">
+                                <button onClick={() => onEdit(r)} title="Edit PO" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
+                                <button
+                                  onClick={() => shippable && openConsolidated(r)}
+                                  disabled={!shippable}
+                                  title={shippable ? 'Initiate Shipment' : 'Available once PO is Issued/Accepted'}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' : 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'}`}>
+                                  <Truck size={12} /> Initiate Shipment
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>

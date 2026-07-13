@@ -1320,8 +1320,8 @@ export function splitBackendPrItemsAfterPartialRelease(
       releasedItems.push({
         ...bi,
         quantity_requested: releaseQty,
-        // For released portion we should not tag as backlog remainder.
-        partial_release_remainder: undefined,
+        // Tag so backend skips MOQ validation — qty is already committed on the PO.
+        partial_release_remainder: true,
       } as ProcurementRequestItem);
     }
 

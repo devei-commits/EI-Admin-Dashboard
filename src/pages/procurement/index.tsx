@@ -41,6 +41,7 @@ import {
   updateProcurementRequest as updateProcurementRequestApi,
   createProcurementRequest as createProcurementRequestApi,
   deleteProcurementRequest as deleteProcurementRequestApi,
+  submitStockCheckResult as submitStockCheckResultApi,
 } from '../../services/procurement.service';
 import type { ProcurementRequestItem as BackendPRItem, ProcurementRequest as ApiProcurementRequest } from '../../services/procurement.service';
 import {
@@ -53,6 +54,7 @@ import {
 import {
   fetchPlanningQuotationAsks,
   updatePlanningQuotationAsk,
+  createPlanningQuotationAsk,
   type PlanningQuotationAsk,
 } from '../../services/planningQuotationAsks.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
@@ -3875,7 +3877,7 @@ const Procurement: React.FC = () => {
       const requestId = record?.request?.id as string | undefined;
       const requestCode = record?.requestCode as string | undefined;
       if (requestId) {
-        void updateRequestStatus(requestId, 'Delivery Pending');
+        void updateRequestStatus(requestId, 'Delivery Pending', { skipItems: true });
         addToast('info', `${requestCode ?? 'PO'} marked delivery pending — link a released PO to update the timeline.`);
         return;
       }
@@ -4145,7 +4147,8 @@ const Procurement: React.FC = () => {
           return;
         }
 
-        const statusRes = await updateProcurementRequestApi(requestId, { status: 'Under GRN' as RequestStatus, items });
+        const itemsForGrn = items.map((it) => ({ ...it, partial_release_remainder: true }));
+        const statusRes = await updateProcurementRequestApi(requestId, { status: 'Under GRN' as RequestStatus, items: itemsForGrn });
         if (!statusRes.success) {
           addToast('error', typeof statusRes.error === 'string' ? statusRes.error : (statusRes.error?.message ?? 'Failed to update request status'));
           return;
@@ -4765,7 +4768,7 @@ const Procurement: React.FC = () => {
           linkedPrRemoved = true;
         } else {
           const prUpd = await updateProcurementRequestApi(backendRequestId, {
-            items: plan.items,
+            items: plan.items.map((it) => ({ ...it, partial_release_remainder: true })),
             status: plan.status,
           });
           if (!prUpd.success) {
@@ -4937,12 +4940,7 @@ const Procurement: React.FC = () => {
       const prLine = assignedPrLines[i];
       const qty = Number(String(ln.qty ?? '').replace(/[^\d.]/g, '')) || 0;
       const orig = Number(prLine?.quantity_requested ?? 0) || 0;
-      const moq = Number(prLine?.moq_min ?? 0) || 0;
 
-      if (moq > 0 && qty > 0 && qty < moq) {
-        const u = String(prLine?.unit ?? 'KG');
-        return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${formatQtyWithPrimaryUnit(qty, u, 'RM')} is below vendor MOQ ${formatQtyWithPrimaryUnit(moq, u, 'RM')}.`;
-      }
       if (orig > 0 && qty > orig) {
         return `Cannot proceed ${dpoNumber}: ${ln.item || ln.itemCode || 'line'} qty ${qty} exceeds open request qty ${orig}.`;
       }
@@ -5520,8 +5518,11 @@ const Procurement: React.FC = () => {
         addToast('warning', 'Stock check is pending. Wait for warehouse response before release actions.');
         return;
       }
-      if (req.itemDetails && req.itemDetails.length > 0) {
-        const item = req.itemDetails[0];
+      // Always prefer the freshest API data — requestsFromApi is a sync memo from backendPrResult
+      // so it updates immediately after a PR edit refetch, before the requests-state useEffect fires.
+      const liveReq = requestsFromApi.find((r) => r.id === req.id) ?? req;
+      if (liveReq.itemDetails && liveReq.itemDetails.length > 0) {
+        const item = liveReq.itemDetails[0];
         const relItem: ReleaseToPlannedItem = {
           itemName: item.itemName,
           itemCode: item.itemCode,
@@ -5535,7 +5536,7 @@ const Procurement: React.FC = () => {
           pack_material_id: item.pack_material_id,
           itemType: item.type === 'PM' ? 'PM' : 'RM',
         };
-        setReleaseToPlannedTarget({ request: req, item: relItem });
+        setReleaseToPlannedTarget({ request: liveReq, item: relItem });
         const reqType0: RequestType =
           relItem.itemType === 'PM' || relItem.pack_material_id != null ? 'PM' : 'RM';
         const itemSource0 = reqType0 === 'PM' ? itemsListPm : itemsListRm;
@@ -5564,13 +5565,13 @@ const Procurement: React.FC = () => {
           }))
         ).find((s) => s.vendor);
         const reqQuotesForItem = quotes.filter(
-          (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
+          (q) => q.requestId === liveReq.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
         );
         const first = reqQuotesForItem[0];
         const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
         const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
         setReleaseToPlannedForm({
-          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? liveReq.preferredVendor ?? '',
           moqDisplay: item.moq
             ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)`
             : '',
@@ -5584,11 +5585,11 @@ const Procurement: React.FC = () => {
         });
         setReleaseToPlannedNotes('');
         setReleaseToPlannedLineEdits(
-          (req.itemDetails ?? []).map((d) => {
+          (liveReq.itemDetails ?? []).map((d) => {
             const totalReqQty = Number(d.reqQty ?? 0) || 0;
             const oq = resolveOpenQtyForReleaseItem({
-              requestId: req.id,
-              reqType: req.type,
+              requestId: liveReq.id,
+              reqType: liveReq.type,
               itemName: d.itemName ?? '',
               itemCode: d.itemCode,
               totalReqQty,
@@ -5738,6 +5739,7 @@ const Procurement: React.FC = () => {
       itemsListPm,
       itemsListRm,
       quotes,
+      requestsFromApi,
       resolveOpenQtyForReleaseItem,
     ]
   );
@@ -6051,7 +6053,36 @@ const Procurement: React.FC = () => {
                       addToast('success', `PR ${base.code} updated.`);
                       setPrEditReq(null);
                     } else {
+                      const errObj = res.error as { code?: string; message?: string } | null;
+                      if (errObj && typeof errObj === 'object' && errObj.code === 'MOQ_NOT_MET') {
+                        return { moqError: errObj.message ?? 'Quantity is below the vendor minimum order quantity.' };
+                      }
                       addToast('error', typeof res.error === 'string' ? res.error : 'Failed to update PR.');
+                    }
+                  }}
+                  onRaiseQuoteRequest={async (payload) => {
+                    const base = prEditReq;
+                    if (!base) return;
+                    const item = base.itemDetails?.[0];
+                    if (!item) return;
+                    const res = await createPlanningQuotationAsk({
+                      planningExtractedId: base.planningExtractedId,
+                      itemType: (item.type as 'RM' | 'PM') ?? 'RM',
+                      rawMaterialId: item.raw_material_id ?? undefined,
+                      packMaterialId: item.pack_material_id ?? undefined,
+                      itemCode: item.itemCode ?? undefined,
+                      itemName: item.itemName ?? undefined,
+                      quantityRequested: payload.qty,
+                      unit: item.unit ?? undefined,
+                      vendorHint: payload.vendor || null,
+                      notes: `Quote request from PR ${base.code} — qty ${payload.qty} ${item.unit ?? ''} is below vendor MOQ.`,
+                    });
+                    if (res.success) {
+                      addToast('success', `Quote request raised for ${item.itemName} — ${payload.qty} ${item.unit ?? ''}.`);
+                      setPrEditReq(null);
+                      void queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+                    } else {
+                      addToast('error', typeof res.error === 'string' ? res.error : 'Failed to raise quote request.');
                     }
                   }}
                 />
@@ -6363,6 +6394,25 @@ const Procurement: React.FC = () => {
                   }}
                   onReAudit={handleReAuditInventoryAudit}
                   onTerminate={handleTerminateInventoryAudit}
+                  onSubmitPhysicalCount={async (line, physicalQty, remarks, completedBy) => {
+                    const res = await submitStockCheckResultApi(line.requestId, {
+                      lines: [{
+                        itemCode: line.itemCode,
+                        itemName: line.itemName,
+                        physicalQty,
+                        location: line.location,
+                        remarks: remarks || undefined,
+                      }],
+                      completedBy,
+                    });
+                    if (res.success) {
+                      queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      addToast('success', 'Physical count submitted — audit marked Completed');
+                      setInventoryAuditDetailLine(null);
+                    } else {
+                      addToast('error', typeof res.error === 'string' ? res.error : 'Failed to submit physical count');
+                    }
+                  }}
                 />
               )}
 
@@ -8688,15 +8738,13 @@ const Procurement: React.FC = () => {
                             </td>
                             <td className="py-2 text-right text-slate-900 font-medium whitespace-nowrap align-top tabular-nums">
                               <input
-                                type="number"
-                                min={0}
-                                step="any"
-                                max={ln.originalQty}
-                                value={ln.qty === 0 ? '' : ln.qty}
+                                type="text"
+                                inputMode="decimal"
+                                value={String(ln.qty === 0 ? '' : ln.qty)}
                                 onChange={(e) => {
-                                  const raw = e.target.value;
+                                  const raw = e.target.value.replace(/[^0-9.]/g, '');
                                   const n = raw === '' ? 0 : parseFloat(raw);
-                                  const next = Number.isFinite(n) ? Math.min(ln.originalQty, Math.max(0, n)) : 0;
+                                  const next = Number.isFinite(n) ? Math.max(0, n) : 0;
                                   setReleaseToPlannedLineEdits((prev) => {
                                     const base = prev.length > 0 ? prev : [...lineItemsForModal];
                                     return base.map((row, ri) => (ri === i ? { ...row, qty: next } : row));
@@ -8704,8 +8752,8 @@ const Procurement: React.FC = () => {
                                 }}
                                 className="w-24 rounded border border-slate-300 px-1.5 py-1 text-right text-xs tabular-nums"
                               />
-                              <div className="text-[10px] text-slate-500 mt-0.5">
-                                max {Number(ln.originalQty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                open: {Number(ln.originalQty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                               </div>
                             </td>
                             <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.unit}</td>
@@ -9365,7 +9413,10 @@ const Procurement: React.FC = () => {
                       d.lineItems,
                       form.lineItems
                     );
-                    const prUpd = await updateProcurementRequestApi(backendRequestId, { items: updatedItems });
+                    // Mark items as partial_release_remainder so backend skips MOQ validation —
+                    // qty is already committed on the PO side.
+                    const itemsForPrSync = updatedItems.map((it) => ({ ...it, partial_release_remainder: true }));
+                    const prUpd = await updateProcurementRequestApi(backendRequestId, { items: itemsForPrSync });
                     if (!prUpd.success) {
                       addToast(
                         'error',
