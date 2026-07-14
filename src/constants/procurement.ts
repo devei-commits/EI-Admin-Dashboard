@@ -58,6 +58,140 @@ export const PR_STATUS_CONFIG: Record<PrStatus, StatusConfig> = {
   released:   mk('Released', 'emerald'),
 };
 
+// ─── PO Types (Flowchart §5 — five types share one core flow) ────────────────
+export type PoType = 'regular' | 'blanket' | 'spot' | 'consignment' | 'sample';
+
+export const PO_TYPE_CONFIG: Record<PoType, StatusConfig & { blurb: string }> = {
+  regular:     { ...mk('Regular', 'blue'),    blurb: 'Spot buy for a batch or 30–90 day cycle' },
+  blanket:     { ...mk('Blanket', 'violet'),  blurb: 'Umbrella PO valid 3–12 months · call-offs' },
+  spot:        { ...mk('Spot / Emergency', 'orange'), blurb: 'Same/next-day · higher approval gate' },
+  consignment: { ...mk('Consignment', 'cyan'), blurb: 'Vendor stock at EI · invoiced on consumption' },
+  sample:      { ...mk('Sample / Trial', 'amber'), blurb: 'Small qty for R&D · links to Trial Batch' },
+};
+
+export const PO_TYPE_ORDER: PoType[] = ['regular', 'blanket', 'spot', 'consignment', 'sample'];
+
+export function toPoType(raw: string | null | undefined): PoType {
+  const s = String(raw ?? '').trim().toLowerCase();
+  return (PO_TYPE_ORDER as string[]).includes(s) ? (s as PoType) : 'regular';
+}
+
+// ─── PO Approval workflow (Flowchart Sub-flow E) ─────────────────────────────
+export type PoApprovalStatus =
+  | 'not_submitted' | 'under_review' | 'under_approval'
+  | 'approved' | 'changes_requested' | 'rejected';
+
+export const PO_APPROVAL_STATUS_CONFIG: Record<PoApprovalStatus, StatusConfig> = {
+  not_submitted:     mk('Not Submitted', 'slate'),
+  under_review:      mk('Under Review', 'violet'),
+  under_approval:    mk('Under Approval', 'orange'),
+  approved:          mk('Approved', 'emerald'),
+  changes_requested: mk('Changes Requested', 'amber'),
+  rejected:          mk('Rejected', 'red'),
+};
+
+/** Normalise a nullable backend approval_status into the UI enum. */
+export function toPoApprovalStatus(raw: string | null | undefined): PoApprovalStatus {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (s === 'under_review' || s === 'under_approval' || s === 'approved'
+      || s === 'changes_requested' || s === 'rejected') return s;
+  return 'not_submitted';
+}
+
+// Approval threshold matrix — MIRRORS backend src/purchaseOrders/poApprovalMatrix.js.
+// Keep thresholds in sync if the backend changes.
+export type PoApproverRole = 'proc_head' | 'cfo';
+export const PO_REGULAR_CFO_THRESHOLD = 500000;
+export const PO_SAMPLE_CFO_THRESHOLD = 50000;
+
+export interface PoApprovalRoute {
+  finalApprover: PoApproverRole;
+  requiresCfo: boolean;
+  twoStep: boolean;
+  deviationFlag: boolean;
+  note: string;
+}
+
+export function poApproverRoleLabel(role: PoApproverRole): string {
+  return role === 'cfo' ? 'CFO' : 'Procurement Head';
+}
+
+/** Frontend preview of the approval route (backend is authoritative on submit). */
+export function resolvePoApprovalRoute(poType: PoType, amount: number): PoApprovalRoute {
+  const amt = Number(amount) || 0;
+  let finalApprover: PoApproverRole = 'proc_head';
+  let deviationFlag = false;
+  let note = 'Single-step — Procurement Head reviews and approves.';
+  switch (poType) {
+    case 'regular':
+      if (amt > PO_REGULAR_CFO_THRESHOLD) { finalApprover = 'cfo'; note = `Above ₹${PO_REGULAR_CFO_THRESHOLD.toLocaleString('en-IN')} — CFO approval required.`; }
+      break;
+    case 'blanket':
+      finalApprover = 'cfo'; note = 'Blanket (umbrella) PO — CFO approval required.'; break;
+    case 'spot':
+      finalApprover = 'cfo'; deviationFlag = true; note = 'Spot / Emergency — deviation flagged, CFO approval required.'; break;
+    case 'consignment':
+      finalApprover = 'cfo'; note = 'Consignment — QA Head review + CFO approval.'; break;
+    case 'sample':
+      if (amt > PO_SAMPLE_CFO_THRESHOLD) { finalApprover = 'cfo'; note = `Above ₹${PO_SAMPLE_CFO_THRESHOLD.toLocaleString('en-IN')} — R&D review + CFO approval.`; }
+      else { note = 'Sample / Trial — Procurement Head approves.'; }
+      break;
+    default: break;
+  }
+  const requiresCfo = finalApprover === 'cfo';
+  return { finalApprover, requiresCfo, twoStep: requiresCfo, deviationFlag, note };
+}
+
+// ─── PO → Vendor loop (Flowchart Sub-flow F · SENT / ACK / reject) ───────────
+export type PoVendorStatus = 'not_sent' | 'sent' | 'acknowledged' | 'rejected';
+
+export const PO_VENDOR_STATUS_CONFIG: Record<PoVendorStatus, StatusConfig> = {
+  not_sent:     mk('Not Sent', 'slate'),
+  sent:         mk('Sent', 'cyan'),
+  acknowledged: mk('Acknowledged', 'emerald'),
+  rejected:     mk('Vendor Rejected', 'red'),
+};
+
+export type PoSendChannel = 'portal' | 'email' | 'whatsapp';
+export const PO_SEND_CHANNEL_OPTIONS: Array<{ value: PoSendChannel; label: string }> = [
+  { value: 'portal', label: 'Vendor Portal' },
+  { value: 'email', label: 'Email' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+];
+
+/** Ack-SLA window in days (mirrors backend ACK_SLA_DAYS). */
+export const PO_ACK_SLA_DAYS = 2;
+
+// ─── 3-way match + Payment → Closed (Flowchart Sub-flow I) ───────────────────
+export type PoMatchVerdict = 'awaiting_invoice' | 'pass' | 'variance';
+
+export const PO_MATCH_VERDICT_CONFIG: Record<PoMatchVerdict, StatusConfig> = {
+  awaiting_invoice: mk('Awaiting Invoice', 'slate'),
+  pass:             mk('Match Passed', 'emerald'),
+  variance:         mk('Variance', 'red'),
+};
+
+export type PoMatchLineVerdict =
+  | 'matched' | 'short_received' | 'over_received' | 'over_billed' | 'unexpected';
+
+export const PO_MATCH_LINE_CONFIG: Record<PoMatchLineVerdict, StatusConfig> = {
+  matched:        mk('Matched', 'emerald'),
+  short_received: mk('Short received', 'amber'),
+  over_received:  mk('Over received', 'orange'),
+  over_billed:    mk('Over billed', 'red'),
+  unexpected:     mk('Unexpected', 'violet'),
+};
+
+export const PO_PAYMENT_MODE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'neft', label: 'NEFT' },
+  { value: 'rtgs', label: 'RTGS' },
+  { value: 'imps', label: 'IMPS' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'other', label: 'Other' },
+];
+
 // ─── §9.2 PO workflow ────────────────────────────────────────────────────────
 export type PoStatus =
   | 'draft' | 'awaiting_payment' | 'issued' | 'accepted'

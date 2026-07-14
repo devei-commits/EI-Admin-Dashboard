@@ -9,7 +9,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Search, Pencil, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
-import type { IssuedPOViewRecord } from './IssuedPOsView';
+import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
   GRN_STAGE_CONFIG, PURCHASE_STATUS_CONFIG, PO_STATUS_CONFIG, PO_SHIPPABLE_STATUSES,
@@ -304,7 +304,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    {['PO Date', 'PO #', 'Vendor', 'Item', 'PO Qty', 'GRN Qty (GRN# · qty)', 'GRN Status', 'Purchase Status', 'SLA', 'Other POs', 'Action'].map((h) => (
+                    {['PO Date', 'PO #', 'Item', 'PO Qty', 'GRN Qty (GRN# · qty)', 'GRN Status', 'Purchase Status', 'SLA', 'Other POs', 'Action'].map((h) => (
                       <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h === 'PO Qty' ? 'text-center' : ''}`}>{h}</th>
                     ))}
                   </tr>
@@ -317,7 +317,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         className="bg-slate-100/80 border-y border-slate-200 hover:bg-slate-100 cursor-pointer select-none"
                         onClick={() => toggleVendor(`items:${vendor}`)}
                       >
-                        <td colSpan={11} className="px-3 py-2">
+                        <td colSpan={10} className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <ChevronDown
                               size={13}
@@ -345,7 +345,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-blue-600 hover:underline decoration-dotted">{lr.record.poNumber}</button>
                             </td>
-                            <td className="px-3 py-2.5 max-w-[120px]"><p className="text-xs text-slate-700 truncate" title={lr.record.vendor}>{lr.record.vendor}</p></td>
                             <td className="px-3 py-2.5 max-w-[150px]">
                               <p className="text-xs font-semibold text-slate-800 truncate" title={lr.item}>{lr.item}</p>
                               <p className="text-[10px] text-slate-400 font-mono">{lr.itemCode}</p>
@@ -425,7 +424,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
               <table className="w-full text-sm text-left">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    {['PO Date', 'PO #', 'Vendor', 'PO Status', 'PO Value', 'In-Transit', 'Received', 'Billed', 'Return', 'Actions'].map((h) => (
+                    {['PO Date', 'PO #', 'Item', 'PO Status', 'PO Value', 'In-Transit', 'Received', 'Billed', 'Return', 'Actions'].map((h) => (
                       <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${['PO Value', 'In-Transit', 'Received', 'Billed', 'Return'].includes(h) ? 'text-center' : ''}`}>{h}</th>
                     ))}
                   </tr>
@@ -462,7 +461,16 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline decoration-dotted">{r.poNumber}</button>
                             </td>
-                            <td className="px-3 py-2.5 max-w-[150px]"><p className="text-xs text-slate-700 truncate" title={r.vendor}>{r.vendor}</p></td>
+                            <td className="px-3 py-2.5 max-w-[180px]">
+                              {r.lineItems.length === 0 ? (
+                                <span className="text-xs text-slate-400">—</span>
+                              ) : (
+                                <>
+                                  <p className="text-xs font-semibold text-slate-800 truncate" title={r.lineItems.map((l) => l.item).join(', ')}>{r.lineItems[0].item}</p>
+                                  {r.lineItems.length > 1 && <p className="text-[10px] text-slate-400">+{r.lineItems.length - 1} more item{r.lineItems.length - 1 !== 1 ? 's' : ''}</p>}
+                                </>
+                              )}
+                            </td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{st.label}</span>
                             </td>

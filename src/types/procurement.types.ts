@@ -173,6 +173,10 @@ export type DraftPO = {
   grandTotal: number;
   /** Backend purchase_orders id (numeric string) when draft is persisted to PO table */
   backendPoId?: string;
+  /** PO type picked at Draft-PO release (Flowchart §5): regular|blanket|spot|consignment|sample */
+  poType?: string;
+  /** Approval workflow stage from backend (Sub-flow E): under_review|approved|… */
+  approvalStatus?: string | null;
 };
 
 export type POTimelineStep = {

@@ -756,6 +756,7 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
     requestCode?: string;
     procurementApprovalStatus?: string;
     procurementApprovedAt?: string;
+    poType?: string;
   };
   const request = requests.find(
     (r) => r.id === formData.requestId || r.code === formData.requestCode
@@ -837,6 +838,7 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
     dpoNumber: po.poNumber,
     requestId: formData.requestId ?? request?.id ?? '',
     requestCode: formData.requestCode ?? request?.code ?? po.poNumber,
+    poType: formData.poType ?? 'regular',
     type,
     vendor: po.vendorName ?? '',
     vendorId: '',
