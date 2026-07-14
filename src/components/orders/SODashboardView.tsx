@@ -302,6 +302,10 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Server-side pagination (page/page_size backed by the sales-orders-dashboard endpoint).
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
   // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<CommercialStatus | 'all'>('all');
@@ -332,6 +336,8 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       if (flaggedOnly) params.flagged_only = true;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
+      params.page = page;
+      params.page_size = pageSize;
       const res = await fetchSalesOrdersDashboard(params as any);
       setRows(res.rows);
       setTotal(res.total);
@@ -341,12 +347,23 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, flaggedOnly, dateFrom, dateTo]);
+  }, [search, statusFilter, flaggedOnly, dateFrom, dateTo, page, pageSize]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 400 : 0);
     return () => clearTimeout(t);
   }, [load, search]);
+
+  // Any filter or page-size change resets to page 1 (no-op when already on page 1, so no double fetch).
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, flaggedOnly, dateFrom, dateTo, pageSize]);
+
+  // If the result set shrinks below the current page, snap back to the last valid page.
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   useEffect(() => {
     if (!initialOpenSoNo) return;
@@ -459,8 +476,37 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
           </div>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500">Showing {rows.length} of {total} orders</span>
+          <span className="text-xs text-gray-500">
+            {total === 0
+              ? 'No orders'
+              : `Showing ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + rows.length} of ${total} orders`}
+          </span>
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <button
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-2 py-1 rounded border border-gray-200 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <span className="text-xs text-gray-500 px-1 tabular-nums">Page {page} of {totalPages}</span>
+              <button
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-2 py-1 rounded border border-gray-200 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 bg-white"
+              title="Orders per page"
+            >
+              {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}/page</option>)}
+            </select>
             <button onClick={() => { setSearch(''); setStatusFilter('all'); setFlaggedOnly(false); setDateFrom(''); setDateTo(''); }}
               className="text-xs text-gray-500 hover:text-gray-800 underline">Clear filters</button>
             <button
