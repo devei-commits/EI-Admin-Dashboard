@@ -464,7 +464,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
               className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               title="Due date to" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)}
                 className="w-4 h-4 rounded accent-orange-500" />
