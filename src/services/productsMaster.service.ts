@@ -254,6 +254,28 @@ export async function syncPrProductZoho(
   }
 }
 
+export interface PrZohoSkuImportResponse {
+  product_id: number;
+  imported: boolean;
+  source: 'zoho';
+  zoho_item_id: string | null;
+}
+
+/**
+ * Import a product that exists in Zoho Books but is missing from our system.
+ * POST /api/v1/products/zoho-import-by-sku  Body: { sku }
+ */
+export async function importProductFromZohoSku(sku: string): Promise<ServiceResult<PrZohoSkuImportResponse>> {
+  try {
+    const data = await api.post<PrZohoSkuImportResponse>('/api/v1/products/zoho-import-by-sku', {
+      sku: String(sku || '').trim(),
+    });
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    return { data: null, error: messageFromApiError(e), success: false };
+  }
+}
+
 /** Payload for updating a PR product. Use snake_case for backend; optional bom for linked BOM. */
 export interface UpdatePRProductPayload {
   product_name?: string;

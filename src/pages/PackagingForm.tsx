@@ -42,7 +42,7 @@ import {
   withMasterDraftApprovalStatus,
 } from '../utils/masterSaveSubmit';
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
-import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, importPackMaterialFromZohoSku, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import {
   buildMasterStatBuckets,
@@ -2278,10 +2278,33 @@ const BprDashboard: React.FC<{
   const itemRefFileInputRef = useRef<HTMLInputElement>(null);
   const [bulkUploadRunning, setBulkUploadRunning] = useState(false);
   const [resetAllRunning, setResetAllRunning] = useState(false);
+  const [zohoSku, setZohoSku] = useState('');
+  const [zohoImporting, setZohoImporting] = useState(false);
 
   const onPickItemReferenceExcel = useCallback(() => {
     itemRefFileInputRef.current?.click();
   }, []);
+
+  const onImportZohoSku = useCallback(async () => {
+    const sku = zohoSku.trim();
+    if (!sku) {
+      addToast('warning', 'Enter a SKU code to import from Zoho.');
+      return;
+    }
+    setZohoImporting(true);
+    try {
+      const res = await importPackMaterialFromZohoSku(sku);
+      if (res.success && res.data) {
+        addToast('success', `Imported "${sku}" from Zoho into Pack Materials.`);
+        setZohoSku('');
+        await queryClient.invalidateQueries({ queryKey: ['pack-materials-full-list'] });
+      } else {
+        addToast('error', res.error || `Could not import "${sku}" from Zoho.`);
+      }
+    } finally {
+      setZohoImporting(false);
+    }
+  }, [zohoSku, addToast, queryClient]);
 
   const onResetAllMasters = useCallback(async () => {
     if (
@@ -2638,6 +2661,25 @@ const BprDashboard: React.FC<{
                       placeholder="Search PM name, code…"
                       className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:bg-white transition-all w-52"
                     />
+                  </div>
+                  {/* Import missing SKU from Zoho */}
+                  <div className="flex items-center gap-1" title="Fetch an item that exists in Zoho Books by its SKU code and add it to Pack Materials.">
+                    <input
+                      value={zohoSku}
+                      onChange={e => setZohoSku(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void onImportZohoSku(); } }}
+                      placeholder="Missing SKU code…"
+                      disabled={zohoImporting}
+                      className="px-3 py-2 text-xs border border-indigo-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all w-36 disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { void onImportZohoSku(); }}
+                      disabled={zohoImporting || !zohoSku.trim()}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                      {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
+                    </button>
                   </div>
                   <button
                     onClick={onSwitchToForm}

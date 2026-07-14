@@ -238,6 +238,31 @@ export async function syncPmZoho(
   }
 }
 
+export interface PmZohoSkuImportResponse {
+  pack_material_id: number;
+  imported: boolean;
+  source: 'zoho';
+  zoho_id: string | null;
+}
+
+/**
+ * Import a pack material that exists in Zoho Books but is missing from our system.
+ * POST /api/v1/pack-materials/zoho-import-by-sku  Body: { sku }
+ */
+export async function importPackMaterialFromZohoSku(
+  sku: string
+): Promise<{ data: PmZohoSkuImportResponse | null; error: string | null; success: boolean }> {
+  try {
+    const data = await api.post<PmZohoSkuImportResponse>('/api/v1/pack-materials/zoho-import-by-sku', {
+      sku: String(sku || '').trim(),
+    });
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to import from Zoho';
+    return { data: null, error: message, success: false };
+  }
+}
+
 /**
  * Get pack material by id for edit.
  */

@@ -207,6 +207,34 @@ export async function syncRmZoho(payload: RawMaterialFormPayload): Promise<{ dat
   }
 }
 
+export interface ZohoSkuImportResponse {
+  raw_material_id?: number;
+  pack_material_id?: number;
+  product_id?: number;
+  imported: boolean;
+  source: 'zoho';
+  zoho_id?: string | null;
+  zoho_item_id?: string | null;
+}
+
+/**
+ * Import a raw material that exists in Zoho Books but is missing from our system.
+ * POST /api/v1/raw-materials/zoho-import-by-sku  Body: { sku }
+ */
+export async function importRawMaterialFromZohoSku(
+  sku: string
+): Promise<{ data: ZohoSkuImportResponse | null; error: string | null; success: boolean }> {
+  try {
+    const data = await api.post<ZohoSkuImportResponse>('/api/v1/raw-materials/zoho-import-by-sku', {
+      sku: String(sku || '').trim(),
+    });
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to import from Zoho';
+    return { data: null, error: message, success: false };
+  }
+}
+
 /**
  * Create raw material. Body: full form payload (formData).
  * Pass `raw_material_id` when completing a draft created via syncRmZoho.

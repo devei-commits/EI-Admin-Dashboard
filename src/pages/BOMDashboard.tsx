@@ -24,7 +24,7 @@ import {
   normalizeMasterApprovalStatus,
   type MasterApprovalStatusTab,
 } from '../constants/masterApprovalStatus';
-import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaSummaryChunk, postFormulaRmBomChunk, postFormulaPackBomChunk, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaSummaryGroupResult, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
+import { fetchPRProducts, fetchPRProductDetail, updatePRProduct, deletePRProduct, clearAllPrBomFullReset, ALL_PR_BOM_RESET_CONFIRM, postFormulaSummaryChunk, postFormulaRmBomChunk, postFormulaPackBomChunk, importProductFromZohoSku, type PRProductListItem, type PRProductDetail, type FormulaBomPhase, type SkuBomRow, type PackBomRow, type ProcessStep, type FormulaSummaryGroupResult, type FormulaRmBomGroupResult, type FormulaPackBomGroupResult } from '../services/productsMaster.service';
 import { parseFormulaBomWorkbook, chunkSummaryRows, groupRowsByCompositeSku, chunkCompositeGroups } from '../lib/formulaBomExcelParse';
 import BOMForm from './BOMForm';
 import {
@@ -97,6 +97,8 @@ const BOMDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [zohoSku, setZohoSku] = useState('');
+  const [zohoImporting, setZohoImporting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [statusTab, setStatusTab] = useState<PrStatusTab>('all');
   const [rmAssignStatusFilter, setRmAssignStatusFilter] = useState<'all' | PrTeamAssignStatus>('all');
@@ -187,6 +189,28 @@ const BOMDashboard: React.FC = () => {
     }
     setLoading(false);
   }, []);
+
+  const onImportZohoSku = useCallback(async () => {
+    const sku = zohoSku.trim();
+    if (!sku) {
+      toast.warning('Enter a SKU code to import from Zoho.');
+      return;
+    }
+    setZohoImporting(true);
+    try {
+      const res = await importProductFromZohoSku(sku);
+      if (res.success && res.data) {
+        toast.success(`Imported "${sku}" from Zoho into Products.`);
+        setZohoSku('');
+        await loadProducts();
+      } else {
+        const err = res.error;
+        toast.error((typeof err === 'string' ? err : err?.message) || `Could not import "${sku}" from Zoho.`);
+      }
+    } finally {
+      setZohoImporting(false);
+    }
+  }, [zohoSku, loadProducts]);
 
   const handleViewItem = useCallback(async (product: PRProductListItem) => {
     setIsPanelOpen(true);
@@ -1085,6 +1109,27 @@ const BOMDashboard: React.FC = () => {
                   <option key={s} value={s}>Pack: {s}</option>
                 ))}
               </select>
+
+              {/* Import missing SKU from Zoho */}
+              <div className="flex items-center gap-1" title="Fetch a product that exists in Zoho Books by its SKU code and add it to Products.">
+                <input
+                  value={zohoSku}
+                  onChange={e => setZohoSku(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void onImportZohoSku(); } }}
+                  placeholder="Missing SKU code…"
+                  disabled={zohoImporting}
+                  className="px-3 py-2 text-xs border border-indigo-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all w-36 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => { void onImportZohoSku(); }}
+                  disabled={zohoImporting || !zohoSku.trim()}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 disabled:opacity-50 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                >
+                  <ArrowUpFromLine className="w-4 h-4" />
+                  {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
+                </button>
+              </div>
 
               <Link
                 to="/bom/new"
