@@ -2,7 +2,7 @@
  * Merge issued PO records with standalone draft POs for the unified Purchase Orders view (spec View 2).
  */
 import type { DraftPO, ProcurementRequest, RequestType } from '../types/procurement.types';
-import type { IssuedPOViewRecord } from '../components/procurement/IssuedPOsView';
+import type { IssuedPOViewRecord } from '../components/procurement/issuedPoRecord.types';
 import type { PoStatus } from '../constants/procurement';
 
 function normPoKey(n: string): string {

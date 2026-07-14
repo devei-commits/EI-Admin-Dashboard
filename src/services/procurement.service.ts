@@ -27,7 +27,9 @@ export interface ProcurementRequestItem {
 
 export interface ProcurementRequest {
   id: string;
-  planningExtractedId: number;
+  planningExtractedId: number | null;
+  /** PR origin: planning | manual | blanket_calloff | consignment. */
+  source?: string;
   planningBatchId: number | null;
   priority: string;
   requiredByDate: string | null;
@@ -52,7 +54,10 @@ export interface ProcurementRequest {
 }
 
 export interface CreateProcurementPayload {
-  planningExtractedId: number;
+  /** Omit for a manual / non-Planning PR (Direct PR · blanket call-off · consignment). */
+  planningExtractedId?: number | null;
+  /** PR origin when not Planning-sourced: manual | blanket_calloff | consignment. */
+  source?: string;
   planningBatchId?: number | null;
   priority: string;
   requiredByDate: string | null;

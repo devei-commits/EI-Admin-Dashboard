@@ -6,7 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import ProcurementDashboardShell from '../../components/procurement/ProcurementDashboardShell';
-import type { IssuedPOViewRecord } from '../../components/procurement/IssuedPOsView';
+import type { IssuedPOViewRecord } from '../../components/procurement/issuedPoRecord.types';
 import { PurchaseOrdersView } from '../../components/procurement/PurchaseOrdersView';
 import { GrnTrackerView } from '../../components/procurement/GrnTrackerView';
 import { StockAuditTrackerView } from '../../components/procurement/StockAuditTrackerView';
@@ -67,6 +67,7 @@ import {
 } from '../../services/salesPurchase.service';
 import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
+import { rejectPoByVendor } from '../../services/poVendor.service';
 import {
   createGRN,
   fetchGRNById,
@@ -154,7 +155,8 @@ import type {
   QuoteLine,
 } from '../../types/procurement.types';
 import StockCheckUpdateModal from './StockCheckUpdateModal';
-import { Search, X, Package, Loader2 } from 'lucide-react';
+import { Search, X, Package, Loader2, FileText } from 'lucide-react';
+import { openPurchaseOrderPdf } from '../../lib/purchaseOrderPdf';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
   formatPaymentTermsString,
@@ -164,7 +166,24 @@ import {
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import {
+  type PoType,
+  PO_TYPE_CONFIG,
+  PO_TYPE_ORDER,
+  resolvePoApprovalRoute,
+  poApproverRoleLabel,
+  SLA_LEVEL_CLASSES,
+  SLA_LEVEL_PREFIX,
+  type SlaLevel,
+} from '../../constants/procurement';
 import GrnMonitorDetailPanel from '../../components/procurement/GrnMonitorDetailPanel';
+import PoApprovalPanel from '../../components/procurement/PoApprovalPanel';
+import PoVendorPanel from '../../components/procurement/PoVendorPanel';
+import PoMatchPanel from '../../components/procurement/PoMatchPanel';
+import PoExceptionBar from '../../components/procurement/PoExceptionBar';
+import PoGrnExceptionPanel from '../../components/procurement/PoGrnExceptionPanel';
+import NewPrModal from '../../components/procurement/NewPrModal';
+import NewPoModal from '../../components/procurement/NewPoModal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Pagination } from '../../components/ui/Pagination';
 import { SortableTableTh, type SortDirection } from '../../components/ui/SortableTableTh';
@@ -236,6 +255,36 @@ function procurementPageQueryPredicate(query: Query): boolean {
 }
 
 /** Detect API-driven PR changes that the list sync must apply (stock check, line qty, etc.). */
+/**
+ * Vendor-acknowledgement SLA (Flowchart Sub-flow F, 48h) for an issued PO's tracking row.
+ * Returns null unless the PO is sent and still awaiting ack. Mirrors backend ACK_SLA_DAYS=2.
+ */
+function computeIssuedAckSla(
+  tr: { poReleasedAt?: string | null; ackSlaDueAt?: string | null } | undefined,
+  hasConfirmed: boolean,
+  hasRejected: boolean,
+): { level: SlaLevel; dueDisplay: string; label: string } | null {
+  if (!tr || hasConfirmed || hasRejected) return null;
+  const dateOnly = (v: unknown): string | null => {
+    const s = String(v ?? '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  };
+  const released = dateOnly(tr.poReleasedAt);
+  if (!released) return null;
+  let due = dateOnly(tr.ackSlaDueAt);
+  if (!due) {
+    const d = new Date(`${released}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setUTCDate(d.getUTCDate() + 2);
+    due = d.toISOString().slice(0, 10);
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const level: SlaLevel = today > due ? 'bad' : today === due ? 'warn' : 'ok';
+  const label = level === 'bad' ? 'SLA breached' : level === 'warn' ? 'due today' : 'within SLA';
+  const dueDisplay = new Date(`${due}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  return { level, dueDisplay, label };
+}
+
 function procurementRequestApiSyncKey(req: ProcurementRequest): string {
   const itemSig = (req.itemDetails ?? [])
     .map((d) => `${d.itemCode}:${d.itemName}:${d.reqQty}`)
@@ -1000,6 +1049,19 @@ const Procurement: React.FC = () => {
     creditDays: '0',
   });
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
+  /** Manual "New PR" modal (Direct PR source). */
+  const [showNewPr, setShowNewPr] = useState(false);
+  /** Manual "New PO" modal (Direct PO — no PR). */
+  const [showNewPo, setShowNewPo] = useState(false);
+  /** Bumped after any approval/vendor transition so both PO workflow panels refetch in sync. */
+  const [poWorkflowRefresh, setPoWorkflowRefresh] = useState(0);
+  /** Lifted from PoExceptionBar so sibling workflow panels grey out while a PO is held/cancelled. */
+  const [poLock, setPoLock] = useState<{ onHold: boolean; cancelled: boolean }>({ onHold: false, cancelled: false });
+  // Reset the lock whenever the open PO changes (the exception bar re-reports on load).
+  useEffect(() => {
+    setPoLock({ onHold: false, cancelled: false });
+  }, [selectedDraftPO?.backendPoId, selectedPO?.backendPoId]);
+  const poLocked = poLock.onHold || poLock.cancelled;
   const [editingQuoteLine, setEditingQuoteLine] = useState<{
     quoteId: string;
     lineIndex: number;
@@ -1074,6 +1136,8 @@ const Procurement: React.FC = () => {
     leadTimeDays: 0,
   });
   const [releaseToPlannedNotes, setReleaseToPlannedNotes] = useState('');
+  /** PO type picked at Draft-PO release time (Flowchart §5 / Sub-flow D). */
+  const [releasePoType, setReleasePoType] = useState<PoType>('regular');
   const [releaseToPlannedLineEdits, setReleaseToPlannedLineEdits] = useState<ReleaseLineEditRow[]>([]);
 
   /**
@@ -3866,6 +3930,28 @@ const Procurement: React.FC = () => {
     });
   };
 
+  /** Vendor could not fulfil (Flowchart SENT→REJECTED). Uses the gated vendor endpoint (records + logs). */
+  const markIssuedPOVendorRejected = (record: {
+    backendPoId?: string;
+    poNumber?: string;
+    request?: { id?: string };
+  }, note?: string) => {
+    const backendPoId = resolveIssuedPoBackendId(record);
+    if (!backendPoId) {
+      addToast('error', 'Purchase order not found. Cannot record vendor rejection.');
+      return;
+    }
+    void rejectPoByVendor(backendPoId, note).then((res) => {
+      if (!res.success) {
+        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to record vendor rejection');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['po-tracking', backendPoId] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      addToast('success', `${String(record.poNumber ?? 'PO')} — vendor rejection recorded`);
+    });
+  };
+
   const markIssuedPOShipped = (record: {
     backendPoId?: string;
     poNumber?: string;
@@ -5521,6 +5607,7 @@ const Procurement: React.FC = () => {
       // Always prefer the freshest API data — requestsFromApi is a sync memo from backendPrResult
       // so it updates immediately after a PR edit refetch, before the requests-state useEffect fires.
       const liveReq = requestsFromApi.find((r) => r.id === req.id) ?? req;
+      setReleasePoType('regular');
       if (liveReq.itemDetails && liveReq.itemDetails.length > 0) {
         const item = liveReq.itemDetails[0];
         const relItem: ReleaseToPlannedItem = {
@@ -6030,6 +6117,23 @@ const Procurement: React.FC = () => {
                     setStockAuditReq(req);
                   }}
                   onDraftPO={(req) => openReleaseToDraftPoForRequest(req)}
+                  onNewPr={() => setShowNewPr(true)}
+                />
+              )}
+
+              {showNewPr && (
+                <NewPrModal
+                  onClose={() => setShowNewPr(false)}
+                  onCreate={async (payload) => {
+                    const res = await createProcurementRequestApi(payload);
+                    if (res.success) {
+                      addToast('success', 'Procurement request created.');
+                      await queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                      return true;
+                    }
+                    addToast('error', typeof res.error === 'string' ? res.error : 'Failed to create PR.');
+                    return false;
+                  }}
                 />
               )}
 
@@ -6309,6 +6413,32 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'Purchase Orders' && (
                 <>
+                  <div className="flex justify-end mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPo(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                    >
+                      <Package className="h-4 w-4" /> New PO
+                    </button>
+                  </div>
+                  {showNewPo && (
+                    <NewPoModal
+                      poNumber={nextSequentialDpoOrderId(purchaseOrders, draftPOs)}
+                      vendors={vendors.map((v) => ({ id: v.id, name: v.name, vendorCode: v.vendorCode, paymentTerms: v.paymentTerms }))}
+                      onClose={() => setShowNewPo(false)}
+                      onCreate={async (payload) => {
+                        const res = await createPurchaseOrder(payload);
+                        if (res.success) {
+                          addToast('success', `Draft PO ${payload.orderId} created.`);
+                          await invalidatePurchaseOrdersQueries();
+                          return true;
+                        }
+                        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to create PO.');
+                        return false;
+                      }}
+                    />
+                  )}
                   {requestsPODraftNoDraftPO.length > 0 && (
                     <div className="space-y-2 mb-4">
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO</p>
@@ -6604,6 +6734,47 @@ const Procurement: React.FC = () => {
                   </div>
                 )}
 
+                {/* PO lifecycle exceptions (Hold · Cancel · Amend) */}
+                {po.backendPoId && (
+                  <PoExceptionBar
+                    poId={po.backendPoId}
+                    refreshKey={poWorkflowRefresh}
+                    onToast={addToast}
+                    onLockChange={setPoLock}
+                    onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                  />
+                )}
+
+                {/* 3-way match + Payment → Closed (Sub-flow I) — once the PO reaches GRN */}
+                {po.backendPoId && (() => {
+                  const mtr = (data ?? poTrackingForm) as PoTrackingRecord | undefined;
+                  const atGrn =
+                    hasPoTrackingTimestamp(mtr?.underGrnAt) ||
+                    hasPoTrackingTimestamp(mtr?.grnCompleteAt) ||
+                    Boolean((mtr as { closedAt?: string | null })?.closedAt);
+                  if (!atGrn) return null;
+                  return (
+                    <PoMatchPanel
+                      poId={po.backendPoId}
+                      refreshKey={poWorkflowRefresh}
+                      locked={poLocked}
+                      onToast={addToast}
+                      onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                    />
+                  );
+                })()}
+
+                {/* GRN-stage exceptions (Short-supply short-close · QC-fail RTV) — self-hides when none */}
+                {po.backendPoId && (
+                  <PoGrnExceptionPanel
+                    poId={po.backendPoId}
+                    refreshKey={poWorkflowRefresh}
+                    locked={poLocked}
+                    onToast={addToast}
+                    onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                  />
+                )}
+
                 {/* Update tracking form (when PO is linked to backend) */}
                 {po.backendPoId && (
                   <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3">
@@ -6611,8 +6782,10 @@ const Procurement: React.FC = () => {
                     {(() => {
                       const modalTr = (data ?? poTrackingForm) as PoTrackingRecord | undefined;
                       const modalHasVendor = hasPoTrackingTimestamp(modalTr?.vendorConfirmedAt);
+                      const modalHasRejected = hasPoTrackingTimestamp(modalTr?.vendorRejectedAt);
                       const modalHasShipped =
                         hasPoTrackingTimestamp(modalTr?.shippedAt) || Boolean(ovModal?.shipped);
+                      const modalAckSla = computeIssuedAckSla(modalTr, modalHasVendor, modalHasRejected);
                       const issuedRecordForActions = {
                         backendPoId: po.backendPoId,
                         poNumber: po.poNumber,
@@ -6620,25 +6793,48 @@ const Procurement: React.FC = () => {
                         request: po.requestId ? { id: po.requestId } : undefined,
                       };
                       return (
-                        <div className="flex flex-wrap gap-2 pb-1">
-                          {!modalHasVendor && (
-                            <button
-                              type="button"
-                              onClick={() => markIssuedPOVendorConfirmed(issuedRecordForActions)}
-                              className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700"
-                            >
-                              Mark Vendor Confirmed
-                            </button>
-                          )}
-                          {modalHasVendor && !modalHasShipped && (
-                            <button
-                              type="button"
-                              onClick={() => markIssuedPOShipped(issuedRecordForActions)}
-                              className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600"
-                            >
-                              Mark In Transit
-                            </button>
-                          )}
+                        <div className="space-y-2 pb-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {modalAckSla && (
+                              <span className={`text-[11px] font-semibold ${SLA_LEVEL_CLASSES[modalAckSla.level]}`}>
+                                {SLA_LEVEL_PREFIX[modalAckSla.level]} Ack {modalAckSla.label} · due {modalAckSla.dueDisplay}
+                              </span>
+                            )}
+                            {modalHasRejected && (
+                              <span className="px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-rose-50 text-rose-700 border-rose-200">
+                                Vendor rejected — renegotiate / reassign / cancel
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {!modalHasVendor && !modalHasRejected && (
+                              <button
+                                type="button"
+                                onClick={() => markIssuedPOVendorConfirmed(issuedRecordForActions)}
+                                className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700"
+                              >
+                                Mark Vendor Confirmed
+                              </button>
+                            )}
+                            {!modalHasVendor && !modalHasRejected && (
+                              <button
+                                type="button"
+                                onClick={() => markIssuedPOVendorRejected(issuedRecordForActions)}
+                                className="px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-xs font-semibold hover:bg-rose-50"
+                              >
+                                Mark Vendor Rejected
+                              </button>
+                            )}
+                            {modalHasVendor && !modalHasShipped && (
+                              <button
+                                type="button"
+                                onClick={() => markIssuedPOShipped(issuedRecordForActions)}
+                                className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600"
+                              >
+                                Mark In Transit
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })()}
@@ -6690,6 +6886,24 @@ const Procurement: React.FC = () => {
 
               {/* Footer */}
               <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = openPurchaseOrderPdf({
+                      poNumber: po.poNumber,
+                      reference: po.requestCode,
+                      orderDate: po.createdDate,
+                      vendor: po.vendor,
+                      paymentTerms: po.paymentTerms,
+                      lines: po.lineItems,
+                      grandTotal: po.grandTotal,
+                    });
+                    if (!ok) addToast('error', 'Could not open the PDF window. Allow popups and try again.');
+                  }}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition inline-flex items-center gap-1.5"
+                >
+                  <FileText className="h-4 w-4" /> PO PDF
+                </button>
                 {po.backendPoId && (
                   <button
                     onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Tracker'); }}
@@ -6867,13 +7081,36 @@ const Procurement: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedDraftPO(null)}
-                  className="text-slate-400 hover:text-slate-700 text-xl leading-none mt-1 transition-colors"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ok = openPurchaseOrderPdf({
+                        poNumber: dpo.dpoNumber,
+                        poType: dpo.poType,
+                        reference: dpo.requestCode,
+                        orderDate: dpo.createdDate,
+                        expectedDelivery: dpo.expectedDelivery,
+                        vendor: dpo.vendor,
+                        deliveryAddress: dpo.deliveryAddress,
+                        paymentTerms: dpo.paymentTerms,
+                        lines: lineItems,
+                        subtotal, gstTotal, grandTotal,
+                      });
+                      if (!ok) addToast('error', 'Could not open the PDF window. Allow popups and try again.');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> PO PDF
+                  </button>
+                  <button
+                    onClick={() => setSelectedDraftPO(null)}
+                    className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 px-5 py-4 space-y-5">
@@ -6927,6 +7164,33 @@ const Procurement: React.FC = () => {
                     ),
                   )}
                 </div>
+
+                {/* Approval workflow (Sub-flow E) + Vendor loop (Sub-flow F) — needs a persisted backend PO */}
+                {dpo.backendPoId && (
+                  <div className="space-y-3">
+                    <PoExceptionBar
+                      poId={dpo.backendPoId}
+                      refreshKey={poWorkflowRefresh}
+                      onToast={addToast}
+                      onLockChange={setPoLock}
+                      onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                    />
+                    <PoApprovalPanel
+                      poId={dpo.backendPoId}
+                      refreshKey={poWorkflowRefresh}
+                      locked={poLocked}
+                      onToast={addToast}
+                      onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                    />
+                    <PoVendorPanel
+                      poId={dpo.backendPoId}
+                      refreshKey={poWorkflowRefresh}
+                      locked={poLocked}
+                      onToast={addToast}
+                      onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                    />
+                  </div>
+                )}
 
                 {(totals && (() => {
                   const hasQuote = dpo.requestId && quotes.some((q) => q.requestId === dpo.requestId && q.status === 'Confirmed');
@@ -8941,6 +9205,43 @@ const Procurement: React.FC = () => {
                       </div>
                     )}
                     <div className="border-t border-slate-200 my-3" />
+                    {/* PO type (Flowchart §5) + live approval-route preview (Sub-flow E) */}
+                    <div className="mb-3">
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">PO type</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                        {PO_TYPE_ORDER.map((t) => {
+                          const cfg = PO_TYPE_CONFIG[t];
+                          const active = releasePoType === t;
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setReleasePoType(t)}
+                              title={cfg.blurb}
+                              className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold text-left transition ${
+                                active
+                                  ? `${cfg.bg} ${cfg.text} ${cfg.border} ring-1 ring-inset ring-current`
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              {cfg.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(() => {
+                        const route = resolvePoApprovalRoute(releasePoType, releaseModalGrand);
+                        const isCfo = route.finalApprover === 'cfo';
+                        return (
+                          <div className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${isCfo ? 'border-orange-200 bg-orange-50 text-orange-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}>
+                            <span className="font-bold">Approval route: </span>
+                            {route.twoStep ? 'Procurement Head → ' : ''}{poApproverRoleLabel(route.finalApprover)}
+                            {route.deviationFlag ? ' · deviation-flagged' : ''}
+                            <span className="block text-[10px] opacity-80 mt-0.5">{route.note} Submit for approval from the Purchase Orders tab after the draft is created.</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
                       <h3 className="font-bold text-slate-900 text-sm mb-2">Notes</h3>
                       <textarea
@@ -9072,6 +9373,7 @@ const Procurement: React.FC = () => {
                         formData: {
                           requestId: req.id,
                           requestCode: req.code,
+                          poType: releasePoType,
                           draftNotes: releaseToPlannedNotes.trim() || undefined,
                           ...(matchedVendorForZoho && vendorName.trim() && vendorName !== 'Unassigned'
                             ? {
@@ -9113,6 +9415,7 @@ const Procurement: React.FC = () => {
                         dpoNumber: newDpoId,
                         requestId: req.id,
                         requestCode: req.code,
+                        poType: releasePoType,
                         type: req.type,
                         vendor: vendorName,
                         vendorId: `VND-${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`,

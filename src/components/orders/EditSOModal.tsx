@@ -108,13 +108,21 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [priceHints, setPriceHints] = useState<Record<number, string>>({});
   const priceResolveGenRef = useRef(0);
+  /** Which SO the form has hydrated — prevents re-hydration (and wiping in-progress edits) on parent re-renders. */
+  const hydratedForRef = useRef<string | null>(null);
   const [activeProductSuggestIndex, setActiveProductSuggestIndex] = useState<number | null>(null);
   const [suggestPanelRect, setSuggestPanelRect] = useState<SuggestPanelRect | null>(null);
   const suggestPanelRef = useRef<HTMLDivElement | null>(null);
   const productInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   useEffect(() => {
-    if (!saleOrder || !isOpen) return;
+    if (!saleOrder || !isOpen) { hydratedForRef.current = null; return; }
+    // Hydrate the form once per opened SO. Re-running on every `saleOrder` prop
+    // reference change (parent re-render) would clobber in-progress edits (unit
+    // price / MRP reset to the saved values).
+    const key = String(saleOrder.soNo ?? '');
+    if (hydratedForRef.current === key) return;
+    hydratedForRef.current = key;
     setCustomer(String(saleOrder.customer || ''));
     setCustomerCity(String(saleOrder.customerCity || ''));
     setOrderDate(String(saleOrder.orderDate || ''));
@@ -275,12 +283,12 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
         const autoPrice = result.price_per_unit != null && result.price_per_unit > 0;
         setItems((prev) => {
           if (prev[index]?.productName?.trim() !== line.productName.trim()) return prev;
+          // Only auto-fill when the client price list actually yields a price.
+          // No tier / no price → keep the existing (saved or manually-entered) unit price;
+          // never wipe it to 0 (that reset was blocking manual pricing).
+          if (!(fromTier || (fromDefaultRate && autoPrice))) return prev;
           const next = [...prev];
-          if (fromTier || (fromDefaultRate && autoPrice)) {
-            next[index] = { ...next[index], unitPrice: Number(result.price_per_unit) };
-          } else if (result.source === 'no_tier_match' || !autoPrice) {
-            next[index] = { ...next[index], unitPrice: 0 };
-          }
+          next[index] = { ...next[index], unitPrice: Number(result.price_per_unit) };
           return next;
         });
         setPriceHints((prev) => ({
@@ -375,8 +383,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
       });
     }, 280);
     return () => window.clearTimeout(timer);
-    // intentionally omit `items` — we want this to fire only when customer or open state changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Reads itemsRef.current (a ref) so it fires only on customer / open / resolver change, not per keystroke.
   }, [selectedCustomerId, isOpen, resolveLinePrice]);
 
   const handleSave = async () => {

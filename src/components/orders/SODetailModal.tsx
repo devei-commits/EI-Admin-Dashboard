@@ -285,14 +285,12 @@ function ItemWithBatches({
             <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
               {item.pack}
             </span>
-            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" title="Unit price — what EI charges the client">
               {formatCurrency(item.unitPrice)}/unit
             </span>
-            {item.mrp != null && item.mrp > 0 && (
-              <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                MRP ₹{item.mrp.toLocaleString('en-IN')}
-              </span>
-            )}
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700" title="MRP from the sale order (product master, editable per SO)">
+              MRP {item.mrp != null && item.mrp > 0 ? `₹${item.mrp.toLocaleString('en-IN')}` : '—'}
+            </span>
           </div>
         </div>
         <div className="text-right">
