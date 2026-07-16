@@ -13,6 +13,8 @@ import type { CreateProcurementPayload, ProcurementRequestItem } from '../../ser
 import { fetchPlanningExtractedList } from '../../services/planningExtracted.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
+import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
+import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
 
 export interface NewPrModalProps {
   onClose: () => void;
@@ -23,12 +25,16 @@ interface LineDraft {
   type: 'RM' | 'PM';
   code: string;
   name: string;
+  /** Selected RM/PM master option key ('rm:123' | 'pm:45'); empty when free-typed. */
+  itemKey: string;
+  rawMaterialId?: number;
+  packMaterialId?: number;
   qty: string;
   unit: string;
   price: string;
 }
 
-const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', qty: '', unit: '', price: '' });
+const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', itemKey: '', qty: '', unit: '', price: '' });
 
 const normKey = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase();
 
@@ -49,12 +55,12 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     queryFn: () => fetchPlanningExtractedList(),
     staleTime: 60_000,
   });
-  const { data: rmList = [] } = useQuery({
+  const { data: rmList = [], isLoading: rmLoading } = useQuery({
     queryKey: ['raw-materials', 'for-pr-link'],
     queryFn: () => fetchRawMaterialsList(),
     staleTime: 5 * 60_000,
   });
-  const { data: pmList = [] } = useQuery({
+  const { data: pmList = [], isLoading: pmLoading } = useQuery({
     queryKey: ['pack-materials', 'for-pr-link'],
     queryFn: () => fetchPackMaterialsList(),
     staleTime: 5 * 60_000,
@@ -94,7 +100,13 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     return m;
   }, [pmList]);
 
+  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  const materialsLoading = rmLoading || pmLoading;
+
   const resolveLineId = (l: LineDraft): number | undefined => {
+    // Prefer the id captured when a suggestion was picked; fall back to code/name for free-typed lines.
+    const captured = l.type === 'PM' ? l.packMaterialId : l.rawMaterialId;
+    if (captured != null) return captured;
     const map = l.type === 'PM' ? pmIdByKey : rmIdByKey;
     return map.get(`c:${normKey(l.code)}`) ?? map.get(`n:${normKey(l.name)}`);
   };
@@ -103,6 +115,20 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
+  // Picking a suggestion fills name + code + unit + RM/PM id and aligns the row Type to the item kind.
+  const selectLineItem = (i: number, opt: MaterialTypeaheadOption) =>
+    setLine(i, {
+      name: opt.name,
+      code: opt.code,
+      itemKey: opt.key,
+      type: opt.kind === 'pm' ? 'PM' : 'RM',
+      unit: opt.unit,
+      rawMaterialId: opt.rawMaterialId,
+      packMaterialId: opt.packMaterialId,
+    });
+  const clearLineItem = (i: number) =>
+    setLine(i, { itemKey: '', code: '', rawMaterialId: undefined, packMaterialId: undefined });
 
   const validLines = lines.filter((l) => l.name.trim() && Number(l.qty) > 0);
   // When linked, lines whose code/name don't resolve to a master id won't attribute to the PI.
@@ -115,7 +141,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     const items: ProcurementRequestItem[] = validLines.map((l) => {
       const qty = Number(l.qty) || 0;
       const price = Number(l.price) || 0;
-      const matId = linkedPeId != null ? resolveLineId(l) : undefined;
+      const matId = resolveLineId(l); // attach the master id whenever we have it (linked or not)
       return {
         type: l.type,
         code: l.code.trim() || `MAN-${l.type}-${Math.abs(Math.round(qty))}`,
@@ -220,8 +246,20 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
                       <option value="PM">PM</option>
                     </select>
                   </td>
-                  <td className="px-2 py-1.5"><input value={l.name} onChange={(e) => setLine(i, { name: e.target.value })} className={inputCls} placeholder="Item name" /></td>
-                  <td className="px-2 py-1.5"><input value={l.code} onChange={(e) => setLine(i, { code: e.target.value })} className={inputCls} placeholder="Code" /></td>
+                  <td className="px-2 py-1.5 min-w-[15rem]">
+                    <MaterialMasterTypeahead
+                      options={materialOptions}
+                      loading={materialsLoading}
+                      value={l.name}
+                      selectedId={l.itemKey}
+                      onValueChange={(next) => setLine(i, { name: next })}
+                      onSelect={(opt) => selectLineItem(i, opt)}
+                      onClearSelection={() => clearLineItem(i)}
+                      requirePickFromList={false}
+                      placeholder="Search RM / PM by name or code…"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5"><input value={l.code} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" /></td>
                   <td className="px-2 py-1.5 w-20"><input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
                   <td className="px-2 py-1.5 w-20"><input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} className={inputCls} placeholder={l.type === 'PM' ? 'PCS' : 'KG'} /></td>
                   <td className="px-2 py-1.5 w-24"><input value={l.price} onChange={(e) => setLine(i, { price: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
