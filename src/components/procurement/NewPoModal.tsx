@@ -4,9 +4,14 @@
  * approval → vendor → GRN → match flow. PO type is captured up front.
  */
 import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
 import { PO_TYPE_ORDER, PO_TYPE_CONFIG, type PoType } from '../../constants/procurement';
+import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
+import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
+import { fetchRawMaterialsList } from '../../services/rawMaterials.service';
+import { fetchPackMaterialsList } from '../../services/packMaterials.service';
 
 export interface NewPoVendorOption {
   id: string | number;
@@ -37,11 +42,15 @@ interface LineDraft {
   type: 'RM' | 'PM';
   itemName: string;
   itemCode: string;
+  /** Selected RM/PM master option key ('rm:123' | 'pm:45'); empty when free-typed. */
+  itemKey: string;
+  rawMaterialId?: number;
+  packMaterialId?: number;
   qty: string;
   rate: string;
   tax: string;
 }
-const emptyLine = (): LineDraft => ({ type: 'RM', itemName: '', itemCode: '', qty: '', rate: '', tax: '18' });
+const emptyLine = (): LineDraft => ({ type: 'RM', itemName: '', itemCode: '', itemKey: '', qty: '', rate: '', tax: '18' });
 
 function todayIso(): string {
   // Local-safe YYYY-MM-DD without Date.now math elsewhere.
@@ -64,6 +73,33 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
+  // RM/PM masters for the item-name typeahead (self-contained — no extra props needed).
+  const { data: rmList = [], isLoading: rmLoading } = useQuery({
+    queryKey: ['raw-materials', 'for-po-line'],
+    queryFn: () => fetchRawMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const { data: pmList = [], isLoading: pmLoading } = useQuery({
+    queryKey: ['pack-materials', 'for-po-line'],
+    queryFn: () => fetchPackMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  const materialsLoading = rmLoading || pmLoading;
+
+  // Picking a suggestion fills name + code + RM/PM id and aligns the row's Type to the item's kind.
+  const selectLineItem = (i: number, opt: MaterialTypeaheadOption) =>
+    setLine(i, {
+      itemName: opt.name,
+      itemCode: opt.code,
+      itemKey: opt.key,
+      type: opt.kind === 'pm' ? 'PM' : 'RM',
+      rawMaterialId: opt.rawMaterialId,
+      packMaterialId: opt.packMaterialId,
+    });
+  const clearLineItem = (i: number) =>
+    setLine(i, { itemKey: '', itemCode: '', rawMaterialId: undefined, packMaterialId: undefined });
+
   const validLines = lines.filter((l) => l.itemName.trim() && Number(l.qty) > 0 && Number(l.rate) >= 0);
   const matchedVendor = useMemo(
     () => vendors.find((v) => v.name.trim().toLowerCase() === vendorName.trim().toLowerCase()) || null,
@@ -85,6 +121,9 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
       quantity: String(Number(l.qty) || 0),
       rate: String(Number(l.rate) || 0),
       tax: String(Number(l.tax) || 0),
+      // Link to the master when picked from suggestions (enables warehouse / Items-Involved matching).
+      ...(l.rawMaterialId != null ? { raw_material_id: l.rawMaterialId } : {}),
+      ...(l.packMaterialId != null ? { pack_material_id: l.packMaterialId } : {}),
     }));
     const payload: NewPoPayload = {
       orderId: poNumber,
@@ -179,8 +218,22 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
                   <td className="px-2 py-1.5"><select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM' })} className={inputCls}><option value="RM">RM</option><option value="PM">PM</option></select></td>
-                  <td className="px-2 py-1.5"><input value={l.itemName} onChange={(e) => setLine(i, { itemName: e.target.value })} className={inputCls} placeholder="Item name" /></td>
-                  <td className="px-2 py-1.5"><input value={l.itemCode} onChange={(e) => setLine(i, { itemCode: e.target.value })} className={inputCls} placeholder="Code" /></td>
+                  <td className="px-2 py-1.5 min-w-[15rem]">
+                    <MaterialMasterTypeahead
+                      options={materialOptions}
+                      loading={materialsLoading}
+                      value={l.itemName}
+                      selectedId={l.itemKey}
+                      onValueChange={(next) => setLine(i, { itemName: next })}
+                      onSelect={(opt) => selectLineItem(i, opt)}
+                      onClearSelection={() => clearLineItem(i)}
+                      requirePickFromList={false}
+                      placeholder="Search RM / PM by name or code…"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input value={l.itemCode} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" />
+                  </td>
                   <td className="px-2 py-1.5 w-20"><input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
                   <td className="px-2 py-1.5 w-24"><input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
                   <td className="px-2 py-1.5 w-16"><input value={l.tax} onChange={(e) => setLine(i, { tax: e.target.value })} inputMode="decimal" className={inputCls} placeholder="18" /></td>
