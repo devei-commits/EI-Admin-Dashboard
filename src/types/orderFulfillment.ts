@@ -36,6 +36,22 @@ export type SOStatus =
   | 'SO_Shipped'
   | 'SO_Fulfilled';
 
+/**
+ * Authoritative order status stored on `sales_orders.status`. Distinct from the fulfillment
+ * lifecycle (`SOStatus`) and the commercial lifecycle (`CommercialStatus`). This is the value
+ * that drives Planning → PIS Extracted visibility — Draft/Cancelled SOs are hidden there.
+ */
+export type SalesOrderStatus = 'Draft' | 'Approved' | 'Confirmed' | 'Cancelled' | 'Closed';
+
+/** Editable SO-status options for the Edit-SO "Update SO Status" control (label + stored value). */
+export const SALES_ORDER_STATUS_OPTIONS: ReadonlyArray<{ value: SalesOrderStatus; label: string }> = [
+  { value: 'Draft', label: 'Draft' },
+  { value: 'Confirmed', label: 'Confirmed' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
 export type Priority = 'normal' | 'high';
 
 /** Single stored/display string (structured via `lib/paymentTermsStructured` or legacy labels). */
@@ -99,6 +115,8 @@ export interface SaleOrder {
   priority: Priority;
   soStatus: SOStatus;
   commercialStatus?: CommercialStatus;
+  /** Authoritative order status from sales_orders.status; editable via Edit SO → Update SO Status. */
+  orderStatus?: SalesOrderStatus | null;
   soValue: number;
   shipAddress: string;
   paymentTerms: PaymentTerms;
@@ -348,6 +366,8 @@ export interface SODashboardRow {
   priority: string;
   soStatus: string;
   commercialStatus: CommercialStatus;
+  /** Authoritative order status from sales_orders.status (Draft/Approved/Confirmed/Cancelled/Closed). */
+  orderStatus?: SalesOrderStatus | null;
   soValue: number;
   unitPrice: number;
   customer: {

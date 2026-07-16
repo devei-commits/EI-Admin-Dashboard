@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Plus, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Modal } from './Modal';
-import type { SaleOrder } from '../../types/orderFulfillment';
+import type { SaleOrder, SalesOrderStatus } from '../../types/orderFulfillment';
+import { SALES_ORDER_STATUS_OPTIONS } from '../../types/orderFulfillment';
 import {
   fetchClientProductPrice,
   fetchCustomers,
@@ -44,6 +45,7 @@ interface EditSOModalProps {
     shipAddress: string;
     paymentTerms: string;
     notes: string;
+    salesOrderStatus?: SalesOrderStatus;
     items: Array<EditableItem & { mrp?: number | null }>;
   }) => Promise<void> | void;
 }
@@ -95,6 +97,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const [orderDate, setOrderDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<'normal' | 'high'>('normal');
+  const [salesOrderStatus, setSalesOrderStatus] = useState<SalesOrderStatus>('Draft');
   const [shipAddress, setShipAddress] = useState('');
   const [advancePctStr, setAdvancePctStr] = useState(String(DEFAULT_STAGED.advance_pct));
   const [preShipmentPctStr, setPreShipmentPctStr] = useState(String(DEFAULT_STAGED.pre_shipment_pct));
@@ -128,6 +131,10 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     setOrderDate(String(saleOrder.orderDate || ''));
     setDueDate(String(saleOrder.dueDate || ''));
     setPriority(saleOrder.priority === 'high' ? 'high' : 'normal');
+    // Hydrate the authoritative order status; default to Draft when the SO has none yet.
+    setSalesOrderStatus(
+      (SALES_ORDER_STATUS_OPTIONS.find((o) => o.value === saleOrder.orderStatus)?.value) || 'Draft'
+    );
     setShipAddress(cleanAddress(String(saleOrder.shipAddress || ''), String(saleOrder.customer || '')));
     const staged = parseStagedPaymentTerms(String(saleOrder.paymentTerms || '')) || DEFAULT_STAGED;
     setAdvancePctStr(String(staged.advance_pct));
@@ -414,6 +421,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
       shipAddress: shipAddress.trim(),
       paymentTerms,
       notes: notes.trim(),
+      salesOrderStatus,
       items: items.map((item) => ({
         sku: item.sku.trim(),
         productName: item.productName.trim(),
@@ -540,6 +548,20 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               <option value="normal">Normal</option>
               <option value="high">High</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">SO status</label>
+            <select
+              value={salesOrderStatus}
+              onChange={(e) => setSalesOrderStatus(e.target.value as SalesOrderStatus)}
+              disabled={!canEdit}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+            >
+              {SALES_ORDER_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">Draft or Cancelled orders are hidden from Planning → PIS Extracted.</p>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Order date</label>

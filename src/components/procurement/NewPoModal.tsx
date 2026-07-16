@@ -84,7 +84,10 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
     queryFn: () => fetchPackMaterialsList(),
     staleTime: 5 * 60_000,
   });
-  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  // Scope suggestions to the line's Type: merging RM + PM and capping at 50 let the ~3× more numerous
+  // PMs crowd RMs out of the results. Each line has an RM/PM selector, so filter by it.
+  const rmOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, []), [rmList]);
+  const pmOptions = useMemo(() => buildMaterialTypeaheadOptions([], pmList), [pmList]);
   const materialsLoading = rmLoading || pmLoading;
 
   // Picking a suggestion fills name + code + RM/PM id and aligns the row's Type to the item's kind.
@@ -217,10 +220,10 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="px-2 py-1.5"><select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM' })} className={inputCls}><option value="RM">RM</option><option value="PM">PM</option></select></td>
+                  <td className="px-2 py-1.5"><select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM', itemCode: '', itemKey: '', rawMaterialId: undefined, packMaterialId: undefined })} className={inputCls}><option value="RM">RM</option><option value="PM">PM</option></select></td>
                   <td className="px-2 py-1.5 min-w-[15rem]">
                     <MaterialMasterTypeahead
-                      options={materialOptions}
+                      options={l.type === 'PM' ? pmOptions : rmOptions}
                       loading={materialsLoading}
                       value={l.itemName}
                       selectedId={l.itemKey}

@@ -12,7 +12,7 @@
  */
 import React, { forwardRef, useImperativeHandle, useState } from 'react';
 import type {
-  SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData,
+  SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData, SalesOrderStatus,
 } from '../../types/orderFulfillment';
 import { AddSOModal } from './AddSOModal';
 import { SODetailModal } from './SODetailModal';
@@ -31,6 +31,8 @@ export type SoUpdatePayload = {
   shipAddress: string;
   paymentTerms: string;
   notes: string;
+  /** Authoritative sales_orders.status set via Edit SO → Update SO Status (drives PIS Extracted). */
+  salesOrderStatus?: SalesOrderStatus;
   items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
 };
 

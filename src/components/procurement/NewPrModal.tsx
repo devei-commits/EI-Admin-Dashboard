@@ -15,6 +15,8 @@ import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/ra
 import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
+import VendorClientNameTypeahead from '../VendorClientNameTypeahead';
+import { fetchVendorClients } from '../../services/vendorClient.service';
 
 export interface NewPrModalProps {
   onClose: () => void;
@@ -42,6 +44,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
   const [priority, setPriority] = useState('Medium');
   const [requiredBy, setRequiredBy] = useState('');
   const [preferredVendor, setPreferredVendor] = useState('');
+  const [preferredVendorId, setPreferredVendorId] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
   const [linkedPeId, setLinkedPeId] = useState<number | null>(null);
@@ -63,6 +66,14 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
   const { data: pmList = [], isLoading: pmLoading } = useQuery({
     queryKey: ['pack-materials', 'for-pr-link'],
     queryFn: () => fetchPackMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const { data: vendorList = [], isLoading: vendorsLoading } = useQuery({
+    queryKey: ['vendor-clients', 'vendor', 'for-pr'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('vendor');
+      return res.success ? res.data : [];
+    },
     staleTime: 5 * 60_000,
   });
 
@@ -100,7 +111,10 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     return m;
   }, [pmList]);
 
-  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  // Scope suggestions to the line's Type: merging RM + PM and capping at 50 let the ~3× more numerous
+  // PMs crowd RMs out of the results. Each line has an RM/PM selector, so filter by it.
+  const rmOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, []), [rmList]);
+  const pmOptions = useMemo(() => buildMaterialTypeaheadOptions([], pmList), [pmList]);
   const materialsLoading = rmLoading || pmLoading;
 
   const resolveLineId = (l: LineDraft): number | undefined => {
@@ -204,7 +218,22 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
           </div>
           <div className="col-span-2">
             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Preferred vendor (optional)</label>
-            <input value={preferredVendor} onChange={(e) => setPreferredVendor(e.target.value)} className={inputCls} placeholder="Vendor name" />
+            <VendorClientNameTypeahead
+              parties={vendorList}
+              selectedId={preferredVendorId}
+              loading={vendorsLoading}
+              partyKind="vendor"
+              allowFreeText
+              placeholder="Search vendor by name, code, city…"
+              onSelect={(party) => {
+                setPreferredVendorId(party ? String(party.id) : '');
+                setPreferredVendor(party ? party.name : '');
+              }}
+              onFreeTextChange={(value) => {
+                setPreferredVendorId('');
+                setPreferredVendor(value);
+              }}
+            />
           </div>
           <div className="col-span-2 md:col-span-4">
             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Link to Planning SO (optional)</label>
@@ -241,14 +270,14 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
                   <td className="px-2 py-1.5">
-                    <select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM' })} className={inputCls}>
+                    <select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM', code: '', itemKey: '', rawMaterialId: undefined, packMaterialId: undefined })} className={inputCls}>
                       <option value="RM">RM</option>
                       <option value="PM">PM</option>
                     </select>
                   </td>
                   <td className="px-2 py-1.5 min-w-[15rem]">
                     <MaterialMasterTypeahead
-                      options={materialOptions}
+                      options={l.type === 'PM' ? pmOptions : rmOptions}
                       loading={materialsLoading}
                       value={l.name}
                       selectedId={l.itemKey}

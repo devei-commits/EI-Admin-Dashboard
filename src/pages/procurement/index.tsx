@@ -1217,6 +1217,27 @@ const Procurement: React.FC = () => {
     },
   });
 
+  /** Vendor address / GSTIN / phone for the PO PDF, looked up from the vendor master by name. */
+  const buildVendorPoPdfFields = (vendorName: string): { vendorAddress?: string; vendorGstin?: string; vendorPhone?: string } => {
+    const key = String(vendorName ?? '').trim().toLowerCase();
+    if (!key) return {};
+    const v = (vendorClientList ?? []).find((x) => String(x.name ?? '').trim().toLowerCase() === key);
+    if (!v) return {};
+    const d = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
+    const str = (x: unknown) => String(x ?? '').trim();
+    const addr = [
+      str(d.billingAddress ?? d.shippingAddress),
+      str(v.city),
+      [str(d.pincode ?? d.pin_code), str(d.state)].filter(Boolean).join(' '),
+      str(d.country),
+    ].filter(Boolean).join('\n');
+    return {
+      vendorAddress: addr || undefined,
+      vendorGstin: str(d.gstin) || undefined,
+      vendorPhone: str(v.phone) || undefined,
+    };
+  };
+
   const { data: purchaseOrdersRaw } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: async () => {
@@ -6917,6 +6938,7 @@ const Procurement: React.FC = () => {
                       reference: po.requestCode,
                       orderDate: po.createdDate,
                       vendor: po.vendor,
+                      ...buildVendorPoPdfFields(po.vendor ?? ''),
                       paymentTerms: po.paymentTerms,
                       lines: po.lineItems,
                       grandTotal: po.grandTotal,
@@ -7115,6 +7137,7 @@ const Procurement: React.FC = () => {
                         orderDate: dpo.createdDate,
                         expectedDelivery: dpo.expectedDelivery,
                         vendor: dpo.vendor,
+                        ...buildVendorPoPdfFields(dpo.vendor ?? ''),
                         deliveryAddress: dpo.deliveryAddress,
                         paymentTerms: dpo.paymentTerms,
                         lines: lineItems,

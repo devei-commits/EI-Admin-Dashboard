@@ -216,6 +216,7 @@ export const OrderFulfillment: React.FC = () => {
       shipAddress: string;
       paymentTerms: string;
       notes: string;
+      salesOrderStatus?: string;
       items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
     }
   ): Promise<void> => {
