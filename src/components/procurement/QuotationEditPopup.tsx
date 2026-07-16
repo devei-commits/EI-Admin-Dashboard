@@ -10,6 +10,7 @@
  * - Vendor selection uses the shared typeahead (searchable, ranked, capped).
  */
 import React, { useRef, useState } from 'react';
+import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell } from './ProcModalShell';
 import type { RfqTemplateData } from './RfqTemplatePopup';
 import VendorClientNameTypeahead from '../VendorClientNameTypeahead';
@@ -21,15 +22,24 @@ import {
   resolveStagedPaymentTermsFromVendorRecord,
   mergeCreditDaysFromClientData,
 } from '../../lib/stagedPaymentTerms';
-import type { RecordedQuoteInput } from '../../utils/recordQuotationToPriceList';
+import type { RecordedQuoteInput, QuoteBand } from '../../utils/recordQuotationToPriceList';
+
+interface BandDraft {
+  moqMin: string;
+  moqMax: string;
+  price: string;
+}
 
 export interface QuotationEditPopupProps {
   data: RfqTemplateData;
   vendors: VendorClientRecord[];
   vendorsLoading?: boolean;
   onClose: () => void;
-  /** Proceed to the RFQ email step with the collected quotation. */
-  onContinue: (quote: RecordedQuoteInput) => void;
+  /**
+   * Approve & write the quotation (all MOQ bands) into the Items List / price list.
+   * Returns the write result so the popup can show an error or close on success.
+   */
+  onApproveSave: (quote: RecordedQuoteInput) => Promise<{ success: boolean; error?: string }>;
 }
 
 const inputCls =
@@ -41,13 +51,12 @@ function asRecord(data: unknown): Record<string, unknown> | undefined {
   return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : undefined;
 }
 
-export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, vendors, vendorsLoading, onClose, onContinue }) => {
+export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, vendors, vendorsLoading, onClose, onApproveSave }) => {
   const [vendorId, setVendorId] = useState('');
-  const [pricePerUnit, setPricePerUnit] = useState('');
-  const [moq, setMoq] = useState(
-    data.quantityToQuote != null ? String(data.quantityToQuote) : data.moqHint != null ? String(data.moqHint) : '',
-  );
-  const [moqMax, setMoqMax] = useState('');
+  const firstMoq =
+    data.quantityToQuote != null ? String(data.quantityToQuote) : data.moqHint != null ? String(data.moqHint) : '1';
+  // One or more MOQ→price bands (Masters-style tiers). First band's MOQ defaults to the qty to quote.
+  const [bands, setBands] = useState<BandDraft[]>([{ moqMin: firstMoq, moqMax: '', price: '' }]);
   const [leadTimeDays, setLeadTimeDays] = useState('');
   const [advancePct, setAdvancePct] = useState('');
   const [preShipmentPct, setPreShipmentPct] = useState('');
@@ -56,7 +65,13 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
   const [validTill, setValidTill] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const hydrateRef = useRef(0);
+
+  const setBand = (idx: number, field: keyof BandDraft, value: string) =>
+    setBands((prev) => prev.map((b, i) => (i === idx ? { ...b, [field]: value } : b)));
+  const addBand = () => setBands((prev) => [...prev, { moqMin: '', moqMax: '', price: '' }]);
+  const removeBand = (idx: number) => setBands((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
 
   const type = data.itemType;
   const materialId = type === 'RM' ? data.rawMaterialId : type === 'PM' ? data.packMaterialId : null;
@@ -105,7 +120,8 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
     })();
   };
 
-  const handleContinue = () => {
+  const handleApproveSave = async () => {
+    if (saving) return;
     setError(null);
     if (!type || materialId == null) {
       setError('This item is not linked to a material master, so it cannot be priced.');
@@ -116,19 +132,34 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
       setError('Select a vendor.');
       return;
     }
-    const priceNum = Number(pricePerUnit);
-    const moqNum = Number(moq);
-    if (!Number.isFinite(priceNum) || priceNum <= 0) {
-      setError('Enter a valid price per unit.');
-      return;
+    // Validate & normalise the MOQ bands.
+    const cleanBands: QuoteBand[] = [];
+    const seenMoq = new Set<number>();
+    for (const b of bands) {
+      const moqNum = Number(b.moqMin);
+      const priceNum = Number(b.price);
+      if (!Number.isFinite(moqNum) || moqNum <= 0) {
+        setError('Each band needs a MOQ greater than zero.');
+        return;
+      }
+      if (!Number.isFinite(priceNum) || priceNum <= 0) {
+        setError('Each band needs a price greater than zero.');
+        return;
+      }
+      const moqMaxNum = b.moqMax.trim() === '' ? null : Number(b.moqMax);
+      if (moqMaxNum != null && (!Number.isFinite(moqMaxNum) || moqMaxNum < moqNum)) {
+        setError('Each band’s MOQ max must be blank or ≥ its MOQ.');
+        return;
+      }
+      if (seenMoq.has(moqNum)) {
+        setError(`Duplicate MOQ ${moqNum} — each band needs a distinct MOQ.`);
+        return;
+      }
+      seenMoq.add(moqNum);
+      cleanBands.push({ moqMin: moqNum, moqMax: moqMaxNum, price: priceNum });
     }
-    if (!Number.isFinite(moqNum) || moqNum <= 0) {
-      setError('Enter a valid MOQ.');
-      return;
-    }
-    const moqMaxNum = moqMax.trim() === '' ? null : Number(moqMax);
-    if (moqMaxNum != null && (!Number.isFinite(moqMaxNum) || moqMaxNum < moqNum)) {
-      setError('MOQ max must be blank or ≥ MOQ.');
+    if (cleanBands.length === 0) {
+      setError('Add at least one MOQ band.');
       return;
     }
     const leadNum = leadTimeDays.trim() === '' ? null : Math.max(0, Math.floor(Number(leadTimeDays)));
@@ -148,18 +179,26 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
         })
       : null;
 
-    onContinue({
-      vendorId: String(vendor.id),
-      vendorName: vendor.name,
-      vendorEmail: vendor.email ?? null,
-      pricePerUnit: priceNum,
-      moq: moqNum,
-      moqMax: moqMaxNum,
-      leadTimeDays: leadNum,
-      paymentTerms,
-      validTill: validTill.trim() || null,
-      note: note.trim() || null,
-    });
+    setSaving(true);
+    try {
+      const res = await onApproveSave({
+        vendorId: String(vendor.id),
+        vendorName: vendor.name,
+        vendorEmail: vendor.email ?? null,
+        bands: cleanBands,
+        leadTimeDays: leadNum,
+        paymentTerms,
+        validTill: validTill.trim() || null,
+        note: note.trim() || null,
+      });
+      if (!res.success) {
+        setError(res.error ?? 'Failed to save to the price list.');
+        return;
+      }
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -178,15 +217,18 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
         <>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white"
+            disabled={saving}
+            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60"
           >
-            Cancel
+            Close
           </button>
           <button
-            onClick={handleContinue}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700"
+            onClick={() => void handleApproveSave()}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
           >
-            Continue to Review →
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {saving ? 'Saving…' : '✅ Approve & Save to Price List'}
           </button>
         </>
       }
@@ -213,28 +255,58 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-            MOQ{data.quantityToQuote != null && <span className="ml-1 font-normal normal-case text-slate-400">(from qty to quote)</span>}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+            MOQ price bands
+            {data.quantityToQuote != null && <span className="ml-1 font-normal normal-case text-slate-400">(first MOQ from qty to quote)</span>}
           </label>
-          <input value={moq} onChange={(e) => setMoq(e.target.value)} type="number" min={1} step="any" inputMode="decimal" className={inputCls} />
+          <button
+            type="button"
+            onClick={addBand}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-slate-50"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add band
+          </button>
         </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ max (optional)</label>
-          <input value={moqMax} onChange={(e) => setMoqMax(e.target.value)} type="number" min={0} step="any" inputMode="decimal" className={inputCls} />
+        <p className="text-[11px] text-slate-500 mb-2">Enter a price for each MOQ band, exactly like the Masters price list (e.g. 1–99 @ ₹X, 100–499 @ ₹Y).</p>
+        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-left text-slate-600">
+                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">MOQ min</th>
+                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">MOQ max (optional)</th>
+                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Price / unit (₹)</th>
+                <th className="px-2 py-1.5 font-semibold border-b border-slate-200 w-8" aria-label="Remove" />
+              </tr>
+            </thead>
+            <tbody>
+              {bands.map((band, idx) => (
+                <tr key={idx}>
+                  <td className="px-2 py-1.5 border-t border-slate-100">
+                    <input value={band.moqMin} onChange={(e) => setBand(idx, 'moqMin', e.target.value)} type="number" min={1} step="any" inputMode="decimal" className={pctCls} />
+                  </td>
+                  <td className="px-2 py-1.5 border-t border-slate-100">
+                    <input value={band.moqMax} onChange={(e) => setBand(idx, 'moqMax', e.target.value)} type="number" min={0} step="any" inputMode="decimal" placeholder="—" className={pctCls} />
+                  </td>
+                  <td className="px-2 py-1.5 border-t border-slate-100">
+                    <input value={band.price} onChange={(e) => setBand(idx, 'price', e.target.value)} type="number" min={0} step="0.01" inputMode="decimal" className={pctCls} />
+                  </td>
+                  <td className="px-2 py-1.5 border-t border-slate-100 text-center">
+                    <button type="button" onClick={() => removeBand(idx)} disabled={bands.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove band">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Price / unit (₹)</label>
-          <input value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value)} type="number" min={0} step="0.01" className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time (days)</label>
-          <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value)} type="number" min={0} className={inputCls} />
-        </div>
+      <div className="w-1/2 pr-1.5">
+        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time (days)</label>
+        <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value)} type="number" min={0} className={inputCls} />
       </div>
 
       <div>
@@ -284,7 +356,7 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
       </div>
 
       <p className="text-[11px] text-slate-500">
-        Next you’ll review this quotation. Approving it writes the price into the Items List (price list) and marks the request fulfilled — no email is sent.
+        Approve & Save writes every MOQ band into the Items List (price list) for this vendor and marks the request fulfilled — no email is sent.
       </p>
     </ProcModalShell>
   );

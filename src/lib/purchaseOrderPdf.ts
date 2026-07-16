@@ -66,12 +66,13 @@ function qtyNum(v: number | string): number {
 }
 
 function buildPoDocumentHtml(data: PoDocumentData): string {
+  const lines = Array.isArray(data.lines) ? data.lines : [];
   const subtotal =
-    data.subtotal != null ? data.subtotal : data.lines.reduce((s, l) => s + (Number(l.lineTotal) || 0) - (Number(l.gstAmount) || 0), 0);
-  const gstTotal = data.gstTotal != null ? data.gstTotal : data.lines.reduce((s, l) => s + (Number(l.gstAmount) || 0), 0);
+    data.subtotal != null ? data.subtotal : lines.reduce((s, l) => s + (Number(l.lineTotal) || 0) - (Number(l.gstAmount) || 0), 0);
+  const gstTotal = data.gstTotal != null ? data.gstTotal : lines.reduce((s, l) => s + (Number(l.gstAmount) || 0), 0);
   const grandTotal = data.grandTotal != null ? data.grandTotal : subtotal + gstTotal;
 
-  const rows = data.lines
+  const rows = lines
     .map((l, i) => {
       const q = qtyNum(l.qty);
       const lineBase = q * (Number(l.pricePerUnit) || 0);
@@ -212,7 +213,14 @@ function buildPoDocumentHtml(data: PoDocumentData): string {
 export function openPurchaseOrderPdf(data: PoDocumentData): boolean {
   const win = window.open('', '_blank', 'width=900,height=900');
   if (!win) return false;
-  win.document.write(buildPoDocumentHtml(data));
-  win.document.close();
-  return true;
+  try {
+    win.document.write(buildPoDocumentHtml(data));
+    win.document.close();
+    return true;
+  } catch (err) {
+    // Never leave a blank popup open on malformed data — close it and report failure.
+    console.error('[purchaseOrderPdf] failed to build PO document', err);
+    try { win.close(); } catch { /* ignore */ }
+    return false;
+  }
 }

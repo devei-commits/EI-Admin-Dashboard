@@ -74,5 +74,33 @@ describe('pisExtractedTableDisplay', () => {
     );
     expect(sla.icon).toBe('🚩');
     expect(sla.text).toContain('open');
+    expect(sla.text).toContain('committed 2d'); // fixed commitment, not elapsed days
+    expect(sla.tone).toBe('breach');
+  });
+
+  it('buildPisSlaView shows amber "approaching" within 1 day of the committed SLA', () => {
+    // orderDate 2026-06-16, now 2026-06-17 → 1 day open, committed 2d → approaching
+    const now = Date.parse('2026-06-17T12:00:00+05:30');
+    const sla = buildPisSlaView(
+      { id: '1', orderQty: '2000', totalKg: '400', orderDate: '2026-06-16', createdAt: '2026-06-16' },
+      false,
+      2000,
+      now,
+    );
+    expect(sla.tone).toBe('warn');
+    expect(sla.icon).not.toBe('🚩');
+  });
+
+  it('buildPisSlaView is neutral (no flag) well within the SLA', () => {
+    // Same day → 0 days open, committed 2d → neutral, no 🚩
+    const now = Date.parse('2026-06-16T18:00:00+05:30');
+    const sla = buildPisSlaView(
+      { id: '1', orderQty: '2000', totalKg: '400', orderDate: '2026-06-16', createdAt: '2026-06-16' },
+      false,
+      2000,
+      now,
+    );
+    expect(sla.tone).toBe('neutral');
+    expect(sla.icon).toBe('');
   });
 });

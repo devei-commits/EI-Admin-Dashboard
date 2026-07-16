@@ -211,16 +211,18 @@ export function buildPisSlaView(
     parsePlanningSlaTimestamp(order.createdAt) ??
     parsePlanningSlaTimestamp(order.orderDate) ??
     now;
-  const committedStart = parsePlanningSlaTimestamp(order.orderDate) ?? start;
   const openDays = daysBetweenFloor(start, now);
-  const committedDays = daysBetweenFloor(committedStart, now);
 
   if (!hasBatches && remainingUnits > 0) {
+    // §9: breach when days_open > committed_plan_sla; amber "approaching" when within 1 day of it
+    // and not yet planned. "committed Yd" is the FIXED commitment (SLA_DAYS), not elapsed days.
+    const breached = openDays > SLA_DAYS;
+    const approaching = !breached && SLA_DAYS - openDays <= 1;
     return {
-      icon: '🚩',
-      text: `${openDays}d open · committed ${committedDays}d`,
+      icon: breached ? '🚩' : approaching ? '⏱' : '',
+      text: `${openDays}d open · committed ${SLA_DAYS}d`,
       sub: null,
-      tone: openDays >= SLA_DAYS ? 'breach' : 'neutral',
+      tone: breached ? 'breach' : approaching ? 'warn' : 'neutral',
     };
   }
 

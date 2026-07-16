@@ -8,7 +8,7 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -43,6 +43,8 @@ function resolvePoWorkflowStatus(record: IssuedPOViewRecord): PoStatus {
 
 /** Initiate Shipment allowed only when PO Status is ISSUED or ACCEPTED (§3.1). */
 function isShippable(record: IssuedPOViewRecord): boolean {
+  // A draft PO (even once approved → "Accepted") must be released to the vendor before shipment.
+  if (record.status === 'Draft') return false;
   return PO_SHIPPABLE_STATUSES.includes(resolvePoWorkflowStatus(record));
 }
 
@@ -384,7 +386,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(lr.record)} title="Edit PO" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"><Pencil size={12} /></button>
+                                <button onClick={() => onEdit(lr.record)} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
                                 <button onClick={() => openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })} title="Initiate Transit (per line)" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"><Truck size={12} /></button>
                               </div>
                             </td>
@@ -484,7 +486,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-red-600 tabular-nums">{rollup.returned}</span> : <span className="text-slate-300 text-xs">0</span>}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(r)} title="Edit PO" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
+                                <button onClick={() => onEdit(r)} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
                                 <button
                                   onClick={() => shippable && openConsolidated(r)}
                                   disabled={!shippable}

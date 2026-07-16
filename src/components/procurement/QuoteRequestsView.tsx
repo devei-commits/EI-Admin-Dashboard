@@ -11,10 +11,9 @@ import {
   type QuoteStatus, type PrSource,
 } from '../../constants/procurement';
 import { quoteSlaLevel } from '../../lib/procurementSla';
-import { RfqTemplatePopup, type RfqTemplateData, type RfqRecordedQuote } from './RfqTemplatePopup';
+import { type RfqTemplateData } from './RfqTemplatePopup';
 import { QuotationEditPopup } from './QuotationEditPopup';
-import { recordQuotationToPriceList, type RecordedQuoteInput } from '../../utils/recordQuotationToPriceList';
-import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
+import { recordQuotationToPriceList } from '../../utils/recordQuotationToPriceList';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 
 function fmtDate(d: string | null | undefined): string {
@@ -84,10 +83,8 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
-  // Two-step flow: record the quotation first, then review + send the email (which saves to the price list).
+  // Record a vendor quotation (MOQ bands) → Approve & Save writes straight to the Items List price list.
   const [recordingFor, setRecordingFor] = useState<RfqTemplateData | null>(null);
-  const [emailingFor, setEmailingFor] = useState<{ data: RfqTemplateData; quote: RecordedQuoteInput } | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -289,7 +286,7 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                                 </button>
                               )}
                               {canRecord && (
-                                <button onClick={() => { setSendError(null); setRecordingFor(r.templateData); }} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
+                                <button onClick={() => setRecordingFor(r.templateData)} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
                                   <FileText size={12} /> Record Quote
                                 </button>
                               )}
@@ -306,71 +303,33 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         </div>
       )}
 
-      {/* Step 1 — record the quotation (vendor + price/MOQ/lead time/terms). */}
+      {/* Record the quotation — enter MOQ price bands and save straight to the price list. */}
       {recordingFor && (
         <QuotationEditPopup
           data={recordingFor}
           vendors={vendors}
           vendorsLoading={vendorsLoading}
           onClose={() => setRecordingFor(null)}
-          onContinue={(quote) => {
-            setEmailingFor({ data: recordingFor, quote });
-            setRecordingFor(null);
-          }}
-        />
-      )}
-
-      {/* Step 2 — review + send the email; sending writes the price into the Items List. */}
-      {emailingFor && (
-        <RfqTemplatePopup
-          data={emailingFor.data}
-          recordedQuote={buildRecordedQuote(emailingFor.quote)}
-          onClose={() => setEmailingFor(null)}
-          onApprove={async () => {
-            const { data, quote } = emailingFor;
-            const itemType = data.itemType;
-            const materialId = itemType === 'RM' ? data.rawMaterialId : data.packMaterialId;
+          onApproveSave={async (quote) => {
+            const itemType = recordingFor.itemType;
+            const materialId = itemType === 'RM' ? recordingFor.rawMaterialId : recordingFor.packMaterialId;
             if (!itemType || materialId == null) {
-              setSendError('This item is not linked to a material master, so it cannot be priced.');
-              return;
+              return { success: false, error: 'This item is not linked to a material master, so it cannot be priced.' };
             }
             const res = await recordQuotationToPriceList({
               itemType,
               materialId,
-              askId: data.askId ?? null,
+              askId: recordingFor.askId ?? null,
               quote,
             });
-            if (!res.success) {
-              setSendError(res.error ?? 'Failed to update the price list.');
-              return;
-            }
-            setEmailingFor(null);
-            setSendError(null);
+            if (!res.success) return { success: false, error: res.error ?? 'Failed to update the price list.' };
             onQuoteRecorded?.();
             void load();
+            return { success: true };
           }}
         />
-      )}
-
-      {sendError && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[130] rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 shadow-lg">
-          {sendError}
-        </div>
       )}
     </div>
   );
 };
 
-/** Map the recorded quote input into the email step's display/quote payload. */
-function buildRecordedQuote(quote: RecordedQuoteInput): RfqRecordedQuote {
-  return {
-    vendorName: quote.vendorName,
-    vendorEmail: quote.vendorEmail,
-    pricePerUnit: quote.pricePerUnit,
-    moq: quote.moq,
-    moqMax: quote.moqMax,
-    leadTimeDays: quote.leadTimeDays,
-    paymentTermsLabel: quote.paymentTerms ? formatStagedPaymentTermsSummary(quote.paymentTerms) : undefined,
-    validTill: quote.validTill,
-  };
-}

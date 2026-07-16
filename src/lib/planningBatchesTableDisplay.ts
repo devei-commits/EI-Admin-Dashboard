@@ -130,9 +130,11 @@ function buildMaterialStatusFromAvailability(
   kind: 'RM' | 'PM',
   avail: SoPlanningBatchAvailabilityRow | null | undefined,
 ): PlanningBatchMaterialStatusView {
+  // Labels follow the spec §8.2 / §5 controlled vocabulary
+  // (AVAILABLE / PLANNING PENDING / PLANNED / UNDER PROCUREMENT / SHORTAGE).
   if (!avail) return { label: '—', sub: null, tone: 'neutral' };
   if (kind === 'RM') {
-    if (avail.rmStartable) return { label: 'READY', sub: 'stock covers batch', tone: 'ok' };
+    if (avail.rmStartable) return { label: 'AVAILABLE', sub: 'stock covers batch', tone: 'ok' };
     if (avail.rmRemainingTotalKg > 0.01) {
       return {
         label: 'SHORTAGE',
@@ -140,9 +142,9 @@ function buildMaterialStatusFromAvailability(
         tone: 'bad',
       };
     }
-    return { label: 'REQUESTED', sub: 'procurement in flight', tone: 'warn' };
+    return { label: 'UNDER PROCUREMENT', sub: 'procurement in flight', tone: 'warn' };
   }
-  if (avail.pmStartable) return { label: 'READY', sub: 'stock covers batch', tone: 'ok' };
+  if (avail.pmStartable) return { label: 'AVAILABLE', sub: 'stock covers batch', tone: 'ok' };
   if (avail.pmRemainingTotalUnits > 0) {
     return {
       label: 'SHORTAGE',
@@ -150,7 +152,7 @@ function buildMaterialStatusFromAvailability(
       tone: 'bad',
     };
   }
-  return { label: 'REQUESTED', sub: 'procurement in flight', tone: 'warn' };
+  return { label: 'UNDER PROCUREMENT', sub: 'procurement in flight', tone: 'warn' };
 }
 
 export function buildPlanningBatchRmStatusView(
@@ -160,16 +162,16 @@ export function buildPlanningBatchRmStatusView(
   if (avail) return buildMaterialStatusFromAvailability('RM', avail);
   if (!releaseSplit || releaseSplit.total <= 0) return { label: '—', sub: null, tone: 'neutral' };
   if (releaseSplit.released >= releaseSplit.total) {
-    return { label: 'RELEASED', sub: `${releaseSplit.released}/${releaseSplit.total} lines`, tone: 'ok' };
+    return { label: 'UNDER PROCUREMENT', sub: `${releaseSplit.released}/${releaseSplit.total} released`, tone: 'ok' };
   }
   if (releaseSplit.released > 0) {
     return {
-      label: 'PARTIAL',
-      sub: `${releaseSplit.released}/${releaseSplit.total} lines`,
+      label: 'UNDER PROCUREMENT',
+      sub: `${releaseSplit.released}/${releaseSplit.total} released`,
       tone: 'warn',
     };
   }
-  return { label: 'PENDING', sub: `${releaseSplit.total} lines`, tone: 'bad' };
+  return { label: 'PLANNING PENDING', sub: `${releaseSplit.total} lines`, tone: 'bad' };
 }
 
 export function buildPlanningBatchPmStatusView(
@@ -179,16 +181,16 @@ export function buildPlanningBatchPmStatusView(
   if (avail) return buildMaterialStatusFromAvailability('PM', avail);
   if (!releaseSplit || releaseSplit.total <= 0) return { label: '—', sub: null, tone: 'neutral' };
   if (releaseSplit.released >= releaseSplit.total) {
-    return { label: 'RELEASED', sub: `${releaseSplit.released}/${releaseSplit.total} lines`, tone: 'ok' };
+    return { label: 'UNDER PROCUREMENT', sub: `${releaseSplit.released}/${releaseSplit.total} released`, tone: 'ok' };
   }
   if (releaseSplit.released > 0) {
     return {
-      label: 'PARTIAL',
-      sub: `${releaseSplit.released}/${releaseSplit.total} lines`,
+      label: 'UNDER PROCUREMENT',
+      sub: `${releaseSplit.released}/${releaseSplit.total} released`,
       tone: 'warn',
     };
   }
-  return { label: 'PENDING', sub: `${releaseSplit.total} lines`, tone: 'bad' };
+  return { label: 'PLANNING PENDING', sub: `${releaseSplit.total} lines`, tone: 'bad' };
 }
 
 export function buildPlanningBatchProductionView(
