@@ -24,7 +24,7 @@ import {
   XCircle,
   Ban,
 } from 'lucide-react';
-import type { FFStatus, SOStatus, CommercialStatus } from '../types/orderFulfillment';
+import type { FFStatus, SOStatus, CommercialStatus, SalesOrderStatus } from '../types/orderFulfillment';
 
 // ═══════════════════════════════════════════════════════════
 // FG LOCATIONS & COURIERS
@@ -373,6 +373,34 @@ export const COMMERCIAL_STATUS_FILTER_OPTIONS: { key: CommercialStatus | 'all'; 
   { key: 'closed', label: 'Closed' },
   { key: 'on_hold', label: 'On Hold' },
   { key: 'cancelled', label: 'Cancelled' },
+];
+
+/**
+ * Authoritative SO status (sales_orders.status) — the value set from Edit SO → "Update SO Status"
+ * and shown as the SO Dashboard "Status" pill. Kept 1:1 with SALES_ORDER_STATUS_OPTIONS so the
+ * column and the dropdown always agree.
+ */
+export const SALES_ORDER_STATUS_CONFIG: Record<SalesOrderStatus, {
+  label: string;
+  icon: typeof Package;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}> = {
+  Draft: { label: 'Draft', icon: FileText, color: 'text-gray-500', bgColor: 'bg-gray-100', borderColor: 'border-gray-200' },
+  Confirmed: { label: 'Confirmed', icon: ReceiptText, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+  Approved: { label: 'Approved', icon: ThumbsUp, color: 'text-emerald-600', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
+  Closed: { label: 'Closed', icon: XCircle, color: 'text-teal-700', bgColor: 'bg-teal-50', borderColor: 'border-teal-200' },
+  Cancelled: { label: 'Cancelled', icon: Ban, color: 'text-gray-500', bgColor: 'bg-gray-100', borderColor: 'border-gray-300' },
+};
+
+export const SALES_ORDER_STATUS_FILTER_OPTIONS: { key: SalesOrderStatus | 'all'; label: string }[] = [
+  { key: 'all', label: 'All Statuses' },
+  { key: 'Draft', label: 'Draft' },
+  { key: 'Confirmed', label: 'Confirmed' },
+  { key: 'Approved', label: 'Approved' },
+  { key: 'Closed', label: 'Closed' },
+  { key: 'Cancelled', label: 'Cancelled' },
 ];
 
 export const BATCH_STAGE_FILTER_OPTIONS = [
