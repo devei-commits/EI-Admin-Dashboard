@@ -58,6 +58,61 @@ export type ItemsInvolvedProcurementDisplay = {
 
 const QUOTATION_NOTE_TAG = 'Quotation requested from Planning';
 
+export interface ItemsInvolvedSupplyInput {
+  /** Free stock in hand (stock_in_hand net of all reservations). */
+  sihFree: number;
+  /** Stock reserved for THIS demand's batches (reserved_batch_items scoped by PI). */
+  scopedReserved: number;
+  /** Release-to-Planning qty not yet on any PO line (procurement queue). */
+  planned: number;
+  /** On open/issued PO, not yet shipped. */
+  po: number;
+  /** Shipped, not yet received (GRN Complete). */
+  inTransit: number;
+  /** Received, GRN not yet posted to stock. No warehouse source yet → 0. */
+  underGrn: number;
+  /** Full BOM demand across confirmed PIs. */
+  totalRequired: number;
+}
+
+export interface ItemsInvolvedGap {
+  /** Total supply toward demand. */
+  supply: number;
+  /** supply − totalRequired ( ≥0 covered/surplus, <0 short ). */
+  net: number;
+  /** Shortfall qty = max(0, −net). */
+  shortQty: number;
+  /** min(100, round(supply / totalRequired × 100)). */
+  coveragePct: number;
+}
+
+/**
+ * Items Involved shortage gap — spec §6.3:
+ *   gap = TotalReq − (SIH + Reserved/Planned + PO + In Transit + Under GRN)
+ * In this codebase `SIH` is free stock (net of ALL reservations), so `scopedReserved` re-credits
+ * stock reserved for THIS demand's own batches (otherwise their own reservations read as shortage),
+ * and `planned` is the release-to-Planning procurement queue (disjoint from reserved). Under-GRN has
+ * no warehouse column yet (received folds into stock) and is passed as 0. Target net = 0; net < 0 →
+ * SHORTAGE; net > 0 → over-planned (informational, not flagged).
+ */
+export function computeItemsInvolvedGap(input: ItemsInvolvedSupplyInput): ItemsInvolvedGap {
+  const n = (v: number) => (Number.isFinite(v) ? v : 0);
+  const supply =
+    n(input.sihFree) +
+    n(input.scopedReserved) +
+    n(input.planned) +
+    n(input.po) +
+    n(input.inTransit) +
+    n(input.underGrn);
+  const req = Math.max(0, n(input.totalRequired));
+  const eps = 1e-9;
+  const net = supply - req;
+  const shortQty = net < -eps ? -net : 0;
+  const coveragePct =
+    req > eps ? Math.max(0, Math.min(100, Math.round((supply / req) * 100))) : 100;
+  return { supply, net, shortQty, coveragePct };
+}
+
 function normalizeMaterialCode(code: string): string {
   const c = (code ?? '').toString().trim().toLowerCase();
   if (!c) return '';

@@ -355,8 +355,15 @@ export interface ItemsInvolvedRow {
   batchNumber: string | null;
   /** Expiry date (YYYY-MM-DD) from warehouse batch */
   expiryDate: string | null;
-  /** From warehouse_inventory — same as Warehouse -> Inventory */
+  /** From warehouse_inventory — same as Warehouse -> Inventory (GLOBAL per-item reserved). */
   reserved?: number;
+  /**
+   * Reserved specifically for THESE PIs' batches (reserved_batch_items scoped by
+   * planning_extracted_id). Spec §6.3 "Reserved" supply term: `sih` is free stock (net of ALL
+   * reservations), so scopedReserved re-credits stock earmarked for this demand. RM in primary
+   * display unit (kg→primary converted), PM in PCS.
+   */
+  scopedReserved?: number;
   /**
    * Stage-flow planned balance: qty from Release to Planning not yet on any PO line.
    * `totalReleased` is PR + Planning PE-* draft PO (not BOM confirm / planning_batches).

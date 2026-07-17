@@ -50,6 +50,40 @@ describe('mergePurchaseOrderRecords', () => {
     expect(merged[0].backendPoId).toBe('42');
   });
 
+  it('surfaces an approved draft PO as "accepted" (not draft)', () => {
+    const base: DraftPO = {
+      id: 'EI/PO/26-27/400',
+      dpoNumber: 'EI/PO/26-27/400',
+      requestId: '',
+      requestCode: 'EI/PO/26-27/400',
+      type: 'RM',
+      vendor: 'ACME',
+      vendorId: '',
+      status: 'Pending Approval',
+      createdDate: '2026-03-11',
+      createdBy: 'Procurement',
+      paymentTerms: '',
+      expectedDelivery: '',
+      deliveryAddress: '',
+      vendorRating: 0,
+      alertMessage: '',
+      alertType: 'warning',
+      lineItems: [
+        { item: 'X', itemCode: 'X1', type: 'RM', qty: '10', pricePerUnit: 1, gstPercent: 18, gstAmount: 1.8, lineTotal: 11.8 },
+      ],
+      subtotal: 10,
+      gstTotal: 1.8,
+      grandTotal: 11.8,
+      backendPoId: '43',
+    };
+    const pending = mergePurchaseOrderRecords([], [base], []);
+    expect(pending[0].poWorkflowStatus).toBe('draft'); // pending approval → still draft
+
+    const approved = mergePurchaseOrderRecords([], [{ ...base, status: 'Approved' }], []);
+    expect(approved[0].status).toBe('Draft'); // legacy status stays Draft (not yet released)
+    expect(approved[0].poWorkflowStatus).toBe('accepted'); // …but the pill reads Accepted
+  });
+
   it('prefers a real request match when requestId is set', () => {
     const request: ProcurementRequest = {
       id: '7',

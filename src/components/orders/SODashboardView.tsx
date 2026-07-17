@@ -5,7 +5,7 @@ import {
   XCircle, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import type {
-  SODashboardRow, CommercialStatus,
+  SODashboardRow, CommercialStatus, SalesOrderStatus,
   SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData,
 } from '../../types/orderFulfillment';
 import {
@@ -13,7 +13,7 @@ import {
   cancelFulfillmentOrder,
   manualFulfillFulfillmentOrder,
 } from '../../services/fulfillment.service';
-import { COMMERCIAL_STATUS_CONFIG, COMMERCIAL_STATUS_FILTER_OPTIONS } from '../../constants/orderFulfillment';
+import { SALES_ORDER_STATUS_CONFIG, SALES_ORDER_STATUS_FILTER_OPTIONS } from '../../constants/orderFulfillment';
 import { formatLakhs } from '../../utils/orderFulfillmentUtils';
 import { CommentsPanel } from './CommentsPanel';
 import { SoActionModals, type SoActionModalsHandle, type SoUpdatePayload } from './SoActionModals';
@@ -36,8 +36,19 @@ function fmtMoney(n: number): string {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function CommercialBadge({ status }: { status: CommercialStatus }) {
-  const cfg = COMMERCIAL_STATUS_CONFIG[status] ?? COMMERCIAL_STATUS_CONFIG.received;
+// The Status column shows the authoritative order status (sales_orders.status) — the same 5 values
+// Edit SO → "Update SO Status" sets. Legacy rows without orderStatus fall back from commercial_status.
+const ORDER_STATUS_FROM_COMMERCIAL: Record<CommercialStatus, SalesOrderStatus> = {
+  draft: 'Draft', received: 'Confirmed', advance_pending: 'Confirmed', under_review: 'Confirmed',
+  approved: 'Approved', partial_closed: 'Approved', closed: 'Closed', on_hold: 'Confirmed', cancelled: 'Cancelled',
+};
+function resolveOrderStatus(row: SODashboardRow): SalesOrderStatus {
+  const raw = String(row.orderStatus ?? '').trim().toLowerCase();
+  const known = (Object.keys(SALES_ORDER_STATUS_CONFIG) as SalesOrderStatus[]).find((k) => k.toLowerCase() === raw);
+  return known ?? ORDER_STATUS_FROM_COMMERCIAL[row.commercialStatus] ?? 'Draft';
+}
+function OrderStatusBadge({ status }: { status: SalesOrderStatus }) {
+  const cfg = SALES_ORDER_STATUS_CONFIG[status] ?? SALES_ORDER_STATUS_CONFIG.Draft;
   const Icon = cfg.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${cfg.color} ${cfg.bgColor} ${cfg.borderColor}`}>
@@ -308,7 +319,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
   // Filters
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<CommercialStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<SalesOrderStatus | 'all'>('all');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -449,10 +460,10 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as CommercialStatus | 'all')}
+            onChange={(e) => setStatusFilter(e.target.value as SalesOrderStatus | 'all')}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
           >
-            {COMMERCIAL_STATUS_FILTER_OPTIONS.map((o) => (
+            {SALES_ORDER_STATUS_FILTER_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>
@@ -615,7 +626,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                           ) : <span className="text-[10px] text-gray-400">—</span>}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          <CommercialBadge status={row.commercialStatus} />
+                          <OrderStatusBadge status={resolveOrderStatus(row)} />
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-right">
                           <span className="text-xs tabular-nums text-gray-700">{row.totalOrderedQty.toLocaleString('en-IN')}</span>

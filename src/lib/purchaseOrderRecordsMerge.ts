@@ -62,7 +62,9 @@ export function mergePurchaseOrderRecords(
       poNumber: dpo.dpoNumber.replace(/^DPO/i, 'PO'),
       vendor: dpo.vendor,
       status: 'Draft',
-      poWorkflowStatus: 'draft',
+      // An approved draft PO surfaces as "Accepted" (still not released — see isShippable guard);
+      // otherwise it stays "Draft" (incl. "Pending Approval").
+      poWorkflowStatus: dpo.status === 'Approved' ? 'accepted' : 'draft',
       etaDays: 0,
       etaDateDisplay: dpo.expectedDelivery,
       lineItems: dpo.lineItems,

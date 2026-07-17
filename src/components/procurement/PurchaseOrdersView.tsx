@@ -8,7 +8,7 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -29,11 +29,17 @@ function mapGrnStatusToStage(status: string | null | undefined): GrnStage {
   return 'in_transit';
 }
 
-/** Per-line Purchase Status from received/billed signals (PAID/RETURNED need finance data). */
-function derivePurchaseStatus(received: number, billed: number): PurchaseStatus | null {
+/**
+ * Per-line Purchase Status across the purchase lifecycle: Ordered → Received → Billed → Paid.
+ * Received/Billed come from matched-GRN qty; Paid is inferred from the PO reaching the 'completed'
+ * workflow state (3-way match → payment → close). Draft POs aren't ordered yet → null.
+ */
+function derivePurchaseStatus(received: number, billed: number, wf: PoStatus): PurchaseStatus | null {
+  if (wf === 'draft') return null;
+  if (wf === 'completed') return 'paid';
   if (billed > 0 && billed >= received) return 'billed';
   if (received > 0) return 'received';
-  return null;
+  return 'ordered'; // issued to vendor, awaiting receipt
 }
 
 // ── Display status → spec PO workflow status ──
@@ -43,6 +49,8 @@ function resolvePoWorkflowStatus(record: IssuedPOViewRecord): PoStatus {
 
 /** Initiate Shipment allowed only when PO Status is ISSUED or ACCEPTED (§3.1). */
 function isShippable(record: IssuedPOViewRecord): boolean {
+  // A draft PO (even once approved → "Accepted") must be released to the vendor before shipment.
+  if (record.status === 'Draft') return false;
   return PO_SHIPPABLE_STATUSES.includes(resolvePoWorkflowStatus(record));
 }
 
@@ -331,9 +339,10 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         </td>
                       </tr>
                       {!collapsedVendors.has(`items:${vendor}`) && vendorLineRows.map((lr, idx) => {
-                        const ps = derivePurchaseStatus(lr.received, lr.billed);
+                        const ps = derivePurchaseStatus(lr.received, lr.billed, resolvePoWorkflowStatus(lr.record));
                         const psCfg = ps ? PURCHASE_STATUS_CONFIG[ps] : null;
                         const fullyReceived = lr.received >= lr.poQty && lr.poQty > 0;
+                        const canTransit = isShippable(lr.record) && !fullyReceived;
                         const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
                           : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
                           : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
@@ -372,7 +381,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                               )}
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-slate-400">— pending</span>}
+                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-slate-400">— draft</span>}
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
@@ -384,8 +393,15 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(lr.record)} title="Edit PO" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100"><Pencil size={12} /></button>
-                                <button onClick={() => openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })} title="Initiate Transit (per line)" className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"><Truck size={12} /></button>
+                                <button onClick={() => onEdit(lr.record)} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
+                                <button
+                                  onClick={() => canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })}
+                                  disabled={!canTransit}
+                                  title={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
+                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-md border ${canTransit ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' : 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'}`}
+                                >
+                                  <Truck size={12} />
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -484,7 +500,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-red-600 tabular-nums">{rollup.returned}</span> : <span className="text-slate-300 text-xs">0</span>}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(r)} title="Edit PO" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
+                                <button onClick={() => onEdit(r)} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
                                 <button
                                   onClick={() => shippable && openConsolidated(r)}
                                   disabled={!shippable}

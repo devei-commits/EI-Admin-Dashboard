@@ -5,7 +5,47 @@ import type { RawMaterialRecord } from '../services/rawMaterials.service';
 import type { PackMaterialRecord } from '../services/packMaterials.service';
 import type { Order } from '../types/salesPurchase.types';
 
-export type PlanBatchMaterialStatus = 'AVAILABLE' | 'SHORTAGE' | 'UNDER PROCUREMENT';
+export type PlanBatchMaterialStatus =
+  | 'AVAILABLE'
+  | 'PLANNED'
+  | 'PLANNING PENDING'
+  | 'UNDER PROCUREMENT'
+  | 'SHORTAGE';
+
+const MATERIAL_STATUS_EPS = 1e-6;
+
+/**
+ * Line-item material status (spec §8.2). Priority, most-covered first:
+ *  - AVAILABLE         — reserved + procured ≥ required (fully covered)
+ *  - UNDER PROCUREMENT — still short, but PR/PO/in-transit/under-GRN is in flight
+ *  - PLANNED           — reserved against SIH but still short and nothing procured yet
+ *  - PLANNING PENDING  — nothing reserved/procured yet, but free stock could cover it (just reserve)
+ *  - SHORTAGE          — nothing reserved/procured and free stock can't cover → needs procurement
+ * `free` is unreserved stock (SIH − reserved); `reserved` is stock reserved for this line.
+ */
+export function computeMaterialLineStatus(input: {
+  reqQty: number;
+  reserved: number;
+  free: number;
+  plannedQty: number;
+  poQty: number;
+  inTransit: number;
+  underGrn?: number;
+}): PlanBatchMaterialStatus {
+  const req = Number(input.reqQty) || 0;
+  if (req <= MATERIAL_STATUS_EPS) return 'AVAILABLE';
+  const reserved = Math.max(0, Number(input.reserved) || 0);
+  const procured =
+    Math.max(0, Number(input.plannedQty) || 0) +
+    Math.max(0, Number(input.poQty) || 0) +
+    Math.max(0, Number(input.inTransit) || 0) +
+    Math.max(0, Number(input.underGrn) || 0);
+  if (reserved + procured >= req - MATERIAL_STATUS_EPS) return 'AVAILABLE';
+  if (procured > MATERIAL_STATUS_EPS) return 'UNDER PROCUREMENT';
+  if (reserved > MATERIAL_STATUS_EPS) return 'PLANNED';
+  if ((Number(input.free) || 0) >= req - MATERIAL_STATUS_EPS) return 'PLANNING PENDING';
+  return 'SHORTAGE';
+}
 
 export interface ActualLeadTimeStats {
   avgDays: number;
@@ -202,10 +242,16 @@ export function computePlanBatchMaterialStatus(
   inTransit: number,
   openPoQty: number,
   openPrQty: number,
+  reserved = 0,
 ): PlanBatchMaterialStatus {
-  if (reqQty <= free) return 'AVAILABLE';
-  if (inTransit > 0 || openPoQty > 0 || openPrQty > 0) return 'UNDER PROCUREMENT';
-  return 'SHORTAGE';
+  return computeMaterialLineStatus({
+    reqQty,
+    reserved,
+    free,
+    plannedQty: openPrQty,
+    poQty: openPoQty,
+    inTransit,
+  });
 }
 
 export function formatEarliestInHouse(input: {
@@ -232,8 +278,12 @@ export function planBatchStatusClass(status: PlanBatchMaterialStatus): string {
   switch (status) {
     case 'AVAILABLE':
       return 'text-emerald-700 font-semibold';
+    case 'PLANNED':
+      return 'text-blue-700 font-semibold';
     case 'UNDER PROCUREMENT':
       return 'text-amber-700 font-semibold';
+    case 'PLANNING PENDING':
+      return 'text-slate-600 font-semibold';
     default:
       return 'text-red-700 font-semibold';
   }
@@ -309,6 +359,7 @@ export function enrichPlanBatchRmRows(input: {
       row.inTransit,
       openPoQty,
       openPrQty,
+      row.reserved,
     );
     return {
       key: `rm-${row.code}-${idx}`,
@@ -374,6 +425,7 @@ export function enrichPlanBatchPmRows(input: {
       row.inTransit,
       openPoQty,
       openPrQty,
+      Math.max(0, row.sih - row.free), // reserved = SIH − free
     );
     return {
       key: `pm-${row.code}-${idx}`,

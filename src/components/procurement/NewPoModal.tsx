@@ -4,9 +4,20 @@
  * approval → vendor → GRN → match flow. PO type is captured up front.
  */
 import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
 import { PO_TYPE_ORDER, PO_TYPE_CONFIG, type PoType } from '../../constants/procurement';
+import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
+import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
+import { fetchRawMaterialsList } from '../../services/rawMaterials.service';
+import { fetchPackMaterialsList } from '../../services/packMaterials.service';
+import {
+  serializeStagedPaymentTerms,
+  validateStagedPercents,
+  formatStagedPaymentTermsObject,
+  type StagedPaymentTerms,
+} from '../../lib/stagedPaymentTerms';
 
 export interface NewPoVendorOption {
   id: string | number;
@@ -34,14 +45,19 @@ export interface NewPoModalProps {
 }
 
 interface LineDraft {
+  /** Auto-derived from the picked item (RM/PM) — no longer a manual selector. */
   type: 'RM' | 'PM';
   itemName: string;
   itemCode: string;
+  /** Selected RM/PM master option key ('rm:123' | 'pm:45'); empty when free-typed. */
+  itemKey: string;
+  rawMaterialId?: number;
+  packMaterialId?: number;
   qty: string;
-  rate: string;
-  tax: string;
 }
-const emptyLine = (): LineDraft => ({ type: 'RM', itemName: '', itemCode: '', qty: '', rate: '', tax: '18' });
+const emptyLine = (): LineDraft => ({ type: 'RM', itemName: '', itemCode: '', itemKey: '', qty: '' });
+/** Qty unit is auto-set by item kind: KG for RMs, PCS for PMs. */
+const unitForType = (type: 'RM' | 'PM') => (type === 'PM' ? 'PCS' : 'KG');
 
 function todayIso(): string {
   // Local-safe YYYY-MM-DD without Date.now math elsewhere.
@@ -53,7 +69,11 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
   const [poType, setPoType] = useState<PoType>('regular');
   const [orderDate, setOrderDate] = useState(todayIso());
   const [expectedDate, setExpectedDate] = useState('');
-  const [paymentTerms, setPaymentTerms] = useState('');
+  // Staged payment split (same model as Planning / SO): advance · pre-shipment · post-shipment + credit.
+  const [advancePctStr, setAdvancePctStr] = useState('0');
+  const [preShipmentPctStr, setPreShipmentPctStr] = useState('0');
+  const [postShipmentPctStr, setPostShipmentPctStr] = useState('0');
+  const [creditDaysStr, setCreditDaysStr] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
   const [busy, setBusy] = useState(false);
@@ -64,34 +84,72 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
-  const validLines = lines.filter((l) => l.itemName.trim() && Number(l.qty) > 0 && Number(l.rate) >= 0);
+  // RM/PM masters for the item-name typeahead (self-contained — no extra props needed).
+  const { data: rmList = [], isLoading: rmLoading } = useQuery({
+    queryKey: ['raw-materials', 'for-po-line'],
+    queryFn: () => fetchRawMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const { data: pmList = [], isLoading: pmLoading } = useQuery({
+    queryKey: ['pack-materials', 'for-po-line'],
+    queryFn: () => fetchPackMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  // Item name drives everything now (no manual Type): search RM + PM together; the picked item's
+  // kind sets the row Type and its Qty unit (KG / PCS). Suggestions filter by query before the 50-cap.
+  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  const materialsLoading = rmLoading || pmLoading;
+
+  // Picking a suggestion fills name + code + RM/PM id and aligns the row's Type to the item's kind.
+  const selectLineItem = (i: number, opt: MaterialTypeaheadOption) =>
+    setLine(i, {
+      itemName: opt.name,
+      itemCode: opt.code,
+      itemKey: opt.key,
+      type: opt.kind === 'pm' ? 'PM' : 'RM',
+      rawMaterialId: opt.rawMaterialId,
+      packMaterialId: opt.packMaterialId,
+    });
+  const clearLineItem = (i: number) =>
+    setLine(i, { itemKey: '', itemCode: '', type: 'RM', rawMaterialId: undefined, packMaterialId: undefined });
+
+  const validLines = lines.filter((l) => l.itemName.trim() && Number(l.qty) > 0);
   const matchedVendor = useMemo(
     () => vendors.find((v) => v.name.trim().toLowerCase() === vendorName.trim().toLowerCase()) || null,
     [vendors, vendorName],
   );
-  const grandTotal = validLines.reduce((s, l) => {
-    const base = (Number(l.qty) || 0) * (Number(l.rate) || 0);
-    return s + base + base * ((Number(l.tax) || 0) / 100);
-  }, 0);
+
+  // Staged payment split (advance · pre-shipment · post-shipment + credit) — serialized to JSON like SO/Planning.
+  const stagedTerms: StagedPaymentTerms = {
+    advance_pct: Number(advancePctStr) || 0,
+    pre_shipment_pct: Number(preShipmentPctStr) || 0,
+    post_shipment_pct: Number(postShipmentPctStr) || 0,
+    credit_days: Math.max(0, Math.floor(Number(creditDaysStr) || 0)),
+  };
+  const ptError = validateStagedPercents(stagedTerms.advance_pct, stagedTerms.pre_shipment_pct, stagedTerms.post_shipment_pct);
+  const ptSummary = formatStagedPaymentTermsObject(stagedTerms);
 
   const submit = async () => {
     setErr(null);
     if (!vendorName.trim()) { setErr('Select or enter a vendor.'); return; }
-    if (validLines.length === 0) { setErr('Add at least one line with item name, qty and rate.'); return; }
+    if (validLines.length === 0) { setErr('Add at least one line with an item name and quantity.'); return; }
+    if (ptError) { setErr(ptError); return; }
     const items = validLines.map((l) => ({
       itemName: l.itemName.trim(),
       itemCode: l.itemCode.trim() || `MAN-${l.type}-${Math.abs(Math.round(Number(l.qty) || 0))}`,
       type: l.type,
       quantity: String(Number(l.qty) || 0),
-      rate: String(Number(l.rate) || 0),
-      tax: String(Number(l.tax) || 0),
+      unit: unitForType(l.type), // KG for RM, PCS for PM — auto-set; price is captured later
+      // Link to the master when picked from suggestions (enables warehouse / Items-Involved matching).
+      ...(l.rawMaterialId != null ? { raw_material_id: l.rawMaterialId } : {}),
+      ...(l.packMaterialId != null ? { pack_material_id: l.packMaterialId } : {}),
     }));
     const payload: NewPoPayload = {
       orderId: poNumber,
       vendorName: vendorName.trim(),
       orderDate,
       expectedShipmentDate: expectedDate || undefined,
-      paymentTerms: paymentTerms.trim() || matchedVendor?.paymentTerms || undefined,
+      paymentTerms: serializeStagedPaymentTerms(stagedTerms),
       status: 'Draft',
       formData: {
         poType,
@@ -161,9 +219,28 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
           </div>
         </div>
 
-        <div className="mt-3">
-          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Payment terms (optional)</label>
-          <input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} placeholder={matchedVendor?.paymentTerms || 'e.g. Net 30'} />
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Payment split (advance · pre-shipment · post-shipment)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div>
+              <label className="block text-[10px] text-slate-500 mb-0.5">Advance %</label>
+              <input value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 mb-0.5">Pre-shipment %</label>
+              <input value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 mb-0.5">Post-shipment %</label>
+              <input value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 mb-0.5">Credit (days)</label>
+              <input value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} inputMode="numeric" className={inputCls} placeholder="—" />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-2">{ptSummary}</p>
+          {ptError && <p className="text-[11px] text-red-600 mt-1">{ptError}</p>}
         </div>
       </ModalSection>
 
@@ -172,27 +249,42 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500">
-                {['Type', 'Item name', 'Code', 'Qty', '₹/unit', 'GST %', ''].map((h) => <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>)}
+                {['Item name', 'Code', 'Qty req', ''].map((h) => <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="px-2 py-1.5"><select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM' })} className={inputCls}><option value="RM">RM</option><option value="PM">PM</option></select></td>
-                  <td className="px-2 py-1.5"><input value={l.itemName} onChange={(e) => setLine(i, { itemName: e.target.value })} className={inputCls} placeholder="Item name" /></td>
-                  <td className="px-2 py-1.5"><input value={l.itemCode} onChange={(e) => setLine(i, { itemCode: e.target.value })} className={inputCls} placeholder="Code" /></td>
-                  <td className="px-2 py-1.5 w-20"><input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
-                  <td className="px-2 py-1.5 w-24"><input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
-                  <td className="px-2 py-1.5 w-16"><input value={l.tax} onChange={(e) => setLine(i, { tax: e.target.value })} inputMode="decimal" className={inputCls} placeholder="18" /></td>
+                  <td className="px-2 py-1.5 min-w-[16rem]">
+                    <MaterialMasterTypeahead
+                      options={materialOptions}
+                      loading={materialsLoading}
+                      value={l.itemName}
+                      selectedId={l.itemKey}
+                      onValueChange={(next) => setLine(i, { itemName: next })}
+                      onSelect={(opt) => selectLineItem(i, opt)}
+                      onClearSelection={() => clearLineItem(i)}
+                      requirePickFromList={false}
+                      placeholder="Search item by name or code…"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input value={l.itemCode} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" />
+                  </td>
+                  <td className="px-2 py-1.5 w-36">
+                    <div className="flex items-center gap-1.5">
+                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" />
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-1.5"><button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-2">
           <button type="button" onClick={addLine} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"><Plus className="h-3.5 w-3.5" /> Add line</button>
-          <span className="text-xs text-slate-600">Grand total (incl. GST): <b className="tabular-nums">₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></span>
         </div>
       </ModalSection>
 

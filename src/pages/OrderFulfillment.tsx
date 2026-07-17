@@ -25,6 +25,7 @@ import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
+import { queryClient } from '../lib/queryClient';
 
 type ViewMode = 'so-dashboard' | 'products-batches';
 type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
@@ -216,6 +217,7 @@ export const OrderFulfillment: React.FC = () => {
       shipAddress: string;
       paymentTerms: string;
       notes: string;
+      salesOrderStatus?: string;
       items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
     }
   ): Promise<void> => {
@@ -223,6 +225,11 @@ export const OrderFulfillment: React.FC = () => {
     if (!id) return;
     await updateFulfillmentOrder(id, data);
     await loadOrders();
+    // An SO-status change (Draft↔Approved…) flips its visibility in Planning → PIS Extracted.
+    // Invalidate the Planning list so it refetches fresh instead of showing a stale cached copy.
+    if (data.salesOrderStatus) {
+      void queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+    }
   };
 
   const handleGenerateInvoice = async (_soNo: string, _data: InvoiceData) => {

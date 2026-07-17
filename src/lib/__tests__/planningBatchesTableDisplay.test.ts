@@ -28,7 +28,7 @@ describe('planningBatchesTableDisplay', () => {
     expect(computePlanningBatchPlannedQty(baseRow)).toBe(3000);
   });
 
-  it('shows READY when batch RM availability is startable', () => {
+  it('shows AVAILABLE when batch RM availability is startable', () => {
     const avail: SoPlanningBatchAvailabilityRow = {
       sequence: 1,
       sent: true,
@@ -42,7 +42,7 @@ describe('planningBatchesTableDisplay', () => {
       pmStartable: true,
     };
     const view = buildPlanningBatchRmStatusView(avail);
-    expect(view.label).toBe('READY');
+    expect(view.label).toBe('AVAILABLE');
   });
 
   it('maps production batch lifecycle label', () => {

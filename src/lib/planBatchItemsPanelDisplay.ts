@@ -6,6 +6,7 @@ import { formatQtyExact } from '../utils/formatQty';
 import {
   type PlanBatchMaterialStatus,
   planBatchStatusClass,
+  computeMaterialLineStatus,
 } from './planBatchMaterialLeadTime';
 import { parseSpecificGravity, rmPrimaryQtyToKg, specificGravityFromBomLine } from './rmUnitConversion';
 
@@ -89,11 +90,10 @@ export function computeBatchItemsPanelStatus(
   plannedQty: number,
   poQty: number,
   inTransit: number,
-  underGrn: number
+  underGrn: number,
+  reserved = 0
 ): PlanBatchMaterialStatus {
-  if (reqQty <= free) return 'AVAILABLE';
-  if (plannedQty > 0 || poQty > 0 || inTransit > 0 || underGrn > 0) return 'UNDER PROCUREMENT';
-  return 'SHORTAGE';
+  return computeMaterialLineStatus({ reqQty, reserved, free, plannedQty, poQty, inTransit, underGrn });
 }
 
 export function formatBatchItemsPanelQty(value: number, unit: string): string {
@@ -160,7 +160,7 @@ export function buildBatchItemsPanelRows(input: {
     const underGrn = warehouseQtyToKg(wh?.underGrn ?? 0, wh, rm, lineSg);
     const free = Math.max(0, sih - reserved);
     const totalRequired = involved?.totalRequired ?? required;
-    const status = computeBatchItemsPanelStatus(required, free, plannedQty, poQty, inTransit, underGrn);
+    const status = computeBatchItemsPanelStatus(required, free, plannedQty, poQty, inTransit, underGrn, reserved);
     const shortfall = Math.max(0, required - free);
 
     rows.push({
@@ -211,7 +211,7 @@ export function buildBatchItemsPanelRows(input: {
     const underGrn = Number(wh?.underGrn ?? 0) || 0;
     const free = Math.max(0, sih - reserved);
     const totalRequired = involved?.totalRequired ?? required;
-    const status = computeBatchItemsPanelStatus(required, free, plannedQty, poQty, inTransit, underGrn);
+    const status = computeBatchItemsPanelStatus(required, free, plannedQty, poQty, inTransit, underGrn, reserved);
     const shortfall = Math.max(0, required - free);
 
     rows.push({

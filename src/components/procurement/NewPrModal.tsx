@@ -1,11 +1,22 @@
 /**
  * New (manual / direct) Procurement Request — Flowchart SEED "Direct PR (manual)".
- * Creates a PR without a Planning row (source='manual'). Multi-line.
+ * Multi-line. Can optionally be LINKED to a confirmed Planning row (SO/PE): when linked, the PR
+ * carries `planning_extracted_id` and each line resolves a numeric raw_material_id / pack_material_id
+ * so the resulting PO flows back into Planning → Items Involved (Planned / PO Qty / In Transit).
+ * Left unlinked → a true standalone manual PR (source='manual'), unchanged from before.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
 import type { CreateProcurementPayload, ProcurementRequestItem } from '../../services/procurement.service';
+import { fetchPlanningExtractedList } from '../../services/planningExtracted.service';
+import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
+import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
+import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
+import VendorClientNameTypeahead from '../VendorClientNameTypeahead';
+import { fetchVendorClients } from '../../services/vendorClient.service';
 
 export interface NewPrModalProps {
   onClose: () => void;
@@ -13,38 +24,138 @@ export interface NewPrModalProps {
 }
 
 interface LineDraft {
+  /** Auto-derived from the picked item (RM/PM) — no longer a manual selector. */
   type: 'RM' | 'PM';
   code: string;
   name: string;
+  /** Selected RM/PM master option key ('rm:123' | 'pm:45'); empty when free-typed. */
+  itemKey: string;
+  rawMaterialId?: number;
+  packMaterialId?: number;
   qty: string;
-  unit: string;
-  price: string;
 }
 
-const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', qty: '', unit: '', price: '' });
+const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', itemKey: '', qty: '' });
+
+const normKey = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase();
+/** Qty unit is auto-set by item kind: KG for RMs, PCS for PMs. */
+const unitForType = (type: 'RM' | 'PM') => (type === 'PM' ? 'PCS' : 'KG');
 
 export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => {
   const [priority, setPriority] = useState('Medium');
   const [requiredBy, setRequiredBy] = useState('');
   const [preferredVendor, setPreferredVendor] = useState('');
+  const [preferredVendorId, setPreferredVendorId] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
+  const [linkedPeId, setLinkedPeId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Confirmed planning rows (BOM confirmed) — only these appear in Items Involved, so only these
+  // are worth linking to.
+  const { data: planningRows = [] } = useQuery({
+    queryKey: ['planning-extracted', 'for-pr-link'],
+    queryFn: () => fetchPlanningExtractedList(),
+    staleTime: 60_000,
+  });
+  const { data: rmList = [], isLoading: rmLoading } = useQuery({
+    queryKey: ['raw-materials', 'for-pr-link'],
+    queryFn: () => fetchRawMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const { data: pmList = [], isLoading: pmLoading } = useQuery({
+    queryKey: ['pack-materials', 'for-pr-link'],
+    queryFn: () => fetchPackMaterialsList(),
+    staleTime: 5 * 60_000,
+  });
+  const { data: vendorList = [], isLoading: vendorsLoading } = useQuery({
+    queryKey: ['vendor-clients', 'vendor', 'for-pr'],
+    queryFn: async () => {
+      const res = await fetchVendorClients('vendor');
+      return res.success ? res.data : [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const planningOptions = useMemo(
+    () =>
+      planningRows
+        .filter((r) => r.bomConfirmedAt)
+        .map((r) => ({
+          id: Number(r.id),
+          label: `${r.soNumber || `PE-${r.id}`} · ${[r.productCode, r.productName].filter(Boolean).join(' ')}`.trim(),
+        }))
+        .filter((o) => Number.isFinite(o.id) && o.id > 0),
+    [planningRows],
+  );
+
+  // code / name → numeric id maps for RM & PM masters.
+  const rmIdByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rmList as RawMaterialRecord[]) {
+      const id = Number(r.id);
+      if (!Number.isFinite(id)) continue;
+      if (r.code) m.set(`c:${normKey(r.code)}`, id);
+      if (r.name) m.set(`n:${normKey(r.name)}`, id);
+    }
+    return m;
+  }, [rmList]);
+  const pmIdByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of pmList as PackMaterialRecord[]) {
+      const id = Number(p.id);
+      if (!Number.isFinite(id)) continue;
+      if (p.code) m.set(`c:${normKey(p.code)}`, id);
+      if (p.description) m.set(`n:${normKey(p.description)}`, id);
+    }
+    return m;
+  }, [pmList]);
+
+  // Item name drives everything now (no manual Type): search RM + PM together; the picked item's
+  // kind sets the row Type and its Qty unit (KG for RM / PCS for PM). Suggestions filter by the typed
+  // query before the 50-cap, so combining RM + PM no longer crowds RMs out of a real search.
+  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
+  const materialsLoading = rmLoading || pmLoading;
+
+  const resolveLineId = (l: LineDraft): number | undefined => {
+    // Prefer the id captured when a suggestion was picked; fall back to code/name for free-typed lines.
+    const captured = l.type === 'PM' ? l.packMaterialId : l.rawMaterialId;
+    if (captured != null) return captured;
+    const map = l.type === 'PM' ? pmIdByKey : rmIdByKey;
+    return map.get(`c:${normKey(l.code)}`) ?? map.get(`n:${normKey(l.name)}`);
+  };
 
   const setLine = (i: number, patch: Partial<LineDraft>) =>
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
+  // Picking a suggestion fills name + code + RM/PM id and auto-derives the row Type (and thus its
+  // Qty unit) from the item kind — no manual Type/Unit entry.
+  const selectLineItem = (i: number, opt: MaterialTypeaheadOption) =>
+    setLine(i, {
+      name: opt.name,
+      code: opt.code,
+      itemKey: opt.key,
+      type: opt.kind === 'pm' ? 'PM' : 'RM',
+      rawMaterialId: opt.rawMaterialId,
+      packMaterialId: opt.packMaterialId,
+    });
+  const clearLineItem = (i: number) =>
+    setLine(i, { itemKey: '', code: '', type: 'RM', rawMaterialId: undefined, packMaterialId: undefined });
+
   const validLines = lines.filter((l) => l.name.trim() && Number(l.qty) > 0);
+  // When linked, lines whose code/name don't resolve to a master id won't attribute to the PI.
+  const unresolvedWhenLinked =
+    linkedPeId != null ? validLines.filter((l) => resolveLineId(l) == null).length : 0;
 
   const submit = async () => {
     setErr(null);
     if (validLines.length === 0) { setErr('Add at least one line with an item name and a positive quantity.'); return; }
     const items: ProcurementRequestItem[] = validLines.map((l) => {
       const qty = Number(l.qty) || 0;
-      const price = Number(l.price) || 0;
+      const matId = resolveLineId(l); // attach the master id whenever we have it (linked or not)
       return {
         type: l.type,
         code: l.code.trim() || `MAN-${l.type}-${Math.abs(Math.round(qty))}`,
@@ -53,12 +164,14 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
         sih: 0,
         shortage: qty,
         quantity_requested: qty,
-        unit: l.unit.trim() || (l.type === 'PM' ? 'PCS' : 'KG'),
-        ...(price > 0 ? { planned_unit_price: price } : {}),
+        unit: unitForType(l.type), // KG for RM, PCS for PM — auto-set, no manual unit/price
+        ...(matId != null && l.type === 'RM' ? { raw_material_id: matId } : {}),
+        ...(matId != null && l.type === 'PM' ? { pack_material_id: matId } : {}),
       };
     });
     const payload: CreateProcurementPayload = {
-      source: 'manual',
+      // Linking to a planning row makes this a planning-sourced PR so Items Involved can attribute it.
+      ...(linkedPeId != null ? { planningExtractedId: linkedPeId, source: 'planning' } : { source: 'manual' }),
       priority,
       requiredByDate: requiredBy || null,
       notes: notes.trim() || null,
@@ -76,9 +189,9 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
 
   return (
     <ProcModalShell
-      eyebrow="Procurement Request · manual"
+      eyebrow={linkedPeId != null ? 'Procurement Request · linked to Planning' : 'Procurement Request · manual'}
       title="New Procurement Request"
-      subtitle="Direct PR — not from Planning"
+      subtitle={linkedPeId != null ? 'Linked to a Planning SO — flows into Items Involved' : 'Direct PR — link a Planning SO to feed Items Involved'}
       width="max-w-3xl"
       onClose={onClose}
       footer={
@@ -104,7 +217,40 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
           </div>
           <div className="col-span-2">
             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Preferred vendor (optional)</label>
-            <input value={preferredVendor} onChange={(e) => setPreferredVendor(e.target.value)} className={inputCls} placeholder="Vendor name" />
+            <VendorClientNameTypeahead
+              parties={vendorList}
+              selectedId={preferredVendorId}
+              loading={vendorsLoading}
+              partyKind="vendor"
+              allowFreeText
+              placeholder="Search vendor by name, code, city…"
+              onSelect={(party) => {
+                setPreferredVendorId(party ? String(party.id) : '');
+                setPreferredVendor(party ? party.name : '');
+              }}
+              onFreeTextChange={(value) => {
+                setPreferredVendorId('');
+                setPreferredVendor(value);
+              }}
+            />
+          </div>
+          <div className="col-span-2 md:col-span-4">
+            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Link to Planning SO (optional)</label>
+            <select
+              value={linkedPeId ?? ''}
+              onChange={(e) => setLinkedPeId(e.target.value ? Number(e.target.value) : null)}
+              className={inputCls}
+            >
+              <option value="">— Not linked (standalone / stock PR) —</option>
+              {planningOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {linkedPeId != null
+                ? 'Linked — this PR (and its PO) will appear in Planning → Items Involved. Line codes/names are matched to RM/PM masters to attribute quantities.'
+                : 'Leave unlinked for a general/stock PR. Link it to a planning SO so its PO shows up in Items Involved.'}
+            </p>
           </div>
         </div>
       </ModalSection>
@@ -114,7 +260,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500">
-                {['Type', 'Item name', 'Code', 'Qty', 'Unit', '₹/unit', ''].map((h) => (
+                {['Item name', 'Code', 'Qty req', ''].map((h) => (
                   <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                 ))}
               </tr>
@@ -122,17 +268,26 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="px-2 py-1.5">
-                    <select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM' })} className={inputCls}>
-                      <option value="RM">RM</option>
-                      <option value="PM">PM</option>
-                    </select>
+                  <td className="px-2 py-1.5 min-w-[16rem]">
+                    <MaterialMasterTypeahead
+                      options={materialOptions}
+                      loading={materialsLoading}
+                      value={l.name}
+                      selectedId={l.itemKey}
+                      onValueChange={(next) => setLine(i, { name: next })}
+                      onSelect={(opt) => selectLineItem(i, opt)}
+                      onClearSelection={() => clearLineItem(i)}
+                      requirePickFromList={false}
+                      placeholder="Search item by name or code…"
+                    />
                   </td>
-                  <td className="px-2 py-1.5"><input value={l.name} onChange={(e) => setLine(i, { name: e.target.value })} className={inputCls} placeholder="Item name" /></td>
-                  <td className="px-2 py-1.5"><input value={l.code} onChange={(e) => setLine(i, { code: e.target.value })} className={inputCls} placeholder="Code" /></td>
-                  <td className="px-2 py-1.5 w-20"><input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
-                  <td className="px-2 py-1.5 w-20"><input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} className={inputCls} placeholder={l.type === 'PM' ? 'PCS' : 'KG'} /></td>
-                  <td className="px-2 py-1.5 w-24"><input value={l.price} onChange={(e) => setLine(i, { price: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
+                  <td className="px-2 py-1.5"><input value={l.code} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" /></td>
+                  <td className="px-2 py-1.5 w-36">
+                    <div className="flex items-center gap-1.5">
+                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" />
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-1.5">
                     <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
                   </td>
@@ -150,6 +305,11 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Optional notes / justification…" />
       </ModalSection>
 
+      {linkedPeId != null && unresolvedWhenLinked > 0 && (
+        <p className="text-[12px] text-amber-700">
+          ⚠ {unresolvedWhenLinked} line{unresolvedWhenLinked > 1 ? 's' : ''} couldn't be matched to an RM/PM master by code or name — those lines won't attribute to Items Involved. Check the code/name.
+        </p>
+      )}
       {err && <p className="text-[12px] text-red-600">{err}</p>}
     </ProcModalShell>
   );

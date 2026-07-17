@@ -71,11 +71,14 @@ describe('planBatchMaterialLeadTime', () => {
     expect(stats?.subLabel).toContain('avg of 2 POs');
   });
 
-  it('computePlanBatchMaterialStatus follows free vs pipeline rules', () => {
-    expect(computePlanBatchMaterialStatus(85, 280, 0, 0, 0)).toBe('AVAILABLE');
-    expect(computePlanBatchMaterialStatus(25, 15, 0, 0, 0)).toBe('SHORTAGE');
-    expect(computePlanBatchMaterialStatus(5000, 0, 1000, 0, 0)).toBe('UNDER PROCUREMENT');
-    expect(computePlanBatchMaterialStatus(5000, 0, 0, 0, 2000)).toBe('UNDER PROCUREMENT');
+  it('computePlanBatchMaterialStatus follows §8.2 reserved/procured rules', () => {
+    // reqQty, free, inTransit, openPoQty, openPrQty, reserved
+    expect(computePlanBatchMaterialStatus(85, 0, 0, 0, 0, 85)).toBe('AVAILABLE'); // reserved covers
+    expect(computePlanBatchMaterialStatus(85, 280, 0, 0, 0, 0)).toBe('PLANNING PENDING'); // free covers, not reserved
+    expect(computePlanBatchMaterialStatus(100, 0, 0, 0, 0, 40)).toBe('PLANNED'); // partly reserved, short
+    expect(computePlanBatchMaterialStatus(25, 15, 0, 0, 0, 0)).toBe('SHORTAGE'); // short, nothing in flight
+    expect(computePlanBatchMaterialStatus(5000, 0, 1000, 0, 0, 0)).toBe('UNDER PROCUREMENT'); // in transit
+    expect(computePlanBatchMaterialStatus(5000, 0, 0, 0, 2000, 0)).toBe('UNDER PROCUREMENT'); // PR raised
   });
 
   it('formatEarliestInHouse shows in stock when free covers req', () => {

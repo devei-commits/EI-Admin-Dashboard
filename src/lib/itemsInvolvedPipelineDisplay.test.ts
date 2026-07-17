@@ -1,5 +1,65 @@
 import { describe, expect, it } from 'vitest';
-import { getItemsInvolvedProcurementDisplay } from './itemsInvolvedPipelineDisplay';
+import {
+  getItemsInvolvedProcurementDisplay,
+  computeItemsInvolvedGap,
+} from './itemsInvolvedPipelineDisplay';
+
+describe('computeItemsInvolvedGap (§6.3 shortage gap)', () => {
+  const base = {
+    sihFree: 0,
+    scopedReserved: 0,
+    planned: 0,
+    po: 0,
+    inTransit: 0,
+    underGrn: 0,
+    totalRequired: 100,
+  };
+
+  it('sums all six supply terms', () => {
+    const g = computeItemsInvolvedGap({
+      ...base,
+      sihFree: 10,
+      scopedReserved: 20,
+      planned: 5,
+      po: 5,
+      inTransit: 5,
+      underGrn: 5,
+    });
+    expect(g.supply).toBe(50);
+    expect(g.net).toBe(-50);
+    expect(g.shortQty).toBe(50);
+    expect(g.coveragePct).toBe(50);
+  });
+
+  it('credits scoped reserved so a fully-reserved item is not short', () => {
+    // Free stock 0 but 100 reserved for these batches → covered, no shortage.
+    const withReserve = computeItemsInvolvedGap({ ...base, sihFree: 0, scopedReserved: 100 });
+    expect(withReserve.shortQty).toBe(0);
+    expect(withReserve.coveragePct).toBe(100);
+    // Prior behaviour (ignoring reserved) would have flagged the full 100 as short.
+    const withoutReserve = computeItemsInvolvedGap({ ...base, sihFree: 0, scopedReserved: 0 });
+    expect(withoutReserve.shortQty).toBe(100);
+  });
+
+  it('reports positive net as over-planned (not flagged short)', () => {
+    const g = computeItemsInvolvedGap({ ...base, sihFree: 120 });
+    expect(g.net).toBe(20);
+    expect(g.shortQty).toBe(0);
+    expect(g.coveragePct).toBe(100);
+  });
+
+  it('handles zero demand as fully covered', () => {
+    const g = computeItemsInvolvedGap({ ...base, totalRequired: 0 });
+    expect(g.shortQty).toBe(0);
+    expect(g.coveragePct).toBe(100);
+  });
+
+  it('ignores NaN supply terms', () => {
+    const g = computeItemsInvolvedGap({ ...base, sihFree: Number.NaN, scopedReserved: 40 });
+    expect(g.supply).toBe(40);
+    expect(g.shortQty).toBe(60);
+  });
+});
 
 describe('getItemsInvolvedProcurementDisplay', () => {
   const baseItem = {

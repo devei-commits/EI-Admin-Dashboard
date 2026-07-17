@@ -978,6 +978,17 @@ const Procurement: React.FC = () => {
   const [approvingGapLineKey, setApprovingGapLineKey] = useState<string | null>(null);
   const [releasingWeekVendorBucketKey, setReleasingWeekVendorBucketKey] = useState<string | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  // Guards the released-PO detail modal's mutation buttons against double-submit while in flight.
+  const [poActionBusy, setPoActionBusy] = useState<string | null>(null);
+  const runPoAction = async (name: string, fn: () => void | Promise<unknown>) => {
+    if (poActionBusy) return;
+    setPoActionBusy(name);
+    try {
+      await fn();
+    } finally {
+      setPoActionBusy(null);
+    }
+  };
   const [showRecordQuoteModal, setShowRecordQuoteModal] = useState(false);
   const [recordQuoteForm, setRecordQuoteForm] = useState<{
     vendorId: string;
@@ -1205,6 +1216,27 @@ const Procurement: React.FC = () => {
       return res.success ? (res.data ?? []) : [];
     },
   });
+
+  /** Vendor address / GSTIN / phone for the PO PDF, looked up from the vendor master by name. */
+  const buildVendorPoPdfFields = (vendorName: string): { vendorAddress?: string; vendorGstin?: string; vendorPhone?: string } => {
+    const key = String(vendorName ?? '').trim().toLowerCase();
+    if (!key) return {};
+    const v = (vendorClientList ?? []).find((x) => String(x.name ?? '').trim().toLowerCase() === key);
+    if (!v) return {};
+    const d = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
+    const str = (x: unknown) => String(x ?? '').trim();
+    const addr = [
+      str(d.billingAddress ?? d.shippingAddress),
+      str(v.city),
+      [str(d.pincode ?? d.pin_code), str(d.state)].filter(Boolean).join(' '),
+      str(d.country),
+    ].filter(Boolean).join('\n');
+    return {
+      vendorAddress: addr || undefined,
+      vendorGstin: str(d.gstin) || undefined,
+      vendorPhone: str(v.phone) || undefined,
+    };
+  };
 
   const { data: purchaseOrdersRaw } = useQuery({
     queryKey: ['purchase-orders'],
@@ -3850,6 +3882,13 @@ const Procurement: React.FC = () => {
       status: record.status,
       etaDays: record.etaDays,
       items: record.lineItems.map((line) => line.item),
+      // Full data the PO PDF needs — previously unset, which made "PO PDF" throw on
+      // `data.lines.reduce` (undefined lines) and leave a blank popup.
+      vendor: record.vendor,
+      lineItems: record.lineItems,
+      grandTotal: record.grandTotal,
+      createdDate: record.createdDate,
+      paymentTerms: record.paymentTerms,
       requestCode: record.requestCode,
       requestId: record.request.id,
       contactPerson: 'Procurement Desk',
@@ -3909,7 +3948,7 @@ const Procurement: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     const prId = String(record?.request?.id ?? '').trim();
     const isUnlinkedPlanning = !prId;
-    void updatePoTracking(backendPoId, {
+    return updatePoTracking(backendPoId, {
       vendorConfirmedAt: today,
       vendorConfirmedNote: isUnlinkedPlanning
         ? 'Vendor confirmed (unlinked Planning PO) from Procurement'
@@ -3941,7 +3980,7 @@ const Procurement: React.FC = () => {
       addToast('error', 'Purchase order not found. Cannot record vendor rejection.');
       return;
     }
-    void rejectPoByVendor(backendPoId, note).then((res) => {
+    return rejectPoByVendor(backendPoId, note).then((res) => {
       if (!res.success) {
         addToast('error', typeof res.error === 'string' ? res.error : 'Failed to record vendor rejection');
         return;
@@ -3984,7 +4023,7 @@ const Procurement: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     const prId = String(record?.request?.id ?? '').trim();
     const isUnlinkedPlanning = !prId;
-    void updatePoTracking(backendPoId, {
+    return updatePoTracking(backendPoId, {
       shippedAt: today,
       shippedNote: isUnlinkedPlanning
         ? 'Marked shipped (unlinked Planning PO) from Procurement'
@@ -6698,10 +6737,11 @@ const Procurement: React.FC = () => {
                     </p>
                     <button
                       type="button"
-                      onClick={handleSaveRequestLink}
-                      className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                      disabled={poActionBusy != null}
+                      onClick={() => runPoAction('saveRequestLink', handleSaveRequestLink)}
+                      className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Save request link
+                      {poActionBusy === 'saveRequestLink' ? 'Saving…' : 'Save request link'}
                     </button>
                   </div>
                 )}
@@ -6810,28 +6850,31 @@ const Procurement: React.FC = () => {
                             {!modalHasVendor && !modalHasRejected && (
                               <button
                                 type="button"
-                                onClick={() => markIssuedPOVendorConfirmed(issuedRecordForActions)}
-                                className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700"
+                                disabled={poActionBusy != null}
+                                onClick={() => runPoAction('vendorConfirmed', () => markIssuedPOVendorConfirmed(issuedRecordForActions))}
+                                className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Mark Vendor Confirmed
+                                {poActionBusy === 'vendorConfirmed' ? 'Saving…' : 'Mark Vendor Confirmed'}
                               </button>
                             )}
                             {!modalHasVendor && !modalHasRejected && (
                               <button
                                 type="button"
-                                onClick={() => markIssuedPOVendorRejected(issuedRecordForActions)}
-                                className="px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-xs font-semibold hover:bg-rose-50"
+                                disabled={poActionBusy != null}
+                                onClick={() => runPoAction('vendorRejected', () => markIssuedPOVendorRejected(issuedRecordForActions))}
+                                className="px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-xs font-semibold hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Mark Vendor Rejected
+                                {poActionBusy === 'vendorRejected' ? 'Saving…' : 'Mark Vendor Rejected'}
                               </button>
                             )}
                             {modalHasVendor && !modalHasShipped && (
                               <button
                                 type="button"
-                                onClick={() => markIssuedPOShipped(issuedRecordForActions)}
-                                className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600"
+                                disabled={poActionBusy != null}
+                                onClick={() => runPoAction('shipped', () => markIssuedPOShipped(issuedRecordForActions))}
+                                className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Mark In Transit
+                                {poActionBusy === 'shipped' ? 'Saving…' : 'Mark In Transit'}
                               </button>
                             )}
                           </div>
@@ -6875,10 +6918,11 @@ const Procurement: React.FC = () => {
                       />
                     </div>
                     <button
-                      onClick={handleSaveTracking}
-                      className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                      disabled={poActionBusy != null}
+                      onClick={() => runPoAction('saveTracking', handleSaveTracking)}
+                      className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Save tracking
+                      {poActionBusy === 'saveTracking' ? 'Saving…' : 'Save tracking'}
                     </button>
                   </div>
                 )}
@@ -6894,6 +6938,7 @@ const Procurement: React.FC = () => {
                       reference: po.requestCode,
                       orderDate: po.createdDate,
                       vendor: po.vendor,
+                      ...buildVendorPoPdfFields(po.vendor ?? ''),
                       paymentTerms: po.paymentTerms,
                       lines: po.lineItems,
                       grandTotal: po.grandTotal,
@@ -7092,6 +7137,7 @@ const Procurement: React.FC = () => {
                         orderDate: dpo.createdDate,
                         expectedDelivery: dpo.expectedDelivery,
                         vendor: dpo.vendor,
+                        ...buildVendorPoPdfFields(dpo.vendor ?? ''),
                         deliveryAddress: dpo.deliveryAddress,
                         paymentTerms: dpo.paymentTerms,
                         lines: lineItems,

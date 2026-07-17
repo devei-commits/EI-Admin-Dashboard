@@ -249,9 +249,10 @@ export const GRN_STAGE_ORDER: GrnStage[] = [
 ];
 
 // ─── §9.6 Purchase Status (financial lifecycle, per PO line) ──────────────────
-export type PurchaseStatus = 'received' | 'billed' | 'paid' | 'returned';
+export type PurchaseStatus = 'ordered' | 'received' | 'billed' | 'paid' | 'returned';
 
 export const PURCHASE_STATUS_CONFIG: Record<PurchaseStatus, StatusConfig> = {
+  ordered:  mk('Ordered', 'slate'),
   received: mk('Received', 'cyan'),
   billed:   mk('Billed', 'violet'),
   paid:     mk('Paid', 'emerald'),

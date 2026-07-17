@@ -17,16 +17,23 @@ import {
   createItemListRate,
   updateItemListRate,
   createItemListTier,
+  updateItemListTier,
 } from '../services/itemsList.service';
 import { updatePlanningQuotationAsk } from '../services/planningQuotationAsks.service';
+
+/** One MOQ→price band (Masters-style price-list tier). */
+export interface QuoteBand {
+  moqMin: number;
+  moqMax: number | null;
+  price: number;
+}
 
 export interface RecordedQuoteInput {
   vendorId: string;
   vendorName: string;
   vendorEmail?: string | null;
-  pricePerUnit: number;
-  moq: number;
-  moqMax: number | null;
+  /** One or more MOQ→price bands for this vendor. Must contain at least one. */
+  bands: QuoteBand[];
   leadTimeDays: number | null;
   /** Serialized staged payment terms JSON, or null for "as per contract". */
   paymentTerms: string | null;
@@ -46,6 +53,13 @@ export async function recordQuotationToPriceList(
   opts: RecordQuotationOpts,
 ): Promise<{ success: boolean; error?: string }> {
   const { itemType, materialId, askId, quote } = opts;
+  const bands = [...(quote.bands ?? [])]
+    .filter((b) => Number.isFinite(b.moqMin) && b.moqMin > 0 && Number.isFinite(b.price) && b.price > 0)
+    .sort((a, b) => a.moqMin - b.moqMin);
+  if (bands.length === 0) {
+    return { success: false, error: 'Add at least one MOQ band with a valid quantity and price.' };
+  }
+  const base = bands[0]; // lowest-MOQ band drives the rate default rate/MOQ
   try {
     // 1. Locate (or create) the items_list row for this master.
     const pageRes = await fetchPriceListPage(itemType);
@@ -68,15 +82,16 @@ export async function recordQuotationToPriceList(
       itemsListId = String(createRes.data.id);
     }
 
-    // 2. Find (or create) the vendor rate.
+    // 2. Find (or create) the vendor rate. Rate-level default rate/MOQ come from the lowest band.
     const ratesRes = await fetchItemListRates(itemsListId);
     const existingRate = (ratesRes.data ?? []).find((r) => Number(r.vendor_id) === Number(quote.vendorId));
     let rateId: number;
+    const existingTiers = existingRate?.tiers ?? [];
     if (existingRate) {
       rateId = existingRate.id;
       const upd = await updateItemListRate(itemsListId, rateId, {
-        default_rate: quote.pricePerUnit,
-        default_moq: quote.moq,
+        default_rate: base.price,
+        default_moq: base.moqMin,
         lead_time_days: quote.leadTimeDays,
         payment_terms: quote.paymentTerms,
       });
@@ -84,8 +99,8 @@ export async function recordQuotationToPriceList(
     } else {
       const cr = await createItemListRate(itemsListId, {
         vendor_id: Number(quote.vendorId),
-        default_rate: quote.pricePerUnit,
-        default_moq: quote.moq,
+        default_rate: base.price,
+        default_moq: base.moqMin,
         lead_time_days: quote.leadTimeDays,
         payment_terms: quote.paymentTerms,
       });
@@ -93,15 +108,28 @@ export async function recordQuotationToPriceList(
       rateId = cr.data.id;
     }
 
-    // 3. Append the MOQ→price tier.
-    const tierRes = await createItemListTier(itemsListId, rateId, {
-      moq_min: quote.moq,
-      moq_max: quote.moqMax,
-      price_per_unit: quote.pricePerUnit,
-      valid_till: quote.validTill,
-      note: quote.note,
-    });
-    if (!tierRes.success) throw new Error(tierRes.error?.message ?? 'Failed to save price tier');
+    // 3. Upsert each MOQ→price band as a tier (update the band with a matching MOQ-min, else add it).
+    for (const band of bands) {
+      const existingTier = existingTiers.find((t) => Number(t.moq_min) === Number(band.moqMin)) ?? null;
+      if (existingTier) {
+        const upd = await updateItemListTier(itemsListId, rateId, existingTier.id, {
+          moq_max: band.moqMax,
+          price_per_unit: band.price,
+          valid_till: quote.validTill,
+          note: quote.note,
+        });
+        if (!upd.success) throw new Error(upd.error?.message ?? 'Failed to update price band');
+      } else {
+        const tierRes = await createItemListTier(itemsListId, rateId, {
+          moq_min: band.moqMin,
+          moq_max: band.moqMax,
+          price_per_unit: band.price,
+          valid_till: quote.validTill,
+          note: quote.note,
+        });
+        if (!tierRes.success) throw new Error(tierRes.error?.message ?? 'Failed to save price band');
+      }
+    }
 
     // 4. Mark the originating planning quotation-ask fulfilled.
     if (askId != null) {

@@ -58,19 +58,29 @@ const batch: PlanningBatchAllRow = {
   pmLines: [],
 };
 
-describe('computeBatchItemsPanelStatus', () => {
-  it('marks AVAILABLE when free stock covers batch requirement', () => {
-    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0)).toBe('AVAILABLE');
-    expect(computeBatchItemsPanelStatus(35, 110, 0, 0, 0, 0)).toBe('AVAILABLE');
+describe('computeBatchItemsPanelStatus (§8.2)', () => {
+  it('marks AVAILABLE when reserved + procured covers the requirement', () => {
+    // reserved (last arg) 85 ≥ req 85 → fully covered
+    expect(computeBatchItemsPanelStatus(85, 0, 0, 0, 0, 0, 85)).toBe('AVAILABLE');
+    // reserved 30 + procured (poQty 10) = 40 ≥ req 35 → covered
+    expect(computeBatchItemsPanelStatus(35, 0, 0, 10, 0, 0, 30)).toBe('AVAILABLE');
   });
 
-  it('marks SHORTAGE when free stock is insufficient and no pipeline', () => {
-    expect(computeBatchItemsPanelStatus(25, 15, 0, 0, 0, 0)).toBe('SHORTAGE');
+  it('marks PLANNING PENDING when free stock could cover but nothing is reserved yet', () => {
+    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0, 0)).toBe('PLANNING PENDING');
+  });
+
+  it('marks PLANNED when reserved but still short and nothing procured', () => {
+    expect(computeBatchItemsPanelStatus(100, 0, 0, 0, 0, 0, 40)).toBe('PLANNED');
+  });
+
+  it('marks SHORTAGE when free stock is insufficient and no pipeline/reservation', () => {
+    expect(computeBatchItemsPanelStatus(25, 15, 0, 0, 0, 0, 0)).toBe('SHORTAGE');
   });
 
   it('marks UNDER PROCUREMENT when pipeline exists but batch is still short', () => {
-    expect(computeBatchItemsPanelStatus(500, 0, 200, 0, 0, 0)).toBe('UNDER PROCUREMENT');
-    expect(computeBatchItemsPanelStatus(500, 0, 0, 0, 100, 50)).toBe('UNDER PROCUREMENT');
+    expect(computeBatchItemsPanelStatus(500, 0, 200, 0, 0, 0, 0)).toBe('UNDER PROCUREMENT');
+    expect(computeBatchItemsPanelStatus(500, 0, 0, 0, 100, 50, 0)).toBe('UNDER PROCUREMENT');
   });
 });
 
