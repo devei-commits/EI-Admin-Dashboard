@@ -24,6 +24,7 @@ export interface NewPrModalProps {
 }
 
 interface LineDraft {
+  /** Auto-derived from the picked item (RM/PM) — no longer a manual selector. */
   type: 'RM' | 'PM';
   code: string;
   name: string;
@@ -32,13 +33,13 @@ interface LineDraft {
   rawMaterialId?: number;
   packMaterialId?: number;
   qty: string;
-  unit: string;
-  price: string;
 }
 
-const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', itemKey: '', qty: '', unit: '', price: '' });
+const emptyLine = (): LineDraft => ({ type: 'RM', code: '', name: '', itemKey: '', qty: '' });
 
 const normKey = (s: string | null | undefined) => String(s ?? '').trim().toLowerCase();
+/** Qty unit is auto-set by item kind: KG for RMs, PCS for PMs. */
+const unitForType = (type: 'RM' | 'PM') => (type === 'PM' ? 'PCS' : 'KG');
 
 export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => {
   const [priority, setPriority] = useState('Medium');
@@ -111,10 +112,10 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     return m;
   }, [pmList]);
 
-  // Scope suggestions to the line's Type: merging RM + PM and capping at 50 let the ~3× more numerous
-  // PMs crowd RMs out of the results. Each line has an RM/PM selector, so filter by it.
-  const rmOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, []), [rmList]);
-  const pmOptions = useMemo(() => buildMaterialTypeaheadOptions([], pmList), [pmList]);
+  // Item name drives everything now (no manual Type): search RM + PM together; the picked item's
+  // kind sets the row Type and its Qty unit (KG for RM / PCS for PM). Suggestions filter by the typed
+  // query before the 50-cap, so combining RM + PM no longer crowds RMs out of a real search.
+  const materialOptions = useMemo(() => buildMaterialTypeaheadOptions(rmList, pmList), [rmList, pmList]);
   const materialsLoading = rmLoading || pmLoading;
 
   const resolveLineId = (l: LineDraft): number | undefined => {
@@ -130,19 +131,19 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
-  // Picking a suggestion fills name + code + unit + RM/PM id and aligns the row Type to the item kind.
+  // Picking a suggestion fills name + code + RM/PM id and auto-derives the row Type (and thus its
+  // Qty unit) from the item kind — no manual Type/Unit entry.
   const selectLineItem = (i: number, opt: MaterialTypeaheadOption) =>
     setLine(i, {
       name: opt.name,
       code: opt.code,
       itemKey: opt.key,
       type: opt.kind === 'pm' ? 'PM' : 'RM',
-      unit: opt.unit,
       rawMaterialId: opt.rawMaterialId,
       packMaterialId: opt.packMaterialId,
     });
   const clearLineItem = (i: number) =>
-    setLine(i, { itemKey: '', code: '', rawMaterialId: undefined, packMaterialId: undefined });
+    setLine(i, { itemKey: '', code: '', type: 'RM', rawMaterialId: undefined, packMaterialId: undefined });
 
   const validLines = lines.filter((l) => l.name.trim() && Number(l.qty) > 0);
   // When linked, lines whose code/name don't resolve to a master id won't attribute to the PI.
@@ -154,7 +155,6 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     if (validLines.length === 0) { setErr('Add at least one line with an item name and a positive quantity.'); return; }
     const items: ProcurementRequestItem[] = validLines.map((l) => {
       const qty = Number(l.qty) || 0;
-      const price = Number(l.price) || 0;
       const matId = resolveLineId(l); // attach the master id whenever we have it (linked or not)
       return {
         type: l.type,
@@ -164,8 +164,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
         sih: 0,
         shortage: qty,
         quantity_requested: qty,
-        unit: l.unit.trim() || (l.type === 'PM' ? 'PCS' : 'KG'),
-        ...(price > 0 ? { planned_unit_price: price } : {}),
+        unit: unitForType(l.type), // KG for RM, PCS for PM — auto-set, no manual unit/price
         ...(matId != null && l.type === 'RM' ? { raw_material_id: matId } : {}),
         ...(matId != null && l.type === 'PM' ? { pack_material_id: matId } : {}),
       };
@@ -261,7 +260,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500">
-                {['Type', 'Item name', 'Code', 'Qty', 'Unit', '₹/unit', ''].map((h) => (
+                {['Item name', 'Code', 'Qty req', ''].map((h) => (
                   <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                 ))}
               </tr>
@@ -269,15 +268,9 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i} className="border-t border-slate-100">
-                  <td className="px-2 py-1.5">
-                    <select value={l.type} onChange={(e) => setLine(i, { type: e.target.value as 'RM' | 'PM', code: '', itemKey: '', rawMaterialId: undefined, packMaterialId: undefined })} className={inputCls}>
-                      <option value="RM">RM</option>
-                      <option value="PM">PM</option>
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[15rem]">
+                  <td className="px-2 py-1.5 min-w-[16rem]">
                     <MaterialMasterTypeahead
-                      options={l.type === 'PM' ? pmOptions : rmOptions}
+                      options={materialOptions}
                       loading={materialsLoading}
                       value={l.name}
                       selectedId={l.itemKey}
@@ -285,13 +278,16 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
                       onSelect={(opt) => selectLineItem(i, opt)}
                       onClearSelection={() => clearLineItem(i)}
                       requirePickFromList={false}
-                      placeholder="Search RM / PM by name or code…"
+                      placeholder="Search item by name or code…"
                     />
                   </td>
                   <td className="px-2 py-1.5"><input value={l.code} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" /></td>
-                  <td className="px-2 py-1.5 w-20"><input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
-                  <td className="px-2 py-1.5 w-20"><input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} className={inputCls} placeholder={l.type === 'PM' ? 'PCS' : 'KG'} /></td>
-                  <td className="px-2 py-1.5 w-24"><input value={l.price} onChange={(e) => setLine(i, { price: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" /></td>
+                  <td className="px-2 py-1.5 w-36">
+                    <div className="flex items-center gap-1.5">
+                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" />
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-1.5">
                     <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
                   </td>
