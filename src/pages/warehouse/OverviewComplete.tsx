@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, type GeneratedMRNLabel, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
+import TransferPickModal, { type TransferPickLine, type TransferLabel } from './transfers/TransferPickModal';
+import TransferDispatchModal, { type DispatchDetails, type DispatchLabelState } from './transfers/TransferDispatchModal';
+import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
 import RequestTransferModal from '../../components/warehouse/RequestTransferModal';
+import WarehouseReturnsTab from './transfers/ReturnsTab';
+import WarehouseInvoiceTab from './transfers/InvoiceTab';
+import { type TransfersTab } from './transfers/TransfersTabBar';
 import { parseQtyInputString } from '../../utils/qtyInput';
 import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
 
@@ -222,7 +228,10 @@ function mapApiToMRN(r: MRNRecordFromApi): MRN {
   };
 }
 
-const OutboundDashboard = () => {
+const OutboundDashboard = ({
+  tab = 'transfer-orders',
+  transfersTabBar,
+}: { tab?: TransfersTab; transfersTabBar?: ReactNode } = {}) => {
   const [mrnData, setMrnData] = useState<MRN[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignablePickers, setAssignablePickers] = useState<AssignablePicker[]>([]);
@@ -339,6 +348,145 @@ const OutboundDashboard = () => {
         uom: li.unit,
       }))
     : [];
+
+  // --- Transfer Copy pick modal (Option 1: picker enters packs; SIH/rack from warehouse inventory) ---
+  const [transferPickOpen, setTransferPickOpen] = useState(false);
+  const [transferPickSaving, setTransferPickSaving] = useState(false);
+  const [invByKey, setInvByKey] = useState<Record<string, { sih: number; rack: string }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetchWarehouseInventory();
+      if (cancelled || !res.success || !res.data) return;
+      const map: Record<string, { sih: number; rack: string }> = {};
+      for (const r of res.data.rows) {
+        const entry = { sih: Number(r.stockInHand) || 0, rack: r.rack || '—' };
+        if (r.sourceId != null && r.type) map[`${String(r.type).toUpperCase()}:${r.sourceId}`] = entry;
+        if (r.code) map[`CODE:${String(r.code).trim().toUpperCase()}`] = entry;
+      }
+      setInvByKey(map);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const transferPickLines: TransferPickLine[] = selectedMRN
+    ? selectedMRN.lineItems.map((li) => {
+        const codeKey = li.itemCode ? `CODE:${String(li.itemCode).trim().toUpperCase()}` : '';
+        const idKey =
+          li.raw_material_id != null ? `RM:${li.raw_material_id}`
+          : li.pack_material_id != null ? `PM:${li.pack_material_id}` : '';
+        const inv = (idKey && invByKey[idKey]) || (codeKey && invByKey[codeKey]) || undefined;
+        return {
+          id: li.id,
+          itemName: li.name,
+          itemCode: li.itemCode || '',
+          requiredQty: li.quantity,
+          uom: li.unit,
+          sih: inv?.sih ?? 0,
+          rack: inv?.rack ?? '—',
+          trNo: selectedMRN.mrnNo,
+        };
+      })
+    : [];
+
+  const handleTransferPickConfirm = async ({ labels, pickedByLine }: { labels: TransferLabel[]; pickedByLine: Record<string, number> }) => {
+    if (!selectedMRN) return;
+    if (!String(assignedPicker || '').trim()) {
+      showToast('Assign a picker before generating labels.', 'error');
+      return;
+    }
+    setTransferPickSaving(true);
+    try {
+      await updateMRN(selectedMRN.id, {
+        status: UI_TO_API_STATUS['In Pick'],
+        assignedPicker: assignedPicker || undefined,
+        transferTeam: assignedTransferBy || undefined,
+        muReceiveZone: selectedMlLocation || undefined,
+        generatedLabels: labels as unknown as GeneratedMRNLabel[],
+        lineItems: selectedMRN.lineItems.map((li) => ({
+          id: li.id,
+          item: li.name,
+          itemCode: li.itemCode,
+          quantity: pickedByLine[li.id] ?? li.quantity,
+          unit: li.unit,
+          raw_material_id: li.raw_material_id,
+          pack_material_id: li.pack_material_id,
+          product_id: li.product_id,
+        })),
+      });
+      setMrnData((prev) =>
+        prev.map((mrn) =>
+          mrn.id === selectedMRN.id ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Pick' as const } : mrn
+        )
+      );
+      setTransferPickOpen(false);
+      // Chain into the dispatch step: scan/photo checklist + vehicle details → In Transit.
+      setDispatchLabels(labels);
+      setDispatchOpen(true);
+      showToast(`Pick saved & ${labels.length} labels generated for ${selectedMRN.mrnNo}.`);
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || 'Failed to save pick', 'error');
+    } finally {
+      setTransferPickSaving(false);
+    }
+  };
+
+  // --- Dispatch (Initiate Transfer) step ---
+  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [dispatchLabels, setDispatchLabels] = useState<TransferLabel[]>([]);
+  const [dispatchSaving, setDispatchSaving] = useState(false);
+
+  const handleDispatchConfirm = async ({ labels, dispatch }: { labels: DispatchLabelState[]; dispatch: DispatchDetails }) => {
+    if (!selectedMRN) return;
+    setDispatchSaving(true);
+    try {
+      const lts = selectedMRN.lineTransferStatus || {};
+      const toInitiate = selectedMRN.lineItems
+        .map((li) => li.id)
+        .filter((id) => {
+          const s = lts[id] as string | undefined;
+          return s == null || s === 'not_initiated';
+        });
+      const dispatchEntry = {
+        code: 'DISPATCH',
+        kind: 'dispatch',
+        vehicleNo: dispatch.vehicleNo,
+        driver: dispatch.driver,
+        dispatchDate: dispatch.dispatchDate,
+        photo: dispatch.dispatchPhoto,
+      };
+      await updateMRN(selectedMRN.id, {
+        ...(toInitiate.length ? { initiateTransferLineIds: toInitiate } : { status: UI_TO_API_STATUS['In Transfer'] }),
+        assignedPicker: assignedPicker || selectedMRN.assignedPicker || undefined,
+        transferTeam: assignedTransferBy || selectedMRN.transferTeam || undefined,
+        muReceiveZone: selectedMlLocation || selectedMRN.muReceiveZone || undefined,
+        logisticsVehicleNo: dispatch.vehicleNo,
+        logisticsTransporter: dispatch.driver,
+        logisticsTrackingNo: dispatch.trackingNo,
+        logisticsDispatchDate: dispatch.dispatchDate,
+        generatedLabels: [...labels, dispatchEntry] as unknown as GeneratedMRNLabel[],
+        lineItems: selectedMRN.lineItems.map((li) => ({
+          id: li.id,
+          item: li.name,
+          itemCode: li.itemCode,
+          quantity: li.quantity,
+          unit: li.unit,
+          raw_material_id: li.raw_material_id,
+          pack_material_id: li.pack_material_id,
+          product_id: li.product_id,
+        })),
+      });
+      setDispatchOpen(false);
+      setMrnData((prev) => prev.map((m) => (m.id === selectedMRN.id ? { ...m, status: 'In Transfer' as const } : m)));
+      showToast(`Dispatched ${labels.length} label(s) for ${selectedMRN.mrnNo} — In Transit.`);
+      closePickPanel();
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || 'Failed to dispatch', 'error');
+    } finally {
+      setDispatchSaving(false);
+    }
+  };
 
   const handleOpenPanel = (mrn: MRN, _mode: 'pick' | 'view') => {
     setSelectedMRNId(mrn.id);
@@ -834,14 +982,27 @@ const OutboundDashboard = () => {
             {/* Search Bar */}
             <input
               type="text"
-              placeholder="Search MRN, Item name, batch…"
+              placeholder={
+                tab === 'returns'
+                  ? 'Search MRN, product, batch, status…'
+                  : tab === 'invoice'
+                    ? 'Search SO, customer, invoice…'
+                    : 'Search MRN, Item name, batch…'
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-4 py-2 bg-white border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
           </div>
 
-          {/* Table */}
+          {transfersTabBar}
+
+          {/* Table — swaps by category; the chrome above (cards, actions, chips, search, tabs) stays constant. */}
+          {tab === 'returns' ? (
+            <WarehouseReturnsTab search={searchQuery} />
+          ) : tab === 'invoice' ? (
+            <WarehouseInvoiceTab search={searchQuery} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -978,6 +1139,7 @@ const OutboundDashboard = () => {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
 
@@ -1219,6 +1381,16 @@ const OutboundDashboard = () => {
               >
                 Save changes
               </button>
+              {(selectedMRN?.status === 'Pending Pick' || selectedMRN?.status === 'In Pick') && (
+                <button
+                  type="button"
+                  onClick={() => setTransferPickOpen(true)}
+                  title="Open Transfer Copy: enter packs, split, and generate QR labels."
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
+                >
+                  🏷️ Generate Labels &amp; Pick
+                </button>
+              )}
               {savePickAvailable && (
                 <button
                   type="button"
@@ -1244,6 +1416,27 @@ const OutboundDashboard = () => {
           </div>
         </div>
       )}
+
+      <TransferPickModal
+        open={transferPickOpen}
+        onClose={() => setTransferPickOpen(false)}
+        lines={transferPickLines}
+        route={selectedMlLocation ? `MW → ${selectedMlLocation}` : 'MW → ML1'}
+        requiredDate={selectedMRN ? mrnDisplayExpectedDate(selectedMRN) : undefined}
+        requestedBy={selectedMRN?.requestedBy}
+        onConfirm={handleTransferPickConfirm}
+        saving={transferPickSaving}
+      />
+
+      <TransferDispatchModal
+        open={dispatchOpen}
+        onClose={() => setDispatchOpen(false)}
+        labels={dispatchLabels}
+        route={selectedMlLocation ? `MW → ${selectedMlLocation}` : 'MW → ML1'}
+        today={new Date().toISOString().slice(0, 10)}
+        onDispatch={handleDispatchConfirm}
+        saving={dispatchSaving}
+      />
 
       {initiateModalOpen && (
         <div
