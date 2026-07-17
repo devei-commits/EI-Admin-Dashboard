@@ -4681,37 +4681,59 @@ const Planning = () => {
    * each batch's confirmed size (kg) share — same basis as Plan Batches at BOM confirm.
    * Last batch absorbs rounding so row totals match Consolidated Req exactly.
    */
+  /**
+   * Per-batch requirement for an item, computed from each batch's OWN BOM — NOT by distributing the
+   * item's consolidated Total Req across batches by kg. Packaging is per finished unit (not per kg),
+   * and units-per-kg varies by fill size, so a kg-weighted split gave every batch the same
+   * pieces/kg regardless of product (e.g. a fragile sticker showing 70 for an 18 kg batch).
+   * Mirrors the backend accumulatePlannedBatchIntoQtyMaps:
+   *   RM per batch = batchKg × %w/w
+   *   PM per batch = batchUnits × qty_per_unit,  batchUnits = batchKg ÷ (PI.totalKg / PI.orderQty)
+   */
   const allocateConsolidatedReqAcrossBatches = (
     item: ItemsInvolvedDisplayRow,
     batches: PlanningBatchAllRow[]
   ): Map<string, number> => {
-    const target = Number(item.totalRequired) || 0;
     const out = new Map<string, number>();
+    const itemCode = String(item.code ?? '').trim().toLowerCase();
+    const itemName = String(item.name ?? '').trim().toLowerCase();
+    const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+
+    type BomLine = {
+      raw_material_id?: number; pack_material_id?: number;
+      rm_code?: string; pm_code?: string; code?: string;
+      inci_name?: string; name?: string; description?: string;
+      pct_w_w?: number; pct?: number; qty_per_unit?: number; qty?: number;
+    };
+    const lineMatchesItem = (line: BomLine): boolean => {
+      const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
+      const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
+      const lineLabel = String(line.inci_name ?? line.name ?? line.description ?? '').trim().toLowerCase();
+      const byId = Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId;
+      const byCode = itemCode.length > 0 && lineCode === itemCode;
+      const byName = itemName.length > 0 && lineLabel === itemName;
+      return byId || byCode || byName;
+    };
+
     for (const batch of batches) {
-      out.set(releaseBatchPickKey(batch), 0);
-    }
-    if (!(target > 0) || batches.length === 0) return out;
-
-    const eligible = batches.filter((b) => (Number(b.sizeKg) || 0) > 0);
-    if (eligible.length === 0) return out;
-
-    const totalAllocKg = eligible.reduce((sum, b) => sum + (Number(b.sizeKg) || 0), 0);
-    if (!(totalAllocKg > 0)) return out;
-
-    let allocated = 0;
-    eligible.forEach((batch, idx) => {
       const key = releaseBatchPickKey(batch);
       const sizeKg = Number(batch.sizeKg) || 0;
-      let qty: number;
-      if (idx === eligible.length - 1) {
-        qty = Math.max(0, item.itemType === 'RM' ? roundMaterialQty(target - allocated) : Math.round(target - allocated));
+      const lines = ((item.itemType === 'RM' ? batch.rmLines : batch.pmLines) ?? []) as BomLine[];
+      const line = lines.find(lineMatchesItem);
+      if (!line || !(sizeKg > 0)) { out.set(key, 0); continue; }
+
+      if (item.itemType === 'RM') {
+        const pct = Number(line.pct_w_w ?? line.pct ?? 0) || 0;
+        out.set(key, roundMaterialQty((sizeKg * pct) / 100));
       } else {
-        const raw = target * (sizeKg / totalAllocKg);
-        qty = item.itemType === 'RM' ? roundMaterialQty(raw) : Math.round(raw);
-        allocated += qty;
+        const orderQty = parseInt(String(batch.orderQty ?? '').replace(/\D/g, ''), 10) || 0;
+        const totalKg = parseFloat(String(batch.totalKg ?? '').replace(/[^\d.]/g, '')) || 0;
+        const kgPerUnit = orderQty > 0 && totalKg > 0 ? totalKg / orderQty : 0;
+        const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
+        const qtyPerUnit = Number(line.qty_per_unit ?? line.qty ?? 1) || 1;
+        out.set(key, Math.round(unitsForBatch * qtyPerUnit));
       }
-      out.set(key, qty);
-    });
+    }
     return out;
   };
 
