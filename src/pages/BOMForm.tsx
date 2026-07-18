@@ -1097,7 +1097,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       const byId = comp.packMaterialId ? packMaterialById.get(String(comp.packMaterialId)) : undefined;
       if (byId?.zohoSkuCode) return String(byId.zohoSkuCode).trim();
       const byCode = comp.pmCode ? packMaterialByCode.get(String(comp.pmCode).trim().toLowerCase()) : undefined;
-      return byCode?.zohoSkuCode ? String(byCode.zohoSkuCode).trim() : '';
+      if (byCode?.zohoSkuCode) return String(byCode.zohoSkuCode).trim();
+      // Fall back to the PM master / line code when no Zoho SKU is set yet (mirrors the RM side, which
+      // falls back to rmCode). Many pack materials have a code but a null zoho_sku_code.
+      return String(byId?.code ?? byCode?.code ?? comp.pmCode ?? '').trim();
     },
     [packMaterialByCode, packMaterialById]
   );
