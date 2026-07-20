@@ -373,6 +373,8 @@ export interface ItemsInvolvedRow {
   poQty?: number;
   /** Stage-flow in-transit balance: shipped but not yet received via GRN Complete. */
   inTransitQty?: number;
+  /** Under-GRN balance: arrived at warehouse, under review (distinct stage after In-Transit). */
+  underGrn?: number;
   /** Stage-flow warehouse balance: stock_in_hand after GRN Complete receipts. */
   whQty?: number;
   /** Qty from Release to Planning (max PR vs Planning-linked draft PO) for this item + PIs. */
@@ -386,6 +388,21 @@ export interface ItemsInvolvedRow {
   reorderPt?: number;
   avgMo?: number;
   status?: 'In Stock' | 'Low Stock' | 'Critical' | 'Out of Stock';
+  /** POs behind PO Qty (click-through popup). */
+  poBreakdown?: ItemsInvolvedRefBreakdown[];
+  /** GRNs behind In-Transit (click-through popup). */
+  inTransitBreakdown?: ItemsInvolvedRefBreakdown[];
+  /** GRNs behind Under-GRN (click-through popup). */
+  underGrnBreakdown?: ItemsInvolvedRefBreakdown[];
+}
+
+/** One row of a PO-Qty / In-Transit / Under-GRN click-through popup. `ref` = PO# or GRN#. */
+export interface ItemsInvolvedRefBreakdown {
+  ref: string;
+  qty: number;
+  unit: string;
+  status: string;
+  expectedDate?: string | null;
 }
 
 export async function fetchItemsInvolved(opts?: { includeZeroRequired?: boolean }): Promise<ItemsInvolvedRow[]> {
