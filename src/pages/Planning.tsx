@@ -59,6 +59,7 @@ import {
   fetchItemsInvolved,
   fetchItemsInvolvedByPlanningId,
   type ItemsInvolvedRow,
+  type ItemsInvolvedRefBreakdown,
   type PlanningExtractedRow,
   type PlanningBatchRow,
   type PlanningBatchAllRow,
@@ -332,6 +333,9 @@ interface ItemsInvolvedDisplayRow {
   plannedCovPct: number;
   underGrnStr: string;
   underGrnNum: number;
+  poBreakdown: ItemsInvolvedRefBreakdown[];
+  inTransitBreakdown: ItemsInvolvedRefBreakdown[];
+  underGrnBreakdown: ItemsInvolvedRefBreakdown[];
   moqStr: string;
   moqNum: number;
   slaGapStr: string;
@@ -1045,7 +1049,8 @@ function enrichItemsInvolvedDisplayRows(
       row.itemType === 'RM'
         ? findRmMasterRecord(row.raw_material_id, row.code, rawMaterialsList)
         : undefined;
-    const underGrnNum = underGrnQtyForItemsInvolved(row, wh, rm);
+    // Under-GRN now comes from the backend supply-pipeline cascade (row.underGrnNum), not warehouse_inventory.
+    const underGrnNum = row.underGrnNum;
     const moqNum = minMoqFromItemsList(row, itemsListRmPage, itemsListPmPage);
     const slaGapStr = row.shortStr;
     return {
@@ -1218,6 +1223,9 @@ function mapItemsInvolvedApiRowsToDisplay(rows: ItemsInvolvedRow[]): ItemsInvolv
       inTransit: fmtU(Number(row.inTransit ?? 0) || 0),
       poQtyStr: fmtU(poQtyStage),
       poQtyNum: poQtyStage,
+      poBreakdown: Array.isArray(row.poBreakdown) ? row.poBreakdown : [],
+      inTransitBreakdown: Array.isArray(row.inTransitBreakdown) ? row.inTransitBreakdown : [],
+      underGrnBreakdown: Array.isArray(row.underGrnBreakdown) ? row.underGrnBreakdown : [],
       inTransitQtyStr: fmtU(inTransitStage),
       inTransitQtyNum: inTransitStage,
       whQtyStr: fmtU(Number(row.whQty ?? 0) || 0),
@@ -1232,8 +1240,8 @@ function mapItemsInvolvedApiRowsToDisplay(rows: ItemsInvolvedRow[]): ItemsInvolv
       batchAllocatedQtyNum: Number(row.batchAllocatedQty ?? 0) || 0,
       sihCovPct: itemsInvolvedCoveragePct(row.sih, grossDemand),
       plannedCovPct: itemsInvolvedCoveragePct(plannedQtyNum, grossDemand),
-      underGrnStr: fmtU(0),
-      underGrnNum: 0,
+      underGrnStr: fmtU(Number(row.underGrn ?? 0) || 0),
+      underGrnNum: Number(row.underGrn ?? 0) || 0,
       moqStr: '—',
       moqNum: 0,
       slaGapStr: fmtU(shortQty),
@@ -2588,6 +2596,7 @@ const Planning = () => {
   /** Re-render PIs Extracted SLA column every minute while tab is open. */
   const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
+  const [refPopup, setRefPopup] = useState<{ title: string; sub: string; refLabel: string; rows: ItemsInvolvedRefBreakdown[] } | null>(null);
   const [releaseToPlanningItem, setReleaseToPlanningItem] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [releaseToPlanningForm, setReleaseToPlanningForm] = useState<{
     vendorId: number | null;
@@ -7869,7 +7878,7 @@ const Planning = () => {
                         title="Lowest vendor MOQ from Items List"
                       />
                       <SortableTableTh
-                        label="SLA gap"
+                        label="Required"
                         column="slaGap"
                         sortColumn={itemsInvolvedSortColumn}
                         sortDirection={itemsInvolvedSortDirection}
@@ -8036,13 +8045,46 @@ const Planning = () => {
                               <div className="text-[10px] text-gray-500">({item.plannedCovPct}%)</div>
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
-                              {item.poQtyStr}
+                              {item.poBreakdown.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setRefPopup({ title: 'Purchase Orders', sub: `${item.name} · PO Qty ${item.poQtyStr}`, refLabel: 'PO #', rows: item.poBreakdown })}
+                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  title="View the POs behind this quantity"
+                                >
+                                  {item.poQtyStr}
+                                </button>
+                              ) : (
+                                item.poQtyStr
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
-                              {item.inTransitQtyStr}
+                              {item.inTransitBreakdown.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setRefPopup({ title: 'In-Transit GRNs', sub: `${item.name} · In-Transit ${item.inTransitQtyStr}`, refLabel: 'GRN #', rows: item.inTransitBreakdown })}
+                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  title="View the GRNs in transit"
+                                >
+                                  {item.inTransitQtyStr}
+                                </button>
+                              ) : (
+                                item.inTransitQtyStr
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
-                              {item.underGrnStr}
+                              {item.underGrnBreakdown.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setRefPopup({ title: 'Under-GRN', sub: `${item.name} · Under-GRN ${item.underGrnStr}`, refLabel: 'GRN #', rows: item.underGrnBreakdown })}
+                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  title="View the GRNs under review"
+                                >
+                                  {item.underGrnStr}
+                                </button>
+                              ) : (
+                                item.underGrnStr
+                              )}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
                               {item.reserved}
@@ -8242,6 +8284,42 @@ const Planning = () => {
       </div>
 
       {/* Used In popup: list all batches (sent + draft) that consume selected RM/PM */}
+      {refPopup && (
+        <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4" onClick={() => setRefPopup(null)}>
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-gray-200 max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">{refPopup.title}</h3>
+                <p className="text-xs text-gray-500 mt-1">{refPopup.sub}</p>
+              </div>
+              <button type="button" onClick={() => setRefPopup(null)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[64vh]">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] font-semibold text-gray-500 uppercase border-b border-gray-200">
+                    <th className="px-2 py-1.5">{refPopup.refLabel}</th>
+                    <th className="px-2 py-1.5 text-right">Qty</th>
+                    <th className="px-2 py-1.5">Status</th>
+                    <th className="px-2 py-1.5">Expected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refPopup.rows.map((r, i) => (
+                    <tr key={`${r.ref}-${i}`} className="border-b border-gray-100">
+                      <td className="px-2 py-1.5 font-mono text-xs text-gray-800">{r.ref}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 whitespace-nowrap">{(Number(r.qty) || 0).toLocaleString('en-IN')} {r.unit}</td>
+                      <td className="px-2 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200">{r.status}</span></td>
+                      <td className="px-2 py-1.5 text-xs text-gray-600 whitespace-nowrap">{r.expectedDate ? new Date(r.expectedDate).toLocaleDateString('en-IN') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {usedInModalItem && (() => {
         const rows = getUsedInBatchesForItem(usedInModalItem);
         return (
