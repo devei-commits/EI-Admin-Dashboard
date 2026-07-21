@@ -512,12 +512,17 @@ function releaseExpectedDateFromLeadDays(leadDays: number): string {
 function seedReleaseBatchExpectedDates(
   rowKeys: string[],
   leadDays: number,
-  prev: Record<string, string>
+  prev: Record<string, string>,
+  /** Per-batch required-by dates (key → date) — used before the lead-time fallback. */
+  dueByKey?: Record<string, string>
 ): Record<string, string> {
   const def = releaseExpectedDateFromLeadDays(leadDays);
   const next = { ...prev };
   for (const key of rowKeys) {
-    if (!String(next[key] ?? '').trim()) next[key] = def;
+    if (!String(next[key] ?? '').trim()) {
+      const due = String(dueByKey?.[key] ?? '').trim().slice(0, 10);
+      next[key] = due || def;
+    }
   }
   return next;
 }
@@ -2205,6 +2210,8 @@ function PlanningBatchesTab({
   const [batchTypeFilter, setBatchTypeFilter] = useState<'all' | 'planned' | 'in-mfg' | 'in-qc' | 'released' | 'on-hold'>('all');
   const [sortColumn, setSortColumn] = useState<PlanningBatchSortColumn | null>('created');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [batchesPage, setBatchesPage] = useState(1);
+  const [batchesPageSize, setBatchesPageSize] = useState(25);
   const { data: allBatches = [], isLoading } = useQuery({
     queryKey: ['planning-batches-all'],
     queryFn: fetchAllBatches,
@@ -2406,6 +2413,19 @@ function PlanningBatchesTab({
         return keyA.localeCompare(keyB, undefined, { numeric: true, sensitivity: 'base' });
       });
 
+  const batchesTotalPages = Math.max(1, Math.ceil(sortedRows.length / batchesPageSize));
+  const batchesSafePage = Math.min(batchesPage, batchesTotalPages);
+  const batchesPageStart = (batchesSafePage - 1) * batchesPageSize;
+  const paginatedRows = sortedRows.slice(batchesPageStart, batchesPageStart + batchesPageSize);
+
+  useEffect(() => {
+    setBatchesPage(1);
+  }, [searchTerm, batchTypeFilter, sortColumn, sortDirection, dateFilter.from, dateFilter.to]);
+
+  useEffect(() => {
+    setBatchesPage((p) => Math.min(p, batchesTotalPages));
+  }, [batchesTotalPages]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -2462,7 +2482,7 @@ function PlanningBatchesTab({
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((row) => {
+              {paginatedRows.map((row) => {
                 const key = `${row.planningExtractedId}-${row.id}`;
                 const display = rowDisplayByKey.get(key);
                 const clientCode = lookupPisClientCode(row.customerName, pisClientRecords);
@@ -2504,11 +2524,47 @@ function PlanningBatchesTab({
             </tbody>
           </table>
         </div>
-        {sortedRows.length === 0 && (
+        {sortedRows.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-500 text-sm">
             {allBatches.length === 0
               ? 'No batches yet. Create batches from Plan Batches (PIs Extracted) per SO line.'
               : 'No batches matched your current filters/search.'}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-gray-200 bg-gray-50/60">
+            <span className="text-xs text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{batchesPageStart + 1}</span>
+              –
+              <span className="font-semibold text-gray-900">
+                {Math.min(batchesPageStart + batchesPageSize, sortedRows.length)}
+              </span>{' '}
+              of <span className="font-semibold text-gray-900">{sortedRows.length}</span>
+            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <label htmlFor="planning-batches-page-size" className="text-xs text-gray-600">
+                Rows per page
+              </label>
+              <select
+                id="planning-batches-page-size"
+                value={batchesPageSize}
+                onChange={(e) => {
+                  setBatchesPageSize(Number(e.target.value));
+                  setBatchesPage(1);
+                }}
+                className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <Pagination
+                currentPage={batchesSafePage}
+                totalPages={batchesTotalPages}
+                onPageChange={setBatchesPage}
+                variant="compact"
+              />
+            </div>
           </div>
         )}
       </div>
@@ -4862,11 +4918,13 @@ const Planning = () => {
       return sum + (Number.isFinite(v) && v > 0 ? v : 0);
     }, 0);
     if (!(totalPick > 0)) return '';
+    // NOTE: strip thousands separators — this feeds a <input type="number"> qty field and
+    // Number(...) downstream; a locale string like "5,000" blanks the input and parses to NaN→0.
     if (item.itemType === 'RM') {
       const master = findRmMasterRecord(item.raw_material_id, item.code, rawMaterialsList);
-      return formatItemsInvolvedQty(totalPick, 'RM', master?.uom ?? item.unit);
+      return formatItemsInvolvedQty(totalPick, 'RM', master?.uom ?? item.unit).replace(/,/g, '');
     }
-    return formatItemsInvolvedQty(totalPick, item.itemType, item.unit);
+    return formatItemsInvolvedQty(totalPick, item.itemType, item.unit).replace(/,/g, '');
   };
 
   const plannedLinesFromBackend: PlannedLine[] = useMemo(() => {
@@ -5282,12 +5340,18 @@ const Planning = () => {
     const isQuotationOpen = opts?.intent === 'quotation';
     const openBatchRows = buildReleaseBatchSplitRows(item);
     const openLeadDays = first?.leadTimeDays ?? 0;
+    const openBatchDueByKey: Record<string, string> = {};
+    for (const r of openBatchRows) {
+      const d = String(r.batch?.dueDate ?? '').trim().slice(0, 10);
+      if (d) openBatchDueByKey[r.key] = d;
+    }
     setReleaseBatchPicks({});
     setReleaseBatchExpectedDates(
       seedReleaseBatchExpectedDates(
         openBatchRows.map((r) => r.key),
         openLeadDays,
-        {}
+        {},
+        openBatchDueByKey
       )
     );
     setReleaseWeekQtyOverrides({});
@@ -5318,7 +5382,7 @@ const Planning = () => {
   const addPlannedLine = async (): Promise<boolean> => {
     if (!releaseToPlanningItem) return false;
     const planningRow = releaseToPlanningItem;
-    const qty = Number(releaseToPlanningForm.qty || 0);
+    const qty = Number(String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')) || 0;
     const unitPrice = Number(releaseToPlanningForm.unitPrice || 0);
     if (!releaseToPlanningForm.vendorName || qty <= 0 || unitPrice <= 0) {
       addToast('warning', 'Pick vendor and enter valid qty and unit price.');
@@ -5399,10 +5463,18 @@ const Planning = () => {
       return false;
     }
 
+    // The Quantity field (`qty`) is the authoritative released total. Per-batch picks only
+    // split it. If the two disagree — e.g. the user bumped the total above BOM demand to meet
+    // a vendor MOQ (50,000 vs picks summing to 10,000) — the explicit total wins, so procurement
+    // gets EXACTLY what was released instead of the smaller pick sum.
+    const submitBatchEntries = parseReleaseBatchPickEntries(releaseBatchPicks);
+    const submitBatchSum = submitBatchEntries.reduce((sum, e) => sum + e.qty, 0);
+    const effectiveBatchEntries =
+      qty > 0 && Math.abs(submitBatchSum - qty) > 1e-4 ? [] : submitBatchEntries;
     const releaseTargets = buildReleaseTargetsForSubmit(
       buildPlannedReleaseTargets({
         formQty: qty,
-        batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
+        batchPickEntries: effectiveBatchEntries,
         batchExpectedDates: releaseBatchExpectedDates,
         slabMoq,
         leadTimeDays,
@@ -5545,7 +5617,7 @@ const Planning = () => {
   const requestQuotationForPlanningItem = async (): Promise<boolean> => {
     if (!releaseToPlanningItem) return false;
     const planningRow = releaseToPlanningItem;
-    const qty = Number(releaseToPlanningForm.qty || 0);
+    const qty = Number(String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')) || 0;
     if (!(qty > 0)) {
       addToast('warning', 'Enter quantity to request a quotation.');
       return false;
@@ -8408,7 +8480,7 @@ const Planning = () => {
         const hasPlannedShortfallModal = grossReqModal > 0 && availModal < grossReqModal;
         const shortageForReleaseModal = hasShortfallModal || hasPlannedShortfallModal;
         const slabMoqModal = Number(releaseToPlanningForm.moq) || 0;
-        const formQtyModal = Number(releaseToPlanningForm.qty) || 0;
+        const formQtyModal = Number(String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')) || 0;
         const canAddPlannedLineRelease =
           gapNeedModal > 1e-6 ||
           (slabMoqModal > 0 && formQtyModal + 1e-4 >= slabMoqModal);
@@ -8429,7 +8501,12 @@ const Planning = () => {
           } else {
             qtyStr = formatItemsInvolvedQty(gapNeedModal, item.itemType, item.unit);
           }
-          setReleaseToPlanningForm((f) => ({ ...f, qty: qtyStr }));
+          // Setting a consolidated total is a distinct mode from per-batch picks — clear them.
+          setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
+          setReleaseWeekQtyOverrides({});
+          // plain numeric string — feeds a type=number field and Number() downstream
+          setReleaseToPlanningForm((f) => ({ ...f, qty: qtyStr.replace(/,/g, '') }));
         };
         const releasePtStages = resolveStagedPaymentTermsForForm(
           releaseToPlanningForm.paymentTermsRaw,
@@ -8437,12 +8514,17 @@ const Planning = () => {
           Number(releaseToPlanningForm.advancePercent)
         );
         const hasVendorSlabs = slabs.length > 0;
-        const canRequestQuotation = Number(releaseToPlanningForm.qty || 0) > 0;
+        const canRequestQuotation = Number(String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')) > 0;
         const vendorNameKey = releaseToPlanningForm.vendorName.trim().toLowerCase();
         const selectedVendorPartyId = vendorNameKey
           ? vendorClientsList.find((v) => (v.name || '').trim().toLowerCase() === vendorNameKey)?.id ?? ''
           : '';
         const releaseBatchRows = buildReleaseBatchSplitRows(item);
+        const releaseBatchDueByKey: Record<string, string> = {};
+        for (const r of releaseBatchRows) {
+          const d = String(r.batch?.dueDate ?? '').trim().slice(0, 10);
+          if (d) releaseBatchDueByKey[r.key] = d;
+        }
         const releaseBatchSiblingItemsByKey = buildReleaseBatchSiblingItemsMap(item);
         const releaseBatchRowKeys = releaseBatchRows.map((r) => r.key);
         const applyReleaseVendorInput = (name: string) => {
@@ -8469,7 +8551,7 @@ const Planning = () => {
               paymentTermsRaw: String(slabMatch.paymentTerms || '').trim() || null,
             }));
             setReleaseBatchExpectedDates((prev) =>
-              seedReleaseBatchExpectedDates(releaseBatchRowKeys, slabMatch.leadTimeDays, prev)
+              seedReleaseBatchExpectedDates(releaseBatchRowKeys, slabMatch.leadTimeDays, prev, releaseBatchDueByKey)
             );
             return;
           }
@@ -8496,7 +8578,7 @@ const Planning = () => {
             }));
             if (Number.isFinite(masterLead)) {
               setReleaseBatchExpectedDates((prev) =>
-                seedReleaseBatchExpectedDates(releaseBatchRowKeys, masterLead, prev)
+                seedReleaseBatchExpectedDates(releaseBatchRowKeys, masterLead, prev, releaseBatchDueByKey)
               );
             }
             return;
@@ -8529,9 +8611,16 @@ const Planning = () => {
           item.itemType === 'RM'
             ? formatItemsInvolvedQty(n, 'RM', releaseRmMaster?.uom ?? item.unit)
             : formatItemsInvolvedQty(n, item.itemType, item.unit);
+        // Keep the preview consistent with submit: the Quantity total is authoritative — if it
+        // disagrees with the per-batch picks (e.g. bumped to MOQ), the total wins.
+        const previewBatchEntries = parseReleaseBatchPickEntries(releaseBatchPicks);
+        const previewBatchSum = previewBatchEntries.reduce((sum, e) => sum + e.qty, 0);
         const releasePreviewTargets = buildPlannedReleaseTargets({
           formQty: formQtyModal,
-          batchPickEntries: parseReleaseBatchPickEntries(releaseBatchPicks),
+          batchPickEntries:
+            formQtyModal > 0 && Math.abs(previewBatchSum - formQtyModal) > 1e-4
+              ? []
+              : previewBatchEntries,
           batchExpectedDates: releaseBatchExpectedDates,
           slabMoq: slabMoqModal,
           leadTimeDays: releaseToPlanningForm.leadTimeDays,
@@ -8555,7 +8644,7 @@ const Planning = () => {
           const total = merged.reduce((sum, row) => sum + row.qty, 0);
           setReleaseToPlanningForm((f) => ({
             ...f,
-            qty: total > 0 ? formatReleasePickQty(total) : '',
+            qty: total > 0 ? formatReleasePickQty(total).replace(/,/g, '') : '',
           }));
         };
         const resetReleaseWeekQtyOverrides = () => {
@@ -8563,7 +8652,7 @@ const Planning = () => {
           const total = releaseWeekSummary.reduce((sum, row) => sum + row.qty, 0);
           setReleaseToPlanningForm((f) => ({
             ...f,
-            qty: total > 0 ? formatReleasePickQty(total) : f.qty,
+            qty: total > 0 ? formatReleasePickQty(total).replace(/,/g, '') : f.qty,
           }));
         };
         const handleReleaseBatchPickChange = (key: string, value: string) => {
@@ -8571,7 +8660,7 @@ const Planning = () => {
           const qty = parseFloat(String(value ?? '').replace(/,/g, ''));
           if (Number.isFinite(qty) && qty > 0) {
             setReleaseBatchExpectedDates((prev) =>
-              seedReleaseBatchExpectedDates([key], releaseToPlanningForm.leadTimeDays, prev)
+              seedReleaseBatchExpectedDates([key], releaseToPlanningForm.leadTimeDays, prev, releaseBatchDueByKey)
             );
           }
           setReleaseBatchPicks((prev) => {
@@ -8586,6 +8675,20 @@ const Planning = () => {
         const handleReleaseBatchExpectedDateChange = (key: string, value: string) => {
           setReleaseBatchExpectedDates((prev) => ({ ...prev, [key]: value }));
         };
+        // "Pick" a single batch: make it the sole selection so the Planned line below
+        // reflects only this batch's qty, and seed its own expected (required-by) date.
+        const handleReleaseBatchPickOnly = (key: string, requiredPick: number) => {
+          setReleaseWeekQtyOverrides({});
+          const next: Record<string, string> = requiredPick > 0 ? { [key]: String(requiredPick) } : {};
+          setReleaseBatchExpectedDates((prev) =>
+            seedReleaseBatchExpectedDates([key], releaseToPlanningForm.leadTimeDays, prev, releaseBatchDueByKey)
+          );
+          setReleaseBatchPicks(next);
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            qty: releaseBatchPicksToFormQtyStr(item, next),
+          }));
+        };
         const fillAllReleaseBatchRequired = () => {
           setReleaseWeekQtyOverrides({});
           const next: Record<string, string> = {};
@@ -8598,7 +8701,7 @@ const Planning = () => {
           }
           setReleaseBatchPicks(next);
           setReleaseBatchExpectedDates((prev) =>
-            seedReleaseBatchExpectedDates(keysToSeed, releaseToPlanningForm.leadTimeDays, prev)
+            seedReleaseBatchExpectedDates(keysToSeed, releaseToPlanningForm.leadTimeDays, prev, releaseBatchDueByKey)
           );
           setReleaseToPlanningForm((f) => ({
             ...f,
@@ -8615,16 +8718,17 @@ const Planning = () => {
           setReleaseWeekQtyOverrides({});
           setReleaseBatchPicks({});
           setReleaseBatchExpectedDates((prev) =>
-            seedReleaseBatchExpectedDates(releaseBatchRowKeys, s.leadTimeDays, prev)
+            seedReleaseBatchExpectedDates(releaseBatchRowKeys, s.leadTimeDays, prev, releaseBatchDueByKey)
           );
           setReleaseToPlanningForm((f) => {
-            const currentQty = Number(f.qty) || 0;
+            const currentQty = Number(String(f.qty ?? '').replace(/,/g, '')) || 0;
             const bumpedQty = s.moq > 0 ? Math.max(currentQty, s.moq) : currentQty;
             const qtyStr =
               bumpedQty > 0
-                ? item.itemType === 'RM'
-                  ? formatItemsInvolvedQty(bumpedQty, 'RM', releaseRmMaster?.uom ?? item.unit)
-                  : formatItemsInvolvedQty(bumpedQty, item.itemType, item.unit)
+                ? (item.itemType === 'RM'
+                    ? formatItemsInvolvedQty(bumpedQty, 'RM', releaseRmMaster?.uom ?? item.unit)
+                    : formatItemsInvolvedQty(bumpedQty, item.itemType, item.unit)
+                  ).replace(/,/g, '')
                 : f.qty;
             return {
               ...f,
@@ -8650,38 +8754,18 @@ const Planning = () => {
           setReleaseBatchExpectedDates({});
           setReleaseToPlanningForm((f) => ({
             ...f,
-            qty: formatReleasePickQty(slabMoqModal),
+            qty: formatReleasePickQty(slabMoqModal).replace(/,/g, ''),
           }));
         };
         const handleReleaseFormQtyChange = (value: string) => {
           setReleaseWeekQtyOverrides({});
-          const parsedQty = parseFloat(String(value ?? '').replace(/,/g, ''));
-          if (
-            releaseBatchRows.length > 0 &&
-            Number.isFinite(parsedQty) &&
-            parsedQty > 0
-          ) {
-            let remaining = parsedQty;
-            const nextPicks: Record<string, string> = {};
-            const keysToSeed: string[] = [];
-            for (const row of releaseBatchRows) {
-              if (remaining <= 1e-6) break;
-              const alloc = Math.min(row.requiredPick, remaining);
-              if (alloc > 1e-6) {
-                nextPicks[row.key] = formatReleasePickQty(alloc);
-                keysToSeed.push(row.key);
-                remaining -= alloc;
-              }
-            }
-            setReleaseBatchPicks(nextPicks);
-            setReleaseBatchExpectedDates((prev) =>
-              seedReleaseBatchExpectedDates(keysToSeed, releaseToPlanningForm.leadTimeDays, prev)
-            );
-          } else {
-            setReleaseBatchPicks({});
-            setReleaseBatchExpectedDates({});
-          }
-          setReleaseToPlanningForm((f) => ({ ...f, qty: value }));
+          // Manual total-qty entry is a distinct mode from per-batch picks. Clear the picks
+          // (and their dates) so the typed value is used AS-IS — otherwise it was being
+          // capped at the sum of per-batch required qty, making it impossible to bump the
+          // total above BOM demand to meet a vendor MOQ (e.g. type 50,000 → stuck at 10,000).
+          setReleaseBatchPicks({});
+          setReleaseBatchExpectedDates({});
+          setReleaseToPlanningForm((f) => ({ ...f, qty: String(value ?? '').replace(/,/g, '') }));
         };
 
         return (
@@ -8739,6 +8823,7 @@ const Planning = () => {
                   onFillAllRequired={fillAllReleaseBatchRequired}
                   onFillMoq={slabMoqModal > 0 ? fillReleaseQtyToMoq : undefined}
                   onClearPicks={clearReleaseBatchPicks}
+                  onPickBatch={handleReleaseBatchPickOnly}
                   siblingItemsByBatchKey={releaseBatchSiblingItemsByKey}
                 />
                 {!isQuotationOnlyModal ? (
@@ -8960,7 +9045,7 @@ const Planning = () => {
                           <input
                             type="number"
                             min={0}
-                            value={releaseToPlanningForm.qty}
+                            value={String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')}
                             onChange={(e) => handleReleaseFormQtyChange(e.target.value)}
                             className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                           />
@@ -8972,6 +9057,24 @@ const Planning = () => {
                             <p className="text-[10px] text-indigo-700 mt-0.5">
                               Per-batch picks above update this total automatically.
                             </p>
+                          ) : null}
+                          {slabMoqModal > 0 &&
+                          releasePreviewTotalQty > 1e-6 &&
+                          releasePreviewTotalQty < slabMoqModal - 1e-4 ? (
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                              <p className="text-[11px] text-amber-800 leading-snug min-w-0">
+                                ⚠ Releasing {qtyFmt(releasePreviewTotalQty)} — below the vendor MOQ of{' '}
+                                {qtyFmt(slabMoqModal)}. Procurement will reject it. Bump the total to the
+                                minimum (clears per-batch picks).
+                              </p>
+                              <button
+                                type="button"
+                                onClick={fillReleaseQtyToMoq}
+                                className="shrink-0 px-2.5 py-1 rounded-md bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 whitespace-nowrap"
+                              >
+                                Bump to MOQ ({qtyFmt(slabMoqModal)})
+                              </button>
+                            </div>
                           ) : null}
                         </div>
                         {gapNeedModal > 1e-6 && (
@@ -9254,7 +9357,7 @@ const Planning = () => {
                                     paymentTermsRaw: String(r.paymentTerms || '').trim() || null,
                                   }));
                                   setReleaseBatchExpectedDates((prev) =>
-                                    seedReleaseBatchExpectedDates(releaseBatchRowKeys, r.leadTimeDays, prev)
+                                    seedReleaseBatchExpectedDates(releaseBatchRowKeys, r.leadTimeDays, prev, releaseBatchDueByKey)
                                   );
                                 }}
                                 className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"

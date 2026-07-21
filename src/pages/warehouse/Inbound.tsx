@@ -2570,7 +2570,18 @@ const WarehouseInbound = () => {
         {receiptModal ? (
           <GrnCopyReceiptModal
             grn={receiptModal.grn}
-            lineItem={receiptModal.lineItem}
+            lineItem={{
+              ...receiptModal.lineItem,
+              // Default the unit from the material type (pcs for packaging, kg for raw)
+              // so a PM item never shows the 'kg' fallback.
+              unit:
+                receiptModal.lineItem.unit ||
+                (receiptModal.lineItem.pack_material_id != null
+                  ? 'pcs'
+                  : receiptModal.lineItem.raw_material_id != null
+                    ? 'kg'
+                    : 'pcs'),
+            }}
             mode={receiptModal.mode}
             onClose={() => setReceiptModal(null)}
             onSaved={handleReceiptSaved}

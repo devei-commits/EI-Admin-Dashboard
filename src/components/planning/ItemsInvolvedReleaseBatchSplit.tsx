@@ -160,6 +160,7 @@ export function ItemsInvolvedReleaseBatchSplit({
   onFillAllRequired,
   onFillMoq,
   onClearPicks,
+  onPickBatch,
   moqMin,
   siblingItemsByBatchKey = {},
 }: {
@@ -178,6 +179,8 @@ export function ItemsInvolvedReleaseBatchSplit({
   onFillAllRequired: () => void;
   onFillMoq?: () => void;
   onClearPicks: () => void;
+  /** Pick a single batch: fills the Planned line below with only this batch's qty + expected date. */
+  onPickBatch: (key: string, requiredPick: number) => void;
   /** Other Items Involved rows per batch key — shown when a batch row is expanded. */
   siblingItemsByBatchKey?: Record<string, ReleaseBatchSiblingItemRow[]>;
 }): React.ReactElement | null {
@@ -308,7 +311,7 @@ export function ItemsInvolvedReleaseBatchSplit({
                         type="number"
                         min={0}
                         step="any"
-                        value={picks[row.key] ?? ''}
+                        value={String(picks[row.key] ?? '').replace(/,/g, '')}
                         onChange={(e) => onPickChange(row.key, e.target.value)}
                         className="w-full min-w-[5rem] rounded border border-slate-300 px-2 py-1 text-right text-sm"
                         aria-label={`Release qty for ${batchLabel}`}
@@ -324,19 +327,29 @@ export function ItemsInvolvedReleaseBatchSplit({
                       />
                     </td>
                     <td className="py-2 align-top">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onPickChange(
-                            row.key,
-                            row.requiredPick > 0 ? String(row.requiredPick) : ''
-                          )
-                        }
-                        className="px-2 py-1 rounded border border-indigo-300 text-indigo-800 text-[10px] font-semibold hover:bg-indigo-50 whitespace-nowrap"
-                        title="Copy required qty into release field"
-                      >
-                        Use
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onPickBatch(row.key, row.requiredPick)}
+                          className="px-2 py-1 rounded border border-indigo-600 bg-indigo-600 text-white text-[10px] font-semibold hover:bg-indigo-700 whitespace-nowrap"
+                          title="Pick this batch into the Planned line below (its qty + expected date)"
+                        >
+                          Pick
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onPickChange(
+                              row.key,
+                              row.requiredPick > 0 ? String(row.requiredPick) : ''
+                            )
+                          }
+                          className="px-2 py-1 rounded border border-indigo-300 text-indigo-800 text-[10px] font-semibold hover:bg-indigo-50 whitespace-nowrap"
+                          title="Add this batch's required qty to the picks above (keeps other picks)"
+                        >
+                          + Add
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   {isExpanded && hasSiblings ? (

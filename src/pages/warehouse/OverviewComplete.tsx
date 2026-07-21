@@ -393,7 +393,7 @@ const OutboundDashboard = ({
   const handleTransferPickConfirm = async ({ labels, pickedByLine }: { labels: TransferLabel[]; pickedByLine: Record<string, number> }) => {
     if (!selectedMRN) return;
     if (!String(assignedPicker || '').trim()) {
-      showToast('Assign a picker before generating labels.', 'error');
+      showToast('Assign a picker (in the pick modal footer) before saving the pick.', 'error');
       return;
     }
     setTransferPickSaving(true);
@@ -1132,6 +1132,19 @@ const OutboundDashboard = ({
                             ))}
                           </select>
                         )}
+                        {(mrn.status === 'Pending Pick' || mrn.status === 'In Pick') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOpenPanel(mrn, 'view');
+                              setTransferPickOpen(true);
+                            }}
+                            title="Open Transfer Copy: enter packs, split, and generate QR labels."
+                            className="mt-1.5 block w-full whitespace-nowrap rounded-md bg-amber-500 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-600"
+                          >
+                            🏷️ Generate Labels &amp; Pick
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1426,6 +1439,9 @@ const OutboundDashboard = ({
         requestedBy={selectedMRN?.requestedBy}
         onConfirm={handleTransferPickConfirm}
         saving={transferPickSaving}
+        pickers={assignablePickers}
+        assignedPicker={assignedPicker}
+        onAssignPicker={setAssignedPicker}
       />
 
       <TransferDispatchModal

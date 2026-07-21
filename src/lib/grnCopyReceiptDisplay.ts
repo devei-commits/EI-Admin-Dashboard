@@ -328,8 +328,10 @@ export function buildGrnCopyReceiptHeaderFields(grn: GrnCopyReceiptInput): GrnCo
     itemLine: itemCode ? `${itemCode} · ${itemName}` : itemName || '—',
     poNumber: String(grn.poNo ?? '').trim() || '—',
     poQty: formatQty(line?.poQty, line?.unit),
-    shippedQty: formatQty(line?.rcvdQty, line?.unit),
-    unitPrice: Number.isFinite(Number(line?.unitPrice))
+    // Shipped/received qty falls back to PO qty when no shipment qty was recorded (0),
+    // matching the pack declared qty so the auto match-check doesn't false-flag.
+    shippedQty: formatQty(Number(line?.rcvdQty) || Number(line?.poQty) || 0, line?.unit),
+    unitPrice: Number(line?.unitPrice) > 0
       ? `${formatInr(line?.unitPrice)} / ${String(line?.unit ?? 'unit').trim() || 'unit'}`
       : '—',
     vendorLine: vendorCode ? `${vendor} · ${vendorCode}` : vendor,
@@ -347,7 +349,9 @@ export function buildGrnMatchChecks(input: {
 }): GrnMatchCheckRow[] {
   const line = input.grn.lineItem;
   const poQty = Number(line?.poQty) || 0;
-  const shippedQty = Number(line?.rcvdQty) || 0;
+  // Fall back to PO qty when no shipment qty was recorded (0), matching the header and packs
+  // so the "Shipped vs Physical" check doesn't false-flag on a missing shipment step.
+  const shippedQty = Number(line?.rcvdQty) || poQty;
   const billedQty =
     Number(input.billedQty) > 0
       ? Number(input.billedQty)
@@ -400,12 +404,9 @@ export function buildGrnMatchChecks(input: {
     },
   ];
 
-  rows.splice(rows.length - 1, 0, {
-    label: labelCount > 0
-      ? `QR labels (${labelCount} on file — regenerate after all receipt checks pass)`
-      : 'QR labels (not generated — use Generate Labels after receipt checks pass)',
-    pass: labelCount > 0,
-  });
+  // NOTE: no "QR labels generated" row here — labels are generated AFTER these receipt
+  // checks pass, so gating label generation on labels already existing was circular.
+  void labelCount;
 
   return rows;
 }

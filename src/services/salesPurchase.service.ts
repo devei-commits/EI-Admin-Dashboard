@@ -233,6 +233,51 @@ export async function importOpenSoHeadersExcel(
   );
 }
 
+export interface ZohoSoImportResponse {
+  imported: boolean;
+  source: 'zoho';
+  action: 'create' | 'update';
+  so_no: string;
+  sales_order_id: number | null;
+  zoho_salesorder_id: string;
+  fulfillment_order_id: number | null;
+  fulfillment_action: string | null;
+  client_matched: boolean;
+  unmatched_lines: Array<{ sku: string; name: string }>;
+}
+
+/** Error body returned by the Zoho SO import route (see src/salesOrders/zohoImportBySoNo.js). */
+export interface ZohoSoImportError {
+  error: string;
+  code?:
+    | 'MISSING_SO_NO'
+    | 'ZOHO_LOOKUP_FAILED'
+    | 'ZOHO_SO_NOT_FOUND'
+    | 'ZOHO_SO_AMBIGUOUS'
+    | 'ZOHO_SO_NO_ID'
+    | 'SO_ALREADY_IMPORTED'
+    | 'ZOHO_IMPORT_FAILED'
+    | 'SO_IMPORT_FAILED';
+  reasons?: string[];
+  sales_order_id?: number | null;
+  fulfillment_order_id?: number | null;
+}
+
+/**
+ * Pull a single sales order from Zoho Books by SO number into sales_orders +
+ * planning_extracted, seeding a fulfillment order.
+ * POST /api/v1/sales-orders/zoho-import-by-so-no  Body: { soNo, updateExisting? }
+ */
+export async function importSalesOrderFromZohoBySoNo(
+  soNo: string,
+  options?: { updateExisting?: boolean },
+): Promise<ZohoSoImportResponse> {
+  return api.post<ZohoSoImportResponse>('/api/v1/sales-orders/zoho-import-by-so-no', {
+    soNo,
+    updateExisting: options?.updateExisting === true,
+  });
+}
+
 export interface PrRowsExcelImportResponse {
   ok: boolean;
   error?: string;

@@ -148,7 +148,7 @@ import { DispensingTrayView } from '../components/production/DispensingTrayView'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
-type Section = 'calendar' | 'batches' | 'dispensing-tray' | 'material-reservation' | 'yield-report' | 'equipment' | 'team' | 'transfers';
+type Section = 'calendar' | 'batches' | 'dispensing-tray' | 'material-reservation' | 'yield-report' | 'equipment' | 'team';
 export type ScheduleSlot = { equipId: string; category: 'mfg' | 'fill' | 'pack'; dateIso: string };
 type BMRStatus = 'draft' | 'batch_confirmed' | 'rm_reserved' | 'scheduled' | 'rm_connected' | 'dispensing' | 'in_production' | 'bulk_qc' | 'qc_failed' | 'cleared';
 type BPRStatus = 'draft' | 'pm_reserved' | 'scheduled' | 'pm_connected' | 'pm_dispensing' | 'filling' | 'fill_qc' | 'packaging' | 'pack_qc' | 'qc_failed' | 'fg_ready';
@@ -5391,7 +5391,7 @@ function zoneLabelInAreas(areas: FacilityAreaDTO[], zoneCode: string): string {
 }
 
 function MRNDetailModal({
-  mrn,
+  mrn: mrnProp,
   assignablePickers = [],
   onClose,
   onSave,
@@ -5403,6 +5403,23 @@ function MRNDetailModal({
 }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  // Keep a live copy of the MRN so per-line phases refresh after each partial
+  // receive/complete action. Reading the frozen prop caused the modal to show
+  // stale "In transit" lines and fire doomed re-receive requests that the
+  // backend rejects ("line already received_at_mu").
+  const [liveMrn, setLiveMrn] = useState<MRNRecordFromApi>(mrnProp);
+  useEffect(() => { setLiveMrn(mrnProp); }, [mrnProp]);
+  // Fetch the freshest MRN on open so a stale list snapshot (e.g. a line already
+  // received at MU in another session) self-corrects instead of firing a doomed
+  // re-receive request.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMRNById(mrnProp.id)
+      .then((fresh) => { if (!cancelled && fresh) setLiveMrn(fresh); })
+      .catch(() => { /* keep snapshot on failure */ });
+    return () => { cancelled = true; };
+  }, [mrnProp.id]);
+  const mrn = liveMrn;
   const { data: productionFacilityRaw = [], isLoading: productionFacilityLoading } = useQuery({
     queryKey: ['facility-areas', 'production', 'mrn-modal'],
     queryFn: async () => {
@@ -5762,6 +5779,7 @@ function MRNDetailModal({
         ...payload,
       });
       const updated = res as MRNRecordFromApi;
+      setLiveMrn(updated);
       setStatus(updated.status);
       onSave(updated);
       const closed =
@@ -5806,6 +5824,7 @@ function MRNDetailModal({
       setLabels(res.labels);
       setLabelsGenerated(true);
       const updated = await updateMRN(mrn.id, { generatedLabels: res.labels });
+      setLiveMrn(updated as MRNRecordFromApi);
       onSave(updated as MRNRecordFromApi);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string } }; message?: string };
@@ -6563,7 +6582,7 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
 
 /* ──────────── BATCH DETAIL MODAL — 6 tabs ──────────────────── */
 
-function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, outboundMrns, reservedItems, onClose, onSave, onAction }: {
+function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedPM, outboundMrns, reservedItems, onClose, onSave, onAction, onMrnUpdated }: {
   batch: Batch; team: TeamMember[];
   stockRM: Record<string, number>; stockPM: Record<string, number>;
   reservedRM: Record<string, number>; reservedPM: Record<string, number>;
@@ -6571,8 +6590,15 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   reservedItems: ProductionReservedItemRow[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
   onAction: (action: string, batch: Batch, extra?: { mtrRmItems?: DispensingItem[]; mtrPmItems?: DispensingItem[] }) => void;
+  onMrnUpdated?: () => void;
 }) {
   const [tab, setTab] = useState('overview');
+  const [mrnDetailTarget, setMrnDetailTarget] = useState<MRNRecordFromApi | null>(null);
+  const { data: batchMrnPickers = [] } = useQuery({
+    queryKey: ['mrn-assignable-pickers', 'batch-detail'],
+    queryFn: fetchMRNAssignablePickers,
+    staleTime: 5 * 60 * 1000,
+  });
   const packagingUnlocked = canShowPackagingActions(batch);
   const lifecycleDisplayStage = batchLifecycleDisplayForBatch(batch, outboundMrns);
   const pipeline = BATCH_LIFECYCLE_PIPELINE;
@@ -6704,6 +6730,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   ];
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-4 border border-gray-100 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* modal-hdr */}
@@ -6742,6 +6769,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               { key: 'dispensing', label: 'Dispensing' },
               { key: 'qc', label: 'QC' },
               { key: 'stepper', label: 'Stage Tracker' },
+              { key: 'transfers', label: 'Transfers' },
             ].map(t => (
               <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${tab === t.key ? 'bg-orange-500 text-white border-orange-500' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 {t.label}
@@ -6985,6 +7013,75 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               </div>
             )}
 
+            {tab === 'transfers' && (() => {
+              const batchMrns = outboundMrns.filter(
+                (m) => m.bmrNo === batch.bmrNo && m.source === 'MTR' && !m.isInboundFromMu,
+              );
+              if (batchMrns.length === 0) {
+                return (
+                  <div className="py-8 text-center text-xs text-gray-400">
+                    No transfer requests (MTRs) raised for this batch yet. Use <b>Send MTR</b> to request material transfer to the production facility.
+                  </div>
+                );
+              }
+              const statusStyle = (s: string): string => {
+                const u = String(s).toUpperCase();
+                if (u.includes('COMPLETED') || u.includes('GRN')) return 'bg-emerald-100 text-emerald-700';
+                if (u.includes('DELIVERED')) return 'bg-cyan-100 text-cyan-700';
+                if (u.includes('SHIPPED')) return 'bg-indigo-100 text-indigo-700';
+                if (u.includes('PROCESS') || u.includes('PICK')) return 'bg-amber-100 text-amber-700';
+                return 'bg-slate-100 text-slate-600';
+              };
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-200">
+                        <th className="py-2 pr-3">MRN #</th>
+                        <th className="py-2 pr-3">Item</th>
+                        <th className="py-2 pr-3 text-right">Required Qty</th>
+                        <th className="py-2 pr-3">Source</th>
+                        <th className="py-2 pr-3">Destination</th>
+                        <th className="py-2 pr-3">Need-by</th>
+                        <th className="py-2 pr-3">MRN Status</th>
+                        <th className="py-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batchMrns.flatMap((m) =>
+                        (m.lineItems || []).map((li) => (
+                          <tr key={`${m.id}-${li.id}`} className="border-b border-gray-100 align-top">
+                            <td className="py-2 pr-3 font-medium text-amber-700 whitespace-nowrap">{m.mrnNo}</td>
+                            <td className="py-2 pr-3 text-gray-800">
+                              {li.name} <span className="text-gray-400 font-mono">{li.itemCode}</span>
+                            </td>
+                            <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{li.quantity} {li.unit}</td>
+                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{m.whDispatchZone || 'MW'}</td>
+                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{m.muReceiveZone || m.locationPrefix || 'ML1'}</td>
+                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
+                            <td className="py-2 pr-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${statusStyle(m.status)}`}>
+                                {m.status || '—'}
+                              </span>
+                            </td>
+                            <td className="py-2 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setMrnDetailTarget(m)}
+                                className="px-2 py-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold whitespace-nowrap"
+                              >
+                                ▶ Receive / Manage
+                              </button>
+                            </td>
+                          </tr>
+                        )),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+
           </div>
         </div>
 
@@ -7101,6 +7198,15 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
         </div>
       </div>
     </div>
+    {mrnDetailTarget && (
+      <MRNDetailModal
+        mrn={mrnDetailTarget}
+        assignablePickers={batchMrnPickers}
+        onClose={() => setMrnDetailTarget(null)}
+        onSave={(updated) => { onMrnUpdated?.(); setMrnDetailTarget(updated); }}
+      />
+    )}
+    </>
   );
 }
 
@@ -8875,7 +8981,6 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'calendar', label: 'Production Calendar', icon: <Calendar size={15} /> },
   { id: 'material-reservation', label: 'Material Reservation', icon: <Layers size={15} /> },
   { id: 'yield-report', label: 'Yield Report', icon: <Activity size={15} /> },
-  { id: 'transfers', label: 'Transfer orders', icon: <Truck size={15} /> },
   { id: 'equipment', label: 'Equipment & Capacity', icon: <Wrench size={15} /> },
   { id: 'team', label: 'Team Management', icon: <Users size={15} /> },
 ];
@@ -8963,7 +9068,7 @@ const Production = () => {
         if (item.id === 'batches') return canViewBmr || canViewBpr;
         if (item.id === 'dispensing-tray') return canViewBmr || canViewBpr;
         if (item.id === 'material-reservation') return canViewBmr || canViewBpr;
-        if (item.id === 'yield-report' || item.id === 'transfers') return canViewTransferYield;
+        if (item.id === 'yield-report') return canViewTransferYield;
         return true;
       }),
     [canViewBmr, canViewBpr, canViewTransferYield]
@@ -9675,9 +9780,6 @@ const Production = () => {
             onRequestReworkPreflight={(b) => setYieldReworkPreflightBatch(b)}
           />
         );
-      case 'transfers':
-        if (!canViewTransferYield) return <div className="p-8 text-sm text-gray-500">You do not have permission to view Transfer Orders.</div>;
-        return <TransferOrdersView onOutboundMtrCompleted={syncProductionAfterMrn} onMrnListChanged={refreshAfterMrnSave} />;
       case 'equipment':
         return <EquipmentView equipment={state.equipment} batches={state.batches} onUpdate={eq => setState(prev => ({ ...prev, equipment: eq }))} onRefresh={refreshEquipment} />;
       case 'team':
@@ -9883,6 +9985,7 @@ const Production = () => {
       {modalBatch && modalType === 'detail' && (
         <BatchDetailModal batch={modalBatch} team={state.team} stockRM={whStockRM} stockPM={whStockPM} reservedRM={whReservedRM} reservedPM={whReservedPM} outboundMrns={outboundMrns} reservedItems={reservedItems} onClose={closeModal}
           onSave={async (updates) => { await handleModalSave(updates); }}
+          onMrnUpdated={refreshAfterMrnSave}
           onAction={(action, batch, extra) => { closeModal(); if (extra?.mtrRmItems) setPendingMtrItems(extra.mtrRmItems); else if (extra?.mtrPmItems) setPendingMtrItems(extra.mtrPmItems); else setPendingMtrItems(null); setTimeout(() => handleAction(action, batch), 100); }} />
       )}
     </div>

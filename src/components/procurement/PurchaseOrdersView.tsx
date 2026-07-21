@@ -7,8 +7,9 @@
  *
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Pagination } from '../ui';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -111,6 +112,45 @@ export interface PurchaseOrdersViewProps {
 
 type PoTab = 'po-wise' | 'items';
 
+const PO_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+/** Footer bar shared by both tabs: "Showing X–Y of Z", rows-per-page, page buttons. */
+function PoPaginationBar({
+  id, pageStart, pageSize, total, currentPage, totalPages, unit, onPageChange, onPageSizeChange,
+}: {
+  id: string;
+  pageStart: number;
+  pageSize: number;
+  total: number;
+  currentPage: number;
+  totalPages: number;
+  unit: string;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+      <span className="text-xs text-slate-600">
+        Showing <b className="text-slate-800">{pageStart + 1}</b>–
+        <b className="text-slate-800">{Math.min(pageStart + pageSize, total)}</b> of{' '}
+        <b className="text-slate-800">{total}</b> {unit}
+      </span>
+      <div className="flex flex-wrap items-center gap-3">
+        <label htmlFor={id} className="text-xs text-slate-600">Rows per page</label>
+        <select
+          id={id}
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+        >
+          {PO_PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} variant="compact" />
+      </div>
+    </div>
+  );
+}
+
 export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   records, grnList, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport,
 }) => {
@@ -119,6 +159,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | PoStatus>('all');
   const [itemFilter, setItemFilter] = useState<string | null>(null); // "Other POs" drill
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
+  const [poPage, setPoPage] = useState(1);
+  const [itemsPage, setItemsPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const toggleVendor = (vendor: string) => {
     setCollapsedVendors((prev) => {
@@ -234,10 +277,41 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     return out;
   }, [records, grnByPo, search, statusFilter, itemFilter]);
 
+  // ── Pagination (applied to the flat row lists, before vendor grouping) ──
+  const poTotalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const poSafePage = Math.min(poPage, poTotalPages);
+  const poPageStart = (poSafePage - 1) * pageSize;
+  const pagedRows = useMemo(
+    () => rows.slice(poPageStart, poPageStart + pageSize),
+    [rows, poPageStart, pageSize],
+  );
+
+  const itemsTotalPages = Math.max(1, Math.ceil(lineRows.length / pageSize));
+  const itemsSafePage = Math.min(itemsPage, itemsTotalPages);
+  const itemsPageStart = (itemsSafePage - 1) * pageSize;
+  const pagedLineRows = useMemo(
+    () => lineRows.slice(itemsPageStart, itemsPageStart + pageSize),
+    [lineRows, itemsPageStart, pageSize],
+  );
+
+  // Filters change the row set — go back to page 1 so the user isn't stranded past the end.
+  useEffect(() => {
+    setPoPage(1);
+  }, [search, statusFilter, pageSize]);
+  useEffect(() => {
+    setItemsPage(1);
+  }, [search, statusFilter, itemFilter, pageSize]);
+  useEffect(() => {
+    setPoPage((p) => Math.min(p, poTotalPages));
+  }, [poTotalPages]);
+  useEffect(() => {
+    setItemsPage((p) => Math.min(p, itemsTotalPages));
+  }, [itemsTotalPages]);
+
   // ── Vendor-grouped rows for PO-wise tab ──
   const vendorGroups = useMemo(() => {
     const map = new Map<string, typeof rows>();
-    for (const row of rows) {
+    for (const row of pagedRows) {
       const v = row.record.vendor || 'Unknown Vendor';
       if (!map.has(v)) map.set(v, []);
       map.get(v)!.push(row);
@@ -249,12 +323,12 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
         vendorRows,
         vendorTotal: vendorRows.reduce((s, r) => s + (r.record.grandTotal || 0), 0),
       }));
-  }, [rows]);
+  }, [pagedRows]);
 
   // ── Vendor-grouped rows for Items tab ──
   const lineVendorGroups = useMemo(() => {
     const map = new Map<string, typeof lineRows>();
-    for (const lr of lineRows) {
+    for (const lr of pagedLineRows) {
       const v = lr.record.vendor || 'Unknown Vendor';
       if (!map.has(v)) map.set(v, []);
       map.get(v)!.push(lr);
@@ -262,7 +336,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     return [...map.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([vendor, vendorLineRows]) => ({ vendor, vendorLineRows }));
-  }, [lineRows]);
+  }, [pagedLineRows]);
 
   const totalValue = records.reduce((s, r) => s + (r.grandTotal || 0), 0);
   const inTransitCount = rows.filter((x) => x.rollup.inTransit > 0).length;
@@ -308,6 +382,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           {lineRows.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No PO lines match these filters.</div>
           ) : (
+            <>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm text-left">
                 <thead>
@@ -412,6 +487,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                 </tbody>
               </table>
             </div>
+            <PoPaginationBar
+              id="po-items-page-size"
+              pageStart={itemsPageStart}
+              pageSize={pageSize}
+              total={lineRows.length}
+              currentPage={itemsSafePage}
+              totalPages={itemsTotalPages}
+              unit="lines"
+              onPageChange={setItemsPage}
+              onPageSizeChange={setPageSize}
+            />
+            </>
           )}
         </>
       ) : (
@@ -436,6 +523,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           {rows.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No purchase orders match these filters.</div>
           ) : (
+            <>
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm text-left">
                 <thead>
@@ -518,6 +606,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                 </tbody>
               </table>
             </div>
+            <PoPaginationBar
+              id="po-wise-page-size"
+              pageStart={poPageStart}
+              pageSize={pageSize}
+              total={rows.length}
+              currentPage={poSafePage}
+              totalPages={poTotalPages}
+              unit="POs"
+              onPageChange={setPoPage}
+              onPageSizeChange={setPageSize}
+            />
+            </>
           )}
         </>
       )}

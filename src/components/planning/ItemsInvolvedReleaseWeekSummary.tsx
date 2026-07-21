@@ -65,7 +65,10 @@ export function ItemsInvolvedReleaseWeekSummary({
               <tbody>
                 {rows.map((row) => {
                   const overrideRaw = weekQtyOverrides[row.weekKey];
-                  const displayValue = overrideRaw !== undefined ? overrideRaw : formatPickQty(row.qty);
+                  // Strip thousands separators: this is a <input type="number">, and a locale
+                  // string like "5,000" would render blank / fail to parse.
+                  const displayValue =
+                    overrideRaw !== undefined ? overrideRaw : formatPickQty(row.qty).replace(/,/g, '');
                   const isEdited =
                     overrideRaw !== undefined &&
                     parseFloat(String(overrideRaw).replace(/,/g, '')) !== row.qty;
