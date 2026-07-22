@@ -3,7 +3,10 @@ import { api } from '../lib/apiClient';
 
 export interface PlanningQuotationAsk {
   id: number;
-  planningExtractedId: number;
+  planningExtractedId: number | null;
+  source?: 'planning' | 'procurement';
+  moqBands?: number[];
+  expectedRequiredDate?: string | null;
   itemType: 'RM' | 'PM';
   rawMaterialId: number | null;
   packMaterialId: number | null;
@@ -26,7 +29,9 @@ export interface PlanningQuotationAsk {
 }
 
 export interface CreatePlanningQuotationAskPayload {
-  planningExtractedId: number;
+  /** Optional — omit for a Procurement-originated request (source='procurement'). */
+  planningExtractedId?: number | null;
+  source?: 'planning' | 'procurement';
   itemType: 'RM' | 'PM';
   rawMaterialId?: number;
   packMaterialId?: number;
@@ -36,6 +41,9 @@ export interface CreatePlanningQuotationAskPayload {
   unit?: string;
   vendorHint?: string | null;
   moqHint?: number | null;
+  /** RFQ MOQ quantities to be quoted (multiple single MOQ values, no price). */
+  moqBands?: number[];
+  expectedRequiredDate?: string | null;
   notes?: string;
 }
 
@@ -83,7 +91,20 @@ export async function createPlanningQuotationAsk(
 
 export async function updatePlanningQuotationAsk(
   id: number,
-  payload: { status?: 'pending' | 'fulfilled' | 'cancelled'; notes?: string; quantityRequested?: number }
+  payload: {
+    status?: 'pending' | 'fulfilled' | 'cancelled';
+    notes?: string;
+    quantityRequested?: number;
+    vendorHint?: string | null;
+    moqBands?: number[];
+    expectedRequiredDate?: string | null;
+    itemType?: 'RM' | 'PM';
+    rawMaterialId?: number | null;
+    packMaterialId?: number | null;
+    itemCode?: string;
+    itemName?: string;
+    unit?: string;
+  }
 ): Promise<ServiceResult<PlanningQuotationAsk>> {
   try {
     const data = await api.patch<PlanningQuotationAsk>(`/api/v1/planning-quotation-asks/${id}`, payload);

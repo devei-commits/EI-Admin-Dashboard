@@ -13,6 +13,7 @@ import {
 import { quoteSlaLevel } from '../../lib/procurementSla';
 import { type RfqTemplateData } from './RfqTemplatePopup';
 import { QuotationEditPopup } from './QuotationEditPopup';
+import { RequestQuotationModal, type RequestQuotationContext } from './RequestQuotationModal';
 import { recordQuotationToPriceList } from '../../utils/recordQuotationToPriceList';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 
@@ -52,6 +53,8 @@ interface QuoteRow {
   status: QuoteStatus;
   requestDate: string | null;
   daysOpen: number;
+  /** Present for RFQ rows (planning_quotation_asks) — enables the Edit-RFQ action. */
+  ask?: PlanningQuotationAsk;
   templateData: RfqTemplateData;
 }
 
@@ -85,6 +88,9 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
   // Record a vendor quotation (MOQ bands) → Approve & Save writes straight to the Items List price list.
   const [recordingFor, setRecordingFor] = useState<RfqTemplateData | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+  // Edit an existing RFQ (planning_quotation_ask) in the RequestQuotationModal.
+  const [editingAsk, setEditingAsk] = useState<PlanningQuotationAsk | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -98,37 +104,48 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   useEffect(() => { void load(); }, [load]);
 
   const rows = useMemo((): QuoteRow[] => {
-    const planningRows: QuoteRow[] = asks.map((a) => ({
-      id: `planning-${a.id}`,
-      qtId: `QT-${new Date(a.createdAt ?? Date.now()).getFullYear()}-${String(a.id).padStart(4, '0')}`,
-      source: 'planning' as PrSource,
-      itemName: a.itemName ?? '—',
-      itemCode: a.itemCode ?? '',
-      vendors: a.vendorHint || 'Any (broadcast)',
-      qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
-      targetPrice: null,
-      status: mapPlanningStatus(a.status),
-      requestDate: a.createdAt ?? null,
-      daysOpen: daysSince(a.createdAt),
-      templateData: {
-        qtId: `QT-${String(a.id).padStart(4, '0')}`,
-        requestDate: a.createdAt,
-        vendor: a.vendorHint || 'Any (broadcast)',
-        itemCode: a.itemCode || '',
-        itemName: a.itemName || '—',
-        qtyTiers: [`${a.quantityRequested.toLocaleString('en-IN')}${a.unit ? ` ${a.unit}` : ''}`],
-        needBy: null,
-        comments: a.notes || undefined,
-        itemType: a.itemType,
-        rawMaterialId: a.rawMaterialId,
-        packMaterialId: a.packMaterialId,
-        askId: a.id,
-        moqHint: a.moqHint,
-        quantityToQuote: a.quantityRequested,
-      },
-    }));
+    const planningRows: QuoteRow[] = asks.map((a) => {
+      // "Req Qty" shows the RFQ's MOQ bands when the request asks for multiple MOQs; otherwise the single qty.
+      const unitStr = a.unit ? ` ${a.unit}` : '';
+      const moqTiers = Array.isArray(a.moqBands) ? a.moqBands.filter((m) => Number(m) > 0) : [];
+      const qtyTiers = moqTiers.length > 0
+        ? moqTiers.map((m) => `${Number(m).toLocaleString('en-IN')}${unitStr}`)
+        : [`${a.quantityRequested.toLocaleString('en-IN')}${unitStr}`];
+      return {
+        id: `planning-${a.id}`,
+        qtId: `QT-${new Date(a.createdAt ?? Date.now()).getFullYear()}-${String(a.id).padStart(4, '0')}`,
+        source: (a.source === 'procurement' ? 'procurement' : 'planning') as PrSource,
+        itemName: a.itemName ?? '—',
+        itemCode: a.itemCode ?? '',
+        vendors: a.vendorHint || 'Any (broadcast)',
+        qtyTiers,
+        targetPrice: null,
+        status: mapPlanningStatus(a.status),
+        requestDate: a.createdAt ?? null,
+        daysOpen: daysSince(a.createdAt),
+        ask: a,
+        templateData: {
+          qtId: `QT-${String(a.id).padStart(4, '0')}`,
+          requestDate: a.createdAt,
+          vendor: a.vendorHint || 'Any (broadcast)',
+          itemCode: a.itemCode || '',
+          itemName: a.itemName || '—',
+          qtyTiers,
+          needBy: null,
+          comments: a.notes || undefined,
+          itemType: a.itemType,
+          rawMaterialId: a.rawMaterialId,
+          packMaterialId: a.packMaterialId,
+          askId: a.id,
+          moqHint: a.moqHint,
+          quantityToQuote: a.quantityRequested,
+        },
+      };
+    });
 
-    const procRows: QuoteRow[] = vendorQuotes.map((q) => {
+    // Items-List rows (id 'IL-…') are the vendor price-list catalog (one per vendor, all their items) — they are
+    // NOT quote requests and their concatenated quantities polluted "Req Qty". Excluded here; they live in Items List.
+    const procRows: QuoteRow[] = vendorQuotes.filter((q) => !String(q.id).startsWith('IL-')).map((q) => {
       const qtyTiers = q.lines.map((l) => l.qty).filter(Boolean);
       return {
         id: `proc-${q.id}`,
@@ -191,11 +208,9 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
           <span className="ml-2 text-slate-400">· {fromPlanning} from Planning</span>
         </div>
         <div className="flex items-center gap-2">
-          {onNewQuoteRequest && (
-            <button onClick={onNewQuoteRequest} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
-              <Plus size={14} /> New Quote Request
-            </button>
-          )}
+          <button onClick={() => setRequestOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
+            <Plus size={14} /> Request Quotation
+          </button>
           {onExport && (
             <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
               <Download size={14} /> Export
@@ -275,11 +290,18 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                         {(() => {
                           const canRecord = r.status !== 'completed' && r.status !== 'terminated';
                           const showEdit = linkedQuote && onEditQuote;
-                          if (!canRecord && !showEdit) {
+                          // RFQ rows (planning_quotation_asks) are edited in the RequestQuotationModal while still pending.
+                          const canEditRfq = !!r.ask && r.status === 'requested';
+                          if (!canRecord && !showEdit && !canEditRfq) {
                             return <span className="text-xs text-slate-300">—</span>;
                           }
                           return (
                             <>
+                              {canEditRfq && (
+                                <button onClick={() => setEditingAsk(r.ask!)} title="Edit quote request" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
+                                  <Pencil size={12} /> Edit
+                                </button>
+                              )}
                               {showEdit && (
                                 <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
                                   <Pencil size={12} /> Edit
@@ -327,6 +349,33 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
             void load();
             return { success: true };
           }}
+        />
+      )}
+
+      {requestOpen && (
+        <RequestQuotationModal
+          context={{ itemType: 'RM', itemCode: '', itemName: '', allowItemPick: true }}
+          onClose={() => setRequestOpen(false)}
+          onSubmitted={() => { setRequestOpen(false); void load(); }}
+        />
+      )}
+
+      {editingAsk && (
+        <RequestQuotationModal
+          editAsk={editingAsk}
+          context={{
+            itemType: editingAsk.itemType,
+            itemCode: editingAsk.itemCode ?? '',
+            itemName: editingAsk.itemName ?? '',
+            rawMaterialId: editingAsk.rawMaterialId,
+            packMaterialId: editingAsk.packMaterialId,
+            unit: editingAsk.unit ?? undefined,
+            planningExtractedId: editingAsk.planningExtractedId,
+            defaultQty: editingAsk.quantityRequested,
+            allowItemPick: true,
+          } as RequestQuotationContext}
+          onClose={() => setEditingAsk(null)}
+          onSubmitted={() => { setEditingAsk(null); void load(); }}
         />
       )}
     </div>

@@ -8,7 +8,7 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X } from 'lucide-react';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -68,6 +68,21 @@ function fmtDate(d: string | null | undefined): string {
 function normPo(s: string | null | undefined): string {
   return String(s ?? '').trim().toUpperCase();
 }
+/** ms timestamp for sorting; undated rows sort to the bottom. */
+function dateMs(d: string | null | undefined): number {
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+/** Inclusive PO-date range test (from/to are yyyy-mm-dd from <input type=date>). */
+function poInDateRange(createdDate: string | null | undefined, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  const t = dateMs(createdDate);
+  if (!t) return false; // undated rows are excluded once a range is applied
+  if (from && t < new Date(from).getTime()) return false;
+  if (to && t > new Date(to).getTime() + 86_400_000 - 1) return false; // include the whole "to" day
+  return true;
+}
 
 interface Rollup { inTransit: number; received: number; billed: number; returned: number; ordered: number; }
 
@@ -110,6 +125,22 @@ export interface PurchaseOrdersViewProps {
 }
 
 type PoTab = 'po-wise' | 'items';
+type SortDir = 'asc' | 'desc';
+type SortKey = 'date' | 'value' | 'po' | 'vendor' | 'item' | 'qty' | 'sla';
+const PO_SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'date', label: 'PO Date' },
+  { key: 'value', label: 'PO Value' },
+  { key: 'po', label: 'PO #' },
+  { key: 'vendor', label: 'Vendor' },
+];
+const ITEM_SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'date', label: 'PO Date' },
+  { key: 'item', label: 'Item' },
+  { key: 'qty', label: 'PO Qty' },
+  { key: 'sla', label: 'Days Open (SLA)' },
+  { key: 'po', label: 'PO #' },
+  { key: 'vendor', label: 'Vendor' },
+];
 
 export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   records, grnList, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport,
@@ -117,8 +148,30 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   const [tab, setTab] = useState<PoTab>('po-wise');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PoStatus>('all');
+  const [vendorFilter, setVendorFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortBy, setSortBy] = useState<SortKey>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [itemFilter, setItemFilter] = useState<string | null>(null); // "Other POs" drill
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
+
+  // Switching tabs resets the sort to that tab's sensible default (PO-wise: newest first; Items: by item code).
+  const changeTab = (next: PoTab) => {
+    setTab(next);
+    if (next === 'items') { setSortBy('item'); setSortDir('asc'); }
+    else { setSortBy('date'); setSortDir('desc'); }
+  };
+
+  const vendorList = useMemo(
+    () => [...new Set(records.map((r) => r.vendor || 'Unknown Vendor'))].sort((a, b) => a.localeCompare(b)),
+    [records],
+  );
+  const sortOptions = tab === 'items' ? ITEM_SORT_OPTIONS : PO_SORT_OPTIONS;
+  const hasActiveFilters = !!search || statusFilter !== 'all' || vendorFilter !== 'all' || !!dateFrom || !!dateTo || !!itemFilter;
+  const clearFilters = () => {
+    setSearch(''); setStatusFilter('all'); setVendorFilter('all'); setDateFrom(''); setDateTo(''); setItemFilter(null);
+  };
 
   const toggleVendor = (vendor: string) => {
     setCollapsedVendors((prev) => {
@@ -174,14 +227,30 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return records
-      .filter((r) => {
-        if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) return false;
-        if (q && !`${r.poNumber} ${r.vendor}`.toLowerCase().includes(q)) return false;
-        return true;
-      })
-      .map((r) => ({ record: r, rollup: computeRollup(r, grnByPo) }));
-  }, [records, grnByPo, search, statusFilter]);
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    const filtered = records.filter((r) => {
+      if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) return false;
+      if (vendorFilter !== 'all' && (r.vendor || 'Unknown Vendor') !== vendorFilter) return false;
+      if (!poInDateRange(r.createdDate, dateFrom, dateTo)) return false;
+      if (q) {
+        const hay = `${r.poNumber} ${r.vendor} ${r.lineItems.map((l) => `${l.item} ${l.itemCode ?? ''}`).join(' ')}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    filtered.sort((a, b) => {
+      let d = 0;
+      switch (sortBy) {
+        case 'value': d = (a.grandTotal || 0) - (b.grandTotal || 0); break;
+        case 'po': d = normPo(a.poNumber).localeCompare(normPo(b.poNumber)); break;
+        case 'vendor': d = (a.vendor || '').localeCompare(b.vendor || ''); break;
+        default: d = dateMs(a.createdDate) - dateMs(b.createdDate); break; // 'date'
+      }
+      if (d === 0) d = dateMs(a.createdDate) - dateMs(b.createdDate);
+      return d * dirMul;
+    });
+    return filtered.map((r) => ({ record: r, rollup: computeRollup(r, grnByPo) }));
+  }, [records, grnByPo, search, statusFilter, vendorFilter, dateFrom, dateTo, sortBy, sortDir]);
 
   // ── Items tab: one row per PO line, with matched GRNs + "other POs" count ──
   const lineRows = useMemo(() => {
@@ -203,6 +272,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     const now = Date.now();
     for (const r of records) {
       if (statusFilter !== 'all' && resolvePoWorkflowStatus(r) !== statusFilter) continue;
+      if (vendorFilter !== 'all' && (r.vendor || 'Unknown Vendor') !== vendorFilter) continue;
+      if (!poInDateRange(r.createdDate, dateFrom, dateTo)) continue;
       const grns = grnByPo.get(normPo(r.poNumber)) ?? [];
       const poDate = r.createdDate ? new Date(r.createdDate).getTime() : now;
       const daysOpen = Number.isNaN(poDate) ? 0 : Math.max(0, Math.round((now - poDate) / 86_400_000));
@@ -229,10 +300,23 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
         });
       }
     }
-    // Default sort: item code asc, then PO date desc (siblings sit together — §4.4).
-    out.sort((a, b) => a.itemKey.localeCompare(b.itemKey) || (b.record.createdDate || '').localeCompare(a.record.createdDate || ''));
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    out.sort((a, b) => {
+      let d = 0;
+      switch (sortBy) {
+        case 'qty': d = a.poQty - b.poQty; break;
+        case 'sla': d = a.daysOpen - b.daysOpen; break;
+        case 'po': d = normPo(a.record.poNumber).localeCompare(normPo(b.record.poNumber)); break;
+        case 'vendor': d = (a.record.vendor || '').localeCompare(b.record.vendor || ''); break;
+        case 'date': d = dateMs(a.record.createdDate) - dateMs(b.record.createdDate); break;
+        default: d = a.itemKey.localeCompare(b.itemKey); break; // 'item'
+      }
+      // Tiebreak keeps sibling PO lines for the same item together (§4.4).
+      if (d === 0) d = a.itemKey.localeCompare(b.itemKey) || dateMs(b.record.createdDate) - dateMs(a.record.createdDate);
+      return d * dirMul;
+    });
     return out;
-  }, [records, grnByPo, search, statusFilter, itemFilter]);
+  }, [records, grnByPo, search, statusFilter, vendorFilter, dateFrom, dateTo, itemFilter, sortBy, sortDir]);
 
   // ── Vendor-grouped rows for PO-wise tab ──
   const vendorGroups = useMemo(() => {
@@ -242,14 +326,24 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       if (!map.has(v)) map.set(v, []);
       map.get(v)!.push(row);
     }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([vendor, vendorRows]) => ({
-        vendor,
-        vendorRows,
-        vendorTotal: vendorRows.reduce((s, r) => s + (r.record.grandTotal || 0), 0),
-      }));
-  }, [rows]);
+    const groups = [...map.entries()].map(([vendor, vendorRows]) => ({
+      vendor,
+      vendorRows,
+      vendorTotal: vendorRows.reduce((s, r) => s + (r.record.grandTotal || 0), 0),
+      latest: vendorRows.reduce((m, r) => Math.max(m, dateMs(r.record.createdDate)), 0),
+    }));
+    // Order the vendor groups by the active sort so grouped view respects sorting at the top level too.
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    groups.sort((a, b) => {
+      let d = 0;
+      if (sortBy === 'value') d = a.vendorTotal - b.vendorTotal;
+      else if (sortBy === 'date') d = a.latest - b.latest;
+      else d = a.vendor.localeCompare(b.vendor); // 'vendor' / 'po' → alphabetical vendor
+      if (d === 0) d = a.vendor.localeCompare(b.vendor);
+      return (sortBy === 'value' || sortBy === 'date') ? d * dirMul : d * (sortBy === 'vendor' ? dirMul : 1);
+    });
+    return groups;
+  }, [rows, sortBy, sortDir]);
 
   // ── Vendor-grouped rows for Items tab ──
   const lineVendorGroups = useMemo(() => {
@@ -259,10 +353,19 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       if (!map.has(v)) map.set(v, []);
       map.get(v)!.push(lr);
     }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([vendor, vendorLineRows]) => ({ vendor, vendorLineRows }));
-  }, [lineRows]);
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    const groups = [...map.entries()].map(([vendor, vendorLineRows]) => ({
+      vendor,
+      vendorLineRows,
+      latest: vendorLineRows.reduce((m, lr) => Math.max(m, dateMs(lr.record.createdDate)), 0),
+    }));
+    groups.sort((a, b) => {
+      if (sortBy === 'date') return (a.latest - b.latest) * dirMul || a.vendor.localeCompare(b.vendor);
+      if (sortBy === 'vendor') return a.vendor.localeCompare(b.vendor) * dirMul;
+      return a.vendor.localeCompare(b.vendor);
+    });
+    return groups;
+  }, [lineRows, sortBy, sortDir]);
 
   const totalValue = records.reduce((s, r) => s + (r.grandTotal || 0), 0);
   const inTransitCount = rows.filter((x) => x.rollup.inTransit > 0).length;
@@ -282,29 +385,76 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       {/* Tabs */}
       <div className="flex gap-0 border-b-2 border-slate-200">
         {([['po-wise', 'PO-wise'], ['items', 'Items']] as [PoTab, string][]).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
+          <button key={k} onClick={() => changeTab(k)}
             className={`px-4 py-1.5 text-xs font-bold border-b-[3px] -mb-0.5 transition-colors ${tab === k ? 'text-blue-700 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-700'}`}>
             {label}
           </button>
         ))}
       </div>
 
+      {/* ── Filters & sorting (shared across both tabs) ── */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO #, item, vendor…"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 max-w-[200px]">
+            <option value="all">All Vendors</option>
+            {vendorList.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+            <option value="all">All Statuses</option>
+            {(Object.keys(PO_STATUS_CONFIG) as PoStatus[]).map((s) => (
+              <option key={s} value={s}>{PO_STATUS_CONFIG[s].label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-500 uppercase">PO Date</span>
+          <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)}
+            className="px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500" />
+          <span className="text-slate-400 text-xs">–</span>
+          <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)}
+            className="px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500" />
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Sort</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+              {sortOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            <button onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+              title={sortDir === 'asc' ? 'Ascending — click for descending' : 'Descending — click for ascending'}
+              className="inline-flex items-center gap-1 px-2.5 py-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-50">
+              {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+              {sortDir === 'asc' ? 'Asc' : 'Desc'}
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-slate-500">
+            {tab === 'items'
+              ? `${lineRows.length} line${lineRows.length !== 1 ? 's' : ''} match`
+              : `${rows.length} of ${records.length} PO${records.length !== 1 ? 's' : ''} match`}
+          </span>
+          {tab === 'items' && itemFilter && (
+            <button onClick={() => setItemFilter(null)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+              item {itemFilter} <X size={12} />
+            </button>
+          )}
+          {hasActiveFilters && (
+            <button onClick={clearFilters} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
+              <X size={12} /> Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {tab === 'items' ? (
         <>
-          {/* Filters + active item drill */}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO #, item, vendor…"
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
-            </div>
-            {itemFilter && (
-              <button onClick={() => setItemFilter(null)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
-                item {itemFilter} · clear ✕
-              </button>
-            )}
-          </div>
-
           {lineRows.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No PO lines match these filters.</div>
           ) : (
@@ -416,22 +566,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
         </>
       ) : (
         <>
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO #, vendor…"
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
-              <option value="all">All Statuses</option>
-              {(Object.keys(PO_STATUS_CONFIG) as PoStatus[]).map((s) => (
-                <option key={s} value={s}>{PO_STATUS_CONFIG[s].label}</option>
-              ))}
-            </select>
-          </div>
-
           {/* Table */}
           {rows.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No purchase orders match these filters.</div>

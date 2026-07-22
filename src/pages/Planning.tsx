@@ -64,6 +64,7 @@ import {
   type PlanningBatchRow,
   type PlanningBatchAllRow,
 } from '../services/planningExtracted.service';
+import { RequestQuotationModal, type RequestQuotationContext } from '../components/procurement/RequestQuotationModal';
 import {
   createProcurementRequest,
   fetchProcurementRequests,
@@ -2597,6 +2598,7 @@ const Planning = () => {
   const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [refPopup, setRefPopup] = useState<{ title: string; sub: string; refLabel: string; rows: ItemsInvolvedRefBreakdown[] } | null>(null);
+  const [requestQuotationContext, setRequestQuotationContext] = useState<RequestQuotationContext | null>(null);
   const [releaseToPlanningItem, setReleaseToPlanningItem] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [releaseToPlanningForm, setReleaseToPlanningForm] = useState<{
     vendorId: number | null;
@@ -5312,7 +5314,18 @@ const Planning = () => {
     setSeenPlanningQuotationAskIds((prev) =>
       markMatchingFulfilledAsksSeen(planningQuotationAsks, item, prev)
     );
-    openReleaseToPlanningModal(item, { intent: 'quotation' });
+    // Opens the shared Request Quotation interface (same as Procurement). No longer the Release popup.
+    const gap = Math.max(0, Number(item.totalRequired || 0) - Number(item.supplyTowardGrossNum ?? 0));
+    setRequestQuotationContext({
+      itemType: item.itemType,
+      itemCode: item.code || item.name,
+      itemName: item.name,
+      rawMaterialId: item.raw_material_id ?? null,
+      packMaterialId: item.pack_material_id ?? null,
+      unit: item.unit,
+      planningExtractedId: item.planningExtractedId ?? item.planningExtractedIds?.[0] ?? null,
+      defaultQty: gap > 0 ? gap : undefined,
+    });
   };
 
   const addPlannedLine = async (): Promise<boolean> => {
@@ -8284,6 +8297,17 @@ const Planning = () => {
       </div>
 
       {/* Used In popup: list all batches (sent + draft) that consume selected RM/PM */}
+      {requestQuotationContext && (
+        <RequestQuotationModal
+          context={requestQuotationContext}
+          onClose={() => setRequestQuotationContext(null)}
+          onSubmitted={() => {
+            addToast('success', 'Quotation request sent to Procurement.');
+            void queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+          }}
+        />
+      )}
+
       {refPopup && (
         <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4" onClick={() => setRefPopup(null)}>
           <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-gray-200 max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>

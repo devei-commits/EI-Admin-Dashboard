@@ -153,17 +153,27 @@ export interface PrInboxViewProps {
 type SourceFilter = 'all' | PrSource;
 type SlaFilter = 'all' | SlaLevel;
 type TypeFilter = 'all' | 'RM' | 'PM';
+type PrTab = 'active' | 'history';
+
+/** Active = still in the request queue (New/Quoted). History = released to a Draft PO or beyond. */
+const PR_ACTIVE_STATUSES = new Set(['New', 'Quoted']);
+function prIsActive(status: string | null | undefined): boolean {
+  return PR_ACTIVE_STATUSES.has(String(status ?? '').trim());
+}
 
 export const PrInboxView: React.FC<PrInboxViewProps> = ({
   requests, onEdit, onRequestQuote, onStockAudit, onDraftPO, onNewPr, onExport,
 }) => {
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<PrTab>('active');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [slaFilter, setSlaFilter] = useState<SlaFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [vendorFilter, setVendorFilter] = useState<string>('all');
 
   const allRows = useMemo(() => requests.map(buildRow), [requests]);
+  const activeCount = useMemo(() => allRows.filter((r) => prIsActive(r.req.status)).length, [allRows]);
+  const historyCount = allRows.length - activeCount;
 
   const vendors = useMemo(
     () => Array.from(new Set(allRows.map((r) => r.vendorName).filter((v) => v && v !== '—'))).sort(),
@@ -173,6 +183,8 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = allRows.filter((r) => {
+      if (tab === 'active' && !prIsActive(r.req.status)) return false;
+      if (tab === 'history' && prIsActive(r.req.status)) return false;
       if (sourceFilter !== 'all' && r.source !== sourceFilter) return false;
       if (slaFilter !== 'all' && r.slaLevel !== slaFilter) return false;
       if (typeFilter !== 'all' && (r.primary?.type ?? r.req.type) !== typeFilter) return false;
@@ -192,7 +204,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
       return ea < eb ? -1 : ea > eb ? 1 : 0;
     });
     return filtered;
-  }, [allRows, search, sourceFilter, slaFilter, typeFilter, vendorFilter]);
+  }, [allRows, tab, search, sourceFilter, slaFilter, typeFilter, vendorFilter]);
 
   const breached = allRows.filter((r) => r.slaLevel === 'bad').length;
   const fromPlanning = allRows.filter((r) => r.source === 'planning').length;
@@ -222,6 +234,19 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
             <Download size={14} /> Export
           </button>
         </div>
+      </div>
+
+      {/* Active vs History tabs — History holds PRs already released to a Draft PO. */}
+      <div className="flex items-center gap-2">
+        <button onClick={() => setTab('active')} className={chip(tab === 'active')}>
+          Active <span className="ml-1 opacity-70">({activeCount})</span>
+        </button>
+        <button onClick={() => setTab('history')} className={chip(tab === 'history')}>
+          History <span className="ml-1 opacity-70">({historyCount})</span>
+        </button>
+        {tab === 'history' && (
+          <span className="text-[11px] text-slate-400">Released to Draft PO or later — read reference.</span>
+        )}
       </div>
 
       {/* Filters */}

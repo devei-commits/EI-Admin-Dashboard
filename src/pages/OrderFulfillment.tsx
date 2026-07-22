@@ -223,12 +223,16 @@ export const OrderFulfillment: React.FC = () => {
   ): Promise<void> => {
     const id = findOrderId(soNo);
     if (!id) return;
-    await updateFulfillmentOrder(id, data);
+    const result = await updateFulfillmentOrder(id, data);
     await loadOrders();
     // An SO-status change (Draft↔Approved…) flips its visibility in Planning → PIS Extracted.
     // Invalidate the Planning list so it refetches fresh instead of showing a stale cached copy.
     if (data.salesOrderStatus) {
       void queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+    }
+    // Surface a cancel warning (e.g. batches already sent to production are being discarded).
+    if (result?.warning) {
+      window.alert(result.warning);
     }
   };
 

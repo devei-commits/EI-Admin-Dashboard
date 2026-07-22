@@ -152,9 +152,16 @@ export async function createFulfillmentOrder(payload: Record<string, unknown>): 
   return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
 }
 
-export async function updateFulfillmentOrder(id: number, payload: Record<string, unknown>): Promise<SaleOrder> {
+export async function updateFulfillmentOrder(
+  id: number,
+  payload: Record<string, unknown>
+): Promise<SaleOrder & { warning?: string }> {
   const res = await api.patch<SaleOrder>(`${BASE}/${id}`, payload);
-  return normalizeSaleOrder((res as { data?: SaleOrder })?.data ?? res);
+  const raw = (res as { data?: SaleOrder })?.data ?? res;
+  const normalized = normalizeSaleOrder(raw);
+  // Backend attaches `warning` (e.g. cancelling an SO whose batches were already sent to production).
+  const warning = (raw as { warning?: string })?.warning;
+  return warning ? { ...normalized, warning } : normalized;
 }
 
 export async function deleteFulfillmentOrder(id: number) {

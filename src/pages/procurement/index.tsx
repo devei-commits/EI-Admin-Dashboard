@@ -10,6 +10,7 @@ import type { IssuedPOViewRecord } from '../../components/procurement/issuedPoRe
 import { PurchaseOrdersView } from '../../components/procurement/PurchaseOrdersView';
 import { GrnTrackerView } from '../../components/procurement/GrnTrackerView';
 import { StockAuditTrackerView } from '../../components/procurement/StockAuditTrackerView';
+import { RequestQuotationModal, type RequestQuotationContext } from '../../components/procurement/RequestQuotationModal';
 import { QuoteRequestsView } from '../../components/procurement/QuoteRequestsView';
 import { PrInboxView } from '../../components/procurement/PrInboxView';
 import { PrEditPopup } from '../../components/procurement/PrEditPopup';
@@ -109,8 +110,6 @@ import {
   matchBackendPrItemForDraftLine,
   splitBackendPrItemsAfterPartialRelease,
   syncProcurementItemsAfterDraftPoLineQtyEdit,
-  computeOpenProcurementLineQty,
-  sumCommittedPoQtyForPrItem,
   parseQuantityRequested,
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
@@ -947,6 +946,8 @@ const Procurement: React.FC = () => {
   const [expandedQuoteLineLists, setExpandedQuoteLineLists] = useState<Record<string, boolean>>({});
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<ProcurementRequest | null>(null);
+  // Per-PR "Request Quotation" (RFQ) — opens the shared RequestQuotationModal, pre-filled from the PR item.
+  const [quoteRequestCtx, setQuoteRequestCtx] = useState<RequestQuotationContext | null>(null);
   // Spec §3A/§3B/§3C popups (PR Inbox row actions)
   const [prEditReq, setPrEditReq] = useState<ProcurementRequest | null>(null);
   const [stockAuditReq, setStockAuditReq] = useState<ProcurementRequest | null>(null);
@@ -1648,19 +1649,12 @@ const Procurement: React.FC = () => {
       pack_material_id?: number;
       itemType?: 'RM' | 'PM';
     }): number => {
-      const committed = sumCommittedPoQtyForPrItem(
-        {
-          itemName: args.itemName,
-          itemCode: args.itemCode,
-          raw_material_id: args.raw_material_id,
-          pack_material_id: args.pack_material_id,
-          type: args.itemType ?? args.reqType,
-        },
-        { requestId: args.requestId, purchaseOrders, draftPOs },
-      );
-      return computeOpenProcurementLineQty(args.totalReqQty, committed);
+      // Policy: a Procurement request may be released to a Draft PO irrespective of quantity already
+      // committed on other draft/released POs (no "locked-qty" cap). The releasable qty defaults to the
+      // full requested quantity; the previous committed-PO subtraction is intentionally not applied.
+      return Math.max(0, Number(args.totalReqQty) || 0);
     },
-    [purchaseOrders, draftPOs],
+    [],
   );
 
   /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
@@ -2241,12 +2235,10 @@ const Procurement: React.FC = () => {
           itemType: reqType,
         });
 
+        // Zero-qty lines carry nothing to release — skip them (they no longer block the whole bucket,
+        // since the committed-qty cap was removed; a line only hits 0 when its requested qty is 0).
         if (openQty <= 0) {
-          addToast(
-            'warning',
-            `No open quantity on ${line.requestCode} for ${line.itemName} (already on a draft PO).`
-          );
-          return;
+          continue;
         }
 
         const moqParsed = parseMoqInput(line.moq);
@@ -6147,7 +6139,26 @@ const Procurement: React.FC = () => {
                 <PrInboxView
                   requests={procurementRequestsList}
                   onEdit={(req) => setPrEditReq(req)}
-                  onRequestQuote={(req) => setSelectedRequest(req)}
+                  onRequestQuote={(req) => {
+                    const first = (req.itemDetails ?? [])[0];
+                    const itemType: 'RM' | 'PM' =
+                      first?.type === 'PM' || (first?.pack_material_id != null && first?.raw_material_id == null)
+                        ? 'PM'
+                        : req.type === 'PM'
+                          ? 'PM'
+                          : 'RM';
+                    setQuoteRequestCtx({
+                      itemType,
+                      itemCode: first?.itemCode ?? '',
+                      itemName: first?.itemName ?? '',
+                      rawMaterialId: first?.raw_material_id ?? null,
+                      packMaterialId: first?.pack_material_id ?? null,
+                      unit: first?.unit,
+                      defaultQty: first?.reqQty != null && first.reqQty > 0 ? first.reqQty : undefined,
+                      // Procurement-origin RFQ (no planning link) — let them switch/confirm the item.
+                      allowItemPick: true,
+                    });
+                  }}
                   onStockAudit={(req) => {
                     if (isOpenStockCheckStatus(req.stockCheckStatus) || isStockCheckOneTimeCompleted(req)) {
                       openStockCheckModal(req);
@@ -7701,6 +7712,18 @@ const Procurement: React.FC = () => {
           </div>
         </div>
       ))()}
+
+      {/* ── Per-PR Request Quotation (RFQ) Modal ── */}
+      {quoteRequestCtx && (
+        <RequestQuotationModal
+          context={quoteRequestCtx}
+          onClose={() => setQuoteRequestCtx(null)}
+          onSubmitted={() => {
+            setQuoteRequestCtx(null);
+            queryClient.invalidateQueries({ queryKey: ['planning-quotation-asks'] });
+          }}
+        />
+      )}
 
       {/* ── Request Detail Modal ── */}
       {selectedRequest && (() => {
