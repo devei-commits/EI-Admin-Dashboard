@@ -91,6 +91,10 @@ export interface PriceListItemPage {
   pack_material_id?: number | null;
   product_id?: number | null;
   itemsListId: number | null;
+  /** Price-list approval workflow status: Draft | Under Review | Under Approval | Active. */
+  status?: string;
+  updatedAt?: string | null;
+  createdAt?: string | null;
   vendorRates: Array<{
     id: number;
     party_type?: 'vendor' | 'client';
@@ -120,6 +124,8 @@ export interface PriceListPageQuery {
   offset?: number;
   search?: string;
   partyId?: number;
+  /** Approval status tab filter (Draft | Under Review | Under Approval | Active); omit/`all` = no filter. */
+  status?: string;
 }
 
 export interface PriceListPageResult {
@@ -127,6 +133,8 @@ export interface PriceListPageResult {
   total: number;
   limit: number;
   offset: number;
+  /** Global per-status master counts for the type (for the status tabs). */
+  statusCounts?: Record<string, number>;
 }
 
 export interface PriceListPageStats {
@@ -163,6 +171,7 @@ export async function fetchPriceListPagePaginated(
     });
     if (query.search?.trim()) qs.set('search', query.search.trim());
     if (query.partyId != null && !Number.isNaN(query.partyId)) qs.set('party_id', String(query.partyId));
+    if (query.status && query.status !== 'all') qs.set('status', query.status);
     const payload = await api.get<PriceListPageResult>(`/api/v1/items-list/page?${qs.toString()}`);
     return {
       data: payload ?? { rows: [], total: 0, limit: query.limit, offset: query.offset ?? 0 },
@@ -236,6 +245,29 @@ export async function updateItemList(id: string, payload: { status?: string }): 
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to update item';
+    return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
+  }
+}
+
+export interface ItemsListApprovalResult {
+  id: number;
+  status: string;
+  updatedAt?: string | null;
+}
+
+/** Move a price list through the approval workflow. `action`: 'advance' | 'reject'. */
+export async function updateItemsListApprovalStatus(
+  itemsListId: number,
+  body: { action: 'advance' | 'reject' } | { status: string },
+): Promise<ServiceResult<ItemsListApprovalResult>> {
+  try {
+    const row = await api.patch<ItemsListApprovalResult>(
+      `/api/v1/items-list/${itemsListId}/approval-status`,
+      body,
+    );
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update approval status';
     return { data: null, error: { code: 'ERROR', message, timestamp: new Date().toISOString() }, success: false };
   }
 }

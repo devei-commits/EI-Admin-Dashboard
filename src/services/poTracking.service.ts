@@ -70,6 +70,35 @@ export async function fetchPoTracking(purchaseOrderId: string): Promise<ServiceR
   }
 }
 
+/** Max ids per request — mirrors TRACKING_BATCH_MAX_IDS on the backend. */
+const TRACKING_BATCH_MAX_IDS = 500;
+
+/**
+ * Batch form of {@link fetchPoTracking} — one request for many POs instead of N.
+ * Ids with no tracking row yet are absent from the returned map (the batch route is
+ * read-only and does not create empty rows, unlike the single-PO route).
+ */
+export async function fetchPoTrackingBatch(
+  purchaseOrderIds: string[]
+): Promise<ServiceResult<Record<string, PoTrackingRecord>>> {
+  const ids = [...new Set(purchaseOrderIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (ids.length === 0) return { data: {}, error: null, success: true };
+  try {
+    const out: Record<string, PoTrackingRecord> = {};
+    for (let i = 0; i < ids.length; i += TRACKING_BATCH_MAX_IDS) {
+      const chunk = ids.slice(i, i + TRACKING_BATCH_MAX_IDS);
+      const res = await api.get<{ tracking: Record<string, PoTrackingRecord> }>(
+        `/api/v1/po-tracking/purchase-orders?ids=${encodeURIComponent(chunk.join(','))}`
+      );
+      Object.assign(out, res?.tracking ?? {});
+    }
+    return { data: out, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load PO tracking';
+    return { data: null, error: message, success: false };
+  }
+}
+
 export async function updatePoTracking(
   purchaseOrderId: string,
   payload: PoTrackingPayload

@@ -4,14 +4,8 @@ import { useToast } from '../../context/ToastContext';
 import { createMRN, type MRNRecordFromApi } from '../../services/mrn.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../services/warehouseInventory.service';
-import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
-import { fetchPackMaterialsList, type PackMaterialRecord } from '../../services/packMaterials.service';
 import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
-import {
-  buildMaterialTypeaheadOptions,
-  materialTypeaheadLabelForKey,
-  type MaterialTypeaheadOption,
-} from '../../lib/materialTypeahead';
+import { type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
 import {
   defaultRequiredByDate,
   flattenTransferZoneOptions,
@@ -59,8 +53,6 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
   const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
   const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
   const [inventoryRows, setInventoryRows] = useState<WarehouseInventoryRow[]>([]);
-  const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
-  const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
   const [sourceType, setSourceType] = useState<TransferSourceType>('Production');
   const [fromZone, setFromZone] = useState('');
   const [toZone, setToZone] = useState('');
@@ -75,16 +67,12 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
       fetchFacilityAreas('warehouse'),
       fetchFacilityAreas('production'),
       fetchWarehouseInventory(),
-      fetchRawMaterialsList(),
-      fetchPackMaterialsList(),
     ])
-      .then(([whRes, prodRes, invRes, rmList, pmList]) => {
+      .then(([whRes, prodRes, invRes]) => {
         if (cancelled) return;
         setWarehouseAreas(whRes.data ?? []);
         setProductionAreas(prodRes.data ?? []);
         setInventoryRows(invRes.success && invRes.data ? invRes.data.rows : []);
-        setRawMaterials(rmList);
-        setPackMaterials(pmList);
       })
       .catch(() => {
         if (!cancelled) addToast('error', 'Could not load transfer request data.');
@@ -117,6 +105,57 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
     });
     return map;
   }, [inventoryRows]);
+
+  // The in-stock inventory rows at the source zone ARE the transferable items — build the
+  // item search straight from them (RM/PM only). This avoids fetching the full RM + PM
+  // master catalogs (~3.5k rows) just to show the handful that actually have stock.
+  const inStockOptions = useMemo<MaterialTypeaheadOption[]>(() => {
+    const opts: MaterialTypeaheadOption[] = [];
+    for (const row of inventoryRows) {
+      if (row.type !== 'RM' && row.type !== 'PM') continue;
+      if (sihAtZoneForInventoryRow(row, fromZone) <= 0) continue;
+      const isRm = row.type === 'RM';
+      opts.push({
+        key: `${isRm ? 'rm' : 'pm'}:${row.sourceId}`,
+        kind: isRm ? 'rm' : 'pm',
+        id: String(row.sourceId),
+        code: row.code,
+        name: row.name,
+        label: `${row.name} · ${row.code}`,
+        haystack: `${row.name} ${row.code}`.toLowerCase(),
+        disabled: false,
+        unit: row.whUnit || (isRm ? 'KG' : 'PCS'),
+        rawMaterialId: isRm ? Number(row.sourceId) || undefined : undefined,
+        packMaterialId: !isRm ? Number(row.sourceId) || undefined : undefined,
+      });
+    }
+    opts.sort((a, b) => a.name.localeCompare(b.name));
+    return opts;
+  }, [inventoryRows, fromZone]);
+
+  // Per line: grey out items already picked on other lines, keep this line's own pick visible.
+  const optionsForLine = (line: TransferRequestLine): MaterialTypeaheadOption[] => {
+    const base = inStockOptions.map((opt) => ({
+      ...opt,
+      disabled: usedCatalogKeys.has(opt.key) && opt.key !== line.catalogKey,
+    }));
+    if (line.catalogKey && !base.some((o) => o.key === line.catalogKey)) {
+      base.push({
+        key: line.catalogKey,
+        kind: line.rawMaterialId ? 'rm' : 'pm',
+        id: String(line.rawMaterialId ?? line.packMaterialId ?? ''),
+        code: line.itemCode,
+        name: line.itemName,
+        label: `${line.itemName} · ${line.itemCode}`,
+        haystack: `${line.itemName} ${line.itemCode}`.toLowerCase(),
+        disabled: false,
+        unit: line.unit,
+        rawMaterialId: line.rawMaterialId,
+        packMaterialId: line.packMaterialId,
+      });
+    }
+    return base;
+  };
 
   const usedCatalogKeys = useMemo(
     () => new Set(lines.map((line) => line.catalogKey).filter(Boolean)),
@@ -176,7 +215,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
   const lineItemQuery = (line: TransferRequestLine): string => {
     if (itemQueries[line.id] !== undefined) return itemQueries[line.id];
     if (line.catalogKey) {
-      return materialTypeaheadLabelForKey(rawMaterials, packMaterials, line.catalogKey) || line.itemName;
+      return line.itemName ? `${line.itemName} · ${line.itemCode}` : line.itemCode;
     }
     return '';
   };
@@ -360,10 +399,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                         <tr key={line.id}>
                           <td className="px-4 py-3 min-w-[16rem]">
                             <MaterialMasterTypeahead
-                              options={buildMaterialTypeaheadOptions(rawMaterials, packMaterials, {
-                                excludeKeys: usedCatalogKeys,
-                                allowKey: line.catalogKey,
-                              })}
+                              options={optionsForLine(line)}
                               value={lineItemQuery(line)}
                               selectedId={line.catalogKey}
                               onValueChange={(query) => setLineQuery(line.id, query)}

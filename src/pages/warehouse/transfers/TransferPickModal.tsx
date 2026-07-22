@@ -56,6 +56,13 @@ interface TransferPickModalProps {
   /** Called with generated labels + per-line picked totals when the picker confirms. */
   onConfirm: (result: { labels: TransferLabel[]; pickedByLine: Record<string, number> }) => Promise<void> | void;
   saving?: boolean;
+  /** Starting label number. Pass the backend-issued next sequence when available;
+   * otherwise a time-based unique seed is used (never the old hardcoded value). */
+  labelSeqStart?: number;
+  /** Picker assignment — required to confirm the pick. Rendered in the footer. */
+  pickers?: { id: number; displayName: string }[];
+  assignedPicker?: string;
+  onAssignPicker?: (value: string) => void;
 }
 
 const num = (v: string): number => {
@@ -77,6 +84,10 @@ const TransferPickModal = ({
   requestedBy,
   onConfirm,
   saving = false,
+  labelSeqStart,
+  pickers = [],
+  assignedPicker,
+  onAssignPicker,
 }: TransferPickModalProps) => {
   // per-line pack rows keyed by line id
   const [packsByLine, setPacksByLine] = useState<Record<string, PackRow[]>>({});
@@ -111,7 +122,10 @@ const TransferPickModal = ({
 
   const buildLabels = (): TransferLabel[] | { error: string } => {
     const out: TransferLabel[] = [];
-    let seq = 44521; // label sequence seed (backend should own this later)
+    // Dynamic sequence: use the backend-issued start when provided, else a time-based
+    // unique seed (seconds since epoch) so each pick generates fresh, non-colliding labels.
+    let seq =
+      labelSeqStart && labelSeqStart > 0 ? Math.floor(labelSeqStart) : Math.floor(Date.now() / 1000);
     for (const line of lines) {
       const rows = rowsFor(line.id).filter((r) => num(r.packSize) > 0 && num(r.take) > 0);
       if (!rows.length) {
@@ -201,12 +215,13 @@ const TransferPickModal = ({
 
           {/* Items + pack entry */}
           <div className="print:hidden">
-            <div className="text-sm font-semibold text-slate-700 mb-2">📦 Items + packs to take</div>
+            <div className="text-sm font-semibold text-slate-700 mb-2">📦 Items + current packs available</div>
             <div className="space-y-4">
               {lines.map((line) => {
                 const taken = takenFor(line.id);
                 const short = line.sih < line.requiredQty;
                 const balanced = Math.abs(taken - line.requiredQty) < 1e-6 && taken > 0;
+                const shortBy = Math.round((line.requiredQty - line.sih) * 100) / 100;
                 return (
                   <div key={line.id} className="border border-slate-200 rounded-lg">
                     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 bg-slate-50 rounded-t-lg text-sm">
@@ -215,41 +230,67 @@ const TransferPickModal = ({
                       </div>
                       <div className="text-slate-600">Req <b>{line.requiredQty} {line.uom}</b></div>
                       <div className={short ? 'text-amber-700' : 'text-slate-600'}>
-                        SIH <b>{line.sih} {line.uom}</b>{short ? ` ⚠ short ${Math.round((line.requiredQty - line.sih) * 100) / 100}` : ''}
+                        SIH <b>{line.sih} {line.uom}</b>{short ? ` ⚠ short ${shortBy}` : ''}
                       </div>
-                      <div className="text-slate-500">Rack {line.rack || '—'}</div>
+                      <div className="text-slate-500">
+                        Rack <b className="text-slate-700">{line.rack || '—'}</b> · <b className="text-slate-700">{line.sih} {line.uom}</b> available
+                      </div>
                       <div className={`ml-auto text-xs font-semibold ${balanced ? 'text-emerald-600' : 'text-slate-400'}`}>
                         taken {taken} / {line.requiredQty} {line.uom}
                       </div>
                     </div>
 
                     <div className="px-4 py-3">
+                      <p className="mb-1.5 text-[11px] text-slate-500 leading-snug">
+                        🪓 Add one row per pack you handle. Enter the <b>pack&apos;s full size</b> and how much of it
+                        you&apos;re <b>transferring</b> — the leftover auto-returns to stock with its own restock label.
+                        Taking a whole pack means no leftover.
+                      </p>
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-xs text-slate-500">
                             <th className="py-1 font-medium">Pack size ({line.uom})</th>
-                            <th className="py-1 font-medium">Take ({line.uom})</th>
-                            <th className="py-1 font-medium">Residual → restock</th>
+                            <th className="py-1 font-medium">Transfer qty ({line.uom})</th>
+                            <th className="py-1 font-medium">Stays in stock</th>
+                            <th className="py-1 font-medium">Labels generated</th>
                             <th className="py-1"></th>
                           </tr>
                         </thead>
                         <tbody>
                           {rowsFor(line.id).map((r) => {
-                            const residual = Math.max(0, num(r.packSize) - num(r.take));
+                            const packSize = num(r.packSize);
+                            const take = num(r.take);
+                            const residual = Math.max(0, Math.round((packSize - take) * 1e6) / 1e6);
                             return (
-                              <tr key={r.id}>
+                              <tr key={r.id} className="align-top">
                                 <td className="py-1 pr-2">
                                   <input value={r.packSize} onChange={(e) => updateRow(line.id, r.id, { packSize: e.target.value })}
-                                    inputMode="decimal" placeholder="e.g. 25"
-                                    className="w-24 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                    inputMode="decimal" placeholder="full pack e.g. 50"
+                                    className="w-28 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                                 </td>
                                 <td className="py-1 pr-2">
-                                  <input value={r.take} onChange={(e) => updateRow(line.id, r.id, { take: e.target.value })}
-                                    inputMode="decimal" placeholder="e.g. 25"
-                                    className="w-24 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                  <div className="flex items-center gap-1.5">
+                                    <input value={r.take} onChange={(e) => updateRow(line.id, r.id, { take: e.target.value })}
+                                      inputMode="decimal" placeholder="e.g. 25"
+                                      className="w-20 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                    {packSize > 0 && take !== packSize ? (
+                                      <button type="button" onClick={() => updateRow(line.id, r.id, { take: String(packSize) })}
+                                        className="text-[10px] font-semibold text-amber-700 hover:text-amber-800 whitespace-nowrap">whole pack</button>
+                                    ) : null}
+                                  </div>
                                 </td>
-                                <td className="py-1 pr-2 text-slate-600">
-                                  {residual > 0 ? `${Math.round(residual * 1e6) / 1e6} ${line.uom} → ${line.rack || 'rack'}` : '—'}
+                                <td className="py-1 pr-2 text-slate-600 whitespace-nowrap">
+                                  {residual > 0 ? `${residual} ${line.uom}` : take > 0 ? 'nothing (full pack)' : '—'}
+                                </td>
+                                <td className="py-1 pr-2 text-[11px] leading-snug">
+                                  {take > 0 ? (
+                                    <span className="text-emerald-700">🏷️ Transfer {take} {line.uom}{line.trNo ? ` → ${line.trNo}` : ''}</span>
+                                  ) : (
+                                    <span className="text-slate-300">—</span>
+                                  )}
+                                  {residual > 0 ? (
+                                    <span className="block text-cyan-700">♻️ Restock {residual} {line.uom} @ {line.rack || 'rack'}</span>
+                                  ) : null}
                                 </td>
                                 <td className="py-1 text-right">
                                   <button onClick={() => removeRow(line.id, r.id)} className="text-slate-400 hover:text-rose-600 text-xs">remove</button>
@@ -306,9 +347,27 @@ const TransferPickModal = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 print:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 print:hidden">
+          {onAssignPicker ? (
+            <div className="mr-auto flex items-center gap-2">
+              <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Picker</label>
+              <select
+                value={assignedPicker ?? ''}
+                onChange={(e) => onAssignPicker(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+              >
+                <option value="">— Assign picker —</option>
+                {pickers.map((p) => (
+                  <option key={p.id} value={p.displayName}>{p.displayName}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
-          <button onClick={handleConfirm} disabled={!labels || saving}
+          <button
+            onClick={handleConfirm}
+            disabled={!labels || saving || (Boolean(onAssignPicker) && !String(assignedPicker ?? '').trim())}
+            title={Boolean(onAssignPicker) && !String(assignedPicker ?? '').trim() ? 'Assign a picker first' : undefined}
             className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
             {saving ? 'Saving…' : 'Confirm pick & save labels'}
           </button>

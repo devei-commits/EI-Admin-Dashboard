@@ -31,6 +31,7 @@ import {
   inboundGrnVerifiedAfterLabelsPayload,
 } from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
+import { GrnLabelPreview } from './GrnLabelPreview';
 
 export type GrnCopyReceiptLineItem = {
   id: string;
@@ -206,16 +207,19 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const [docRefs, setDocRefs] = useState(() =>
     initialGrnCopyDocRefs(grn.sourceDocuments, grn.invoiceNo),
   );
+  // Received/shipped qty drives the declared pack qty; when no shipment qty was recorded
+  // (0), fall back to the PO qty so the packs pull the expected quantity instead of 0.
+  const seedQty = Number(lineItem.rcvdQty) || Number(lineItem.poQty) || 0;
   const [packRows, setPackRows] = useState<GrnPackCheckRow[]>(() =>
     deriveGrnPackRows({
-      rcvdQty: lineItem.rcvdQty,
+      rcvdQty: seedQty,
       noOfBoxes: grn.noOfBoxes,
       unitsPerBox: grn.unitsPerBox,
       unit: lineItem.unit,
     }),
   );
   const [billedQty, setBilledQty] = useState(
-    () => Number(lineItem.invoiceQty) || Number(lineItem.rcvdQty) || 0,
+    () => Number(lineItem.invoiceQty) || Number(lineItem.rcvdQty) || Number(lineItem.poQty) || 0,
   );
   const [verifiedUnitPrice, setVerifiedUnitPrice] = useState(
     () => Number(lineItem.unitPrice) || 0,
@@ -227,6 +231,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     doc: false,
   });
   const [generating, setGenerating] = useState(false);
+  // Set once labels come back — swaps the modal body for the preview + print step.
+  const [previewLabels, setPreviewLabels] = useState<GeneratedLabel[] | null>(null);
   const [saving, setSaving] = useState(false);
 
   const sourceDocumentsWithRefs = useMemo(
@@ -274,18 +280,23 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   );
   const hasExistingLabels = existingLabels.length > 0;
 
+  // A ticked shipment-photo tag (Truck / Packs / Doc) counts as a provided photo, so the
+  // requirement is satisfied by the marked tags even though the file input is reset after
+  // selection (no visible filename). Keeps the check in sync with the ✓ marks the user sees.
+  const tagsTicked = Object.values(photoTags).filter(Boolean).length;
+  const effectivePhotoCount = Math.max(photoCount, tagsTicked);
   const matchChecks = useMemo(
     () =>
       buildGrnMatchChecks({
         grn: receiptInput,
         packRows,
         documentRows,
-        photoCount,
+        photoCount: effectivePhotoCount,
         existingLabelCount: existingLabels.length,
         billedQty,
         verifiedUnitPrice,
       }),
-    [receiptInput, packRows, documentRows, photoCount, existingLabels.length, billedQty, verifiedUnitPrice],
+    [receiptInput, packRows, documentRows, effectivePhotoCount, existingLabels.length, billedQty, verifiedUnitPrice],
   );
   const receiptChecksPass = allGrnReceiptChecksPass(matchChecks);
   const coreChecksPass = allGrnCoreMatchChecksPass(matchChecks);
@@ -415,6 +426,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         'success',
         `${packRows.length} rack labels generated · GRN verified · use Send to QC when ready.`,
       );
+      // Push the update to the parent list, but stay open so the labels can be
+      // previewed and printed here — reopening the GRN just to print was the old flow.
       onSaved({
         ...grn,
         status: verifiedPayload.status,
@@ -424,7 +437,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         workflowSteps: labelRes.workflowSteps ?? verifiedPayload.workflowSteps,
         generatedLabels: labelRes.labels,
       });
-      onClose();
+      setPreviewLabels(labelRes.labels ?? []);
     } catch (e: unknown) {
       addToast('error', e instanceof Error ? e.message : 'Failed to generate labels');
     } finally {
@@ -515,7 +528,16 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {!coreChecksPass && prerequisitesMet && !hasExistingLabels ? (
+              {previewLabels ? (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Done
+                </button>
+              ) : null}
+              {!previewLabels && !coreChecksPass && prerequisitesMet && !hasExistingLabels ? (
                 <button
                   type="button"
                   disabled={generating}
@@ -527,7 +549,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               ) : null}
               <button
                 type="button"
-                disabled={!receiptChecksPass || generating}
+                hidden={!!previewLabels}
+                disabled={!receiptChecksPass || generating || !!previewLabels}
                 onClick={() => void handleGenerateLabels()}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
@@ -552,6 +575,24 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
           </div>
         </div>
 
+        {previewLabels ? (
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <strong>
+                {previewLabels.length} label{previewLabels.length === 1 ? '' : 's'} generated.
+              </strong>{' '}
+              Print them now, or reopen this GRN from Inbound to print later. The GRN is verified — use
+              Send to QC when ready.
+            </div>
+            <GrnLabelPreview
+              labels={previewLabels}
+              grnNo={headerView.titleGrnNo}
+              onPrintBlocked={() =>
+                addToast('error', 'Could not open print window. Allow popups and try again.')
+              }
+            />
+          </div>
+        ) : (
         <div className="space-y-6 px-6 py-5">
           {hasExistingLabels ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -669,7 +710,6 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                     <th className="px-3 py-2 text-right">Declared Qty (vendor)</th>
                     <th className="px-3 py-2 text-right">Actual Qty (physical)</th>
                     <th className="px-3 py-2 text-right">Variance</th>
-                    <th className="px-3 py-2 text-left">Pack Condition</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -700,7 +740,6 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                       <td className={`px-3 py-2 text-right tabular-nums ${row.variance === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {row.variance}
                       </td>
-                      <td className="px-3 py-2 text-slate-700">{row.condition}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -829,6 +868,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
             </div>
           ) : null}
         </div>
+        )}
       </div>
     </div>
   );

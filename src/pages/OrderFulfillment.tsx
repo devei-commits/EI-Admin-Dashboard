@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ShoppingCart, Package, Loader2, LayoutDashboard } from 'lucide-react';
+import { ShoppingCart, Package, Loader2, LayoutDashboard, ArrowDownToLine } from 'lucide-react';
 import { SODashboardView } from '../components/orders/SODashboardView';
 import { BatchesDashboardView } from '../components/orders/BatchesDashboardView';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
@@ -19,7 +19,7 @@ import {
   shipFulfillmentSplits,
   deliverFulfillmentSplits,
 } from '../services/fulfillment.service';
-import { importOpenSoHeadersExcel } from '../services/salesPurchase.service';
+import { importOpenSoHeadersExcel, importSalesOrderFromZohoBySoNo } from '../services/salesPurchase.service';
 import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
@@ -67,6 +67,8 @@ export const OrderFulfillment: React.FC = () => {
   const [reworkSubmitting, setReworkSubmitting] = useState(false);
   const salesOrderExcelInputRef = useRef<HTMLInputElement>(null);
   const [importingSalesOrders, setImportingSalesOrders] = useState(false);
+  const [zohoSoNo, setZohoSoNo] = useState('');
+  const [importingZohoSo, setImportingZohoSo] = useState(false);
   const [deepLinkSoNo, setDeepLinkSoNo] = useState<string | null>(null);
   const [batchesDeepLinkSearch, setBatchesDeepLinkSearch] = useState('');
   const [batchesDeepLinkBmr, setBatchesDeepLinkBmr] = useState<string | null>(null);
@@ -184,6 +186,53 @@ export const OrderFulfillment: React.FC = () => {
       addToast('error', err instanceof Error ? err.message : 'Sales order import failed');
     } finally {
       setImportingSalesOrders(false);
+    }
+  };
+
+  /**
+   * Pull one sales order straight from Zoho Books by its SO number.
+   * `force` re-imports an SO that already exists locally (refreshes it from Zoho).
+   */
+  const handleZohoSoImport = async (force = false): Promise<void> => {
+    const soNo = zohoSoNo.trim();
+    if (!soNo) {
+      addToast('warning', 'Enter a Zoho SO number to fetch.');
+      return;
+    }
+
+    setImportingZohoSo(true);
+    try {
+      const res = await importSalesOrderFromZohoBySoNo(soNo, { updateExisting: force });
+      addToast(
+        'success',
+        res.action === 'create'
+          ? `Imported ${res.so_no} from Zoho.`
+          : `Refreshed ${res.so_no} from Zoho.`
+      );
+      if (!res.client_matched) {
+        addToast('warning', `${res.so_no}: no matching client master — customer left as the Zoho name.`);
+      }
+      if (res.unmatched_lines.length > 0) {
+        const skus = res.unmatched_lines.slice(0, 3).map((l) => l.sku).join(', ');
+        addToast(
+          'warning',
+          `${res.so_no}: ${res.unmatched_lines.length} line(s) have no product master (${skus}). Planning may be incomplete.`
+        );
+      }
+      setZohoSoNo('');
+      await loadOrders();
+      // The import also writes planning_extracted rows.
+      void queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+    } catch (err) {
+      const body = (err as { body?: { code?: string; error?: string } })?.body;
+      const message = err instanceof Error ? err.message : 'Failed to fetch sales order from Zoho';
+      if (body?.code === 'SO_ALREADY_IMPORTED') {
+        addToast('warning', `${message}. Use "Re-fetch" to refresh it from Zoho.`);
+      } else {
+        addToast('error', message);
+      }
+    } finally {
+      setImportingZohoSo(false);
     }
   };
 
@@ -440,6 +489,44 @@ export const OrderFulfillment: React.FC = () => {
               <p className="text-sm text-gray-500 mt-1">Manage sale orders from creation to delivery.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Pull a single SO straight from Zoho Books by number */}
+              <div
+                className="flex items-center gap-1"
+                title="Fetch a sales order that exists in Zoho Books by its SO number and import it here."
+              >
+                <input
+                  value={zohoSoNo}
+                  onChange={(e) => setZohoSoNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleZohoSoImport(false);
+                    }
+                  }}
+                  placeholder="Zoho SO no…"
+                  disabled={importingZohoSo}
+                  aria-label="Zoho SO number"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 w-36 disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  onClick={() => { void handleZohoSoImport(false); }}
+                  disabled={importingZohoSo || !zohoSoNo.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
+                >
+                  <ArrowDownToLine size={16} className="shrink-0" aria-hidden />
+                  {importingZohoSo ? 'Fetching…' : 'Fetch from Zoho'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleZohoSoImport(true); }}
+                  disabled={importingZohoSo || !zohoSoNo.trim()}
+                  title="Re-import an SO that already exists locally, overwriting it with Zoho's current data"
+                  className="inline-flex items-center px-2 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
+                >
+                  Re-fetch
+                </button>
+              </div>
               <input
                 ref={salesOrderExcelInputRef}
                 type="file"

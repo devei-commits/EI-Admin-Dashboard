@@ -66,7 +66,7 @@ import {
   deletePurchaseOrder,
   importPrRowsExcel,
 } from '../../services/salesPurchase.service';
-import { fetchPoTracking, updatePoTracking } from '../../services/poTracking.service';
+import { fetchPoTracking, fetchPoTrackingBatch, updatePoTracking } from '../../services/poTracking.service';
 import type { PoTrackingRecord } from '../../services/poTracking.service';
 import { rejectPoByVendor } from '../../services/poVendor.service';
 import {
@@ -1669,16 +1669,8 @@ const Procurement: React.FC = () => {
   const { data: releasedPoTrackingByBackendId } = useQuery({
     queryKey: ['po-tracking-released-map', releasedPoBackendIdsForTracking.join(',')],
     queryFn: async () => {
-      const entries = await Promise.all(
-        releasedPoBackendIdsForTracking.map(async (id) => {
-          const res = await fetchPoTracking(id);
-          return { id, tracking: res.success ? res.data : null };
-        }),
-      );
-      return entries.reduce((acc, e) => {
-        if (e.tracking) acc[e.id] = e.tracking;
-        return acc;
-      }, {} as Record<string, PoTrackingRecord>);
+      const res = await fetchPoTrackingBatch(releasedPoBackendIdsForTracking);
+      return (res.success ? res.data : null) ?? ({} as Record<string, PoTrackingRecord>);
     },
     enabled: sideSection === 'Purchase Orders' && releasedPoBackendIdsForTracking.length > 0,
     staleTime: 30_000,

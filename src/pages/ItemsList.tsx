@@ -16,9 +16,19 @@ import {
   deleteItemListTier,
   importVendorPricingExcel,
   importMasterCategoriesExcel,
+  updateItemsListApprovalStatus,
   type PriceListItemPage,
   type ItemListTierRow,
 } from '../services/itemsList.service';
+import {
+  MASTER_APPROVAL_STATUSES,
+  normalizeMasterApprovalStatus,
+  masterApprovalStatusBadgeClass,
+  getNextMasterApprovalStatus,
+  getPreviousMasterApprovalStatus,
+  buildMasterApprovalStatusCounts,
+  type MasterApprovalStatusTab,
+} from '../constants/masterApprovalStatus';
 import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import { Pagination } from '../components/ui/Pagination';
@@ -52,6 +62,9 @@ const ItemsList: React.FC = () => {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'rm' | 'pm' | 'pr'>('rm');
+  const [statusTab, setStatusTab] = useState<MasterApprovalStatusTab>('all');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<number | null>(null);
   const [showAddTierModal, setShowAddTierModal] = useState(false);
 
   const [tierTarget, setTierTarget] = useState<PriceListItemPage | null>(null);
@@ -83,6 +96,7 @@ const ItemsList: React.FC = () => {
   // Edit rate (vendor block) — item + rate for PUT/DELETE
   type RateForEdit = PriceListItemPage['vendorRates'][number];
   const [editingRate, setEditingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
+  const [viewingRate, setViewingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
   const [editRateCurrency, setEditRateCurrency] = useState('INR');
   const [editAdvancePct, setEditAdvancePct] = useState('');
   const [editPreShipmentPct, setEditPreShipmentPct] = useState('');
@@ -118,10 +132,10 @@ const ItemsList: React.FC = () => {
 
   useEffect(() => {
     setListPage(1);
-  }, [activeTab, listSearchDebounced, vendorFilterId, clientFilterId]);
+  }, [activeTab, listSearchDebounced, vendorFilterId, clientFilterId, statusTab]);
 
   const pageQuery = useQuery({
-    queryKey: ['items-list-page', activeListType, listPage, listSearchDebounced, partyFilterId ?? ''],
+    queryKey: ['items-list-page', activeListType, listPage, listSearchDebounced, partyFilterId ?? '', statusTab],
     queryFn: async () => {
       const res = await fetchPriceListPagePaginated(activeListType, {
         limit: PAGE_SIZE,
@@ -129,6 +143,7 @@ const ItemsList: React.FC = () => {
         search: listSearchDebounced.trim() || undefined,
         partyId:
           partyFilterId != null && !Number.isNaN(partyFilterId) ? partyFilterId : undefined,
+        status: statusTab !== 'all' ? statusTab : undefined,
       });
       if (!res.success || !res.data) {
         throw new Error(
@@ -153,7 +168,20 @@ const ItemsList: React.FC = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const filteredPageItems: PriceListItemPage[] = pageQuery.data?.rows ?? [];
+  const rawPageItems: PriceListItemPage[] = pageQuery.data?.rows ?? [];
+
+  // Counts come from the server (global over the whole catalog), so they stay in sync
+  // with the paginator; fall back to a page-local count only if the server omits them.
+  const statusCounts =
+    pageQuery.data?.statusCounts ?? buildMasterApprovalStatusCounts(rawPageItems, (it) => it.status);
+
+  // Status filtering is done server-side (keeps `total`/paginator correct); here we only sort.
+  const filteredPageItems: PriceListItemPage[] = useMemo(() => {
+    return [...rawPageItems].sort((a, b) => {
+      const cmp = String(a.code ?? '').localeCompare(String(b.code ?? ''), undefined, { numeric: true });
+      return sortAsc ? cmp : -cmp;
+    });
+  }, [rawPageItems, sortAsc]);
   const totalListItems = pageQuery.data?.total ?? 0;
   const totalListPages = Math.max(1, Math.ceil(totalListItems / PAGE_SIZE));
 
@@ -191,6 +219,94 @@ const ItemsList: React.FC = () => {
   };
 
   const formatPrice = (n: number) => '₹' + (n % 1 !== 0 ? n.toFixed(2) : n.toLocaleString('en-IN'));
+
+  /** "FRESH · 18d" style age chip from the price list's updatedAt. */
+  const freshnessChip = (updatedAt?: string | null): { label: string; cls: string } | null => {
+    if (!updatedAt) return null;
+    const t = new Date(updatedAt).getTime();
+    if (Number.isNaN(t)) return null;
+    const days = Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+    if (days <= 30) return { label: `FRESH · ${days}d`, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    if (days <= 90) return { label: `${days}d`, cls: 'bg-amber-50 text-amber-700 border-amber-200' };
+    return { label: `STALE · ${days}d`, cls: 'bg-rose-50 text-rose-700 border-rose-200' };
+  };
+
+  const formatDate = (d?: string | null): string => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '—';
+    return dt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  /** "23d ago (Jun 27 2026)" from a timestamp. */
+  const updatedAgoLabel = (d?: string | null): string => {
+    if (!d) return '—';
+    const t = new Date(d).getTime();
+    if (Number.isNaN(t)) return '—';
+    const days = Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+    return `${days}d ago (${formatDate(d)})`;
+  };
+
+  const openViewRate = (item: PriceListItemPage, rate: RateForEdit) => setViewingRate({ item, rate });
+
+  const handleApprovalTransition = async (item: PriceListItemPage, action: 'advance' | 'reject') => {
+    if (item.itemsListId == null) {
+      addToast('error', 'Add a price list for this item before submitting for approval.');
+      return;
+    }
+    setStatusUpdatingId(item.itemsListId);
+    try {
+      const res = await updateItemsListApprovalStatus(item.itemsListId, { action });
+      if (!res.success) {
+        addToast('error', res.error?.message ?? 'Failed to update approval status');
+        return;
+      }
+      addToast('success', `${item.name} → ${res.data?.status ?? ''}`);
+      refetchPage();
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
+  const renderApprovalStrip = (item: PriceListItemPage) => {
+    const status = normalizeMasterApprovalStatus(item.status);
+    const fresh = freshnessChip(item.updatedAt);
+    const next = getNextMasterApprovalStatus(status);
+    const prev = getPreviousMasterApprovalStatus(status);
+    const busy = statusUpdatingId != null && statusUpdatingId === item.itemsListId;
+    const canWorkflow = item.itemsListId != null;
+    return (
+      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${masterApprovalStatusBadgeClass(status)}`}>
+          {status}
+        </span>
+        {fresh && (
+          <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${fresh.cls}`}>{fresh.label}</span>
+        )}
+        <span className="text-[10.5px] text-gray-400 whitespace-nowrap">{formatDate(item.updatedAt)}</span>
+        {canWorkflow && prev && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => handleApprovalTransition(item, 'reject')}
+            className="px-2 py-0.5 rounded border border-gray-300 bg-white text-[10px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            ← {prev}
+          </button>
+        )}
+        {canWorkflow && next && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => handleApprovalTransition(item, 'advance')}
+            className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {next === 'Active' ? 'Approve → Active' : `→ ${next}`}
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const formatRatePaymentTermsLabel = (raw: string | null | undefined) => {
     const p = parseStagedPaymentTerms(raw ?? '');
@@ -672,7 +788,7 @@ const ItemsList: React.FC = () => {
               Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex items-end gap-2">
             <input
               ref={vendorPricingFileRef}
               type="file"
@@ -732,15 +848,17 @@ const ItemsList: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        {/* Row 1 — title · category tabs · primary action */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-bold text-gray-900">Price Lists — Vendor / client & MOQ-wise</span>
+            <h2 className="text-sm font-bold text-gray-900">Price Lists</h2>
             <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => {
                     setActiveTab(tab);
+                    setStatusTab('all');
                     setListSearchQuery('');
                     setListPage(1);
                   }}
@@ -748,92 +866,133 @@ const ItemsList: React.FC = () => {
                     activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {tab === 'rm' ? 'Raw Materials' : tab === 'pm' ? 'Packaging' : 'Products'}
+                  {tab === 'rm' ? 'RM' : tab === 'pm' ? 'PM' : 'PR Sell'}
                 </button>
               ))}
             </div>
-            {(activeTab === 'rm' || activeTab === 'pm') && (
-              <div className="flex items-center gap-2">
-                <label htmlFor="items-list-vendor-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-                  Filter by vendor
-                </label>
-                <select
-                  id="items-list-vendor-filter"
-                  value={vendorFilterId}
-                  onChange={(e) => setVendorFilterId(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="">All vendors</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name ?? v.id}
-                    </option>
-                  ))}
-                </select>
-                {vendorFilterId ? (
-                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
-                    Only rows with a rate for this vendor are shown. Choose &quot;All vendors&quot; to see every RM/PM line.
-                  </span>
-                ) : null}
-              </div>
-            )}
-            {activeTab === 'pr' && (
-              <div className="flex items-center gap-2">
-                <label htmlFor="items-list-client-filter" className="text-xs font-semibold text-gray-600 whitespace-nowrap">
-                  Filter by client
-                </label>
-                <VendorClientNameTypeahead
-                  inputId="items-list-client-filter"
-                  parties={clients}
-                  selectedId={clientFilterId}
-                  loading={clientsQuery.isLoading}
-                  placeholder="All clients — search by name, city…"
-                  onSelect={(c) => setClientFilterId(c?.id ?? '')}
-                  className="min-w-[220px]"
-                />
-                {clientFilterId ? (
-                  <span className="text-[11px] text-amber-800 max-w-[220px] leading-snug">
-                    Only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
-                  </span>
-                ) : null}
-              </div>
-            )}
           </div>
           <button
             onClick={openAddPriceList}
-            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold whitespace-nowrap"
           >
-            + Add Price List
+            + New Price List
           </button>
         </div>
 
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="search"
-            value={listSearchQuery}
-            onChange={(e) => setListSearchQuery(e.target.value)}
-            placeholder={
-              activeTab === 'pr'
-                ? 'Search product code, name, or client…'
-                : 'Search item code, name, or vendor…'
-            }
-            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-            aria-label="Search items list"
-          />
-          {listSearchQuery ? (
-            <button
-              type="button"
-              onClick={() => setListSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-              aria-label="Clear search"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : null}
+        {/* Row 2 — approval status filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          {(['all', ...MASTER_APPROVAL_STATUSES] as MasterApprovalStatusTab[]).map((s) => {
+            const active = statusTab === s;
+            const count = s === 'all' ? statusCounts.all ?? 0 : statusCounts[s] ?? 0;
+            const emoji =
+              s === 'Draft' ? '📝' : s === 'Under Review' ? '👀' : s === 'Under Approval' ? '✋' : s === 'Active' ? '✅' : '📋';
+            const label = s === 'all' ? 'ALL' : s.toUpperCase();
+            return (
+              <button
+                key={s}
+                onClick={() => {
+                  setStatusTab(s);
+                  setListPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold tracking-wide flex items-center gap-1.5 transition-colors ${
+                  active
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <span>
+                  {emoji} {label}
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Row 3 — search · party filter · sort */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="search"
+              value={listSearchQuery}
+              onChange={(e) => setListSearchQuery(e.target.value)}
+              placeholder={
+                activeTab === 'pr'
+                  ? 'Search product code, name, or client…'
+                  : 'Search item code, name, or vendor…'
+              }
+              className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              aria-label="Search items list"
+            />
+            {listSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setListSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : null}
+          </div>
+
+          {(activeTab === 'rm' || activeTab === 'pm') && (
+            <select
+              id="items-list-vendor-filter"
+              aria-label="Filter by vendor"
+              value={vendorFilterId}
+              onChange={(e) => setVendorFilterId(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            >
+              <option value="">All vendors</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name ?? v.id}
+                </option>
+              ))}
+            </select>
+          )}
+          {activeTab === 'pr' && (
+            <VendorClientNameTypeahead
+              inputId="items-list-client-filter"
+              parties={clients}
+              selectedId={clientFilterId}
+              loading={clientsQuery.isLoading}
+              placeholder="All clients — search by name, city…"
+              onSelect={(c) => setClientFilterId(c?.id ?? '')}
+              className="min-w-[220px]"
+            />
+          )}
+
+          <button
+            type="button"
+            onClick={() => setSortAsc((v) => !v)}
+            className="ml-auto px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+            title="Sort by item code"
+          >
+            Sort · Item Code {sortAsc ? '↑' : '↓'}
+          </button>
+        </div>
+
+        {vendorFilterId && (activeTab === 'rm' || activeTab === 'pm') ? (
+          <p className="text-[11px] text-amber-800 -mt-1">
+            Showing only items with a rate for this vendor. Choose &quot;All vendors&quot; for every RM/PM line.
+          </p>
+        ) : null}
+        {clientFilterId && activeTab === 'pr' ? (
+          <p className="text-[11px] text-amber-800 -mt-1">
+            Showing only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
+          </p>
+        ) : null}
         {listSearchDebounced.trim() && !loading ? (
-          <p className="text-xs text-gray-500 -mt-4">
+          <p className="text-xs text-gray-500 -mt-1">
             {totalListItems} {activeTab === 'pr' ? 'product' : 'item'}
             {totalListItems !== 1 ? 's' : ''} match &quot;{listSearchDebounced.trim()}&quot;
           </p>
@@ -866,12 +1025,15 @@ const ItemsList: React.FC = () => {
                         </span>
                         <span className="text-[11px] text-gray-400">— List price only, {listOnlyLabel}</span>
                       </div>
-                      <button
-                        onClick={() => openAddTier(item)}
-                        className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
-                      >
-                        + Add Tiers
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {renderApprovalStrip(item)}
+                        <button
+                          onClick={() => openAddTier(item)}
+                          className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
+                        >
+                          + Add Tiers
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -907,12 +1069,15 @@ const ItemsList: React.FC = () => {
                             : `${item.uom ?? 'UNIT'} · GST ${item.gst ?? 0}%`}
                       </span>
                     </div>
-                    <button
-                      onClick={() => openAddTier(item)}
-                      className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
-                    >
-                      + Tier
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {renderApprovalStrip(item)}
+                      <button
+                        onClick={() => openAddTier(item)}
+                        className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
+                      >
+                        + Tier
+                      </button>
+                    </div>
                   </div>
                   {item.vendorRates?.map((rate) => {
                     const isClientRate = rate.party_type === 'client';
@@ -940,10 +1105,10 @@ const ItemsList: React.FC = () => {
                             {item.itemsListId != null && (
                               <button
                                 type="button"
-                                onClick={() => openEditRate(item, rate)}
+                                onClick={() => openViewRate(item, rate)}
                                 className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
                               >
-                                Edit rate
+                                👁 View / Edit
                               </button>
                             )}
                           </div>
@@ -1133,20 +1298,15 @@ const ItemsList: React.FC = () => {
                       onSelect={applySelectedParty}
                     />
                   ) : (
-                    <select
-                      value={selectedParty?.id ?? ''}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const v = vendors.find((x) => x.id === id) ?? null;
-                        applySelectedParty(v);
-                      }}
-                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="">Select…</option>
-                      {availableParties.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name ?? v.id}</option>
-                      ))}
-                    </select>
+                    <VendorClientNameTypeahead
+                      parties={vendors}
+                      selectedId={selectedParty?.id ?? ''}
+                      loading={vendorsQuery.isLoading}
+                      disabled={availableParties.length === 0 && !!tierTarget.vendorRates?.length}
+                      disabledIds={partyIdsUsedForTypeahead}
+                      placeholder="Search vendor by name, city…"
+                      onSelect={applySelectedParty}
+                    />
                   )}
                   {availableParties.length === 0 && tierTarget.vendorRates?.length ? (
                     <p className="text-xs text-amber-600 mt-1">
@@ -1329,6 +1489,89 @@ const ItemsList: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* View price list modal (read-only card → Edit) */}
+      {viewingRate && (() => {
+        const { item, rate } = viewingRate;
+        const parsed = parseStagedPaymentTerms(rate.payment_terms ?? '');
+        const paymentLabel = formatStagedPaymentTermsSummary(rate.payment_terms) || '—';
+        const tiers = rate.tiers ?? [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-gray-900">
+                    {item.name} <span className="font-mono text-[11px] text-gray-400">· {item.code}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-blue-600">{rate.vendor_name ?? '—'}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full border text-[9px] font-bold ${masterApprovalStatusBadgeClass(item.status)}`}>
+                      {normalizeMasterApprovalStatus(item.status).toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setViewingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 shrink-0">×</button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <h4 className="text-[10.5px] font-bold text-gray-500 uppercase mb-2">Terms</h4>
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">payment</dt><dd className="font-semibold text-gray-900 text-right">{paymentLabel}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">credit</dt><dd className="font-semibold text-gray-900 text-right">{parsed?.credit_days ?? 0} days</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">currency</dt><dd className="font-semibold text-gray-900 text-right">{rate.currency || 'INR'}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-gray-500">gst</dt><dd className="font-semibold text-gray-900 text-right">{item.gst ?? 0}%</dd></div>
+                  </dl>
+                </div>
+                <div>
+                  <h4 className="text-[10.5px] font-bold text-gray-500 uppercase mb-2">
+                    Tier pricing ({tiers.length} tier{tiers.length !== 1 ? 's' : ''})
+                  </h4>
+                  {tiers.length === 0 ? (
+                    <p className="text-[11px] text-gray-400">No tiers yet.</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-[10px] text-gray-400 text-left">
+                          <th className="py-1 font-semibold">Tier</th>
+                          <th className="py-1 font-semibold">MOQ</th>
+                          <th className="py-1 font-semibold">Price</th>
+                          <th className="py-1 font-semibold">Lead</th>
+                          <th className="py-1 font-semibold">Valid till</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tiers.map((t, i) => (
+                          <tr key={t.id} className="border-t border-gray-50">
+                            <td className="py-1.5 font-semibold text-gray-800">Tier {i + 1}</td>
+                            <td className="py-1.5 text-gray-700 tabular-nums">{t.moq_min}</td>
+                            <td className="py-1.5 font-mono text-gray-900">{formatPrice(t.price_per_unit)}</td>
+                            <td className="py-1.5 text-gray-600">{rate.lead_time_days != null ? `${rate.lead_time_days}d` : '—'}</td>
+                            <td className="py-1.5 text-gray-600">{t.valid_till ? formatDate(t.valid_till) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-400">Updated {updatedAgoLabel(item.updatedAt)}</p>
+              </div>
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-end">
+                <button onClick={() => setViewingRate(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Close</button>
+                <button
+                  onClick={() => {
+                    setViewingRate(null);
+                    openEditRate(item, rate);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                >
+                  ✏ Edit
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit tier modal */}
       {editingTier && (
