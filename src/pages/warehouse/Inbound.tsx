@@ -181,6 +181,7 @@ type InboundSortColumn =
   | 'item'
   | 'poQty'
   | 'shipped'
+  | 'received'
   | 'storage'
   | 'sourceDoc'
   | 'status'
@@ -336,6 +337,8 @@ function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): s
     case 'poQty':
       return lineItem?.poQty ?? -1;
     case 'shipped':
+      return lineItem?.shippedQty ?? grn.shippedQty ?? -1;
+    case 'received':
       return lineItem?.rcvdQty ?? -1;
     case 'storage':
       return formatInboundStorage(input);
@@ -2395,6 +2398,14 @@ const WarehouseInbound = () => {
                     align="right"
                   />
                   <SortableTableTh
+                    label="Received"
+                    column="received"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                    align="right"
+                  />
+                  <SortableTableTh
                     label="Storage (rack · pack · GRN batch)"
                     column="storage"
                     sortColumn={sortColumn}
@@ -2446,11 +2457,11 @@ const WarehouseInbound = () => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
                   </tr>
                 ) : sortedItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">
                       {inboundGrnSourceEmptyMessage(activeSourceTab)}
                     </td>
                   </tr>
@@ -2486,6 +2497,12 @@ const WarehouseInbound = () => {
                       </td>
                       <td className="px-4 py-4 text-right tabular-nums text-sm text-slate-800 whitespace-nowrap">
                         {lineItem ? formatInboundQty(lineItem.poQty, lineItem.unit) : '—'}
+                      </td>
+                      <td className="px-4 py-4 text-right tabular-nums text-sm text-slate-800 whitespace-nowrap">
+                        {(() => {
+                          const shipped = lineItem?.shippedQty ?? grn.shippedQty ?? null;
+                          return shipped != null ? formatInboundQty(shipped, lineItem?.unit) : '—';
+                        })()}
                       </td>
                       <td className="px-4 py-4 text-right tabular-nums text-sm font-medium text-slate-800 whitespace-nowrap">
                         {lineItem ? formatInboundQty(lineItem.rcvdQty, lineItem.unit) : '—'}

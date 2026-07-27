@@ -2,6 +2,10 @@ import {
   resolveGrnReceiptSource,
   type InboundGrnSourceTab,
 } from './inboundGrnSourceFilter';
+import type { InboundGrnReceiptMeta } from './inboundGrnReceiptMeta';
+import type { InboundGrnDetailsMeta } from './inboundGrnDetailsMeta';
+import type { InboundGrnBatchesMeta } from './inboundGrnBatchesMeta';
+import type { InboundGrnPackagingMeta } from './inboundGrnPackagingMeta';
 
 export type InboundGrnSourceDocKey =
   | 'bill'
@@ -24,6 +28,21 @@ export type InboundGrnSourceDocEntry = {
 export type InboundGrnSourceDocuments = Partial<Record<InboundGrnSourceDocKey, InboundGrnSourceDocEntry>> & {
   /** Per-rack post-racking photo counts (Assign Rack workflow). */
   postRackingPhotos?: InboundGrnPostRackingPhotosMeta;
+  /** Physical-receipt details from the "Confirm Receipt" step. */
+  receipt?: InboundGrnReceiptMeta;
+  /** Shipment-level declarations from the "Confirm Details" step. */
+  details?: InboundGrnDetailsMeta;
+  /** Per-batch rows from the "Batch Details" step. */
+  batches?: InboundGrnBatchesMeta;
+  /** Per-pack rows from the "Packaging List" step. */
+  packaging?: InboundGrnPackagingMeta;
+  /** "Quarantine → QC" + QC-decision markers (for wizard resume and reference). */
+  qc?: {
+    sentAt?: string | null;
+    testDate?: string | null;
+    verdict?: 'accept' | 'reject' | null;
+    decidedAt?: string | null;
+  };
 };
 
 export type InboundGrnPostRackingPhotosMeta = {

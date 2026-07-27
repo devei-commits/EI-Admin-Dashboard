@@ -7,8 +7,8 @@ import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../../servi
 import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
 import { type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
 import {
+  buildTransferLocationOptions,
   defaultRequiredByDate,
-  flattenTransferZoneOptions,
   formatTransferQty,
   sihAtZoneForInventoryRow,
   type TransferSourceType,
@@ -85,18 +85,18 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
     };
   }, [addToast]);
 
-  const zoneOptions = useMemo(
-    () => flattenTransferZoneOptions(warehouseAreas, productionAreas),
+  const locationOptions = useMemo(
+    () => buildTransferLocationOptions(warehouseAreas, productionAreas),
     [warehouseAreas, productionAreas],
   );
 
   useEffect(() => {
-    if (zoneOptions.length === 0) return;
-    const whDefault = zoneOptions.find((z) => z.areaType === 'warehouse');
-    const prodDefault = zoneOptions.find((z) => z.areaType === 'production');
-    setFromZone((prev) => prev || whDefault?.code || zoneOptions[0].code);
-    setToZone((prev) => prev || prodDefault?.code || zoneOptions[1]?.code || zoneOptions[0].code);
-  }, [zoneOptions]);
+    if (locationOptions.length === 0) return;
+    const whDefault = locationOptions.find((z) => z.facility === 'warehouse');
+    const prodDefault = locationOptions.find((z) => z.areaType === 'production');
+    setFromZone((prev) => prev || whDefault?.code || locationOptions[0].code);
+    setToZone((prev) => prev || prodDefault?.code || locationOptions[1]?.code || locationOptions[0].code);
+  }, [locationOptions]);
 
   const inventoryByCode = useMemo(() => {
     const map = new Map<string, WarehouseInventoryRow>();
@@ -239,7 +239,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
       const created = await createMRN({
         requestedBy: `${sourceType} (Transfer Request)`,
         source: 'TRQ',
-        notes: `Transfer request ${sourceType}: ${fromZone} → ${toZone}`,
+        notes: `Transfer request ${sourceType}: ${zoneLabel(fromZone)} → ${zoneLabel(toZone)}`,
         whDispatchZone: fromZone,
         muReceiveZone: toZone,
         requiredByDate,
@@ -265,8 +265,8 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
   };
 
   const zoneLabel = (code: string): string => {
-    const match = zoneOptions.find((z) => z.code === code);
-    return match ? `${match.shortLabel} — ${match.fullLabel}` : code;
+    const match = locationOptions.find((z) => z.code === code);
+    return match ? match.label : code;
   };
 
   return (
@@ -337,9 +337,9 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                     onChange={(e) => setFromZone(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   >
-                    {zoneOptions.map((zone) => (
-                      <option key={`from-${zone.code}`} value={zone.code}>
-                        {zone.shortLabel} — {zone.fullLabel}
+                    {locationOptions.map((loc) => (
+                      <option key={`from-${loc.code}`} value={loc.code}>
+                        {loc.label}
                       </option>
                     ))}
                   </select>
@@ -353,9 +353,9 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                     onChange={(e) => setToZone(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   >
-                    {zoneOptions.map((zone) => (
-                      <option key={`to-${zone.code}`} value={zone.code}>
-                        {zone.shortLabel} — {zone.fullLabel}
+                    {locationOptions.map((loc) => (
+                      <option key={`to-${loc.code}`} value={loc.code}>
+                        {loc.label}
                       </option>
                     ))}
                   </select>

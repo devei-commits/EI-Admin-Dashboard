@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flattenTransferZoneOptions, sihAtZoneForInventoryRow } from '../transferRequestLocationStock';
+import { buildTransferLocationOptions, sihAtZoneForInventoryRow } from '../transferRequestLocationStock';
 import type { FacilityAreaDTO } from '../../services/facilityAreas.service';
 
 const warehouseAreas: FacilityAreaDTO[] = [
@@ -51,11 +51,18 @@ const productionAreas: FacilityAreaDTO[] = [
 ];
 
 describe('transferRequestLocationStock', () => {
-  it('flattens warehouse and production zones with short labels', () => {
-    const options = flattenTransferZoneOptions(warehouseAreas, productionAreas);
-    expect(options).toHaveLength(2);
-    expect(options[0]?.shortLabel).toBe('MW');
-    expect(options[1]?.shortLabel).toBe('ML1');
+  it('collapses zones into facility-level options (Warehouse / ML1 / ML2)', () => {
+    const options = buildTransferLocationOptions(warehouseAreas, productionAreas);
+    expect(options.map((o) => o.label)).toEqual(['Warehouse', 'ML1', 'ML2']);
+    // Warehouse + ML1 use real zone codes; ML2 has no zone so falls back to canonical.
+    expect(options[0]?.code).toBe('LOC-RM');
+    expect(options[1]?.code).toBe('LOC-ML1');
+    expect(options[2]?.code).toBe('ML2');
+    // Representative codes still classify to the correct stock bucket.
+    const row = { whStock: 5, ml1Stock: 7, ml2Stock: 9 };
+    expect(sihAtZoneForInventoryRow(row, options[0]!.code)).toBe(5);
+    expect(sihAtZoneForInventoryRow(row, options[1]!.code)).toBe(7);
+    expect(sihAtZoneForInventoryRow(row, options[2]!.code)).toBe(9);
   });
 
   it('maps SIH buckets by zone code', () => {

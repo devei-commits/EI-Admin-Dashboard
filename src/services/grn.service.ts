@@ -21,6 +21,8 @@ export interface GRNRecordFromApi {
   qcBy: string;
   qcSpecs?: GrnQcSpecsStored | null;
   status: string;
+  /** GRN-level shipped total (shipment batch); fallback for legacy lines lacking per-line shippedQty. */
+  shippedQty?: number | null;
   lineItems?: Array<{
     id: string;
     /** Display name (from RM/PM master when enriched). */
@@ -28,6 +30,8 @@ export interface GRNRecordFromApi {
     itemName?: string;
     itemCode: string;
     poQty: number;
+    /** Quantity shipped on this line's truck; undefined for direct-PO/legacy lines. */
+    shippedQty?: number;
     rcvdQty: number;
     invoiceQty: number;
     unitPrice: number;
