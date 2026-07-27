@@ -244,13 +244,18 @@ export function computePlanBatchMaterialStatus(
   openPrQty: number,
   reserved = 0,
 ): PlanBatchMaterialStatus {
+  // `openPoQty` already carries the in-transit PO quantity (see sumOpenPipelineQty, which derives it
+  // from `inTransit`). Passing both `poQty: openPoQty` and `inTransit` double-counted in-transit stock,
+  // making items look more covered than they are. Count it once via poQty; keep `inTransit` in the
+  // signature for callers but fold it into poQty so nothing is added twice.
+  const poQty = Math.max(Number(openPoQty) || 0, Number(inTransit) || 0);
   return computeMaterialLineStatus({
     reqQty,
     reserved,
     free,
     plannedQty: openPrQty,
-    poQty: openPoQty,
-    inTransit,
+    poQty,
+    inTransit: 0,
   });
 }
 
