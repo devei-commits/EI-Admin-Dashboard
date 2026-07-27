@@ -286,6 +286,26 @@ export async function updateBatch(
   }
 }
 
+/**
+ * Permanently delete one planning batch. Backend reindexes the remaining batches (gapless sequence)
+ * and remaps sent/buffer indices. Returns the updated batch list. Throws with the API message on error.
+ */
+export async function deletePlanningBatch(
+  planningExtractedId: string,
+  batchId: number
+): Promise<{ ok: boolean; batchCount: number; batches: PlanningBatchRow[] }> {
+  try {
+    const res = await api.delete<{ ok: boolean; batchCount: number; batches: PlanningBatchRow[] }>(
+      `/api/v1/planning-extracted/${planningExtractedId}/batches/${batchId}`
+    );
+    const data = (res as { data?: { ok: boolean; batchCount: number; batches: PlanningBatchRow[] } })?.data ?? res;
+    return data ?? { ok: false, batchCount: 0, batches: [] };
+  } catch (e: unknown) {
+    const msg = errorMessageFromApiCatch(e, 'Could not delete batch');
+    throw new Error(msg || 'Could not delete batch');
+  }
+}
+
 /** All batches across PIs (for Batches menu). */
 export interface PlanningBatchAllRow extends PlanningBatchRow {
   sent?: boolean;

@@ -55,6 +55,7 @@ import {
   fetchBatchById,
   addOneBatchFromMaster,
   updateBatch as updatePlanningBatch,
+  deletePlanningBatch,
   fetchAllBatches,
   fetchItemsInvolved,
   fetchItemsInvolvedByPlanningId,
@@ -200,6 +201,27 @@ import { fetchWarehouseInventory } from '../services/warehouseInventory.service'
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 import { formatQtyExact, MATERIAL_QTY_MAX_DECIMALS, roundMaterialQty } from '../utils/formatQty';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+
+/**
+ * Invalidate EVERY Planning query whose data depends on planning batches, so a batch create/delete
+ * refreshes all of it consistently: PIS Extracted list + KPIs, Items Involved (aggregate + per-PI +
+ * batch panels), the Batches tab list, single-batch caches, the linked Production view, and per-SO
+ * availability. Prefix (non-exact) matching covers the parameterised keys.
+ */
+function invalidatePlanningBatchData(queryClient: QueryClient): void {
+  const keys: unknown[][] = [
+    ['planning-batches-all'],                          // Batches tab list
+    ['planning-batches'],                              // per-PI batch lists (['planning-batches', peId])
+    ['planning-batch'],                                // single-batch cache (['planning-batch', peId, batchId])
+    ['planning-extracted'],                            // PIS Extracted list + per-PI → drives KPIs
+    ['planning', 'items-involved'],                    // Items Involved aggregate + ['...','by-pe',peId]
+    ['planning', 'batches', 'all', 'items-involved'],  // batch-panel involved rows
+    ['production-batches'],                            // production view (delete detaches the link)
+    ['so-planning-availability'],                      // per-SO material availability
+    ['fulfillment-orders', 'planning-batches-tab'],    // Batches-tab fulfillment column
+  ];
+  keys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+}
 
 /** Merge a newly created batch into the planning-batches list cache so selection is not reset before refetch (fixes dropdown + batch label). */
 function mergePlanningBatchIntoListCache(
@@ -1663,12 +1685,6 @@ function buildMastersPrPath(order: Pick<SalesOrder, 'productId' | 'productCode'>
 }
 
 /** View 3 item code/name → RM or PM master detail (§7). */
-function buildItemsInvolvedMasterPath(item: { itemType: 'RM' | 'PM'; code?: string }): string {
-  const code = String(item.code ?? '').trim();
-  const base = item.itemType === 'PM' ? '/packaging' : '/raw-material';
-  return code ? `${base}?q=${encodeURIComponent(code)}` : base;
-}
-
 /** Map API row to SalesOrder shape for Plan Batches / Raise PR modals */
 function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
   return {
@@ -1906,6 +1922,7 @@ function PlanningBatchTableRow({
   const queryClient = useQueryClient();
   const [sizeKgStr, setSizeKgStr] = useState(row.sizeKg != null ? String(row.sizeKg) : '');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setSizeKgStr(row.sizeKg != null ? String(row.sizeKg) : '');
@@ -1940,6 +1957,26 @@ function PlanningBatchTableRow({
       addToast('error', err instanceof Error ? err.message : 'Could not save batch');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const label = row.batchCode?.trim() || `Batch ${row.sequence ?? ''}`.trim();
+    const msg = row.sent
+      ? `${label} has been sent to Production. Deleting it permanently removes the planning batch and detaches (does not delete) its production batch. This cannot be undone.\n\nDelete anyway?`
+      : `Delete ${label}? This permanently removes the planning batch and renumbers the rest. This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await deletePlanningBatch(String(row.planningExtractedId), Number(row.id));
+      addToast('success', 'Batch deleted');
+      // Refresh every batch-derived view + KPIs (PIS Extracted, Items Involved, Batches, production, availability).
+      invalidatePlanningBatchData(queryClient);
+    } catch (err) {
+      addToast('error', err instanceof Error ? err.message : 'Could not delete batch');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -2167,6 +2204,15 @@ function PlanningBatchTableRow({
           }`}
         >
           {batchEditable ? 'Edit' : 'View'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          title="Delete this batch"
+          className="ml-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+        >
+          {deleting ? '…' : 'Delete'}
         </button>
       </td>
     </tr>
@@ -3102,10 +3148,10 @@ const Planning = () => {
     if (row.batchSizeKg != null) setBatchSizeKg(String(row.batchSizeKg));
     if (row.plannedStartDate) setPlannedStartDate(row.plannedStartDate);
     if (row.productionLine) setProductionLine(row.productionLine);
-    // Only restore customBatches from saved row when we have saved data; never create placeholders from batchCount.
-    // Content-equal guard: avoid writing a new reference when the sizes already match what the user/backend has,
-    // which was causing Plan Batches summary values (pending / preview / gaps) to flicker on every render.
-    if (Array.isArray(row.customBatches) && row.customBatches.length > 0) {
+    // Only restore customBatches from the saved PI JSON BEFORE the real planning_batches query resolves —
+    // it's just a pre-load convenience. Once planning_batches has fetched, that list is authoritative
+    // (see the effect below), so we must not let a stale custom_batches JSON re-introduce a deleted batch.
+    if (!planningBatchesFetched && Array.isArray(row.customBatches) && row.customBatches.length > 0) {
       const incoming = row.customBatches;
       setCustomBatches((prev) => {
         if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
@@ -3114,7 +3160,7 @@ const Planning = () => {
         return incoming;
       });
     }
-  }, [planBatchesModalOpen, selectedSOForBatch?.id, planningRowForBatch]);
+  }, [planBatchesModalOpen, selectedSOForBatch?.id, planningRowForBatch, planningBatchesFetched]);
 
   // Batch-first: ensure at least one batch and set selected batch; sync customBatches from planningBatches
   const addedOneBatchRef = useRef(false);
@@ -3127,6 +3173,11 @@ const Planning = () => {
     if (!planBatchesModalOpen || !planningIdForBatch) return;
     if (planningBatches.length === 0) {
       if (isEditingExistingBatch) return;
+      // Confirmed-empty: drop any stale customBatches (e.g. hydrated from an out-of-date custom_batches
+      // JSON) so the popup reflects reality — no phantom deleted batch — before the batch-first auto-add.
+      if (planningBatchesLoaded && planningBatchesFetched && !batchPlanDirtyRef.current && customBatchesRef.current.length > 0) {
+        setCustomBatches([]);
+      }
       if (!addedOneBatchRef.current) {
       // Guard #1: wait until the planning_batches query has actually resolved. Before it does, length===0
       // only means "default useQuery value", not "server has zero batches". Firing the auto-add here
@@ -4207,54 +4258,69 @@ const Planning = () => {
         addToast('error', 'Cannot remove batches while editing a single batch. Close and use Plan Batches to manage the full list.');
         return;
       }
-      if (!getPlanningBatchEditableAtIndex(batchIndex)) {
-        addToast('error', 'Batch is confirmed by Production and cannot be removed.');
+      // The list can render from the PI's custom_batches JSON before the persisted planning_batches query
+      // resolves. Deleting then would find no DB id and wrongly treat a SAVED batch as local-only (drop it
+      // from the UI without deleting server-side → it reappears on refetch). Wait until the list has loaded.
+      if (!planningBatchesLoaded || !planningBatchesFetched) {
+        addToast('info', 'Still loading batches — please try deleting again in a moment.');
         return;
       }
-      const newBatches = customBatchesRef.current.filter((_, i) => i !== batchIndex);
-      const newSent = remapSentBatchIndicesAfterRemove(
-        selectedSOForBatch.sentBatchIndices ?? [],
-        batchIndex
-      );
-      setCustomBatches(newBatches);
-      if (expandedBatchIndex === batchIndex) setExpandedBatchIndex(null);
-      else if (expandedBatchIndex !== null && expandedBatchIndex > batchIndex) {
-        setExpandedBatchIndex(expandedBatchIndex - 1);
+
+      const savedList = planningBatches as PlanningBatchRow[];
+      const dbBatch = batchIndex < savedList.length ? savedList[batchIndex] : null;
+      const dbBatchId = dbBatch?.id != null ? Number(dbBatch.id) : null;
+      const sentIdx = selectedSOForBatch.sentBatchIndices ?? [];
+      const isSent = sentIdx.includes(batchIndex);
+      const label = dbBatch?.batchCode || `Batch ${batchIndex + 1}`;
+
+      // Any batch may be deleted — confirm first, warning harder when it's already sent to production.
+      const message = isSent
+        ? `${label} has been sent to Production. Deleting it permanently removes the planning batch and detaches (does not delete) its production batch. This cannot be undone.\n\nDelete anyway?`
+        : `Delete ${label}? This permanently removes the planning batch and renumbers the rest. This cannot be undone.`;
+      if (!window.confirm(message)) return;
+
+      const shiftExpanded = () => {
+        if (expandedBatchIndex === batchIndex) setExpandedBatchIndex(null);
+        else if (expandedBatchIndex !== null && expandedBatchIndex > batchIndex) setExpandedBatchIndex(expandedBatchIndex - 1);
+      };
+
+      // Local-only (not yet persisted) batch → just drop it from the working array.
+      if (dbBatchId == null) {
+        setCustomBatches(customBatchesRef.current.filter((_, i) => i !== batchIndex));
+        shiftExpanded();
+        return;
       }
+
       batchPlanDirtyRef.current = true;
       try {
-        await updatePlanningExtracted(selectedSOForBatch.id, {
-          batchCount: newBatches.length,
-          customBatches: newBatches.length > 0 ? newBatches : undefined,
-          sentBatchIndices: newSent,
-        });
-        const saved = await createOrUpdatePlanningBatches(selectedSOForBatch.id, newBatches);
-        setSelectedSOForBatch((prev) => (prev ? { ...prev, sentBatchIndices: newSent } : prev));
-        if (Array.isArray(saved)) {
-          queryClient.setQueryData(['planning-batches', selectedSOForBatch.id], saved);
-          if (
-            selectedBatchId != null &&
-            !saved.some((b) => Number(b.id) === Number(selectedBatchId))
-          ) {
-            setSelectedBatchId(saved[0]?.id != null ? Number(saved[0].id) : null);
-          }
+        // Backend deletes by id, reindexes survivors gaplessly, and remaps sent/buffer indices.
+        const res = await deletePlanningBatch(String(selectedSOForBatch.id), dbBatchId);
+        const saved = Array.isArray(res.batches) ? res.batches : [];
+        queryClient.setQueryData(['planning-batches', selectedSOForBatch.id], saved);
+        setCustomBatches(saved.map((b) => ({ sizeKg: Number(b.sizeKg ?? 0) })));
+        setSelectedSOForBatch((prev) =>
+          prev ? { ...prev, sentBatchIndices: remapSentBatchIndicesAfterRemove(prev.sentBatchIndices ?? [], batchIndex) } : prev,
+        );
+        shiftExpanded();
+        if (selectedBatchId != null && !saved.some((b) => Number(b.id) === Number(selectedBatchId))) {
+          setSelectedBatchId(saved[0]?.id != null ? Number(saved[0].id) : null);
         }
-        queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-        queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
-        queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+        // Refresh every batch-derived view + KPIs (PIS Extracted, Items Involved, Batches, production, availability).
+        invalidatePlanningBatchData(queryClient);
         batchPlanDirtyRef.current = false;
-        addToast('success', 'Batch removed');
+        addToast('success', 'Batch deleted');
       } catch (e) {
-        addToast('error', e instanceof Error ? e.message : 'Could not remove batch');
+        addToast('error', e instanceof Error ? e.message : 'Could not delete batch');
         queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
       }
     },
     [
       selectedSOForBatch,
-      getPlanningBatchEditableAtIndex,
       expandedBatchIndex,
       selectedBatchId,
       planningBatches,
+      planningBatchesLoaded,
+      planningBatchesFetched,
       queryClient,
       addToast,
       isEditingExistingBatch,
@@ -7970,9 +8036,9 @@ const Planning = () => {
                             <td className="px-2 py-2 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => navigate(buildItemsInvolvedMasterPath(item))}
+                                onClick={() => setUsedInModalItem(item)}
                                 className="text-cyan-700 hover:text-cyan-900 hover:underline font-medium font-mono text-xs"
-                                title={`Open ${item.itemType} master`}
+                                title={`View batches using this ${item.itemType}`}
                               >
                                 {item.code}
                               </button>
@@ -7989,9 +8055,17 @@ const Planning = () => {
                                 <div>
                                   <button
                                     type="button"
-                                    onClick={() => navigate(buildItemsInvolvedMasterPath(item))}
+                                    onClick={() => {
+                                      const code = String(item.code ?? '').trim();
+                                      if (item.itemType === 'PM') {
+                                        // `?pm=<code>` deep-links straight to the PM's detail (PackagingForm), not just the list.
+                                        navigate(code ? `/packaging?pm=${encodeURIComponent(code)}` : '/packaging');
+                                      } else {
+                                        navigate(code ? `/raw-material?rm=${encodeURIComponent(code)}` : '/raw-material');
+                                      }
+                                    }}
                                     className="text-gray-900 hover:text-cyan-800 hover:underline font-medium text-xs text-left"
-                                    title={`Open ${item.itemType} master`}
+                                    title={`Open ${item.itemType} item detail (${item.code || 'this item'})`}
                                   >
                                     {item.name}
                                   </button>
@@ -10318,11 +10392,13 @@ const Planning = () => {
 
                                       />
                                       <span className="text-xs font-semibold text-gray-600">units</span>
-                                      {getPlanningBatchEditableAtIndex(originalIndex) && !isEditingExistingBatch ? (
+                                      {!isEditingExistingBatch ? (
                                         <button
                                           type="button"
                                           onClick={() => void removeBatchAtPlanIndex(originalIndex)}
-                                          className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                          disabled={!planningBatchesLoaded || !planningBatchesFetched}
+                                          title={!planningBatchesLoaded || !planningBatchesFetched ? 'Loading batches…' : 'Delete this batch'}
+                                          className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                           <X size={14} />
                                         </button>
