@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import { InventoryItem } from './Inventory';
 import { useWarehouseLocations } from '../../hooks/useWarehouseLocations';
 import { type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
@@ -20,6 +20,24 @@ const getUtilizationBadge = (value: number) => {
   return 'text-emerald-700 bg-emerald-100 border-emerald-200';
 };
 
+/** Max SKU chips shown per rack before collapsing into a "+N more" affordance. */
+const RACK_CHIP_CAP = 6;
+
+/** Top-level facilities the zones roll up into (shell layout: facility → zones → racks). */
+type FacilityKey = 'ML1' | 'ML2' | 'WH';
+const FACILITY_META: { key: FacilityKey; label: string; sub: string; icon: string }[] = [
+  { key: 'ML1', label: 'ML1', sub: 'Manufacturing Unit 1', icon: '🏭' },
+  { key: 'ML2', label: 'ML2', sub: 'Manufacturing Unit 2', icon: '🏭' },
+  { key: 'WH', label: 'Warehouse', sub: 'Main warehouse', icon: '🏬' },
+];
+
+function facilityKeyOf(loc: WarehouseLocationDTO): FacilityKey {
+  if (loc.locationType === 'warehouse') return 'WH';
+  const hay = `${loc.zoneLabel ?? ''} ${loc.code} ${loc.name}`.toUpperCase();
+  if (hay.includes('ML2')) return 'ML2';
+  return 'ML1';
+}
+
 const WarehouseLocations = () => {
   const { data: locations = [], isLoading: locationsLoading, refetch: refetchLocations } = useWarehouseLocations();
   const { data: inventoryResult, isLoading: inventoryLoading } = useQuery({
@@ -35,8 +53,28 @@ const WarehouseLocations = () => {
   const inventoryData: InventoryItem[] = inventoryResult?.rows ?? [];
   const [selectedRack, setSelectedRack] = useState<{ location: WarehouseLocationDTO; rack: WarehouseRackDTO } | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [collapsedFacilities, setCollapsedFacilities] = useState<Set<FacilityKey>>(new Set());
 
   const loading = locationsLoading || inventoryLoading;
+
+  const facilityGroups = useMemo(() => {
+    return FACILITY_META.map((f) => {
+      const zones = locations.filter((l) => facilityKeyOf(l) === f.key);
+      const racks = zones.reduce((s, z) => s + z.racks.length, 0);
+      const items = zones.reduce((s, z) => s + z.racks.reduce((a, r) => a + (r.itemsStoredCount ?? 0), 0), 0);
+      const utilVals = zones.map((z) => z.utilisationPct ?? 0);
+      const util = utilVals.length ? Math.round(utilVals.reduce((a, b) => a + b, 0) / utilVals.length) : 0;
+      return { ...f, zones, racks, items, util };
+    }).filter((g) => g.zones.length > 0);
+  }, [locations]);
+
+  const toggleFacility = (key: FacilityKey) =>
+    setCollapsedFacilities((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const openInventoryForStoredItem = (stored: StoredItemSummary) => {
     const row = inventoryData.find((r) => r.warehouseInventoryId === stored.warehouseInventoryId);
@@ -76,95 +114,162 @@ const WarehouseLocations = () => {
 
   return (
     <div className="flex-1 overflow-auto p-6 bg-slate-50">
-      <div className="w-full space-y-5">
-        <h1 className="text-3xl font-bold text-slate-900">Warehouse Locations & Rack Management</h1>
+      <div className="w-full space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Warehouse Locations & Rack Management</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Grouped by facility → zone → rack. Click a facility to expand, or a rack for slot details.
+          </p>
+        </div>
 
-        {locations.map((location) => {
-          const itemCount = location.racks.reduce((s, r) => s + (r.itemsStoredCount ?? 0), 0);
-          const meta = [
-            location.areaSqm != null ? `${location.areaSqm} sqm` : null,
-            location.description,
-            `${itemCount} items · ${location.racks.length} racks`,
-          ].filter(Boolean).join(' · ');
+        {facilityGroups.map((group) => {
+          const collapsed = collapsedFacilities.has(group.key);
           return (
-            <section key={location.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{location.icon ?? ''}</span>
-                    <h2 className="text-2xl font-bold text-slate-900 leading-none">{location.name}</h2>
-                    {location.zoneLabel && (
-                      <span className="text-sm font-semibold text-emerald-700">{location.zoneLabel}</span>
-                    )}
+            <section key={group.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              {/* Facility shell header */}
+              <button
+                type="button"
+                onClick={() => toggleFacility(group.key)}
+                aria-expanded={!collapsed}
+                className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                  <span className="text-2xl leading-none">{group.icon}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-bold text-slate-900 leading-none">{group.label}</h2>
+                      <span className="text-xs font-medium text-slate-500">{group.sub}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {group.zones.length} zones · {group.racks} racks · {group.items} items stored
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">{meta}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Utilisation</p>
-                  <p className="text-2xl font-bold text-cyan-700 leading-none">{location.utilisationPct ?? 0}%</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Avg utilisation</p>
+                  <p className="text-xl font-bold text-cyan-700 leading-none">{group.util}%</p>
                 </div>
-              </div>
+              </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7">
-                {location.racks.map((rack) => (
-                  <div
-                    key={rack.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedRack({ location, rack })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedRack({ location, rack });
-                      }
-                    }}
-                    className="px-4 py-3 border-r border-b border-slate-200 last:border-r-0 text-left hover:bg-cyan-50 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xl font-bold text-cyan-700 leading-none">{rack.code}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${getUtilizationBadge(rack.utilisationPct ?? 0)}`}>
-                        {rack.utilisationPct ?? 0}%
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-sm text-slate-600">{rack.description ?? rack.name}</p>
+              {/* Zones inside the facility */}
+              {!collapsed && (
+                <div className="border-t border-slate-200 divide-y divide-slate-200">
+                  {group.zones.map((location) => {
+                    const itemCount = location.racks.reduce((s, r) => s + (r.itemsStoredCount ?? 0), 0);
+                    const meta = [
+                      location.areaSqm != null ? `${location.areaSqm} sqm` : null,
+                      location.description,
+                      `${itemCount} items · ${location.racks.length} racks`,
+                    ].filter(Boolean).join(' · ');
+                    return (
+                      <div key={location.id}>
+                        <div className="px-5 py-3 bg-slate-50/70 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base leading-none">{location.icon ?? '📦'}</span>
+                              <h3 className="text-base font-semibold text-slate-800 leading-none">{location.name}</h3>
+                              {location.zoneLabel && (
+                                <span className="text-xs font-semibold text-emerald-700">{location.zoneLabel}</span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">{meta}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-400">Util</p>
+                            <p className="text-base font-bold text-cyan-700 leading-none">{location.utilisationPct ?? 0}%</p>
+                          </div>
+                        </div>
 
-                    <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${getUtilizationBarColor(rack.utilisationPct ?? 0)}`}
-                        style={{ width: `${rack.utilisationPct ?? 0}%` }}
-                      />
-                    </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 border-t border-slate-100">
+                          {location.racks.map((rack) => {
+                            const stored = rack.storedItems ?? [];
+                            const shown = stored.slice(0, RACK_CHIP_CAP);
+                            const extra = stored.length - shown.length;
+                            return (
+                              <div
+                                key={rack.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedRack({ location, rack })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedRack({ location, rack });
+                                  }
+                                }}
+                                className="px-4 py-3 border-r border-b border-slate-200 text-left hover:bg-cyan-50 transition-colors cursor-pointer"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-lg font-bold text-cyan-700 leading-none">{rack.code}</p>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${getUtilizationBadge(rack.utilisationPct ?? 0)}`}>
+                                    {rack.utilisationPct ?? 0}%
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 text-sm text-slate-600 truncate">{rack.description ?? rack.name}</p>
 
-                    <p className="mt-2 text-xs text-slate-600">
-                      {rack.levels} levels · {rack.slotsTotal} slots · {rack.itemsStoredCount ?? 0} items stored
-                    </p>
+                                <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${getUtilizationBarColor(rack.utilisationPct ?? 0)}`}
+                                    style={{ width: `${rack.utilisationPct ?? 0}%` }}
+                                  />
+                                </div>
 
-                    {(rack.storedItems?.length ?? 0) > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
-                        {rack.storedItems.map((stored, i) => (
-                          <button
-                            key={`${rack.id}-${stored.warehouseInventoryId}-${i}`}
-                            type="button"
-                            onClick={(ev) => {
-                              ev.preventDefault();
-                              ev.stopPropagation();
-                              openInventoryForStoredItem(stored);
-                            }}
-                            className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-200 hover:bg-cyan-200"
-                          >
-                            {stored.code}
-                          </button>
-                        ))}
+                                <p className="mt-2 text-xs text-slate-600">
+                                  {rack.levels} levels · {rack.slotsTotal} slots · {rack.itemsStoredCount ?? 0} items
+                                </p>
+
+                                {stored.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                                    {shown.map((s, i) => (
+                                      <button
+                                        key={`${rack.id}-${s.warehouseInventoryId}-${i}`}
+                                        type="button"
+                                        onClick={(ev) => {
+                                          ev.preventDefault();
+                                          ev.stopPropagation();
+                                          openInventoryForStoredItem(s);
+                                        }}
+                                        className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-200 hover:bg-cyan-200"
+                                      >
+                                        {s.code}
+                                      </button>
+                                    ))}
+                                    {extra > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={(ev) => {
+                                          ev.preventDefault();
+                                          ev.stopPropagation();
+                                          setSelectedRack({ location, rack });
+                                        }}
+                                        className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 font-medium"
+                                      >
+                                        +{extra} more
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 h-5" />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="mt-2 h-5" />
-                    )}
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           );
         })}
+
+        {facilityGroups.length === 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+            No warehouse locations configured yet.
+          </div>
+        )}
       </div>
 
       {selectedRack && (

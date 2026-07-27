@@ -1,13 +1,18 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import {
+  fetchGRNAssignableUsers,
+  fetchGRNQcReference,
   generateGRNLabels,
   grnLineItemDisplayName,
   updateGRN,
+  type AssignableUser,
   type GeneratedLabel,
   type UpdateGRNPayload,
 } from '../../services/grn.service';
+import { deriveGrnQcStatusFromSpecs, type GrnQcSpecsStored } from '../../lib/grnQcSpecs';
+import { raiseRtv } from '../../services/poGrnException.service';
 import type { InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
 import {
   allGrnReceiptChecksPass,
@@ -28,16 +33,54 @@ import {
 } from '../../lib/grnCopyReceiptDisplay';
 import {
   inboundGrnMismatchQuarantinePayload,
+  inboundGrnSendToQuarantineQcPayload,
   inboundGrnVerifiedAfterLabelsPayload,
 } from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
+import {
+  grnReceiptValidationErrors,
+  readGrnReceiptMeta,
+  type InboundGrnReceiptMeta,
+} from '../../lib/inboundGrnReceiptMeta';
+import {
+  grnDetailsValidationErrors,
+  readGrnDetailsMeta,
+  type InboundGrnDetailsMeta,
+} from '../../lib/inboundGrnDetailsMeta';
+import {
+  emptyBatchRow,
+  grnBatchesValidationErrors,
+  readGrnBatchesMeta,
+  reconcileBatchRows,
+  type GrnBatchRow,
+} from '../../lib/inboundGrnBatchesMeta';
+import {
+  buildPackagingRows,
+  grnPackagingValidationErrors,
+  readGrnPackagingMeta,
+  receivedQtyFromPackaging,
+  reconcilePackagingRows,
+  type GrnPackagingRow,
+} from '../../lib/inboundGrnPackagingMeta';
 import { GrnLabelPreview } from './GrnLabelPreview';
+import { GrnReceiptStepper } from './GrnReceiptStepper';
+import { GrnConfirmReceiptSection } from './GrnConfirmReceiptSection';
+import { GrnConfirmDetailsSection } from './GrnConfirmDetailsSection';
+import { GrnBatchDetailsSection } from './GrnBatchDetailsSection';
+import { GrnPackagingListSection } from './GrnPackagingListSection';
+import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
+import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
+import { GrnQcCompleteSection } from './GrnQcCompleteSection';
+
+/** Workflow steps the backend's "GRN Complete" gate expects (mirrors Inbound.tsx). */
+const GRN_COMPLETE_WORKFLOW_STEPS = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
 
 export type GrnCopyReceiptLineItem = {
   id: string;
   item: string;
   itemCode: string;
   poQty: number;
+  shippedQty?: number;
   rcvdQty: number;
   invoiceQty: number;
   unitPrice: number;
@@ -54,6 +97,7 @@ export type GrnCopyReceiptGrn = {
   receivedDate?: string | null;
   grnDate?: string | null;
   invoiceNo?: string | null;
+  shippedQty?: number | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
   locationZone?: string | null;
@@ -62,6 +106,8 @@ export type GrnCopyReceiptGrn = {
   generatedLabels?: GeneratedLabel[] | null;
   lineItems?: Array<Pick<GrnCopyReceiptLineItem, 'itemCode' | 'generatedLabels'>>;
   status?: string | null;
+  /** Linked PO id — used to raise a vendor return (RTV) when QC rejects. */
+  purchaseOrderId?: number | null;
 };
 
 type GrnCopyReceiptModalMode = 'confirm-receipt' | 'grn-copy';
@@ -74,8 +120,6 @@ type GrnCopyReceiptModalProps = {
   onSaved: (grn: GrnCopyReceiptGrn) => void;
   onQuarantined?: () => void;
 };
-
-type ShipmentPhotoTag = 'truck' | 'packs' | 'doc';
 
 function displayGrnNo(grnNo: string): string {
   return displayInboundGrnNo(grnNo);
@@ -224,16 +268,120 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const [verifiedUnitPrice, setVerifiedUnitPrice] = useState(
     () => Number(lineItem.unitPrice) || 0,
   );
-  const [photoCount, setPhotoCount] = useState(0);
-  const [photoTags, setPhotoTags] = useState<Record<ShipmentPhotoTag, boolean>>({
-    truck: false,
-    packs: false,
-    doc: false,
-  });
   const [generating, setGenerating] = useState(false);
   // Set once labels come back — swaps the modal body for the preview + print step.
   const [previewLabels, setPreviewLabels] = useState<GeneratedLabel[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmingReceipt, setConfirmingReceipt] = useState(false);
+  const [confirmingDetails, setConfirmingDetails] = useState(false);
+  const [confirmingBatches, setConfirmingBatches] = useState(false);
+  const [confirmingPackaging, setConfirmingPackaging] = useState(false);
+  const [sendingToQc, setSendingToQc] = useState(false);
+  const [decidingQc, setDecidingQc] = useState(false);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  // QC-inspection state for step 7 (specs loaded on demand from the item master).
+  const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(null);
+  const [qcLoading, setQcLoading] = useState(false);
+  const [qcError, setQcError] = useState<string | null>(null);
+  const [qcBy, setQcBy] = useState('');
+  const [qcTestDate, setQcTestDate] = useState(grn.sourceDocuments?.qc?.testDate ?? '');
+  const qcLoadedRef = useRef(false);
+  // Wizard: 1 Confirm Receipt · 2 Confirm Details · 3 Batch Details · 4 Packaging List · 5 Generate Labels · 6 Quarantine → QC · 7 QC → Complete.
+  // Resume at the furthest confirmed step so reopening a GRN lands where the user left off.
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(() => {
+    if (grn.sourceDocuments?.qc?.sentAt) return 7;
+    if (readGrnPackagingMeta(grn.sourceDocuments).confirmedAt) return 5;
+    if (readGrnBatchesMeta(grn.sourceDocuments).confirmedAt) return 4;
+    if (readGrnDetailsMeta(grn.sourceDocuments).confirmedAt) return 3;
+    if (readGrnReceiptMeta(grn.sourceDocuments).confirmedAt) return 2;
+    return 1;
+  });
+
+  // Step blobs live inside sourceDocuments, so they ride through every existing save path
+  // (draft, label generation, quarantine) with no extra plumbing.
+  const receiptMeta = useMemo(() => readGrnReceiptMeta(sourceDocuments), [sourceDocuments]);
+  const patchReceiptMeta = useCallback((patch: Partial<InboundGrnReceiptMeta>): void => {
+    setSourceDocuments((prev) => ({
+      ...prev,
+      receipt: { ...readGrnReceiptMeta(prev), ...patch },
+    }));
+  }, []);
+  const detailsMeta = useMemo(() => readGrnDetailsMeta(sourceDocuments), [sourceDocuments]);
+  const patchDetailsMeta = useCallback((patch: Partial<InboundGrnDetailsMeta>): void => {
+    setSourceDocuments((prev) => ({
+      ...prev,
+      details: { ...readGrnDetailsMeta(prev), ...patch },
+    }));
+  }, []);
+  const batchesMeta = useMemo(() => readGrnBatchesMeta(sourceDocuments), [sourceDocuments]);
+  const setBatchRow = useCallback((index: number, patch: Partial<GrnBatchRow>): void => {
+    setSourceDocuments((prev) => {
+      const meta = readGrnBatchesMeta(prev);
+      const rows = meta.rows ? [...meta.rows] : [];
+      rows[index] = { ...emptyBatchRow(), ...rows[index], ...patch };
+      return { ...prev, batches: { ...meta, rows } };
+    });
+  }, []);
+
+  // Keep the batch row count in sync with "No. of batches received" whenever step 3 is shown.
+  const targetBatchCount = Math.max(0, Math.floor(Number(detailsMeta.batchesReceived) || 0));
+  const batchRowCount = batchesMeta.rows?.length ?? 0;
+  useEffect(() => {
+    if (currentStep !== 3 || targetBatchCount <= 0 || batchRowCount === targetBatchCount) return;
+    setSourceDocuments((prev) => {
+      const meta = readGrnBatchesMeta(prev);
+      return { ...prev, batches: { ...meta, rows: reconcileBatchRows(meta.rows ?? [], targetBatchCount) } };
+    });
+  }, [currentStep, targetBatchCount, batchRowCount]);
+
+  const packagingMeta = useMemo(() => readGrnPackagingMeta(sourceDocuments), [sourceDocuments]);
+  const setPackagingRow = useCallback((index: number, patch: Partial<GrnPackagingRow>): void => {
+    setSourceDocuments((prev) => {
+      const meta = readGrnPackagingMeta(prev);
+      const rows = meta.rows ? [...meta.rows] : [];
+      if (!rows[index]) return prev;
+      rows[index] = { ...rows[index], ...patch };
+      return { ...prev, packaging: { ...meta, rows } };
+    });
+  }, []);
+
+  // Expand the pack list from batches whenever step 4 is shown; preserve per-pack edits.
+  const expectedPackaging = useMemo(
+    () => buildPackagingRows(grn.grnNo, batchesMeta.rows ?? []),
+    [grn.grnNo, batchesMeta.rows],
+  );
+  const packagingMatchesBatches =
+    (packagingMeta.rows?.length ?? 0) === expectedPackaging.length &&
+    (packagingMeta.rows ?? []).every((r, i) => r.packagingNo === expectedPackaging[i]?.packagingNo);
+  useEffect(() => {
+    if (currentStep !== 4 || packagingMatchesBatches) return;
+    setSourceDocuments((prev) => {
+      const meta = readGrnPackagingMeta(prev);
+      return {
+        ...prev,
+        packaging: { ...meta, rows: reconcilePackagingRows(meta.rows ?? [], grn.grnNo, readGrnBatchesMeta(prev).rows ?? []) },
+      };
+    });
+  }, [currentStep, packagingMatchesBatches, grn.grnNo]);
+
+  useEffect(() => {
+    let alive = true;
+    fetchGRNAssignableUsers()
+      .then((users) => { if (alive) setAssignableUsers(users); })
+      .catch(() => { /* dropdown just stays empty; assignment is optional */ });
+    return () => { alive = false; };
+  }, []);
+
+  // Load the item-master QC specs the first time step 7 is shown.
+  useEffect(() => {
+    if (currentStep !== 7 || qcLoadedRef.current) return;
+    qcLoadedRef.current = true;
+    setQcLoading(true);
+    fetchGRNQcReference(grn.id)
+      .then((res) => setQcSpecs(res.qcSpecs))
+      .catch((e) => setQcError(e instanceof Error ? e.message : 'Failed to load QC specs'))
+      .finally(() => setQcLoading(false));
+  }, [currentStep, grn.id]);
 
   const sourceDocumentsWithRefs = useMemo(
     () => docRefsToSourceDocuments(docRefs, sourceDocuments),
@@ -283,8 +431,9 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   // A ticked shipment-photo tag (Truck / Packs / Doc) counts as a provided photo, so the
   // requirement is satisfied by the marked tags even though the file input is reset after
   // selection (no visible filename). Keeps the check in sync with the ✓ marks the user sees.
-  const tagsTicked = Object.values(photoTags).filter(Boolean).length;
-  const effectivePhotoCount = Math.max(photoCount, tagsTicked);
+  // Photo requirement is now satisfied by the Confirm Receipt step's stored vehicle/document photos.
+  const effectivePhotoCount =
+    (receiptMeta.vehiclePhotos?.length ?? 0) + (receiptMeta.documentPhotos?.length ?? 0);
   const matchChecks = useMemo(
     () =>
       buildGrnMatchChecks({
@@ -336,16 +485,6 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     });
   };
 
-  const handlePhotoUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>, tag: ShipmentPhotoTag) => {
-      const files = event.target.files;
-      if (!files?.length) return;
-      setPhotoCount((prev) => prev + files.length);
-      setPhotoTags((prev) => ({ ...prev, [tag]: true }));
-      event.target.value = '';
-    },
-    [],
-  );
 
   const handlePackActualChange = (index: number, value: string): void => {
     const nextQty = Math.max(0, Number(value) || 0);
@@ -506,6 +645,242 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     }
   };
 
+  const handleConfirmReceipt = async (): Promise<void> => {
+    const errors = grnReceiptValidationErrors(receiptMeta);
+    if (errors.length) {
+      addToast('error', errors[0]);
+      return;
+    }
+    setConfirmingReceipt(true);
+    try {
+      const confirmedMeta: InboundGrnReceiptMeta = {
+        ...receiptMeta,
+        confirmedAt: new Date().toISOString(),
+      };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, {
+        ...sourceDocuments,
+        receipt: confirmedMeta,
+      });
+      // Mirror onto the real GRN columns. received_date is DATEONLY, so send the date only —
+      // the time is kept in the receipt blob for display.
+      const receivedDate = confirmedMeta.receiptDate || null;
+      const payload: UpdateGRNPayload = { sourceDocuments: mergedDocs };
+      if (receivedDate) payload.receivedDate = receivedDate;
+      if (confirmedMeta.assignmentType === 'specific' && confirmedMeta.assignedTo) {
+        payload.assignedTo = confirmedMeta.assignedTo;
+      }
+      await updateGRN(grn.id, payload);
+      setSourceDocuments((prev) => ({ ...prev, receipt: confirmedMeta }));
+      addToast('success', 'Receipt confirmed. Continue with shipment details.');
+      onSaved({ ...grn, sourceDocuments: mergedDocs, receivedDate: receivedDate ?? grn.receivedDate });
+      setCurrentStep(2);
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to confirm receipt');
+    } finally {
+      setConfirmingReceipt(false);
+    }
+  };
+
+  const handleConfirmDetails = async (): Promise<void> => {
+    const errors = grnDetailsValidationErrors(detailsMeta);
+    if (errors.length) {
+      addToast('error', errors[0]);
+      return;
+    }
+    setConfirmingDetails(true);
+    try {
+      const confirmedMeta: InboundGrnDetailsMeta = {
+        ...detailsMeta,
+        confirmedAt: new Date().toISOString(),
+      };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, {
+        ...sourceDocuments,
+        details: confirmedMeta,
+      });
+      await updateGRN(grn.id, { sourceDocuments: mergedDocs });
+      setSourceDocuments((prev) => ({ ...prev, details: confirmedMeta }));
+      addToast('success', 'Details saved. Enter batch details next.');
+      onSaved({ ...grn, sourceDocuments: mergedDocs });
+      setCurrentStep(3);
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save details');
+    } finally {
+      setConfirmingDetails(false);
+    }
+  };
+
+  const handleConfirmBatches = async (): Promise<void> => {
+    const errors = grnBatchesValidationErrors(batchesMeta, targetBatchCount);
+    if (errors.length) {
+      addToast('error', errors[0]);
+      return;
+    }
+    setConfirmingBatches(true);
+    try {
+      const confirmedMeta = { ...batchesMeta, confirmedAt: new Date().toISOString() };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, {
+        ...sourceDocuments,
+        batches: confirmedMeta,
+      });
+      await updateGRN(grn.id, { sourceDocuments: mergedDocs });
+      setSourceDocuments((prev) => ({ ...prev, batches: confirmedMeta }));
+      addToast('success', 'Batch details saved. Review the packaging list next.');
+      onSaved({ ...grn, sourceDocuments: mergedDocs });
+      setCurrentStep(4);
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save batch details');
+    } finally {
+      setConfirmingBatches(false);
+    }
+  };
+
+  // After pack labels print, flip each pack to "Labelled" and persist (non-fatal if the save fails).
+  const handlePackLabelsPrinted = useCallback(async (): Promise<void> => {
+    const meta = readGrnPackagingMeta(sourceDocuments);
+    if (!meta.rows?.length) return;
+    const nextPackaging = {
+      ...meta,
+      rows: meta.rows.map((r) => ({ ...r, labelStatus: 'labelled' as const })),
+    };
+    setSourceDocuments((prev) => ({ ...prev, packaging: nextPackaging }));
+    try {
+      const merged = docRefsToSourceDocuments(docRefs, { ...sourceDocuments, packaging: nextPackaging });
+      await updateGRN(grn.id, { sourceDocuments: merged });
+    } catch {
+      /* labels already printed; the "labelled" flag will re-save on the next action */
+    }
+  }, [sourceDocuments, docRefs, grn.id]);
+
+  const handleConfirmPackaging = async (): Promise<void> => {
+    const errors = grnPackagingValidationErrors(packagingMeta);
+    if (errors.length) {
+      addToast('error', errors[0]);
+      return;
+    }
+    setConfirmingPackaging(true);
+    try {
+      const confirmedMeta = { ...packagingMeta, confirmedAt: new Date().toISOString() };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, {
+        ...sourceDocuments,
+        packaging: confirmedMeta,
+      });
+      await updateGRN(grn.id, { sourceDocuments: mergedDocs });
+      setSourceDocuments((prev) => ({ ...prev, packaging: confirmedMeta }));
+      addToast('success', 'Packaging list saved. Generate labels next.');
+      onSaved({ ...grn, sourceDocuments: mergedDocs });
+      setCurrentStep(5);
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save packaging list');
+    } finally {
+      setConfirmingPackaging(false);
+    }
+  };
+
+  const qcSentAt = sourceDocuments.qc?.sentAt ?? null;
+  const handleSendToQc = async (): Promise<void> => {
+    setSendingToQc(true);
+    try {
+      const payload = inboundGrnSendToQuarantineQcPayload(grn.workflowSteps);
+      const sentAt = new Date().toISOString();
+      const mergedDocs = docRefsToSourceDocuments(docRefs, { ...sourceDocuments, qc: { sentAt } });
+      await updateGRN(grn.id, { ...payload, sourceDocuments: mergedDocs });
+      setSourceDocuments((prev) => ({ ...prev, qc: { sentAt } }));
+      addToast('warning', 'Sent to Quarantine → QC · GRN is On Hold pending Quality inspection.');
+      onSaved({
+        ...grn,
+        status: payload.status,
+        workflowSteps: payload.workflowSteps,
+        sourceDocuments: mergedDocs,
+      });
+      setCurrentStep(7);
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to send to QC');
+    } finally {
+      setSendingToQc(false);
+    }
+  };
+
+  const handleQcAccept = async (): Promise<void> => {
+    if (!qcSpecs) return;
+    if (deriveGrnQcStatusFromSpecs(qcSpecs) === 'Rejected') {
+      addToast('error', 'One or more parameters failed — use Reject → Vendor Return.');
+      return;
+    }
+    setDecidingQc(true);
+    try {
+      const qcMeta = {
+        ...(sourceDocuments.qc ?? {}),
+        testDate: qcTestDate || null,
+        verdict: 'accept' as const,
+        decidedAt: new Date().toISOString(),
+      };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, { ...sourceDocuments, qc: qcMeta });
+      // 1) Save the QC results (always succeeds).
+      await updateGRN(grn.id, {
+        qcSpecs,
+        qcStatus: 'Passed',
+        qcBy: qcBy || undefined,
+        sourceDocuments: mergedDocs,
+      });
+      setSourceDocuments((prev) => ({ ...prev, qc: qcMeta }));
+      // 2) Complete the GRN — may be gated on rack assignment / assignee.
+      try {
+        await updateGRN(grn.id, {
+          status: 'GRN Complete',
+          qcStatus: 'Passed',
+          workflowSteps: [...new Set([...(grn.workflowSteps ?? []), ...GRN_COMPLETE_WORKFLOW_STEPS])],
+        });
+        addToast('success', 'QC accepted · GRN completed and stock put away.');
+        onSaved({ ...grn, status: 'GRN Complete', sourceDocuments: mergedDocs });
+        onClose();
+      } catch (e2: unknown) {
+        addToast(
+          'warning',
+          `QC accepted, but the GRN could not be completed yet: ${e2 instanceof Error ? e2.message : 'assign a rack first'}.`,
+        );
+        onSaved({ ...grn, sourceDocuments: mergedDocs });
+      }
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to save QC');
+    } finally {
+      setDecidingQc(false);
+    }
+  };
+
+  const handleQcReject = async (): Promise<void> => {
+    if (!qcSpecs) return;
+    setDecidingQc(true);
+    try {
+      const qcMeta = {
+        ...(sourceDocuments.qc ?? {}),
+        testDate: qcTestDate || null,
+        verdict: 'reject' as const,
+        decidedAt: new Date().toISOString(),
+      };
+      const mergedDocs = docRefsToSourceDocuments(docRefs, { ...sourceDocuments, qc: qcMeta });
+      await updateGRN(grn.id, {
+        qcSpecs,
+        qcStatus: 'Rejected',
+        qcBy: qcBy || undefined,
+        sourceDocuments: mergedDocs,
+      });
+      setSourceDocuments((prev) => ({ ...prev, qc: qcMeta }));
+      // Raise the vendor return on the linked PO, when we know it.
+      let rtvNote = ' · link a PO to raise the vendor return';
+      if (grn.purchaseOrderId != null) {
+        const reason = String(qcSpecs.remarks || 'QC rejected at GRN inspection').slice(0, 500);
+        const res = await raiseRtv(String(grn.purchaseOrderId), reason);
+        rtvNote = res.success ? ' · vendor return (RTV) raised on PO' : ` · RTV not raised (${res.error})`;
+      }
+      addToast('warning', `QC rejected · GRN On Hold${rtvNote}.`);
+      onSaved({ ...grn, status: 'On Hold', sourceDocuments: mergedDocs });
+    } catch (e: unknown) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to reject QC');
+    } finally {
+      setDecidingQc(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
       <div
@@ -537,7 +912,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   Done
                 </button>
               ) : null}
-              {!previewLabels && !coreChecksPass && prerequisitesMet && !hasExistingLabels ? (
+              {currentStep === 5 && !previewLabels && !coreChecksPass && prerequisitesMet && !hasExistingLabels ? (
                 <button
                   type="button"
                   disabled={generating}
@@ -549,8 +924,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               ) : null}
               <button
                 type="button"
-                hidden={!!previewLabels}
-                disabled={!receiptChecksPass || generating || !!previewLabels}
+                hidden={!!previewLabels || currentStep !== 5}
+                disabled={!receiptChecksPass || generating || !!previewLabels || currentStep !== 5}
                 onClick={() => void handleGenerateLabels()}
                 className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
@@ -573,6 +948,11 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </button>
             </div>
           </div>
+          {!previewLabels ? (
+            <div className="mt-3 overflow-x-auto">
+              <GrnReceiptStepper currentStep={currentStep} />
+            </div>
+          ) : null}
         </div>
 
         {previewLabels ? (
@@ -594,17 +974,17 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
           </div>
         ) : (
         <div className="space-y-6 px-6 py-5">
-          {hasExistingLabels ? (
+          {currentStep === 5 && hasExistingLabels ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               <strong>{existingLabels.length} QR label{existingLabels.length === 1 ? '' : 's'} already on file</strong> for this GRN.
               Upload receipt documents and shipment photos below. The button stays disabled until those checks pass; then you can{' '}
               <strong>Regenerate Labels</strong> or save draft and continue to QC / assign rack.
             </div>
-          ) : (
+          ) : currentStep === 5 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
               No QR labels on this GRN yet. Complete documents, pack counts, and shipment photos — then <strong>Generate Labels</strong> will enable.
             </div>
-          )}
+          ) : null}
 
           <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
             <h3 className="mb-3 text-sm font-semibold text-slate-800">📦 GRN header (auto from system)</h3>
@@ -646,227 +1026,228 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">📄 Documents received</h3>
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              {documentRows.slice(0, 3).map((doc) => {
-                const refKey = doc.key as GrnCopyDocRefKey;
-                return (
-                <div key={doc.key} className="block text-sm">
-                  <label htmlFor={`grn-doc-ref-${doc.key}`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    {doc.refLabel}
-                  </label>
-                  <input
-                    id={`grn-doc-ref-${doc.key}`}
-                    type="text"
-                    value={docRefs[refKey] ?? ''}
-                    disabled={docsLocked}
-                    onChange={(e) => updateDocRef(refKey, e.target.value)}
-                    placeholder={doc.key === 'bill' && grn.invoiceNo ? `e.g. ${grn.invoiceNo}` : undefined}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
-                  />
-                </div>
-                );
-              })}
-            </div>
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Doc Type</th>
-                    <th className="px-3 py-2 text-left">File</th>
-                    <th className="px-3 py-2 text-center">Verified?</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {documentRows.filter((d) => d.key === 'bill' || d.key === 'waybill' || d.key === 'coa').map((doc) => (
-                    <tr key={`file-${doc.key}`}>
-                      <td className="px-3 py-2 text-slate-800">{doc.docType}</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        <DocFileUploadCell
-                          docKey={doc.key as GrnCopyDocUploadKey}
-                          fileName={doc.fileName}
-                          uploaded={doc.uploaded}
-                          disabled={docsLocked}
-                          onUpload={(file) => handleDocFileUpload(doc.key as GrnCopyDocUploadKey, file)}
-                          onClear={() => clearDocFile(doc.key as GrnCopyDocUploadKey)}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-center">{doc.verified ? '✓' : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-slate-200 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">✅ Document check (pack-wise physical count)</h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Pack #</th>
-                    <th className="px-3 py-2 text-right">Declared Qty (vendor)</th>
-                    <th className="px-3 py-2 text-right">Actual Qty (physical)</th>
-                    <th className="px-3 py-2 text-right">Variance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {packRows.map((row, index) => (
-                    <tr key={row.packIndex}>
-                      <td className="px-3 py-2 font-medium text-slate-800">
-                        Pack {row.packIndex} of {row.packTotal}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {row.declaredQty.toLocaleString('en-IN')} {row.unit}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {docsLocked ? (
-                          <span className="tabular-nums">
-                            {row.actualQty.toLocaleString('en-IN')} {row.unit}
-                          </span>
-                        ) : (
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={row.actualQty}
-                            onChange={(e) => handlePackActualChange(index, e.target.value)}
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
-                          />
-                        )}
-                      </td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${row.variance === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {row.variance}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-4 text-sm">
-              <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-500 uppercase tracking-wide">Received Packs</p>
-                <p className="font-semibold text-slate-900">{receivedPacks} / {packRows.length}</p>
-              </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-500 uppercase tracking-wide">Physical Total</p>
-                <p className="font-semibold text-slate-900">
-                  {physicalTotal.toLocaleString('en-IN')} {packRows[0]?.unit ?? 'kg'}
-                </p>
-              </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <label htmlFor="grn-billed-qty" className="text-xs text-slate-500 uppercase tracking-wide">
-                  Billed Qty
-                </label>
-                {docsLocked ? (
-                  <p className="font-semibold text-slate-900">
-                    {billedQty.toLocaleString('en-IN')} {lineItem.unit ?? 'kg'}
-                  </p>
-                ) : (
-                  <input
-                    id="grn-billed-qty"
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={billedQty}
-                    onChange={(e) => setBilledQty(Math.max(0, Number(e.target.value) || 0))}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 tabular-nums"
-                  />
-                )}
-              </div>
-              <div className="rounded-lg bg-slate-50 px-3 py-2">
-                <label htmlFor="grn-verified-price" className="text-xs text-slate-500 uppercase tracking-wide">
-                  Per Unit Price (invoice)
-                </label>
-                {docsLocked ? (
-                  <p className="font-semibold text-slate-900">₹{verifiedUnitPrice.toLocaleString('en-IN')}</p>
-                ) : (
-                  <input
-                    id="grn-verified-price"
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={verifiedUnitPrice}
-                    onChange={(e) => setVerifiedUnitPrice(Math.max(0, Number(e.target.value) || 0))}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 tabular-nums"
-                  />
-                )}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-slate-200 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">📷 Shipment photos (at receipt)</h3>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              {(['truck', 'packs', 'doc'] as ShipmentPhotoTag[]).map((tag) => (
-                <label key={tag} className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 hover:bg-slate-50">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="sr-only"
-                    onChange={(e) => handlePhotoUpload(e, tag)}
-                  />
-                  <span>{photoTags[tag] ? '✓' : '○'} {tag === 'truck' ? 'Truck' : tag === 'packs' ? 'Packs' : 'Doc'}</span>
-                </label>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-slate-600">
-              {photoCount > 0
-                ? `✓ Truck ${photoTags.truck ? '✓' : '○'} ✓ Packs ${photoTags.packs ? '✓' : '○'} ✓ Doc ${photoTags.doc ? '✓' : '○'} + ${photoCount} photo${photoCount === 1 ? '' : 's'} uploaded · 1+ required to proceed`
-                : 'Upload at least one shipment photo (truck, packs, or documents) to proceed.'}
-            </p>
-          </section>
-
-          <section className="rounded-xl border border-slate-200 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">🔄 Match check (auto)</h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Check</th>
-                    <th className="px-3 py-2 text-center">Result</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {matchChecks.map((check) => (
-                    <tr key={check.label}>
-                      <td className="px-3 py-2 text-slate-800">{check.label}</td>
-                      <td className={`px-3 py-2 text-center font-semibold ${check.pass ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {check.pass ? '✓ Match' : '✗ Mismatch'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className={`mt-3 text-sm font-medium ${receiptChecksPass ? 'text-emerald-700' : coreChecksPass ? 'text-amber-700' : 'text-rose-700'}`}>
-              {receiptChecksPass
-                ? hasExistingLabels
-                  ? '✓ Receipt checks pass. Regenerate Labels is enabled if you need new QRs; otherwise save draft and continue.'
-                  : '✓ All checks pass. Generate Labels is enabled · on click → rack labels print (one per pack) · GRN moves to VERIFIED · ready for QC routing.'
-                : !coreChecksPass && prerequisitesMet
-                  ? '✗ Document-physical mismatch detected. Use Report Mismatch & Send to QC — Procurement will be notified and the GRN routes to Quality.'
-                  : hasExistingLabels
-                    ? 'Labels are on file. Complete document uploads and shipment photos to enable Regenerate Labels (or save draft and close).'
-                    : 'Complete document uploads, pack counts, shipment photos, and billed qty/price before proceeding.'}
-            </p>
-          </section>
-
-          {!docsLocked ? (
-            <div className="flex justify-end gap-3 pb-2">
-              <button
-                type="button"
-                onClick={() => void handleSaveDraft()}
-                disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : 'Save draft'}
-              </button>
-            </div>
+          {currentStep === 1 ? (
+            <GrnConfirmReceiptSection
+              value={receiptMeta}
+              onChange={patchReceiptMeta}
+              assignableUsers={assignableUsers}
+              disabled={docsLocked}
+            />
           ) : null}
+
+          {currentStep === 2 ? (
+            <GrnConfirmDetailsSection
+              value={detailsMeta}
+              onChange={patchDetailsMeta}
+              disabled={docsLocked}
+            />
+          ) : null}
+
+          {currentStep === 3 ? (
+            <GrnBatchDetailsSection
+              rows={batchesMeta.rows ?? []}
+              onChangeRow={setBatchRow}
+              disabled={docsLocked}
+            />
+          ) : null}
+
+          {currentStep === 4 ? (
+            <GrnPackagingListSection
+              rows={packagingMeta.rows ?? []}
+              batches={batchesMeta.rows ?? []}
+              onChangeRow={setPackagingRow}
+              disabled={docsLocked}
+              unit={lineItem.unit}
+              poQty={Number(lineItem.poQty) || 0}
+              shippedQty={lineItem.shippedQty ?? grn.shippedQty ?? null}
+              billedQty={billedQty}
+              onBilledQtyChange={setBilledQty}
+            />
+          ) : null}
+
+          {currentStep === 5 ? (
+            <GrnGenerateLabelsSection
+              rows={packagingMeta.rows ?? []}
+              batches={batchesMeta.rows ?? []}
+              productName={grnLineItemDisplayName(lineItem)}
+              productCode={lineItem.itemCode}
+              vendor={grn.vendor}
+              unit={lineItem.unit}
+              disabled={docsLocked}
+              onPrinted={() => void handlePackLabelsPrinted()}
+              onPrintBlocked={() =>
+                addToast('error', 'Could not open print window. Allow popups and try again.')
+              }
+            />
+          ) : null}
+
+          {currentStep === 6 ? (
+            <GrnQuarantineQcSection
+              itemLine={headerFields.itemLine}
+              totalPacks={packagingMeta.rows?.length ?? 0}
+              receivedQty={receivedQtyFromPackaging(packagingMeta)}
+              unit={lineItem.unit}
+              qcNotes={detailsMeta.qcNotes}
+              sentAt={qcSentAt}
+            />
+          ) : null}
+
+          {currentStep === 7 ? (
+            <GrnQcCompleteSection
+              qcSpecs={qcSpecs}
+              loading={qcLoading}
+              error={qcError}
+              disabled={docsLocked || decidingQc}
+              onChange={setQcSpecs}
+              qcBy={qcBy}
+              onQcByChange={setQcBy}
+              testDate={qcTestDate}
+              onTestDateChange={setQcTestDate}
+            />
+          ) : null}
+
+          {/* Step-aware footer: Back on the left, actions on the right. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
+            <div>
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7) : s))}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  ← Back
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {currentStep === 1 && receiptMeta.confirmedAt ? (
+                <span className="text-xs font-semibold text-emerald-700">✓ Receipt confirmed</span>
+              ) : null}
+              {currentStep === 2 && detailsMeta.confirmedAt ? (
+                <span className="text-xs font-semibold text-emerald-700">✓ Details saved</span>
+              ) : null}
+              {currentStep === 3 && batchesMeta.confirmedAt ? (
+                <span className="text-xs font-semibold text-emerald-700">✓ Batches saved</span>
+              ) : null}
+              {currentStep === 4 && packagingMeta.confirmedAt ? (
+                <span className="text-xs font-semibold text-emerald-700">✓ Packaging saved</span>
+              ) : null}
+              {!docsLocked ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSaveDraft()}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save draft'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 1 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmReceipt()}
+                  disabled={confirmingReceipt}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {confirmingReceipt
+                    ? 'Confirming…'
+                    : receiptMeta.confirmedAt
+                      ? 'Update Receipt · Next'
+                      : '✅ Confirm Receipt · Move to next step'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 2 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmDetails()}
+                  disabled={confirmingDetails}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {confirmingDetails
+                    ? 'Saving…'
+                    : detailsMeta.confirmedAt
+                      ? 'Update Details · Next'
+                      : 'Save & Continue · Next step'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 3 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmBatches()}
+                  disabled={confirmingBatches}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {confirmingBatches
+                    ? 'Saving…'
+                    : batchesMeta.confirmedAt
+                      ? 'Update Batches · Next'
+                      : 'Save & Continue · Next step'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 4 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmPackaging()}
+                  disabled={confirmingPackaging}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {confirmingPackaging
+                    ? 'Saving…'
+                    : packagingMeta.confirmedAt
+                      ? 'Update Packaging · Next'
+                      : 'Save & Continue · Next step'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 5 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(6)}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  Continue · Quarantine → QC
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 6 ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSendToQc()}
+                  disabled={sendingToQc}
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sendingToQc ? 'Sending…' : qcSentAt ? 'Re-send to QC' : 'Send to Quarantine → QC'}
+                </button>
+              ) : null}
+              {!docsLocked && currentStep === 7 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleQcReject()}
+                    disabled={decidingQc || !qcSpecs}
+                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {decidingQc ? 'Working…' : '❌ Reject → Vendor Return'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleQcAccept()}
+                    disabled={decidingQc || !qcSpecs}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {decidingQc ? 'Working…' : '✅ Accept → Complete GRN'}
+                  </button>
+                </>
+              ) : null}
+              {docsLocked && currentStep < 7 ? (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep((s) => (s < 7 ? ((s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7) : s))}
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Next →
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
         )}
       </div>

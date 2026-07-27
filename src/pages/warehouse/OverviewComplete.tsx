@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, type GeneratedMRNLabel, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
 import TransferPickModal, { type TransferPickLine, type TransferLabel } from './transfers/TransferPickModal';
 import TransferDispatchModal, { type DispatchDetails, type DispatchLabelState } from './transfers/TransferDispatchModal';
+import TransferPickSplitModal, { type PickedCartEntry } from './transfers/TransferPickSplitModal';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
 import RequestTransferModal from '../../components/warehouse/RequestTransferModal';
@@ -44,7 +45,11 @@ const UI_TO_API_STATUS: Record<OutboundUiStatus, string> = {
 const NON_MTR_MANUAL_FLOW: OutboundUiStatus[] = ['Pending Pick', 'In Pick', 'In Transfer', 'Completed'];
 
 function isMtrOutbound(mrn: { source?: string }): boolean {
-  return String(mrn.source || '').trim() === 'MTR';
+  // Both production transfers (MTR) and ad-hoc transfer requests (TRQ) are outbound WH→destination
+  // transfers driven through the per-line transfer-phase workflow. Keep this in sync with the
+  // backend's isOutboundTransferSource(), otherwise dispatch won't persist and reverts to In Pick.
+  const s = String(mrn.source || '').trim();
+  return s === 'MTR' || s === 'TRQ';
 }
 
 /** WH may only batch-initiate lines still in not_initiated; later phases are read-only in this modal. */
@@ -128,7 +133,7 @@ function sortValueForMrn(mrn: MRN, column: MrnSortColumn): string {
       return src ? `${src.kind}:${src.id}`.toLowerCase() : '';
     }
     case 'ItemName':
-      return mrnDisplayPrName(mrn).toLowerCase();
+      return displayMrnItemName(mrn).toLowerCase();
     case 'requestDate':
       return mrn.createdAt || '';
     case 'expectedDate':
@@ -142,6 +147,15 @@ function sortValueForMrn(mrn: MRN, column: MrnSortColumn): string {
     default:
       return '';
   }
+}
+
+/** Item name for the list: linked product (BMR transfers) else the first line item's name/code. */
+function displayMrnItemName(m: { productName?: string; lineItems?: { name?: string; itemCode?: string }[] }): string {
+  const pr = String(m.productName || '').trim();
+  if (pr) return pr;
+  const li = Array.isArray(m.lineItems) && m.lineItems[0] ? m.lineItems[0] : null;
+  const fromLine = li ? String(li.name || li.itemCode || '').trim() : '';
+  return fromLine || '—';
 }
 
 interface MRN {
@@ -240,6 +254,9 @@ const OutboundDashboard = ({
   const [sortColumn, setSortColumn] = useState<MrnSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [selectedMRNId, setSelectedMRNId] = useState<string | null>(null);
+  // The detail panel renders only when explicitly opened — the pick flow hydrates the same
+  // selectedMRN state without showing the panel (so Generate Labels opens ONE popup, not two).
+  const [panelOpen, setPanelOpen] = useState(false);
   const [assignedPicker, setAssignedPicker] = useState('');
   const [assignedTransferBy, setAssignedTransferBy] = useState('');
   const [logisticsTrackingNo, setLogisticsTrackingNo] = useState('');
@@ -432,6 +449,65 @@ const OutboundDashboard = ({
     }
   };
 
+  // --- Pick / Split step (real pack inventory) ---
+  const [pickSplitOpen, setPickSplitOpen] = useState(false);
+
+  const handlePickSplitNext = async (cart: PickedCartEntry[]) => {
+    if (!selectedMRN) return;
+    if (!String(assignedPicker || '').trim()) {
+      showToast('Assign a picker (step 1) before completing the pick.', 'error');
+      return;
+    }
+    const firstLine = selectedMRN.lineItems[0];
+    if (!firstLine) return;
+    const pickedTotal = cart.reduce((s, c) => s + c.qty, 0);
+    const labels: TransferLabel[] = cart.map((c) => ({
+      code: c.pack.packagingNo ?? c.pack.key,
+      itemName: firstLine.name,
+      itemCode: firstLine.itemCode ?? '',
+      qty: c.qty,
+      uom: c.pack.unit || firstLine.unit,
+      kind: 'transfer' as const,
+      rack: c.pack.rack ?? undefined,
+    }));
+    setTransferPickSaving(true);
+    try {
+      await updateMRN(selectedMRN.id, {
+        status: UI_TO_API_STATUS['In Pick'],
+        assignedPicker: assignedPicker || undefined,
+        transferTeam: assignedTransferBy || undefined,
+        muReceiveZone: selectedMlLocation || undefined,
+        generatedLabels: labels as unknown as GeneratedMRNLabel[],
+        lineItems: selectedMRN.lineItems.map((li) => ({
+          id: li.id,
+          item: li.name,
+          itemCode: li.itemCode,
+          quantity: li.id === firstLine.id ? pickedTotal : li.quantity,
+          unit: li.unit,
+          raw_material_id: li.raw_material_id,
+          pack_material_id: li.pack_material_id,
+          product_id: li.product_id,
+        })),
+      });
+      setMrnData((prev) =>
+        prev.map((mrn) =>
+          mrn.id === selectedMRN.id
+            ? { ...mrn, assignedPicker, transferTeam: assignedTransferBy, status: 'In Pick' as const }
+            : mrn
+        )
+      );
+      setPickSplitOpen(false);
+      // Chain into dispatch (vehicle/photo checklist → In Transit), same as the legacy pick.
+      setDispatchLabels(labels);
+      setDispatchOpen(true);
+      showToast(`Picked ${cart.length} pack(s) · ${pickedTotal} for ${selectedMRN.mrnNo}.`);
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || 'Failed to save pick', 'error');
+    } finally {
+      setTransferPickSaving(false);
+    }
+  };
+
   // --- Dispatch (Initiate Transfer) step ---
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [dispatchLabels, setDispatchLabels] = useState<TransferLabel[]>([]);
@@ -457,7 +533,10 @@ const OutboundDashboard = ({
         photo: dispatch.dispatchPhoto,
       };
       await updateMRN(selectedMRN.id, {
-        ...(toInitiate.length ? { initiateTransferLineIds: toInitiate } : { status: UI_TO_API_STATUS['In Transfer'] }),
+        // Always drive line phases to in_transit: with line ids when we know them, else via the
+        // 'In Transit' status which makes the backend bulk-advance not_initiated lines. Sending
+        // 'In Transfer' here left the lines not_initiated, so the status reverted to In Pick on reload.
+        ...(toInitiate.length ? { initiateTransferLineIds: toInitiate } : { status: UI_TO_API_STATUS['In Transit'] }),
         assignedPicker: assignedPicker || selectedMRN.assignedPicker || undefined,
         transferTeam: assignedTransferBy || selectedMRN.transferTeam || undefined,
         muReceiveZone: selectedMlLocation || selectedMRN.muReceiveZone || undefined,
@@ -478,7 +557,7 @@ const OutboundDashboard = ({
         })),
       });
       setDispatchOpen(false);
-      setMrnData((prev) => prev.map((m) => (m.id === selectedMRN.id ? { ...m, status: 'In Transfer' as const } : m)));
+      setMrnData((prev) => prev.map((m) => (m.id === selectedMRN.id ? { ...m, status: 'In Transit' as const } : m)));
       showToast(`Dispatched ${labels.length} label(s) for ${selectedMRN.mrnNo} — In Transit.`);
       closePickPanel();
     } catch (e) {
@@ -488,7 +567,8 @@ const OutboundDashboard = ({
     }
   };
 
-  const handleOpenPanel = (mrn: MRN, _mode: 'pick' | 'view') => {
+  /** Load an MRN into the pick state (picker, quantities) without deciding what UI opens. */
+  const hydrateMrnPickState = (mrn: MRN) => {
     setSelectedMRNId(mrn.id);
 
     const existingState = pickStateByMrn[mrn.id];
@@ -517,8 +597,26 @@ const OutboundDashboard = ({
     setPickedQty(initialQty);
   };
 
+  /** Open the read/edit detail panel for an MRN. */
+  const handleOpenPanel = (mrn: MRN, _mode: 'pick' | 'view') => {
+    hydrateMrnPickState(mrn);
+    setPanelOpen(true);
+  };
+
+  /**
+   * Open ONLY the pick modal (assign picker → generate labels). Hydrates the same state the
+   * panel uses but keeps the panel closed, so a single popup opens; the dispatch modal follows
+   * after the pick is confirmed.
+   */
+  const openPickModal = (mrn: MRN) => {
+    hydrateMrnPickState(mrn);
+    setPanelOpen(false);
+    setPickSplitOpen(true);
+  };
+
   const closePickPanel = () => {
     setSelectedMRNId(null);
+    setPanelOpen(false);
     setSelectedMlLocation('');
   };
 
@@ -1093,8 +1191,8 @@ const OutboundDashboard = ({
                         })()}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-slate-900 text-sm max-w-[220px] truncate" title={mrnDisplayPrName(mrn)}>
-                          {mrnDisplayPrName(mrn)}
+                        <div className="text-slate-900 text-sm max-w-[220px] truncate" title={displayMrnItemName(mrn)}>
+                          {displayMrnItemName(mrn)}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -1112,33 +1210,15 @@ const OutboundDashboard = ({
                         </div>
                       </td>
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        {isMtrOutbound(mrn) ? (
-                          <span
-                            className={`inline-flex items-center px-2 py-1.5 text-xs font-medium rounded border ${getStatusBadgeColor(mrn.status)}`}
-                            title="MTR: status follows the Production transfer workflow (not editable here)."
-                          >
-                            {mrn.status}
-                          </span>
-                        ) : (
-                          <select
-                            value={mrn.status}
-                            onChange={(e) => handleStatusChange(mrn, e.target.value as OutboundUiStatus)}
-                            className={`text-xs rounded border px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${getStatusBadgeColor(mrn.status)}`}
-                          >
-                            {manualStatusOptions(mrn.status).map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        <span
+                          className={`inline-flex items-center px-2 py-1.5 text-xs font-medium rounded border ${getStatusBadgeColor(mrn.status)}`}
+                        >
+                          {mrn.status}
+                        </span>
                         {(mrn.status === 'Pending Pick' || mrn.status === 'In Pick') && (
                           <button
                             type="button"
-                            onClick={() => {
-                              handleOpenPanel(mrn, 'view');
-                              setTransferPickOpen(true);
-                            }}
+                            onClick={() => openPickModal(mrn)}
                             title="Open Transfer Copy: enter packs, split, and generate QR labels."
                             className="mt-1.5 block w-full whitespace-nowrap rounded-md bg-amber-500 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-600"
                           >
@@ -1156,7 +1236,7 @@ const OutboundDashboard = ({
         </div>
       </div>
 
-      {selectedMRN && (
+      {selectedMRN && panelOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
           onClick={closePickPanel}
@@ -1397,8 +1477,8 @@ const OutboundDashboard = ({
               {(selectedMRN?.status === 'Pending Pick' || selectedMRN?.status === 'In Pick') && (
                 <button
                   type="button"
-                  onClick={() => setTransferPickOpen(true)}
-                  title="Open Transfer Copy: enter packs, split, and generate QR labels."
+                  onClick={() => { setPanelOpen(false); setPickSplitOpen(true); }}
+                  title="Pick from available packaging: pick full packs or split to take partial qty."
                   className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
                 >
                   🏷️ Generate Labels &amp; Pick
@@ -1430,19 +1510,27 @@ const OutboundDashboard = ({
         </div>
       )}
 
-      <TransferPickModal
-        open={transferPickOpen}
-        onClose={() => setTransferPickOpen(false)}
-        lines={transferPickLines}
-        route={selectedMlLocation ? `MW → ${selectedMlLocation}` : 'MW → ML1'}
-        requiredDate={selectedMRN ? mrnDisplayExpectedDate(selectedMRN) : undefined}
-        requestedBy={selectedMRN?.requestedBy}
-        onConfirm={handleTransferPickConfirm}
-        saving={transferPickSaving}
-        pickers={assignablePickers}
-        assignedPicker={assignedPicker}
-        onAssignPicker={setAssignedPicker}
-      />
+      {selectedMRN && selectedMRN.lineItems[0] ? (
+        <TransferPickSplitModal
+          open={pickSplitOpen}
+          onClose={() => setPickSplitOpen(false)}
+          requestNo={selectedMRN.mrnNo}
+          item={{
+            name: selectedMRN.lineItems[0].name,
+            itemCode: selectedMRN.lineItems[0].itemCode,
+            rawMaterialId: selectedMRN.lineItems[0].raw_material_id ?? null,
+            packMaterialId: selectedMRN.lineItems[0].pack_material_id ?? null,
+            productId: selectedMRN.lineItems[0].product_id ?? null,
+          }}
+          qtyRequired={selectedMRN.lineItems[0].quantity}
+          unit={selectedMRN.lineItems[0].unit}
+          pickers={assignablePickers}
+          assignedPicker={assignedPicker}
+          onAssignPicker={setAssignedPicker}
+          onNext={handlePickSplitNext}
+          onError={(m) => showToast(m, 'error')}
+        />
+      ) : null}
 
       <TransferDispatchModal
         open={dispatchOpen}

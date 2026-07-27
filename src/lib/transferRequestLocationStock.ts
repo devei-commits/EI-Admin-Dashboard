@@ -3,37 +3,77 @@ import type { WarehouseInventoryRow } from '../services/warehouseInventory.servi
 
 export type TransferSourceType = 'Production' | 'Warehouse' | 'Internal';
 
-export type TransferZoneOption = {
+export type TransferFacility = 'warehouse' | 'ml1' | 'ml2';
+
+export type TransferLocationOption = {
+  /** Representative real zone code for the facility (drives stock lookup + downstream
+   *  MU matching). Falls back to a canonical code (MW/ML1/ML2) when no zone exists. */
   code: string;
-  shortLabel: string;
-  fullLabel: string;
+  facility: TransferFacility;
+  /** Facility-level label shown in the dropdown — "Warehouse" / "ML1" / "ML2". */
+  label: string;
   areaType: 'warehouse' | 'production';
 };
 
-export function flattenTransferZoneOptions(
+function classifyTransferFacility(
+  zoneCode: string,
+  areaType: 'warehouse' | 'production',
+): TransferFacility {
+  if (areaType === 'warehouse') return 'warehouse';
+  return zoneCode.toUpperCase().includes('ML2') ? 'ml2' : 'ml1';
+}
+
+/**
+ * Transfers move stock between three facilities — Warehouse, ML1, ML2 — because that is
+ * the only granularity the inventory model tracks (whStock / ml1Stock / ml2Stock). We
+ * collapse every configured zone into its facility bucket and expose one option each.
+ * The representative `code` is a real zone code (so the receive flow can pre-resolve the
+ * MU area/zone), falling back to a canonical code when a facility has no zones yet.
+ */
+export function buildTransferLocationOptions(
   warehouseAreas: FacilityAreaDTO[],
   productionAreas: FacilityAreaDTO[],
-): TransferZoneOption[] {
-  const options: TransferZoneOption[] = [];
-  const appendAreas = (areas: FacilityAreaDTO[]): void => {
+): TransferLocationOption[] {
+  const byFacility = new Map<TransferFacility, TransferLocationOption>();
+  const labels: Record<TransferFacility, string> = {
+    warehouse: 'Warehouse',
+    ml1: 'ML1',
+    ml2: 'ML2',
+  };
+  const areaTypeFor: Record<TransferFacility, 'warehouse' | 'production'> = {
+    warehouse: 'warehouse',
+    ml1: 'production',
+    ml2: 'production',
+  };
+  const scan = (areas: FacilityAreaDTO[], areaType: 'warehouse' | 'production'): void => {
     for (const area of areas) {
       for (const zone of area.zones || []) {
-        const zoneLabel = String(zone.zoneLabel ?? '').trim();
-        const shortLabel =
-          zoneLabel ||
-          (area.areaType === 'warehouse' ? 'MW' : zone.code.replace(/^LOC-/i, ''));
-        options.push({
+        const facility = classifyTransferFacility(zone.code, areaType);
+        if (byFacility.has(facility)) continue; // first zone is the representative
+        byFacility.set(facility, {
           code: zone.code,
-          shortLabel,
-          fullLabel: `${area.name} — ${zone.name}`,
-          areaType: area.areaType,
+          facility,
+          label: labels[facility],
+          areaType,
         });
       }
     }
   };
-  appendAreas(warehouseAreas);
-  appendAreas(productionAreas);
-  return options;
+  scan(warehouseAreas, 'warehouse');
+  scan(productionAreas, 'production');
+
+  // Guarantee the three canonical buckets even when a facility has no zones configured.
+  const canonicalCode: Record<TransferFacility, string> = { warehouse: 'MW', ml1: 'ML1', ml2: 'ML2' };
+  const order: TransferFacility[] = ['warehouse', 'ml1', 'ml2'];
+  return order.map(
+    (facility) =>
+      byFacility.get(facility) ?? {
+        code: canonicalCode[facility],
+        facility,
+        label: labels[facility],
+        areaType: areaTypeFor[facility],
+      },
+  );
 }
 
 export function sihAtZoneForInventoryRow(

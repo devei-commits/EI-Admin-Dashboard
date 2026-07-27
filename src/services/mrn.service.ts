@@ -126,11 +126,18 @@ export function mrnDisplayPrName(m: Pick<MRNRecordFromApi, 'productName'>): stri
   return name || '—';
 }
 
-/** @deprecated Use mrnDisplayPrName — PR name is product_name, not MTR line items. */
+/**
+ * Item name for the transfer list: the linked product (BMR transfers) when present,
+ * else the first line item's name/code (transfers created directly for an item).
+ */
 export function mrnDisplayItemName(
   m: Pick<MRNRecordFromApi, 'productName' | 'lineItems'>
 ): string {
-  return mrnDisplayPrName(m);
+  const pr = String(m.productName || '').trim();
+  if (pr) return pr;
+  const li = Array.isArray(m.lineItems) && m.lineItems[0] ? m.lineItems[0] : null;
+  const fromLine = li ? String(li.item || li.itemCode || '').trim() : '';
+  return fromLine || '—';
 }
 
 export function mrnDisplayBatchNumber(

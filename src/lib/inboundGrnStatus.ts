@@ -124,6 +124,20 @@ export function inboundGrnSendToQcPayload(existingSteps?: string[] | null): {
   };
 }
 
+/**
+ * Send a labelled GRN into quarantine + QC (the normal path, not a mismatch): status → On Hold
+ * (quarantined), workflow stamped "Sent to QC", QC opened as Pending.
+ */
+export function inboundGrnSendToQuarantineQcPayload(
+  existingSteps?: string[] | null,
+): { status: string; workflowSteps: string[]; qcStatus: string } {
+  return {
+    status: 'On Hold',
+    workflowSteps: appendInboundGrnWorkflowStep(existingSteps, INBOUND_GRN_SENT_TO_QC_STEP),
+    qcStatus: 'Pending',
+  };
+}
+
 export function inboundGrnVerifiedAfterLabelsPayload(
   existingSteps?: string[] | null,
 ): { status: string; workflowSteps: string[] } {
