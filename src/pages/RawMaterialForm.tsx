@@ -1242,6 +1242,17 @@ const RawMaterialRefactored: React.FC = () => {
   return parts.length > 0 ? parts.join(' → ') : 'RM master';
  }, [rmCondContext]);
 
+ // Category/sub-category TECHNICAL specs live-resolved by the backend for the loaded item — merge
+ // them into the TECH custom-fields store under this item's taxonomy key so they display. Deferred
+ // to an effect (and gated on a settled category) so the merge lands on the correct taxonomy key.
+ const [pendingResolvedTechSpecs, setPendingResolvedTechSpecs] = useState<MasterCustomFieldDef[] | null>(null);
+ useEffect(() => {
+  if (!pendingResolvedTechSpecs || pendingResolvedTechSpecs.length === 0) return;
+  if (!rmCondContext.cat) return;
+  mergeEntityCustomFields('RM', { [rmCustomFieldsTaxonomyKey]: { TECH: pendingResolvedTechSpecs } });
+  setPendingResolvedTechSpecs(null);
+ }, [pendingResolvedTechSpecs, rmCondContext.cat, rmCustomFieldsTaxonomyKey]);
+
  const handleRemoveCustomFieldValue = useCallback((formKey: string) => {
   setFormData((prev) => {
    const next = { ...prev } as Record<string, unknown>;
@@ -1296,6 +1307,7 @@ const RawMaterialRefactored: React.FC = () => {
    TextareaField={TextareaField}
    customFieldsTaxonomyLabel={rmCustomFieldsTaxonomyLabel}
    onRemoveCustomFieldValue={handleRemoveCustomFieldValue}
+   technicalItemScopeId={existingRmId ?? undefined}
   />
  );
 
@@ -1355,6 +1367,11 @@ const RawMaterialRefactored: React.FC = () => {
     (fdObj as Record<string, unknown> | null)?.masterCustomFields as
      | Record<string, Partial<Record<'TECH' | 'QUAL' | 'ART', MasterCustomFieldDef[]>>>
      | undefined
+   );
+   setPendingResolvedTechSpecs(
+    Array.isArray(result.resolved_technical_specs) && result.resolved_technical_specs.length > 0
+     ? result.resolved_technical_specs
+     : null
    );
    const sharedRoot = (fdObj as Record<string, unknown> | null)?.masterSharedQualitySpecs as
     | { RM?: import('../lib/masterSharedQualitySpecs').MasterSharedQualitySpecsEntityStore }

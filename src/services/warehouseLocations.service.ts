@@ -54,3 +54,37 @@ export async function fetchWarehouseLocations(locationType?: 'warehouse' | 'prod
     return { data: [], error: message, success: false };
   }
 }
+
+/**
+ * Fetch one location with its racks + stored items — called lazily (e.g. on zone click from the
+ * Overview landing) so the granular rack/stock data is only loaded when a user drills in.
+ */
+export async function fetchWarehouseLocationById(
+  id: number | string,
+): Promise<ServiceResult<WarehouseLocationDTO | null>> {
+  try {
+    const res = await api.get<Partial<WarehouseLocationDTO>>(`/api/v1/warehouse-locations/${id}`);
+    const data = (res?.data ?? res) as Partial<WarehouseLocationDTO> | null;
+    if (!data || data.id == null) return { data: null, error: null, success: true };
+    // getLocationById omits list-only fields (locationType/areaId/areaName) — default them so the
+    // shape stays a full WarehouseLocationDTO for consumers that only read name/racks.
+    const location: WarehouseLocationDTO = {
+      id: data.id,
+      code: data.code ?? '',
+      name: data.name ?? '',
+      locationType: data.locationType ?? 'warehouse',
+      areaId: data.areaId ?? null,
+      areaName: data.areaName ?? null,
+      zoneLabel: data.zoneLabel ?? null,
+      icon: data.icon ?? null,
+      areaSqm: data.areaSqm ?? null,
+      description: data.description ?? null,
+      utilisationPct: data.utilisationPct ?? 0,
+      racks: Array.isArray(data.racks) ? data.racks : [],
+    };
+    return { data: location, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load location';
+    return { data: null, error: message, success: false };
+  }
+}

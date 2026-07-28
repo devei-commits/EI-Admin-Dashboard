@@ -101,3 +101,46 @@ export async function saveTechnicalSpecRule(input: {
 export async function deleteTechnicalSpecRule(id: number): Promise<void> {
   await api.delete(`/api/v1/technical-spec-rules/${id}`);
 }
+
+/**
+ * Appends one field to the rule at an exact (category, subCategory, subSubCategory) scope —
+ * fetches the current rule (if any), rejects a duplicate field label (case-insensitive), then
+ * upserts the merged field set. Used by the item master's "+ Custom field" modal's Category /
+ * Sub-category scope options (see MasterCustomFieldsBlock.tsx), mirroring
+ * addRowToQualitySpecRule in qualitySpecRules.service.ts.
+ */
+export async function addFieldToTechnicalSpecRule(
+  entityType: TechnicalSpecRuleEntityType,
+  category: string,
+  subCategory: string,
+  subSubCategory: string,
+  field: MasterCustomFieldDef
+): Promise<{ ok: true } | { ok: false; reason: 'duplicate' | 'error' }> {
+  const cat = category.trim();
+  const sub = subCategory.trim();
+  const subSub = subSubCategory.trim();
+  if (!cat || (subSub && !sub)) return { ok: false, reason: 'error' };
+
+  try {
+    const existingRules = await fetchTechnicalSpecRules(entityType, { category: cat, subCategory: sub, subSubCategory: subSub });
+    const existingRule = existingRules.find(
+      (r) => r.category === cat && r.subCategory === sub && r.subSubCategory === subSub
+    );
+    const existingRows = existingRule?.rows ?? [];
+    const labelKey = normCustomFieldLabel(field.label).toLowerCase();
+    if (existingRows.some((r) => normCustomFieldLabel(r.label).toLowerCase() === labelKey)) {
+      return { ok: false, reason: 'duplicate' };
+    }
+
+    await saveTechnicalSpecRule({
+      entityType,
+      category: cat,
+      subCategory: sub,
+      subSubCategory: subSub,
+      rows: [...existingRows, field],
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}

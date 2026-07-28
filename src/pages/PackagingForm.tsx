@@ -1302,6 +1302,17 @@ const PackagingRefactored: React.FC = () => {
     () => buildMasterCustomFieldsTaxonomyKey(pmCondContext.cat, pmCondContext.sub, pmCondContext.subsub),
     [pmCondContext]
   );
+
+  // Category TECHNICAL specs live-resolved by the backend for the loaded item — merge them into
+  // the TECH custom-fields store under this item's taxonomy key so they display. Deferred to an
+  // effect (and gated on a settled category) so the merge lands on the correct taxonomy key.
+  const [pendingResolvedTechSpecs, setPendingResolvedTechSpecs] = useState<MasterCustomFieldDef[] | null>(null);
+  useEffect(() => {
+    if (!pendingResolvedTechSpecs || pendingResolvedTechSpecs.length === 0) return;
+    if (!pmCondContext.cat) return;
+    mergeEntityCustomFields('PM', { [pmCustomFieldsTaxonomyKey]: { TECH: pendingResolvedTechSpecs } });
+    setPendingResolvedTechSpecs(null);
+  }, [pendingResolvedTechSpecs, pmCondContext.cat, pmCustomFieldsTaxonomyKey]);
   const pmCustomFieldsTaxonomyLabel = useMemo(() => {
     const parts = [pmCondContext.cat, pmCondContext.sub, pmCondContext.subsub].filter(Boolean);
     return parts.length > 0 ? parts.join(' → ') : 'PM master';
@@ -1373,6 +1384,7 @@ const PackagingRefactored: React.FC = () => {
       SelectField={SelectField}
       TextareaField={TextareaField}
       onRemoveCustomFieldValue={handleRemoveCustomFieldValue}
+      technicalItemScopeId={existingPmId ?? undefined}
     />
   );
 
@@ -1433,6 +1445,11 @@ const PackagingRefactored: React.FC = () => {
         (fdObj as Record<string, unknown> | null)?.masterCustomFields as
           | Record<string, Partial<Record<'TECH' | 'QUAL' | 'ART', MasterCustomFieldDef[]>>>
           | undefined
+      );
+      setPendingResolvedTechSpecs(
+        Array.isArray(pm.resolvedTechnicalSpecs) && pm.resolvedTechnicalSpecs.length > 0
+          ? pm.resolvedTechnicalSpecs
+          : null
       );
       const sharedRoot = (fdObj as Record<string, unknown> | null)?.masterSharedQualitySpecs as
         | { PM?: import('../lib/masterSharedQualitySpecs').MasterSharedQualitySpecsEntityStore }

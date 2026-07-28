@@ -9,13 +9,41 @@ import {
 } from '../../lib/masterCustomFields';
 import { useMasterCustomFields } from '../../context/MasterCustomFieldsContext';
 
+/**
+ * Where a new custom field is saved: the category / sub-category technical-spec rule (so it
+ * applies to every item at that scope), or just this one item (client-side only). Mirrors
+ * QualitySpecAddScope in MasterAddCustomQualitySpecModal.tsx.
+ */
+export type TechnicalSpecAddScope = 'category' | 'subCategory' | 'item';
+
 export type MasterAddCustomFieldModalProps = {
   isOpen: boolean;
   onClose: () => void;
   moduleCode: MasterCustomFieldModuleCode;
   taxonomyLabel: string;
   onAdded?: (field: MasterCustomFieldDef) => void;
+  /**
+   * When provided the modal shows a scope picker and delegates persistence to the caller
+   * (item vs category/sub-category rule). When omitted the modal keeps its legacy behavior:
+   * item-only add via the custom-fields context (no scope picker).
+   */
+  onSave?: (
+    field: MasterCustomFieldDef,
+    scope: TechnicalSpecAddScope
+  ) => boolean | void | Promise<boolean | void>;
+  /** Whether a sub-category-scoped option should be offered (false when no sub-category is resolved). */
+  allowSubCategoryScope?: boolean;
+  /** Label shown next to the "Category" scope option. */
+  categoryScopeLabel?: string;
+  /** Label shown next to the "Sub-category" scope option. */
+  subCategoryLabel?: string;
+  /** True while onSave's async work (category/sub-category scopes hit the backend) is in flight. */
+  saving?: boolean;
 };
+
+function defaultTechnicalAddScope(allowSubCategoryScope: boolean): TechnicalSpecAddScope {
+  return allowSubCategoryScope ? 'subCategory' : 'category';
+}
 
 const FIELD_TYPES: { value: MasterCustomFieldType; label: string }[] = [
   { value: 'text', label: 'Text — single line' },
@@ -36,13 +64,20 @@ export function MasterAddCustomFieldModal({
   moduleCode,
   taxonomyLabel,
   onAdded,
+  onSave,
+  allowSubCategoryScope = false,
+  categoryScopeLabel,
+  subCategoryLabel,
+  saving = false,
 }: MasterAddCustomFieldModalProps): React.ReactElement {
   const { addField } = useMasterCustomFields();
+  const scopeMode = Boolean(onSave);
   const [name, setName] = useState('');
   const [type, setType] = useState<MasterCustomFieldType>('text');
   const [mandatory, setMandatory] = useState(false);
   const [optionsText, setOptionsText] = useState('');
   const [unit, setUnit] = useState('');
+  const [scope, setScope] = useState<TechnicalSpecAddScope>('category');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -52,8 +87,9 @@ export function MasterAddCustomFieldModal({
     setMandatory(false);
     setOptionsText('');
     setUnit('');
+    setScope(defaultTechnicalAddScope(allowSubCategoryScope));
     setError('');
-  }, [isOpen]);
+  }, [isOpen, allowSubCategoryScope]);
 
   const showOptions = type === 'select';
   const showUnit = NUMBER_TYPES.includes(type);
@@ -79,6 +115,19 @@ export function MasterAddCustomFieldModal({
       options: options?.length ? options : type === 'select' ? ['Option 1', 'Option 2'] : undefined,
       unit: unit.trim() || undefined,
     };
+
+    if (onSave) {
+      const result = onSave(field, scope);
+      if (result && typeof (result as Promise<boolean | void>).then === 'function') {
+        (result as Promise<boolean | void>).then((shouldClose) => {
+          if (shouldClose !== false) onClose();
+        });
+        return;
+      }
+      if (result !== false) onClose();
+      return;
+    }
+
     const result = addField(moduleCode, field);
     if (!result.ok) {
       setError(
@@ -101,16 +150,18 @@ export function MasterAddCustomFieldModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+            disabled={saving}
+            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            disabled={saving}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
           >
-            Save field
+            {saving ? 'Saving…' : 'Save field'}
           </button>
         </>
       }
@@ -190,6 +241,27 @@ export function MasterAddCustomFieldModal({
               onChange={(e) => setUnit(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
+        ) : null}
+        {scopeMode ? (
+          <div>
+            <label htmlFor="cf-scope" className="block text-sm font-medium text-gray-700 mb-1">
+              Add to group
+            </label>
+            <select
+              id="cf-scope"
+              value={scope}
+              onChange={(e) => setScope(e.target.value as TechnicalSpecAddScope)}
+              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="category">Category (all of {categoryScopeLabel || 'this category'})</option>
+              {allowSubCategoryScope ? (
+                <option value="subCategory">
+                  Sub-category (all of {subCategoryLabel || 'this sub-category'})
+                </option>
+              ) : null}
+              <option value="item">Item specific (only this item)</option>
+            </select>
           </div>
         ) : null}
         {error ? (

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { createMRN, type MRNRecordFromApi } from '../../services/mrn.service';
 import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilityAreas.service';
@@ -212,6 +212,16 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
     setLines((prev) => [...prev, next]);
   };
 
+  const removeLine = (lineId: string): void => {
+    // Always keep at least one line; removing the last one resets it to an empty row.
+    setLines((prev) => (prev.length <= 1 ? [createEmptyLine()] : prev.filter((line) => line.id !== lineId)));
+    setItemQueries((prev) => {
+      const next = { ...prev };
+      delete next[lineId];
+      return next;
+    });
+  };
+
   const lineItemQuery = (line: TransferRequestLine): string => {
     if (itemQueries[line.id] !== undefined) return itemQueries[line.id];
     if (line.catalogKey) {
@@ -392,6 +402,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                         <th className="px-4 py-3 text-right">SIH @ Dest</th>
                         <th className="px-4 py-3 text-right">Requested Qty</th>
                         <th className="px-4 py-3">Notes</th>
+                        <th className="px-4 py-3 text-right"><span className="sr-only">Remove</span></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -445,6 +456,17 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                             ) : (
                               '—'
                             )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => removeLine(line.id)}
+                              title="Remove item"
+                              aria-label="Remove item"
+                              className="inline-flex items-center justify-center rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </td>
                         </tr>
                       ))}

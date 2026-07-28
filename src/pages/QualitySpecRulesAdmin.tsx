@@ -25,8 +25,41 @@ import {
   ruleSubCategoryOptions,
   mergeOptions,
 } from '../lib/specRuleTaxonomy';
+import {
+  fetchRawMaterialsForPicker,
+  fetchRawMaterialById,
+  setRawMaterialItemQualitySpecs,
+} from '../services/rawMaterials.service';
+import {
+  fetchPackMaterialsForPicker,
+  fetchPackMaterialById,
+  setPackMaterialItemQualitySpecs,
+} from '../services/packMaterials.service';
+import {
+  fetchPRProducts,
+  fetchPRProductDetail,
+  setProductItemQualitySpecs,
+  type PrItemQualitySpecSection,
+} from '../services/productsMaster.service';
+import { hydrateRmQualitySpecRows } from '../lib/rmQualitySpecVisibility';
+import { hydratePmQualitySpecRows } from '../lib/pmQualitySpecVisibility';
 
 type SpecType = 'quality' | 'technical';
+
+/** Item picker option — shared shape across RM / PM / PR. */
+type ItemPick = { id: string; name: string; code: string };
+
+/** Admin PR entity → the section the item-specific edit targets (and the detail key it seeds from). */
+const PR_SECTION_BY_ENTITY: Partial<Record<QualitySpecRuleEntityType, PrItemQualitySpecSection>> = {
+  PR_BULK_CLEARANCE: 'bulk',
+  PR_FINAL_CLEARANCE: 'final',
+  PR_DISPATCH_SPECS: 'dispatch',
+};
+const PR_SECTION_DETAIL_KEY: Record<PrItemQualitySpecSection, string> = {
+  bulk: 'bulkClearance',
+  final: 'finalClearance',
+  dispatch: 'dispatchSpecs',
+};
 
 /** Technical specs are per material/product — all PR quality namespaces map to a single PR. */
 function technicalEntityFor(entity: QualitySpecRuleEntityType): TechnicalSpecRuleEntityType {
@@ -62,8 +95,21 @@ export default function QualitySpecRulesAdmin() {
   const [techModalOpen, setTechModalOpen] = useState(false);
   const [editingTechRule, setEditingTechRule] = useState<TechnicalSpecRule | null>(null);
 
+  // Item-specific quality-spec editor
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemResults, setItemResults] = useState<ItemPick[]>([]);
+  const [itemSearching, setItemSearching] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ItemPick | null>(null);
+  const [itemSeedLoading, setItemSeedLoading] = useState(false);
+  const [itemRows, setItemRows] = useState<QualitySpecTableRow[]>([]);
+  const [itemSaving, setItemSaving] = useState(false);
+  const [itemSpecModalOpen, setItemSpecModalOpen] = useState(false);
+  const [editingItemSpecRow, setEditingItemSpecRow] = useState<QualitySpecTableRow | null>(null);
+
   const techEntity = technicalEntityFor(entityType);
   const isPrEntity = entityType.startsWith('PR');
+  const entityLabel = QUALITY_SPEC_RULE_ENTITY_TYPES.find((o) => o.value === entityType)?.label ?? entityType;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -203,6 +249,154 @@ export default function QualitySpecRulesAdmin() {
     setTechModalOpen(true);
   };
 
+  // ── Item-specific quality-spec editor ───────────────────────
+  const openItemSpecific = () => {
+    setSelectedItem(null);
+    setItemSearch('');
+    setItemResults([]);
+    setItemRows([]);
+    setItemModalOpen(true);
+  };
+  const closeItemSpecific = () => {
+    setItemModalOpen(false);
+    setSelectedItem(null);
+    setItemSearch('');
+    setItemResults([]);
+    setItemRows([]);
+  };
+
+  /** Search the current entity's item list (RM/PM use the picker service; PR filters the list client-side). */
+  const searchItems = useCallback(
+    async (search: string): Promise<ItemPick[]> => {
+      if (entityType === 'RM') {
+        const rows = await fetchRawMaterialsForPicker(search);
+        return rows.map((r) => ({ id: r.id, name: r.name || r.code, code: r.code }));
+      }
+      if (entityType === 'PM') {
+        const rows = await fetchPackMaterialsForPicker(search);
+        return rows.map((r) => ({ id: r.id, name: r.description || r.code, code: r.code }));
+      }
+      // PR — list endpoint has no server search; fetch and filter client-side.
+      const res = await fetchPRProducts();
+      const q = search.trim().toLowerCase();
+      return (res.data ?? [])
+        .filter(
+          (p) =>
+            !q ||
+            String(p.product_name || '').toLowerCase().includes(q) ||
+            String(p.product_code || '').toLowerCase().includes(q)
+        )
+        .slice(0, 50)
+        .map((p) => ({
+          id: String(p.product_id),
+          name: p.product_name || p.product_code,
+          code: p.product_code,
+        }));
+    },
+    [entityType]
+  );
+
+  // Debounced item search while the picker is open (and no item selected yet).
+  useEffect(() => {
+    if (!itemModalOpen || selectedItem) return;
+    let cancelled = false;
+    setItemSearching(true);
+    const handle = setTimeout(() => {
+      void searchItems(itemSearch)
+        .then((rows) => {
+          if (!cancelled) setItemResults(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setItemResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setItemSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [itemModalOpen, selectedItem, itemSearch, searchItems]);
+
+  /** Seed the editor with the item's OWN current quality rows for the active entity/section. */
+  const selectItem = async (item: ItemPick) => {
+    setSelectedItem(item);
+    setItemSeedLoading(true);
+    try {
+      let rows: QualitySpecTableRow[] = [];
+      if (entityType === 'RM') {
+        const full = await fetchRawMaterialById(item.id);
+        rows = full?.form_data ? hydrateRmQualitySpecRows(full.form_data) : [];
+      } else if (entityType === 'PM') {
+        const rec = await fetchPackMaterialById(item.id);
+        rows = rec?.form_data ? hydratePmQualitySpecRows(rec.form_data) : [];
+      } else {
+        const section = PR_SECTION_BY_ENTITY[entityType];
+        const res = await fetchPRProductDetail(item.id);
+        const bySection = res.data?.pr_quality_spec_rows_by_section as
+          | Record<string, unknown>
+          | undefined;
+        const raw = section ? bySection?.[PR_SECTION_DETAIL_KEY[section]] : undefined;
+        rows = Array.isArray(raw) ? raw.map((r) => createEmptyQualitySpecRow(r as Partial<QualitySpecTableRow>)) : [];
+      }
+      setItemRows(rows);
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to load item specs');
+      setItemRows([]);
+    } finally {
+      setItemSeedLoading(false);
+    }
+  };
+
+  const clearSelectedItem = () => {
+    setSelectedItem(null);
+    setItemRows([]);
+  };
+
+  const openAddItemSpecRow = () => {
+    setEditingItemSpecRow(null);
+    setItemSpecModalOpen(true);
+  };
+  const openEditItemSpecRow = (row: QualitySpecTableRow) => {
+    setEditingItemSpecRow(row);
+    setItemSpecModalOpen(true);
+  };
+  const closeItemSpecModal = () => {
+    setItemSpecModalOpen(false);
+    setEditingItemSpecRow(null);
+  };
+  const saveItemSpecRow = (row: QualitySpecTableRow) => {
+    if (editingItemSpecRow) {
+      setItemRows(itemRows.map((existing) => (existing.id === editingItemSpecRow.id ? row : existing)));
+    } else {
+      setItemRows([...itemRows, row]);
+    }
+  };
+
+  const saveItemSpecs = async () => {
+    if (!selectedItem) return;
+    setItemSaving(true);
+    try {
+      if (entityType === 'RM') {
+        await setRawMaterialItemQualitySpecs(selectedItem.id, itemRows);
+      } else if (entityType === 'PM') {
+        await setPackMaterialItemQualitySpecs(selectedItem.id, itemRows);
+      } else {
+        const section = PR_SECTION_BY_ENTITY[entityType];
+        if (!section) throw new Error('Unsupported PR section');
+        const res = await setProductItemQualitySpecs(selectedItem.id, section, itemRows);
+        if (!res.success) throw new Error(res.error || 'Save failed');
+      }
+      addToast('success', `Saved item-specific specs for ${selectedItem.code} — item is now locked to its own specs`);
+      closeItemSpecific();
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setItemSaving(false);
+    }
+  };
+
   // ── Delete (both types) ─────────────────────────────────────
   const removeRow = async (row: UnifiedRow) => {
     const { rule } = row;
@@ -314,7 +508,7 @@ export default function QualitySpecRulesAdmin() {
                   ✕ Close
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -348,6 +542,24 @@ export default function QualitySpecRulesAdmin() {
                     <span className="block text-sm font-semibold text-gray-900">Technical spec (custom field)</span>
                     <span className="block text-xs leading-snug text-gray-500">
                       Material/product attributes — label, type, unit, options.
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    openItemSpecific();
+                  }}
+                  className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-50/60"
+                >
+                  <span className="mt-0.5 shrink-0 rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                    Item
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-gray-900">Item specific</span>
+                    <span className="block text-xs leading-snug text-gray-500">
+                      Override quality specs for ONE {entityLabel} item — locks it to its own specs.
                     </span>
                   </span>
                 </button>
@@ -536,6 +748,134 @@ export default function QualitySpecRulesAdmin() {
         hideScopeSelector
         editRow={editingSpecRow}
         onSave={saveSpecRow}
+      />
+
+      {/* Item-specific quality-spec editor */}
+      {itemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Item-specific quality specs — {entityLabel}</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Pick one item and set its own quality specs. Saving locks the item to these specs — it stops
+                  tracking category / sub-category rule changes.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                Item
+              </span>
+            </div>
+
+            {!selectedItem ? (
+              <div className="mt-5">
+                <label className="block text-xs font-semibold text-gray-600">
+                  Search {entityLabel} by name or code
+                  <input
+                    type="text"
+                    autoFocus
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    placeholder="Type to search…"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </label>
+                <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-gray-200">
+                  {itemSearching ? (
+                    <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-slate-600" />
+                      Searching…
+                    </div>
+                  ) : itemResults.length === 0 ? (
+                    <p className="p-4 text-sm text-gray-500">No matching items.</p>
+                  ) : (
+                    <ul className="divide-y divide-gray-100">
+                      {itemResults.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => void selectItem(item)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-amber-50/60"
+                          >
+                            <span className="min-w-0 truncate text-sm font-medium text-gray-900">{item.name}</span>
+                            <span className="shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-600">
+                              {item.code}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5">
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-gray-900">{selectedItem.name}</span>
+                    <span className="text-xs font-mono text-gray-500">{selectedItem.code}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearSelectedItem}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Change item
+                  </button>
+                </div>
+
+                {itemSeedLoading ? (
+                  <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-slate-600" />
+                    Loading this item&apos;s current specs…
+                  </div>
+                ) : (
+                  <QualitySpecTable
+                    title="Item quality spec rows"
+                    addButtonLabel="+ Add Custom Quality Spec"
+                    emptyMessage="No rows yet — add the first quality spec parameter for this item."
+                    rows={itemRows}
+                    onChange={setItemRows}
+                    idPrefix="item"
+                    showAddButton
+                    onAddClick={openAddItemSpecRow}
+                    onEditRow={openEditItemSpecRow}
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeItemSpecific}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveItemSpecs()}
+                disabled={!selectedItem || itemSeedLoading || itemSaving}
+                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {itemSaving ? 'Saving…' : 'Save to item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <MasterAddCustomQualitySpecModal
+        isOpen={itemSpecModalOpen}
+        onClose={closeItemSpecModal}
+        taxonomyLabel={[entityLabel, selectedItem?.name].filter(Boolean).join(' → ')}
+        categoryScopeLabel={selectedItem?.name || 'this item'}
+        subCategoryLabel={selectedItem?.code || 'this item'}
+        allowSubCategoryScope={false}
+        hideScopeSelector
+        editRow={editingItemSpecRow}
+        onSave={saveItemSpecRow}
       />
 
       {/* Technical rule editor */}

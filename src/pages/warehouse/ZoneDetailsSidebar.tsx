@@ -65,6 +65,8 @@ interface ZoneDetailsSidebarProps {
   zone: Zone | null;
   /** When provided, bays and inventory are derived from API (location.racks + storedItems) instead of mock. */
   location?: WarehouseLocationDTO | null;
+  /** True while the location detail is being fetched lazily — suppresses the mock fallback. */
+  loading?: boolean;
   selectedItemId?: string | null;
   onSelectItem?: (itemId: string) => void;
   onClearSelectedItem?: () => void;
@@ -74,6 +76,7 @@ interface ZoneDetailsSidebarProps {
 const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
   zone,
   location,
+  loading = false,
   selectedItemId,
   onSelectItem,
   onClearSelectedItem,
@@ -207,10 +210,14 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
     if (!zone) return;
     if (location?.racks?.length) {
       setBays(baysFromLocation);
+    } else if (loading || location) {
+      // Detail is loading, or loaded a location that simply has no racks — show nothing rather
+      // than the legacy mock bays.
+      setBays([]);
     } else {
       setBays(getInitialBays(zone.id));
     }
-  }, [zone, location, baysFromLocation]);
+  }, [zone, location, loading, baysFromLocation]);
 
   const zoneItemsFromLocation = useMemo((): ZoneItem[] => {
     if (!location?.racks) return [];

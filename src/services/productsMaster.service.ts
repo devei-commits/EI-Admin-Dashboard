@@ -6,6 +6,8 @@
 import type { ServiceResult } from '../types/api.types';
 import type { FormulaBomParsedRow, FormulaSummaryParsedRow } from '../lib/formulaBomExcelParse';
 import { api, getApiBaseUrl, getAuthToken } from '../lib/apiClient';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
+import { flattenPrQualitySpecRowsForPayload } from '../lib/prQualitySpecVisibility';
 
 export type PrRecordType = 'temporary' | 'permanent';
 export type PrRecordTypeForm = PrRecordType | 'legacy';
@@ -331,6 +333,41 @@ export async function updatePRProduct(
     return res;
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to update product';
+    return { data: null, error: message, success: false };
+  }
+}
+
+/** PR clearance section this item-specific quality-spec edit targets. */
+export type PrItemQualitySpecSection = 'bulk' | 'final' | 'dispatch';
+
+/**
+ * Set THIS product's own quality specs for ONE PR clearance section (item-specific), one-way locking
+ * its BOM to its own rows. Only the target section is overwritten server-side; the others are kept.
+ * PATCH /api/v1/products/:id/quality-specs
+ */
+export async function setProductItemQualitySpecs(
+  productId: number | string,
+  section: PrItemQualitySpecSection,
+  rows: QualitySpecTableRow[],
+  subRowsByPath?: Record<string, QualitySpecTableRow[]>
+): Promise<ServiceResult<null>> {
+  try {
+    const body: Record<string, unknown> = {
+      section,
+      rows: flattenPrQualitySpecRowsForPayload(rows),
+    };
+    if (subRowsByPath) {
+      const out: Record<string, QualitySpecTableRow[]> = {};
+      for (const [pathKey, pathRows] of Object.entries(subRowsByPath)) {
+        const flattened = flattenPrQualitySpecRowsForPayload(pathRows);
+        if (flattened.length > 0) out[pathKey] = flattened;
+      }
+      body.subRowsByPath = out;
+    }
+    await api.patch(`/api/v1/products/${productId}/quality-specs`, body);
+    return { data: null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to set item quality specs';
     return { data: null, error: message, success: false };
   }
 }

@@ -1,44 +1,28 @@
 import { useState, useEffect } from 'react';
 import ZoneDetailsSidebar from './ZoneDetailsSidebar';
-import { fetchWarehouseLocations, type WarehouseLocationDTO } from '../../services/warehouseLocations.service';
-import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
-import { fetchGRNList } from '../../services/grn.service';
-import { fetchMRNList } from '../../services/mrn.service';
+import { fetchWarehouseLocationById, type WarehouseLocationDTO } from '../../services/warehouseLocations.service';
+import {
+  fetchWarehouseOverview,
+  type WarehouseOverviewKpi,
+  type WarehouseOverviewZone,
+  type WarehouseRecentActivityItem,
+  type OpenGrnItem,
+  type WarehouseLowStockItem,
+} from '../../services/warehouseOverview.service';
 
-type KpiCard = {
-  id: string;
-  label: string;
-  subtitle: string;
-  value: string;
-  accentColor: string;
-};
-
-type Zone = {
-  id: string;
-  name: string;
-  title: string;
-  description: string;
-  items: number;
-  racks: number;
-  alerts: number;
-  utilization: number;
-  footprint: string;
-  tags: string[];
-};
-
-type ActivityItem = {
-  id: string;
-  type: 'grn' | 'mrn' | 'alert';
-  title: string;
-  subtitle: string;
-  meta: string;
-};
+type KpiCard = WarehouseOverviewKpi;
+type Zone = WarehouseOverviewZone;
+type ActivityItem = WarehouseRecentActivityItem;
 
 const Overview = () => {
-  const [locations, setLocations] = useState<WarehouseLocationDTO[]>([]);
-  const [inventoryRows, setInventoryRows] = useState<{ id: string; code: string; name: string; status: string; reorderPt: number; avgMo: number; stockInHand: number; whUnit: string }[]>([]);
-  const [grnList, setGrnList] = useState<{ id: string; grnNo: string; poNo: string; vendor: string; status: string; items: number }[]>([]);
-  const [mrnList, setMrnList] = useState<{ id: string; mrnNo: string; status: string; requestedBy: string; lineItems: unknown[] }[]>([]);
+  // Landing loads ONLY the lightweight summary (counts, zone summaries, recent activity, open GRNs,
+  // top low-stock). Granular rack/stock data is fetched lazily when a zone is opened.
+  const [kpis, setKpis] = useState<KpiCard[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [openGRNs, setOpenGRNs] = useState<OpenGrnItem[]>([]);
+  const [lowCriticalItems, setLowCriticalItems] = useState<WarehouseLowStockItem[]>([]);
+  const [alertCount, setAlertCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedZone, setSelectedZone] = useState<{
     id: string;
@@ -50,6 +34,7 @@ const Overview = () => {
     racks: number;
   } | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<WarehouseLocationDTO | null>(null);
+  const [zoneDetailLoading, setZoneDetailLoading] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,46 +42,14 @@ const Overview = () => {
     (async () => {
       setLoading(true);
       try {
-        const [locRes, invRes, grnRaw, mrnRaw] = await Promise.all([
-          fetchWarehouseLocations(),
-          fetchWarehouseInventory(),
-          fetchGRNList().then((list) => (Array.isArray(list) ? list : [])),
-          fetchMRNList().then((list) => (Array.isArray(list) ? list : [])),
-        ]);
-        if (cancelled) return;
-        if (locRes.success && locRes.data) setLocations(locRes.data);
-        if (invRes.success && invRes.data?.rows)
-          setInventoryRows(
-            invRes.data.rows.map((r) => ({
-              id: r.id,
-              code: r.code,
-              name: r.name,
-              status: r.status,
-              reorderPt: r.reorderPt,
-              avgMo: r.avgMo,
-              stockInHand: r.stockInHand,
-              whUnit: r.whUnit,
-            }))
-          );
-        setGrnList(
-          grnRaw.map((g: { id: string; grnNo?: string; poNo?: string; vendor?: string; status?: string; items?: number }) => ({
-            id: g.id,
-            grnNo: g.grnNo ?? '',
-            poNo: g.poNo ?? '',
-            vendor: g.vendor ?? '',
-            status: g.status ?? '',
-            items: g.items ?? 0,
-          }))
-        );
-        setMrnList(
-          mrnRaw.map((m: { id: string; mrnNo?: string; status?: string; requestedBy?: string; lineItems?: unknown[] }) => ({
-            id: m.id,
-            mrnNo: m.mrnNo ?? '',
-            status: m.status ?? '',
-            requestedBy: m.requestedBy ?? '',
-            lineItems: m.lineItems ?? [],
-          }))
-        );
+        const data = await fetchWarehouseOverview();
+        if (cancelled || !data) return;
+        setKpis(data.kpis ?? []);
+        setZones(data.zones ?? []);
+        setRecentActivity(data.recentActivity ?? []);
+        setOpenGRNs(data.openGrns ?? []);
+        setLowCriticalItems(data.lowStockItems ?? []);
+        setAlertCount(data.alertCount ?? 0);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -104,60 +57,7 @@ const Overview = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const zones: Zone[] = locations.map((loc) => {
-    const itemCount = loc.racks.reduce((s, r) => s + (r.itemsStoredCount ?? 0), 0);
-    const rackCount = loc.racks.length;
-    const tags = loc.racks.flatMap((r) => r.code);
-    return {
-      id: String(loc.id),
-      name: loc.zoneLabel ?? loc.name,
-      title: loc.name,
-      description: loc.description ?? '',
-      items: itemCount,
-      racks: rackCount,
-      alerts: 0,
-      utilization: loc.utilisationPct ?? 0,
-      footprint: [loc.areaSqm != null ? `${loc.areaSqm} sqm` : null, loc.description].filter(Boolean).join(' · ') || '—',
-      tags: tags.length ? tags : [loc.zoneLabel ?? loc.code].filter(Boolean),
-    };
-  });
-
-  const lowCriticalCount = inventoryRows.filter((r) => r.status === 'Low Stock' || r.status === 'Critical' || r.status === 'Out of Stock').length;
-  const pendingGrnCount = grnList.filter((g) => g.status !== 'GRN Complete' && g.status !== 'Complete').length;
-  const openMrnCount = mrnList.filter((m) => m.status !== 'Completed').length;
-  const totalRacks = locations.reduce((s, loc) => s + loc.racks.length, 0);
-
-  const kpis: KpiCard[] = [
-    { id: 'total-skus', label: 'Total SKUs', subtitle: 'RM · PM · Finished Goods', value: String(inventoryRows.length), accentColor: 'border-emerald-500 text-emerald-600 bg-emerald-50' },
-    { id: 'low-stock', label: 'Low / Critical Stock', subtitle: 'Items below reorder', value: String(lowCriticalCount), accentColor: 'border-amber-500 text-amber-600 bg-amber-50' },
-    { id: 'pending-grn', label: 'Pending GRN', subtitle: 'POs awaiting GRN', value: String(pendingGrnCount), accentColor: 'border-sky-500 text-sky-600 bg-sky-50' },
-    { id: 'open-requests', label: 'Open Requests', subtitle: 'MRNs in progress', value: String(openMrnCount), accentColor: 'border-indigo-500 text-indigo-600 bg-indigo-50' },
-    { id: 'fg-under-qc', label: 'FG Under QC', subtitle: 'Batches pending release', value: '0', accentColor: 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50' },
-    { id: 'wh-zones', label: 'WH Zones', subtitle: `${totalRacks} racks`, value: String(locations.length), accentColor: 'border-slate-400 text-slate-700 bg-slate-50' },
-  ];
-
-  const recentActivity: ActivityItem[] = [
-    ...grnList.slice(0, 3).map((g) => ({
-      id: `grn-${g.id}`,
-      type: 'grn' as const,
-      title: `${g.grnNo} — ${g.vendor}`,
-      subtitle: `${g.poNo} · ${g.items} items`,
-      meta: g.status,
-    })),
-    ...mrnList.slice(0, 2).map((m) => ({
-      id: `mrn-${m.id}`,
-      type: 'mrn' as const,
-      title: `${m.mrnNo} — ${m.requestedBy}`,
-      subtitle: `${Array.isArray(m.lineItems) ? m.lineItems.length : 0} items`,
-      meta: m.status,
-    })),
-  ].slice(0, 5);
-
-  const openGRNs = grnList.filter((g) => g.status !== 'GRN Complete' && g.status !== 'Complete');
-  const lowCriticalItems = inventoryRows.filter((r) => r.status === 'Low Stock' || r.status === 'Critical' || r.status === 'Out of Stock');
-  const alertCount = lowCriticalCount;
-
-  const handleOpenZone = (zone: Zone) => {
+  const handleOpenZone = async (zone: Zone) => {
     setSelectedZone({
       id: zone.id,
       name: zone.name,
@@ -168,8 +68,16 @@ const Overview = () => {
       racks: zone.racks,
     });
     setSelectedItemId(null);
-    const loc = locations.find((l) => String(l.id) === zone.id) ?? null;
-    setSelectedLocation(loc);
+    setSelectedLocation(null);
+    // Lazily load the granular rack/stock data for just this zone (id is "zone-<locationId>").
+    const locId = zone.id.replace(/^zone-/, '');
+    setZoneDetailLoading(true);
+    try {
+      const res = await fetchWarehouseLocationById(locId);
+      if (res.success && res.data) setSelectedLocation(res.data);
+    } finally {
+      setZoneDetailLoading(false);
+    }
   };
 
   const handleCloseZone = () => {
@@ -347,6 +255,7 @@ const Overview = () => {
         <ZoneDetailsSidebar
           zone={selectedZone}
           location={selectedLocation}
+          loading={zoneDetailLoading}
           selectedItemId={selectedItemId}
           onSelectItem={setSelectedItemId}
           onClearSelectedItem={() => setSelectedItemId(null)}

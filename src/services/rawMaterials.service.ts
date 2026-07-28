@@ -8,6 +8,12 @@ import {
   normalizeStageAssignees,
   type MasterApprovalStageAssignees,
 } from '../constants/masterApprovalStatus';
+import type { MasterCustomFieldDef } from '../lib/masterCustomFields';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
+import {
+  flattenRmQualitySpecRowsForPayload,
+  flattenRmQualitySubSpecRowsByPathForPayload,
+} from '../lib/rmQualitySpecVisibility';
 
 export interface RawMaterialFromApi {
   id: string;
@@ -164,16 +170,22 @@ export async function fetchRawMaterialsPage(opts: {
 /** API response for get-by-id includes form_data for edit. */
 export interface RawMaterialFullFromApi extends RawMaterialFromApi {
   form_data?: Record<string, unknown> | null;
+  /** Merged category/sub-category TECHNICAL-spec field defs live-resolved by the backend. */
+  resolved_technical_specs?: MasterCustomFieldDef[];
 }
 
 /**
  * Fetch a single raw material by id (includes form_data for edit).
  */
-export async function fetchRawMaterialById(id: string): Promise<{ record: RawMaterialRecord; form_data: Record<string, unknown> | null } | null> {
+export async function fetchRawMaterialById(id: string): Promise<{ record: RawMaterialRecord; form_data: Record<string, unknown> | null; resolved_technical_specs: MasterCustomFieldDef[] } | null> {
   try {
     const row = await api.get<RawMaterialFullFromApi>(`/api/v1/raw-materials/${id}`);
     if (!row) return null;
-    return { record: mapApiToRecord(row), form_data: row.form_data ?? null };
+    return {
+      record: mapApiToRecord(row),
+      form_data: row.form_data ?? null,
+      resolved_technical_specs: Array.isArray(row.resolved_technical_specs) ? row.resolved_technical_specs : [],
+    };
   } catch {
     return null;
   }
@@ -251,6 +263,24 @@ export async function createRawMaterial(payload: RawMaterialFormPayload): Promis
 export async function updateRawMaterial(id: string, payload: RawMaterialFormPayload): Promise<RawMaterialRecord> {
   const row = await api.put<RawMaterialFromApi>(`/api/v1/raw-materials/${id}`, payload);
   return mapApiToRecord(row);
+}
+
+/**
+ * Set THIS raw material's own quality specs (item-specific), one-way locking it to its own rows.
+ * Merges only the quality keys into form_data server-side. PATCH /api/v1/raw-materials/:id/quality-specs
+ */
+export async function setRawMaterialItemQualitySpecs(
+  id: string,
+  rows: QualitySpecTableRow[],
+  subRowsByPath?: Record<string, QualitySpecTableRow[]>
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    rmQualitySpecRows: flattenRmQualitySpecRowsForPayload(rows),
+  };
+  if (subRowsByPath) {
+    body.rmQualitySubSpecRowsByPath = flattenRmQualitySubSpecRowsByPathForPayload(subRowsByPath);
+  }
+  await api.patch(`/api/v1/raw-materials/${id}/quality-specs`, body);
 }
 
 /**

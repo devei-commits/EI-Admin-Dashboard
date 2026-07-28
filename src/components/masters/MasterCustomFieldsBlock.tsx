@@ -1,9 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { MasterSelectWithOptions } from './MasterSelectWithOptions';
-import { MasterAddCustomFieldModal } from './MasterAddCustomFieldModal';
+import { MasterAddCustomFieldModal, type TechnicalSpecAddScope } from './MasterAddCustomFieldModal';
 import { useOptionalMasterCustomFields } from '../../context/MasterCustomFieldsContext';
 import {
+  addFieldToTechnicalSpecRule,
+  type TechnicalSpecRuleEntityType,
+} from '../../services/technicalSpecRules.service';
+import {
+  addCustomField,
+  buildItemScopedTaxonomyKey,
   customFieldFormKey,
+  getCustomFieldsForModule,
+  normCustomFieldLabel,
+  removeCustomField,
   supportsCustomFieldButton,
   type MasterCustomFieldDef,
   type MasterCustomFieldModuleCode,
@@ -20,6 +29,27 @@ export type MasterCustomFieldsBlockProps = {
   errors: Record<string, string>;
   onChange: FormChangeHandler;
   onRemoveFieldValue?: (formKey: string) => void;
+  /**
+   * When set (TECH module only) the "+ Custom field" modal offers a category / sub-category /
+   * item scope picker, saving category & sub-category fields to the shared technical-spec rule.
+   * When omitted the block keeps its legacy item-only (localStorage) behavior.
+   */
+  technicalEntityType?: TechnicalSpecRuleEntityType;
+  /** Resolved category rule scope key (functionalCategory). */
+  categoryScopeKey?: string;
+  /** Resolved sub-category rule scope key (functionalSub) — '' when there is none. */
+  subCategoryKey?: string;
+  /** Display label for the category scope option. */
+  categoryScopeLabel?: string;
+  /** Display label for the sub-category scope option. */
+  subCategoryLabel?: string;
+  /**
+   * The loaded item's id/code. When set, item-scoped ("This item only") TECH fields are stored in
+   * a per-item bucket keyed by this id, so they persist with and load back for ONLY this item and
+   * never leak to other items in the same category. Empty for a brand-new (unsaved) item, where
+   * item-scoped fields fall back to the shared taxonomy bucket until the item is first saved.
+   */
+  itemScopeId?: string;
 };
 
 const inputClass =
@@ -147,14 +177,41 @@ export function MasterCustomFieldsBlock({
   errors,
   onChange,
   onRemoveFieldValue,
+  technicalEntityType,
+  categoryScopeKey = '',
+  subCategoryKey = '',
+  categoryScopeLabel,
+  subCategoryLabel,
+  itemScopeId = '',
 }: MasterCustomFieldsBlockProps): React.ReactElement | null {
   const customFieldsCtx = useOptionalMasterCustomFields();
   const [modalOpen, setModalOpen] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Scope picker is TECH-only and needs a resolved category — otherwise the block keeps its
+  // legacy item-only behavior (no picker, localStorage add via the custom-fields context).
+  const scopeEnabled =
+    moduleCode === 'TECH' && Boolean(technicalEntityType) && Boolean(categoryScopeKey.trim());
+  const allowSubCategoryScope = scopeEnabled && Boolean(subCategoryKey.trim());
+  // Per-item bucket for "item specific" TECH fields (see itemScopeId doc). Only used when we both
+  // have a scope picker (TECH) and a real item id — otherwise everything stays in the shared bucket.
+  const itemBucketKey =
+    scopeEnabled && customFieldsCtx && itemScopeId.trim()
+      ? buildItemScopedTaxonomyKey(customFieldsCtx.taxonomyKey, itemScopeId.trim())
+      : '';
 
   const fields = useMemo(() => {
     if (!customFieldsCtx) return [];
-    return customFieldsCtx.getFields(moduleCode);
-  }, [customFieldsCtx, moduleCode, customFieldsCtx?.version]);
+    const shared = customFieldsCtx.getFields(moduleCode);
+    if (!itemBucketKey) return shared;
+    // Merge the shared (category/sub-category) fields with this item's own private fields,
+    // deduping by id so a field never appears twice.
+    const itemOnly = getCustomFieldsForModule(customFieldsCtx.entity, itemBucketKey, moduleCode);
+    const byId = new Map<string, MasterCustomFieldDef>();
+    for (const f of [...shared, ...itemOnly]) byId.set(f.id, f);
+    return [...byId.values()];
+  }, [customFieldsCtx, moduleCode, itemBucketKey, customFieldsCtx?.version]);
 
   if (!customFieldsCtx || !supportsCustomFieldButton(moduleCode)) {
     return null;
@@ -162,8 +219,76 @@ export function MasterCustomFieldsBlock({
 
   const handleRemove = (field: MasterCustomFieldDef): void => {
     const formKey = customFieldFormKey(field.id);
-    customFieldsCtx.removeField(moduleCode, field.id);
+    // Route removal to whichever bucket actually holds the field so per-item fields don't linger.
+    if (itemBucketKey && getCustomFieldsForModule(customFieldsCtx.entity, itemBucketKey, moduleCode).some((f) => f.id === field.id)) {
+      removeCustomField(customFieldsCtx.entity, itemBucketKey, moduleCode, field.id);
+    } else {
+      customFieldsCtx.removeField(moduleCode, field.id);
+    }
     onRemoveFieldValue?.(formKey);
+  };
+
+  const openAddModal = (): void => {
+    setAddError(null);
+    setModalOpen(true);
+  };
+
+  const handleScopedSave = async (
+    field: MasterCustomFieldDef,
+    scope: TechnicalSpecAddScope
+  ): Promise<boolean> => {
+    setAddError(null);
+
+    if (scope === 'item') {
+      // Item-scoped fields belong to THIS item only. When we have a real item id, store them in the
+      // per-item bucket (persists with the item's form_data, loads back for only this item). Reject
+      // a duplicate label against everything already shown for the item (shared + item buckets).
+      if (itemBucketKey) {
+        const labelKey = normCustomFieldLabel(field.label).toLowerCase();
+        if (fields.some((f) => normCustomFieldLabel(f.label).toLowerCase() === labelKey)) {
+          setAddError('A field with this name already exists.');
+          return false;
+        }
+        addCustomField(customFieldsCtx.entity, itemBucketKey, moduleCode, field);
+        return true;
+      }
+      // Brand-new (unsaved) item — no id yet — fall back to the shared context bucket.
+      const result = customFieldsCtx.addField(moduleCode, field);
+      if (!result.ok) {
+        setAddError(
+          result.reason === 'duplicate' ? 'A field with this name already exists.' : 'Field name is required.'
+        );
+        return false;
+      }
+      return true;
+    }
+
+    if (!technicalEntityType) return false;
+    const catKey = categoryScopeKey.trim();
+    if (!catKey) {
+      setAddError('Select a category before adding a shared field.');
+      return false;
+    }
+    const subKey = scope === 'subCategory' ? subCategoryKey.trim() : '';
+    if (scope === 'subCategory' && !subKey) {
+      setAddError('Select a sub-category before adding a shared field.');
+      return false;
+    }
+
+    setSaving(true);
+    const result = await addFieldToTechnicalSpecRule(technicalEntityType, catKey, subKey, '', field);
+    setSaving(false);
+    if (result.ok === false) {
+      setAddError(
+        result.reason === 'duplicate'
+          ? `This field already exists for this ${scope === 'subCategory' ? 'sub-category' : 'category'}.`
+          : 'Could not save the shared field. Please try again.'
+      );
+      return false;
+    }
+    // Saved to the shared rule — also add locally so it displays immediately on this item.
+    customFieldsCtx.addField(moduleCode, field);
+    return true;
   };
 
   return (
@@ -172,12 +297,17 @@ export function MasterCustomFieldsBlock({
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Custom fields</p>
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={openAddModal}
           className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
         >
           + Custom field
         </button>
       </div>
+      {addError ? (
+        <p className="text-xs text-red-600" role="alert">
+          {addError}
+        </p>
+      ) : null}
       {fields.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {fields.map((field) => {
@@ -204,6 +334,11 @@ export function MasterCustomFieldsBlock({
         onClose={() => setModalOpen(false)}
         moduleCode={moduleCode}
         taxonomyLabel={taxonomyLabel}
+        onSave={scopeEnabled ? handleScopedSave : undefined}
+        allowSubCategoryScope={allowSubCategoryScope}
+        categoryScopeLabel={categoryScopeLabel}
+        subCategoryLabel={subCategoryLabel}
+        saving={saving}
       />
     </div>
   );

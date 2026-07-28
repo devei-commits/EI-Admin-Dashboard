@@ -74,6 +74,15 @@ export function buildMasterCustomFieldsTaxonomyKey(
   return `${cat || '_'}|${sub || '_'}|${subsub || '_'}`;
 }
 
+/**
+ * Item-scoped taxonomy key — a per-item bucket derived from the shared category taxonomy key plus
+ * the item's id/code. Used so "item specific" custom fields persist with (and load back for) ONLY
+ * that one item and never leak to other items sharing the same category / sub-category taxonomy.
+ */
+export function buildItemScopedTaxonomyKey(baseTaxonomyKey: string, itemId: string): string {
+  return `${baseTaxonomyKey}::item::${String(itemId || '').trim()}`;
+}
+
 export function customFieldFormKey(id: string): string {
   return `masterCustomField__${id}`;
 }

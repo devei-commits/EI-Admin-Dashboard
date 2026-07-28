@@ -5,6 +5,7 @@ import { visibleRmFieldsForModule } from '../../lib/rmMasterFieldVisibility';
 import { MasterSelectWithOptions } from '../masters/MasterSelectWithOptions';
 import { MasterCustomFieldsBlock } from '../masters/MasterCustomFieldsBlock';
 import { pmCustomFieldsModuleCode, supportsCustomFieldButton } from '../../lib/masterCustomFields';
+import type { TechnicalSpecRuleEntityType } from '../../services/technicalSpecRules.service';
 
 type FormChangeHandler = (
   e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -21,6 +22,14 @@ type RmSchemaFieldRendererProps = {
   primaryUomOptions?: readonly string[];
   taxonomyLabel?: string;
   onRemoveCustomFieldValue?: (formKey: string) => void;
+  /** Technical-spec-rule scope for the TECH "+ Custom field" scope picker (see MasterCustomFieldsBlock). */
+  technicalEntityType?: TechnicalSpecRuleEntityType;
+  technicalCategoryScopeKey?: string;
+  technicalSubCategoryKey?: string;
+  technicalCategoryScopeLabel?: string;
+  technicalSubCategoryLabel?: string;
+  /** Loaded item id/code — scopes "item specific" TECH fields to this item (see MasterCustomFieldsBlock). */
+  technicalItemScopeId?: string;
 };
 
 const inputClass =
@@ -37,6 +46,12 @@ const RmSchemaFieldRenderer: React.FC<RmSchemaFieldRendererProps> = ({
   primaryUomOptions,
   taxonomyLabel = '',
   onRemoveCustomFieldValue,
+  technicalEntityType,
+  technicalCategoryScopeKey,
+  technicalSubCategoryKey,
+  technicalCategoryScopeLabel,
+  technicalSubCategoryLabel,
+  technicalItemScopeId,
 }) => {
   const fields = visibleRmFieldsForModule(module, context, skipKeys);
   const customModuleCode = pmCustomFieldsModuleCode(module);
@@ -70,6 +85,12 @@ const RmSchemaFieldRenderer: React.FC<RmSchemaFieldRendererProps> = ({
           errors={errors}
           onChange={onChange}
           onRemoveFieldValue={onRemoveCustomFieldValue}
+          technicalEntityType={technicalEntityType}
+          categoryScopeKey={technicalCategoryScopeKey}
+          subCategoryKey={technicalSubCategoryKey}
+          categoryScopeLabel={technicalCategoryScopeLabel}
+          subCategoryLabel={technicalSubCategoryLabel}
+          itemScopeId={technicalItemScopeId}
         />
       ) : null}
     </div>

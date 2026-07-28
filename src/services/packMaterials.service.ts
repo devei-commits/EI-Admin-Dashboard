@@ -4,6 +4,12 @@
  */
 
 import { api } from '../lib/apiClient';
+import type { MasterCustomFieldDef } from '../lib/masterCustomFields';
+import type { QualitySpecTableRow } from '../types/qualitySpecTable';
+import {
+  flattenPmQualitySpecRowsForPayload,
+  flattenPmQualitySubSpecRowsByPathForPayload,
+} from '../lib/pmQualitySpecVisibility';
 
 export interface PackMaterialFromApi {
   id: string;
@@ -34,6 +40,8 @@ export interface PackMaterialFromApi {
   updated_at?: string;
   /** Full form snapshot (create/update) — includes bulk quality specs for PM. */
   form_data?: Record<string, unknown> | null;
+  /** Merged category TECHNICAL-spec field defs live-resolved by the backend. */
+  resolved_technical_specs?: MasterCustomFieldDef[];
   approval_assigned_user_id?: number | null;
   approval_assigned_display_name?: string | null;
   approval_stage_assignees?: Record<string, unknown> | null;
@@ -62,6 +70,7 @@ export interface PackMaterialRecord {
   pkgReturnable: boolean | null;
   pkgAssociateItems: string | null;
   form_data?: Record<string, unknown> | null;
+  resolvedTechnicalSpecs: MasterCustomFieldDef[];
   approvalAssignedUserId: number | null;
   approvalAssignedDisplayName: string | null;
   approvalStageAssignees: Record<string, unknown> | null;
@@ -98,6 +107,7 @@ function mapApiToRecord(row: PackMaterialFromApi): PackMaterialRecord {
     pkgReturnable: row.pkg_returnable ?? null,
     pkgAssociateItems: row.pkg_associate_items ?? null,
     form_data: row.form_data ?? null,
+    resolvedTechnicalSpecs: Array.isArray(row.resolved_technical_specs) ? row.resolved_technical_specs : [],
     approvalAssignedUserId: (() => {
       const raw = row.approval_assigned_user_id;
       if (raw == null || raw === '') return null;
@@ -289,6 +299,24 @@ export async function createPackMaterial(payload: CreatePackMaterialPayload): Pr
 export async function updatePackMaterial(id: string, payload: CreatePackMaterialPayload): Promise<PackMaterialRecord> {
   const row = await api.put<PackMaterialFromApi>(`/api/v1/pack-materials/${id}`, payload);
   return mapApiToRecord(row);
+}
+
+/**
+ * Set THIS pack material's own quality specs (item-specific), one-way locking it to its own rows.
+ * Merges only the quality keys into form_data server-side. PATCH /api/v1/pack-materials/:id/quality-specs
+ */
+export async function setPackMaterialItemQualitySpecs(
+  id: string,
+  rows: QualitySpecTableRow[],
+  subRowsByPath?: Record<string, QualitySpecTableRow[]>
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    pmQualitySpecRows: flattenPmQualitySpecRowsForPayload(rows),
+  };
+  if (subRowsByPath) {
+    body.pmQualitySubSpecRowsByPath = flattenPmQualitySubSpecRowsByPathForPayload(subRowsByPath);
+  }
+  await api.patch(`/api/v1/pack-materials/${id}/quality-specs`, body);
 }
 
 /**

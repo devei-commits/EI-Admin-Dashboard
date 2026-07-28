@@ -41,11 +41,22 @@ export interface OpenGrnItem {
   status: string;
 }
 
+export interface WarehouseLowStockItem {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  stockInHand: number;
+  whUnit: string;
+  reorderPt: number;
+}
+
 export interface WarehouseOverviewResponse {
   kpis: WarehouseOverviewKpi[];
   zones: WarehouseOverviewZone[];
   recentActivity: WarehouseRecentActivityItem[];
   openGrns: OpenGrnItem[];
+  lowStockItems: WarehouseLowStockItem[];
   alertCount: number;
 }
 

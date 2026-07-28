@@ -80,6 +80,8 @@ export type PmMasterSectionContentProps = {
   SelectField: React.FC<SelectFieldProps>;
   TextareaField: React.FC<TextareaFieldProps>;
   onRemoveCustomFieldValue?: (formKey: string) => void;
+  /** Loaded PM id — scopes "item specific" TECH custom fields to this one item. */
+  technicalItemScopeId?: string;
 };
 
 const str = (v: unknown): string => String(v ?? '');
@@ -126,6 +128,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     SelectField,
     TextareaField,
     onRemoveCustomFieldValue,
+    technicalItemScopeId,
   } = props;
 
   const fd = formData as Record<string, string | undefined>;
@@ -136,6 +139,12 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     onChange,
     taxonomyLabel: customFieldsTaxonomyLabel,
     onRemoveCustomFieldValue,
+    technicalEntityType: 'PM' as const,
+    technicalCategoryScopeKey: pmQualitySpecResolved.functionalCategory,
+    technicalSubCategoryKey: '',
+    technicalCategoryScopeLabel: pmQualitySpecResolved.categoryDisplayLabel || '—',
+    technicalSubCategoryLabel: pmQualitySpecResolved.functionalSub || '—',
+    technicalItemScopeId,
   };
 
   if (sectionIndex === 0) {

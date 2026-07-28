@@ -84,6 +84,8 @@ export type RmMasterSectionContentProps = {
   TextareaField: React.FC<TextareaFieldProps>;
   customFieldsTaxonomyLabel: string;
   onRemoveCustomFieldValue?: (formKey: string) => void;
+  /** Loaded RM id — scopes "item specific" TECH custom fields to this one item. */
+  technicalItemScopeId?: string;
 };
 
 const str = (v: unknown): string => String(v ?? '');
@@ -127,6 +129,7 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
     TextareaField,
     customFieldsTaxonomyLabel,
     onRemoveCustomFieldValue,
+    technicalItemScopeId,
   } = props;
 
   const fd = formData as Record<string, string | undefined>;
@@ -137,6 +140,12 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
     onChange,
     taxonomyLabel: customFieldsTaxonomyLabel,
     onRemoveCustomFieldValue,
+    technicalEntityType: 'RM' as const,
+    technicalCategoryScopeKey: rmQualitySpecResolved.functionalCategory,
+    technicalSubCategoryKey: rmQualitySpecResolved.functionalSub,
+    technicalCategoryScopeLabel: rmQualitySpecResolved.categoryDisplayLabel || '—',
+    technicalSubCategoryLabel: rmQualitySpecResolved.functionalSub || '—',
+    technicalItemScopeId,
   };
 
   if (sectionIndex === 0) {
