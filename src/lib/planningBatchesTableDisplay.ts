@@ -134,6 +134,8 @@ function buildMaterialStatusFromAvailability(
   // (AVAILABLE / PLANNING PENDING / PLANNED / UNDER PROCUREMENT / SHORTAGE).
   if (!avail) return { label: '—', sub: null, tone: 'neutral' };
   if (kind === 'RM') {
+    // Batch needs no RM at all (e.g. a PM-only / packaging-only batch): nothing to procure — it's ready.
+    if ((Number(avail.rmNeededTotalKg) || 0) <= 0.01) return { label: 'AVAILABLE', sub: 'no RM required', tone: 'ok' };
     if (avail.rmStartable) return { label: 'AVAILABLE', sub: 'stock covers batch', tone: 'ok' };
     if (avail.rmRemainingTotalKg > 0.01) {
       return {
@@ -144,6 +146,8 @@ function buildMaterialStatusFromAvailability(
     }
     return { label: 'UNDER PROCUREMENT', sub: 'procurement in flight', tone: 'warn' };
   }
+  // Batch needs no PM at all (e.g. an RM-only / bulk intermediate): nothing to procure — it's ready.
+  if ((Number(avail.pmNeededTotalUnits) || 0) <= 0) return { label: 'AVAILABLE', sub: 'no PM required', tone: 'ok' };
   if (avail.pmStartable) return { label: 'AVAILABLE', sub: 'stock covers batch', tone: 'ok' };
   if (avail.pmRemainingTotalUnits > 0) {
     return {

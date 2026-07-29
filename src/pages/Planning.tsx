@@ -2508,10 +2508,11 @@ function PlanningBatchesTab({
         </select>
       </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-        <div className="overflow-x-auto">
+        {/* Vertical scroll container so the column header can stay pinned (sticky) while rows scroll. */}
+        <div className="overflow-auto max-h-[calc(100vh-300px)]">
           <table className="w-full text-sm min-w-[1440px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-[11px]">
+            <thead className="sticky top-0 z-20 [&_th]:bg-gray-50">
+              <tr className="bg-gray-50 border-b border-gray-200 text-[11px] shadow-[0_1px_0_0_rgb(229,231,235)]">
                 <SortableTableTh label="Created" column="created" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Batch #" column="batchNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO #" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />

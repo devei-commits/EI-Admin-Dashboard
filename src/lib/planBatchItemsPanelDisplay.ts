@@ -6,7 +6,6 @@ import { formatQtyExact } from '../utils/formatQty';
 import {
   type PlanBatchMaterialStatus,
   planBatchStatusClass,
-  computeMaterialLineStatus,
 } from './planBatchMaterialLeadTime';
 import { parseSpecificGravity, rmPrimaryQtyToKg, specificGravityFromBomLine } from './rmUnitConversion';
 
@@ -87,13 +86,27 @@ export function findBatchItemsPanelInvolvedRow(
 export function computeBatchItemsPanelStatus(
   reqQty: number,
   free: number,
-  plannedQty: number,
+  _plannedQty: number,
   poQty: number,
   inTransit: number,
   underGrn: number,
   reserved = 0
 ): PlanBatchMaterialStatus {
-  return computeMaterialLineStatus({ reqQty, reserved, free, plannedQty, poQty, inTransit, underGrn });
+  // IMPORTANT: `plannedQty` here is the quantity allocated to THIS batch (demand), not supply — counting
+  // it made SIH-0 rows read AVAILABLE (the batch's own demand "covering" itself). It is intentionally
+  // ignored. Availability is judged from real stock + real procurement only:
+  //   AVAILABLE         → reserved + free stock + PO + in-transit + under-GRN ≥ requirement
+  //   UNDER PROCUREMENT → not covered, but a real procurement pipeline (PO / in-transit / under-GRN) exists
+  //   SHORTAGE          → not covered and nothing incoming
+  const EPS = 1e-6;
+  const req = Number(reqQty) || 0;
+  if (req <= EPS) return 'AVAILABLE';
+  const stock = Math.max(0, Number(reserved) || 0) + Math.max(0, Number(free) || 0);
+  const procurement =
+    Math.max(0, Number(poQty) || 0) + Math.max(0, Number(inTransit) || 0) + Math.max(0, Number(underGrn) || 0);
+  if (stock + procurement >= req - EPS) return 'AVAILABLE';
+  if (procurement > EPS) return 'UNDER PROCUREMENT';
+  return 'SHORTAGE';
 }
 
 export function formatBatchItemsPanelQty(value: number, unit: string): string {
