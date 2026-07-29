@@ -2507,10 +2507,11 @@ function PlanningBatchesTab({
         </select>
       </div>
       <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-        <div className="overflow-x-auto">
+        {/* Vertical scroll container so the column header can stay pinned (sticky) while rows scroll. */}
+        <div className="overflow-auto max-h-[calc(100vh-300px)]">
           <table className="w-full text-sm min-w-[1440px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-[11px]">
+            <thead className="sticky top-0 z-20 [&_th]:bg-gray-50">
+              <tr className="bg-gray-50 border-b border-gray-200 text-[11px] shadow-[0_1px_0_0_rgb(229,231,235)]">
                 <SortableTableTh label="Created" column="created" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Batch #" column="batchNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO #" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
@@ -4388,7 +4389,10 @@ const Planning = () => {
   const { data: itemsInvolvedRows = [], isLoading: itemsInvolvedLoading } = useQuery({
     queryKey: ['planning', 'items-involved'],
     queryFn: () => fetchItemsInvolved({ includeZeroRequired: true }),
+    // Also load on PIS Extracted: its Shortages badge + RM/PM Shortages KPI are derived from this data,
+    // and were stuck at 0 because the query wasn't enabled on that tab.
     enabled:
+      activeMainTab === 'pis-extracted' ||
       activeMainTab === 'items-involved' ||
       activeMainTab === 'batches' ||
       batchForDetailModal != null,
@@ -4543,38 +4547,49 @@ const Planning = () => {
 
   // Tab-specific stats — derived from API data (planning-extracted, items-involved, procurement)
   const tabStats = useMemo(() => {
-    const totalSOs = planningExtractedList.length;
+    // planningExtractedList is one row per product line (PI). Count distinct sales orders for the "SO"
+    // KPIs, and keep the PI count for the "products" KPIs.
+    const soKey = (r: unknown) => String((r as { soNumber?: string }).soNumber ?? '').trim().toUpperCase();
+    const isBomConfirmed = (r: unknown) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null;
+    const distinctSOs = new Set(planningExtractedList.map(soKey).filter(Boolean)).size; // unique sales orders
+    const totalPIs = planningExtractedList.length;                                       // product plans (PIs)
     const prodReleased = planningExtractedList.filter((r) => (r as { bomStatus?: string }).bomStatus === 'Production Released').length;
     const batchesRequired = planningExtractedList.reduce((s, r) => s + (r.batchesRequired ?? 0), 0);
-    const batchesConfirmed = planningExtractedList.filter((r) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null).length;
-    const notPlanned = Math.max(0, totalSOs - batchesConfirmed);
+    const bomsConfirmed = planningExtractedList.filter(isBomConfirmed).length;           // PIs with a confirmed BOM
+    // SOs still pending planning = distinct SOs that have at least one PI whose BOM isn't confirmed.
+    const notPlanned = new Set(
+      planningExtractedList.filter((r) => !isBomConfirmed(r)).map(soKey).filter(Boolean),
+    ).size;
     const itemShortages = itemsInvolvedRows.filter((r) => r.surplusShortage < 0).length;
-    const confirmedCount = planningExtractedList.filter((r) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null).length;
     const rmItems = itemsInvolvedRows.filter((r) => r.type === 'RM');
     const pmItems = itemsInvolvedRows.filter((r) => r.type === 'PM');
     const rmOk = rmItems.filter((r) => r.coverage >= 100).length;
     const rmShort = rmItems.filter((r) => r.coverage < 100).length;
     const pmOk = pmItems.filter((r) => r.coverage >= 100).length;
     const pmShort = pmItems.filter((r) => r.coverage < 100).length;
-    const prCount = procurementRequests.length;
+    // "PRs Raised · Pending procurement": open PRs only — exclude terminal/closed states.
+    const PR_CLOSED = new Set(['cancelled', 'canceled', 'rejected', 'closed', 'completed', 'received', 'delivered', 'fulfilled']);
+    const openPrs = procurementRequests.filter(
+      (pr) => !PR_CLOSED.has(String((pr as { status?: string }).status ?? '').trim().toLowerCase()),
+    ).length;
 
     return {
       'pis-extracted': {
-        totalSOs,
+        totalSOs: distinctSOs,
         prodReleased,
         shortages: itemShortages,
         batchesRequired,
-        batchesConfirmed,
+        batchesConfirmed: bomsConfirmed, // rendered under the "BOMs Confirmed" label
         notPlanned,
         soValue: 'N/A',
       },
       'items-involved': {
-        confirmedProducts: { value: confirmedCount, total: totalSOs },
+        confirmedProducts: { value: bomsConfirmed, total: totalPIs }, // products = PIs, not SOs
         rmItems: { value: rmItems.length, ok: rmOk, short: rmShort },
         pmItems: { value: pmItems.length, ok: pmOk, short: pmShort },
         rmShortages: rmShort,
         pmShortages: pmShort,
-        prsRaised: prCount,
+        prsRaised: openPrs,
       },
     };
   }, [planningExtractedList, itemsInvolvedRows, procurementRequests]);
@@ -7224,7 +7239,7 @@ const Planning = () => {
         {/* Status Badges */}
         <div className="flex gap-2 mb-4 flex-wrap">
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold">
-            {pisRows.length} Active SOs
+            {tabStats['pis-extracted'].totalSOs} Active SOs
           </div>
           <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['pis-extracted'].shortages} Shortages
@@ -7294,7 +7309,7 @@ const Planning = () => {
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PROD. RELEASED</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).prodReleased ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">Ready to plan</p>
+                <p className="text-xs text-gray-500 mt-1">Released to production</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
@@ -7310,9 +7325,9 @@ const Planning = () => {
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES CONFIRMED</p>
+                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BOMS CONFIRMED</p>
                 <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesConfirmed ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">BOM confirmed & planned</p>
+                <p className="text-xs text-gray-500 mt-1">Products with confirmed BOM</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
@@ -8529,7 +8544,12 @@ const Planning = () => {
                           <td className="px-3 py-2 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
                           <td className="px-3 py-2 text-right text-gray-700">{(Number(row.sizeKg) || 0).toLocaleString()} KG</td>
                           <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                            {Math.round(getItemRequiredInBatch(usedInModalItem, row)).toLocaleString()}
+                            {/* RM is decimal kg (0.195, 120.056) — Math.round wrongly floored sub-1 values to 0.
+                                Show full meaningful decimals for RM; keep whole pieces for PM. */}
+                            {formatQtyExact(
+                              getItemRequiredInBatch(usedInModalItem, row),
+                              usedInModalItem.itemType === 'PM' ? 'pcs' : 'kg',
+                            )}
                           </td>
                         </tr>
                       ))}

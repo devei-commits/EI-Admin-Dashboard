@@ -58,29 +58,28 @@ const batch: PlanningBatchAllRow = {
   pmLines: [],
 };
 
-describe('computeBatchItemsPanelStatus (§8.2)', () => {
-  it('marks AVAILABLE when reserved + procured covers the requirement', () => {
-    // reserved (last arg) 85 ≥ req 85 → fully covered
+describe('computeBatchItemsPanelStatus (real stock + procurement; batch-allocation plannedQty ignored)', () => {
+  it('marks AVAILABLE when reserved + free stock + procurement covers the requirement', () => {
+    // reserved (last arg) 85 ≥ req 85 → covered
     expect(computeBatchItemsPanelStatus(85, 0, 0, 0, 0, 0, 85)).toBe('AVAILABLE');
-    // reserved 30 + procured (poQty 10) = 40 ≥ req 35 → covered
+    // reserved 30 + PO 10 = 40 ≥ req 35 → covered
     expect(computeBatchItemsPanelStatus(35, 0, 0, 10, 0, 0, 30)).toBe('AVAILABLE');
+    // free stock 280 ≥ req 85 → covered (free counts toward availability)
+    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0, 0)).toBe('AVAILABLE');
   });
 
-  it('marks PLANNING PENDING when free stock could cover but nothing is reserved yet', () => {
-    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0, 0)).toBe('PLANNING PENDING');
-  });
-
-  it('marks PLANNED when reserved but still short and nothing procured', () => {
-    expect(computeBatchItemsPanelStatus(100, 0, 0, 0, 0, 0, 40)).toBe('PLANNED');
-  });
-
-  it('marks SHORTAGE when free stock is insufficient and no pipeline/reservation', () => {
+  it('IGNORES batch-allocation plannedQty (demand ≠ supply): SIH-0 with only plannedQty is SHORTAGE', () => {
+    // plannedQty 200 but no real stock/procurement → SHORTAGE (previously wrongly AVAILABLE/UNDER PROCUREMENT)
+    expect(computeBatchItemsPanelStatus(500, 0, 200, 0, 0, 0, 0)).toBe('SHORTAGE');
+    // reserved 40 but short of req 100, nothing incoming → SHORTAGE
+    expect(computeBatchItemsPanelStatus(100, 0, 0, 0, 0, 0, 40)).toBe('SHORTAGE');
+    // no stock, no pipeline → SHORTAGE
     expect(computeBatchItemsPanelStatus(25, 15, 0, 0, 0, 0, 0)).toBe('SHORTAGE');
   });
 
-  it('marks UNDER PROCUREMENT when pipeline exists but batch is still short', () => {
-    expect(computeBatchItemsPanelStatus(500, 0, 200, 0, 0, 0, 0)).toBe('UNDER PROCUREMENT');
+  it('marks UNDER PROCUREMENT when a real procurement pipeline exists but is still short', () => {
     expect(computeBatchItemsPanelStatus(500, 0, 0, 0, 100, 50, 0)).toBe('UNDER PROCUREMENT');
+    expect(computeBatchItemsPanelStatus(500, 0, 0, 120, 0, 0, 0)).toBe('UNDER PROCUREMENT');
   });
 });
 
