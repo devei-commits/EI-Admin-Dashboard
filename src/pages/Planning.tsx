@@ -2311,11 +2311,10 @@ function PlanningBatchesTab({
     setSortDirection('asc');
   };
 
-  const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => {
-    const code = String(row.batchCode ?? '').toLowerCase();
-    const isRework = code.includes('-rw-');
-    return row.sent === true || isRework;
-  });
+  // Show ALL planning batches — sent (In Mfg / QC / …) AND unsent drafts (status "Planned").
+  // Drafts must be visible here so the batches that Items Involved counts (unsent draft batches
+  // referencing a confirmed PI) resolve in this tab. Narrow with the status filter (All / Planned / …).
+  const rows = allBatches as PlanningBatchAllRow[];
   const dateFilteredRows = rows.filter((row) =>
     matchesDateRangeFilter(row.orderDate || row.createdAt || row.dueDate, dateFilter.from, dateFilter.to),
   );
@@ -2484,8 +2483,8 @@ function PlanningBatchesTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Sent planning batches — click column headers to sort. Use links to jump to Order Hub, Client Hub, Masters, Production, or Fulfillment.
-        Row click opens all batch items; RM/PM status opens the filtered items panel.
+        Planning batches (sent + planned drafts) — click column headers to sort. Use links to jump to Order Hub, Client Hub, Masters, Production, or Fulfillment.
+        Row click opens all batch items; RM/PM status opens the filtered items panel. Filter to <span className="font-medium">Planned</span> to see draft batches not yet sent to production.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <SearchInput
