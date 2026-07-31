@@ -34,7 +34,8 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
     win.print();
   };
 
-  const packingOps = [
+  // Prefer real batch data supplied by the caller; fall back to generic templates when absent.
+  const packingOps = Array.isArray(bpr.packingOps) && bpr.packingOps.length ? bpr.packingOps : [
     { step: 1, activity: 'Line clearance and cleaning verification', check: 'No remnants from previous batch' },
     { step: 2, activity: 'Set up filling machine as per batch size', check: 'Fill weight: ±2%' },
     { step: 3, activity: 'Bulk transfer from manufacturing to filling', check: 'Correct batch only' },
@@ -45,7 +46,7 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
     { step: 8, activity: 'Final count and handover to FG store', check: 'Signed delivery note' },
   ];
 
-  const qcChecks = [
+  const qcChecks = Array.isArray(bpr.qcChecks) && bpr.qcChecks.length ? bpr.qcChecks : [
     { check: 'Label – Batch No.', spec: 'Matches BMR batch no.' },
     { check: 'Label – Mfg Date', spec: 'Current month/year' },
     { check: 'Label – Exp Date', spec: '24 months from mfg' },

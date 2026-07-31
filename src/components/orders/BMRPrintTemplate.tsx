@@ -36,7 +36,8 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
     win.print();
   };
 
-  const mfgSteps = [
+  // Prefer real batch data supplied by the caller; fall back to generic templates when absent.
+  const mfgSteps = Array.isArray(bmr.mfgSteps) && bmr.mfgSteps.length ? bmr.mfgSteps : [
     { step: 1, desc: 'Add water to manufacturing vessel. Heat to 70-75°C', target: '70-75°C' },
     { step: 2, desc: 'Add RM phase A ingredients with slow mixing', target: 'As dispensed' },
     { step: 3, desc: 'Cool to 40°C. Add phase B ingredients', target: '40°C' },
@@ -45,7 +46,7 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
     { step: 6, desc: 'Transfer to storage vessel / BPR staging area', target: '' },
   ];
 
-  const batchSpecs = [
+  const batchSpecs = Array.isArray(bmr.batchSpecs) && bmr.batchSpecs.length ? bmr.batchSpecs : [
     { param: 'pH', spec: '5.0 – 6.5' },
     { param: 'Viscosity (cP)', spec: '4000 – 8000' },
     { param: 'Appearance', spec: 'White smooth cream' },
@@ -177,7 +178,7 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
                 <thead>
                   <tr>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Parameter</th>
-                    {/* <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th> */}
+                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Result</th>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Pass/Fail</th>
                     <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Analyst</th>
@@ -187,7 +188,7 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
                   {batchSpecs.map((s, i) => (
                     <tr key={i}>
                       <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.param}</td>
-                      {/* <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.spec}</td> */}
+                      <td style={{ border: '1px solid #333', padding: '5px 8px' }}>{s.spec}</td>
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>
                       <td style={{ border: '1px solid #333', padding: '5px 8px', minWidth: '80px' }}></td>

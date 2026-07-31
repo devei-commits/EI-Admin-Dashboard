@@ -19,6 +19,10 @@ export type RmMasterTypeaheadProps = {
   className?: string;
   /** When true, empty/no-match hint does not suggest free-text manual entry (picker-only flows). */
   requirePickFromList?: boolean;
+  /** Override the input's loading/idle placeholder wording (e.g. for non-RM reuse). */
+  loadingPlaceholder?: string;
+  /** Override the "no match" hint text (e.g. for non-RM reuse). */
+  noMatchText?: string;
 };
 
 type ListAnchor = { top: number; left: number; width: number };
@@ -39,6 +43,8 @@ export default function RmMasterTypeahead({
   placeholder = 'Search by name, internal code, or SKU…',
   className = '',
   requirePickFromList = false,
+  loadingPlaceholder = 'Loading raw materials…',
+  noMatchText,
 }: RmMasterTypeaheadProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -150,7 +156,7 @@ export default function RmMasterTypeahead({
         aria-autocomplete="list"
         autoComplete="off"
         disabled={disabled || loading}
-        placeholder={loading ? 'Loading raw materials…' : placeholder}
+        placeholder={loading ? loadingPlaceholder : placeholder}
         value={value}
         onChange={(e) => onInputChange(e.target.value)}
         onFocus={() => setOpen(true)}
@@ -199,7 +205,7 @@ export default function RmMasterTypeahead({
               style={portalStyle}
               className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-500 shadow"
             >
-              {requirePickFromList ? 'No matching raw materials.' : 'No match — text will be saved as manual INCI / name.'}
+              {noMatchText ?? (requirePickFromList ? 'No matching raw materials.' : 'No match — text will be saved as manual INCI / name.')}
             </p>,
             document.body
           )

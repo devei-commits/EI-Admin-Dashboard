@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
+import RmMasterTypeahead from '../components/RmMasterTypeahead';
+import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 import { fetchSwapHistory, fetchAffected, applySwap, fetchHistoryAffected } from '../services/universalSwap.service';
 import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom, HistoryAffectedResponse } from '../services/universalSwap.service';
 import { searchUsers } from '../services/user.service';
@@ -38,6 +40,13 @@ const UniversalSwap: React.FC = () => {
   const approverContainerRef = useRef<HTMLDivElement>(null);
 
   const [showPreview, setShowPreview] = useState(false);
+  // Filter for the "Apply To / Exempt" PR list — it can run to hundreds of rows for a common RM.
+  const [bomQuery, setBomQuery] = useState('');
+
+  // Searchable RM suggestions for the From/To pickers (replaces the long plain <select> lists).
+  const rmOptions = useMemo(() => buildRmTypeaheadOptions(rawMaterials), [rawMaterials]);
+  const [fromQuery, setFromQuery] = useState('');
+  const [toQuery, setToQuery] = useState('');
 
   const [historyModal, setHistoryModal] = useState<{ swap: SwapHistoryRecord; boms: AffectedBom[] } | null>(null);
   const [loadingHistoryModal, setLoadingHistoryModal] = useState(false);
@@ -123,6 +132,7 @@ const UniversalSwap: React.FC = () => {
   const toRawMaterialId = formData.toRawMaterialId ? String(formData.toRawMaterialId) : '';
 
   useEffect(() => {
+    setBomQuery('');
     if (!fromRawMaterialId) {
       setItemGroups([]);
       setBoms([]);
@@ -172,6 +182,20 @@ const UniversalSwap: React.FC = () => {
   const selectedGroups = itemGroups.filter((g) => g.selected);
   const selectedBoms = boms.filter((b) => b.selected);
   const affectedCount = selectedGroups.length + selectedBoms.length;
+
+  const filteredBoms = useMemo(() => {
+    const q = bomQuery.trim().toLowerCase();
+    if (!q) return boms;
+    return boms.filter((b) =>
+      [b.product_name, b.name, b.bom_code].some((v) => String(v ?? '').toLowerCase().includes(q))
+    );
+  }, [boms, bomQuery]);
+
+  /** Select / clear only the PRs currently visible under the filter, so a search narrows the bulk action. */
+  const setAllVisibleBoms = (selected: boolean) => {
+    const visibleIds = new Set(filteredBoms.map((b) => b.id));
+    setBoms((prev) => prev.map((b) => (visibleIds.has(b.id) ? { ...b, selected } : b)));
+  };
 
   const openHistoryModal = async (swap: SwapHistoryRecord) => {
     setLoadingHistoryModal(true);
@@ -237,6 +261,8 @@ const UniversalSwap: React.FC = () => {
         });
         setApproverQuery('');
         setApproverResults([]);
+        setFromQuery('');
+        setToQuery('');
         setShowPreview(false);
         if (fromRawMaterialId) {
           const affRes = await fetchAffected(fromRawMaterialId);
@@ -311,36 +337,34 @@ const UniversalSwap: React.FC = () => {
                 <label htmlFor="fromRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
                   SWAP FROM — RAW MATERIAL TO REPLACE
                 </label>
-                <select
-                  id="fromRawMaterialId"
-                  value={fromRawMaterialId}
-                  onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  disabled={loadingRms}
-                >
-                  <option value="">— Select raw material —</option>
-                  {rawMaterials.map((rm) => (
-                    <option key={rm.id} value={rm.id}>{rm.name || rm.code}</option>
-                  ))}
-                </select>
+                <RmMasterTypeahead
+                  options={rmOptions}
+                  loading={loadingRms}
+                  requirePickFromList
+                  placeholder="Search raw material by name, INCI, or code…"
+                  value={fromQuery || rmTypeaheadLabelForId(rawMaterials, fromRawMaterialId)}
+                  selectedId={fromRawMaterialId}
+                  onValueChange={setFromQuery}
+                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, fromRawMaterialId: opt.id })); setFromQuery(opt.label); }}
+                  onClearSelection={() => { setFormData((prev) => ({ ...prev, fromRawMaterialId: '' })); setFromQuery(''); }}
+                />
               </div>
 
               <div>
                 <label htmlFor="toRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
                   SWAP TO — REPLACEMENT RAW MATERIAL
                 </label>
-                <select
-                  id="toRawMaterialId"
-                  value={toRawMaterialId}
-                  onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  disabled={loadingRms}
-                >
-                  <option value="">— Select raw material —</option>
-                  {rawMaterials.map((rm) => (
-                    <option key={rm.id} value={rm.id}>{rm.name || rm.code}</option>
-                  ))}
-                </select>
+                <RmMasterTypeahead
+                  options={rmOptions}
+                  loading={loadingRms}
+                  requirePickFromList
+                  placeholder="Search raw material by name, INCI, or code…"
+                  value={toQuery || rmTypeaheadLabelForId(rawMaterials, toRawMaterialId)}
+                  selectedId={toRawMaterialId}
+                  onValueChange={setToQuery}
+                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, toRawMaterialId: opt.id })); setToQuery(opt.label); }}
+                  onClearSelection={() => { setFormData((prev) => ({ ...prev, toRawMaterialId: '' })); setToQuery(''); }}
+                />
               </div>
 
               <div>
@@ -455,7 +479,7 @@ const UniversalSwap: React.FC = () => {
 
           <div className="p-6">
             <p className="text-xs text-gray-500 mb-3">
-              Item groups and PR formulas (BOMs) that contain the &quot;From&quot; ingredient. Swap applies globally: selected groups + all listed PR formulas (ratio applied in each formula).
+              Item groups and PR formulas (BOMs) that contain the &quot;From&quot; ingredient. Everything is selected by default — untick anything that should be exempt. The swap applies to the selected groups and PR formulas only (ratio applied in each formula).
             </p>
 
             {loadingItems ? (
@@ -468,8 +492,10 @@ const UniversalSwap: React.FC = () => {
               <div className="space-y-4">
                 {itemGroups.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">Item Groups</p>
-                    <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">
+                      Item Groups <span className="text-gray-400 font-semibold">({itemGroups.length})</span>
+                    </p>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1 overscroll-contain">
                       {itemGroups.map((g) => {
                         const willBeAffected = g.selected;
                         return (
@@ -508,9 +534,42 @@ const UniversalSwap: React.FC = () => {
                 )}
                 {boms.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">PR formulas (BOMs)</p>
-                    <div className="space-y-2">
-                      {boms.map((bom) => {
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        PR formulas (BOMs){' '}
+                        <span className="text-gray-400 font-semibold">
+                          ({selectedBoms.length}/{boms.length} selected
+                          {bomQuery.trim() ? `, ${filteredBoms.length} shown` : ''})
+                        </span>
+                      </p>
+                      <div className="flex-1" />
+                      <input
+                        type="text"
+                        value={bomQuery}
+                        onChange={(e) => setBomQuery(e.target.value)}
+                        placeholder="Search PR / BOM code…"
+                        className="px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg w-48 focus:outline-hidden focus:ring-2 focus:ring-amber-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAllVisibleBoms(true)}
+                        className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAllVisibleBoms(false)}
+                        className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {filteredBoms.length === 0 ? (
+                      <p className="text-sm text-gray-500 py-3">No PR formulas match &quot;{bomQuery}&quot;.</p>
+                    ) : (
+                    <div className="space-y-2 max-h-[22rem] overflow-y-auto pr-1 overscroll-contain">
+                      {filteredBoms.map((bom) => {
                         const willBeAffected = bom.selected;
                         return (
                           <div
@@ -551,6 +610,7 @@ const UniversalSwap: React.FC = () => {
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 )}
               </div>

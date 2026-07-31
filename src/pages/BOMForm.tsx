@@ -39,7 +39,7 @@ import {
 import { PrTeamSectionGate } from '../components/masters/PrTeamSectionGate';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import PmMasterTypeahead from '../components/PmMasterTypeahead';
-import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
+import { buildRmTypeaheadOptions, rmTypeaheadLabelForId, type RmTypeaheadOption } from '../lib/rmTypeahead';
 import { buildPmTypeaheadOptions, pmTypeaheadLabelForId } from '../lib/pmTypeahead';
 import { fetchRawMaterialsForPicker, type RawMaterialRecord } from '../services/rawMaterials.service';
 import { fetchPackMaterialsForPicker, type PackMaterialRecord } from '../services/packMaterials.service';
@@ -47,9 +47,11 @@ import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.se
 import {
   createPRRegistration,
   fetchPRProductDetail,
+  fetchPRProducts,
   updatePRProduct,
   type PackBomRow,
   type PRProductDetail,
+  type PRProductListItem,
   type PrRecordTypeForm,
 } from '../services/productsMaster.service';
 import {
@@ -153,6 +155,11 @@ interface BOMFormState {
   bomAssociateItems: string;
   /** Required at Step 1: must be explicitly set to 'Yes' or 'No' (Zoho / reporting). */
   bomCompositeItem: '' | 'Yes' | 'No';
+  /**
+   * Kit product: the Formula BOM lists component PRs (sub-products) instead of raw materials,
+   * and the Pack BOM holds the kit's own outer packaging.
+   */
+  isKit: boolean;
 
   // Formula BOM Tab
   formulaIngredients: Array<{
@@ -168,6 +175,10 @@ interface BOMFormState {
     /** When set, line is an item group (swap among members at Planning). */
     itemGroupId?: string;
     itemGroupName?: string;
+    /** Kit component: the referenced sub-PR product id / code, and how many finished units per kit. */
+    componentProductId?: string;
+    componentProductCode?: string;
+    unitsPerKit?: string;
   }>;
 
   /** Per 1 finished SKU unit (separate from formula % w/w). */
@@ -263,6 +274,7 @@ function emptyBomForm(): BOMFormState {
     bomReturnable: false,
     bomAssociateItems: '',
     bomCompositeItem: 'Yes',
+    isKit: false,
     formulaIngredients: [],
     skuBomLines: [],
     skuBomLimitQty: '',
@@ -303,6 +315,18 @@ function parseFormulaIngredientSg(raw: string): number | null {
 }
 
 function bomFormToRmLines(fd: BOMFormState) {
+  if (fd.isKit) {
+    // Kit formula lines reference sub-PRs (finished products), not raw materials.
+    return fd.formulaIngredients
+      .filter((ing) => String(ing.componentProductId ?? '').trim() !== '')
+      .map((ing) => ({
+        type: 'PR' as const,
+        product_id: parseInt(String(ing.componentProductId), 10),
+        product_code: ing.componentProductCode || ing.rmCode || '',
+        name: ing.inciName || '',
+        units_per_kit: parseFloat(String(ing.unitsPerKit ?? '').replace(/[^\d.-]/g, '')) || 0,
+      }));
+  }
   return fd.formulaIngredients.map((ing) => {
     const sg = parseFormulaIngredientSg(ing.specificGravity);
     const isGroup = ing.itemGroupId != null && String(ing.itemGroupId).trim() !== '';
@@ -326,6 +350,7 @@ function bomFormToRmLines(fd: BOMFormState) {
 }
 
 function bomFormToSkuRmLines(fd: BOMFormState) {
+  if (fd.isKit) return []; // Kits have no per-unit RM SKU BOM — formula lines are sub-PR refs.
   return fd.skuBomLines.map((row) => ({
     inci_name: row.inciName,
     rm_code: row.rmCode || '',
@@ -453,6 +478,7 @@ function buildPrRegistrationBody(fd: BOMFormState): Record<string, unknown> {
     bom_returnable: fd.bomReturnable,
     bom_associate_items: fd.bomAssociateItems?.trim() || null,
     bom_composite_item: fd.bomCompositeItem === 'Yes',
+    is_kit: fd.isKit,
     status: fd.masterApprovalStatus || 'Draft',
     lifecycle_status: fd.masterApprovalStatus || 'Draft',
     pr_qc_group: fd.prQcGroup || null,
@@ -553,6 +579,7 @@ function buildPrUpdateBody(
       dermatologically_tested: fd.dermatologicallyTested || null,
       cruelty_free_vegan: fd.crueltyFreeVegan || null,
       bom_composite_item: fd.bomCompositeItem === 'Yes',
+      is_kit: fd.isKit,
       // Explicit "did the user actually touch this section" signal computed client-side by
       // diffing the current form state against the pristine as-loaded snapshot (both sides in
       // the same BOMFormState shape). The backend prefers this over its own value-diff against
@@ -567,9 +594,32 @@ function buildPrUpdateBody(
 }
 
 function productDetailToBomForm(p: PRProductDetail): BOMFormState {
+  const isKit = !!(p as unknown as { is_kit?: boolean }).is_kit;
   const formulaIngredients: BOMFormState['formulaIngredients'] = [];
   (p.formulaBom || []).forEach((phase, pi) => {
     (phase.ingredients || []).forEach((ing, ii) => {
+      if (isKit) {
+        // Kit formula line references a sub-PR (finished product), not a raw material.
+        const kitIng = ing as unknown as {
+          product_id?: number | string;
+          product_code?: string;
+          name?: string;
+          units_per_kit?: number | string;
+        };
+        formulaIngredients.push({
+          id: `fi-${pi}-${ii}`,
+          inciName: kitIng.name || '',
+          phase: phase.phase || '',
+          percentWW: '',
+          uom: 'UNIT',
+          specificGravity: '1',
+          componentProductId:
+            kitIng.product_id != null ? String(kitIng.product_id) : undefined,
+          componentProductCode: kitIng.product_code || '',
+          unitsPerKit: kitIng.units_per_kit != null ? String(kitIng.units_per_kit) : '',
+        });
+        return;
+      }
       formulaIngredients.push({
         id: `fi-${pi}-${ii}`,
         rawMaterialId: ing.raw_material_id != null ? String(ing.raw_material_id) : undefined,
@@ -708,6 +758,7 @@ function productDetailToBomForm(p: PRProductDetail): BOMFormState {
   const base: BOMFormState = {
     ...emptyBomForm(),
     bomCompositeItem,
+    isKit,
     productName: p.product_name || '',
     category,
     productForm:
@@ -819,6 +870,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [rawMaterials, setRawMaterials] = useState<RawMaterialRecord[]>([]);
   const [packMaterials, setPackMaterials] = useState<PackMaterialRecord[]>([]);
   const [itemGroupsRm, setItemGroupsRm] = useState<ItemGroupRecord[]>([]);
+  /** PR products available as kit components (loaded lazily; only used when the product is a kit). */
+  const [kitProducts, setKitProducts] = useState<PRProductListItem[]>([]);
   const [masterLoading, setMasterLoading] = useState(true);
   const [selectedRmId, setSelectedRmId] = useState<string>('');
   const [selectedItemGroupId, setSelectedItemGroupId] = useState<string>('');
@@ -998,6 +1051,58 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       cancelled = true;
     };
   }, [addToast]);
+
+  // Load the PR product list for the kit-component picker only when the product is a kit.
+  useEffect(() => {
+    if (!formData.isKit || kitProducts.length > 0) return;
+    let cancelled = false;
+    fetchPRProducts()
+      .then((res) => {
+        if (cancelled) return;
+        setKitProducts(res.success && res.data ? res.data : []);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!cancelled) addToast('error', 'Failed to load PR products for kit components');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.isKit, kitProducts.length, addToast]);
+
+  // Searchable typeahead options for the kit component picker (reuses RmMasterTypeahead).
+  const kitProductTypeaheadOptions = useMemo<RmTypeaheadOption[]>(() => {
+    const rows = kitProducts
+      .filter((p) => String(p.product_id) !== String(effectiveProductId ?? ''))
+      .map((p) => {
+        const id = String(p.product_id);
+        const code = String(p.product_code || p.zoho_sku_code || '').trim();
+        const name = String(p.product_name || '').trim();
+        const label = code ? `${code} — ${name}` : name || id;
+        const haystack = [code, p.zoho_sku_code, name, id]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return { id, code, label, haystack, disabled: false };
+      });
+    rows.sort((a, b) => a.label.localeCompare(b.label));
+    return rows;
+  }, [kitProducts, effectiveProductId]);
+
+  const kitProductById = useMemo(() => {
+    const m = new Map<string, PRProductListItem>();
+    kitProducts.forEach((p) => m.set(String(p.product_id), p));
+    return m;
+  }, [kitProducts]);
+
+  const kitLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    kitProductTypeaheadOptions.forEach((o) => m.set(o.id, o.label));
+    return m;
+  }, [kitProductTypeaheadOptions]);
+
+  /** Per-row search text for the kit component typeaheads (keyed by formula row id). */
+  const [kitRowQueries, setKitRowQueries] = useState<Record<string, string>>({});
 
   const rawMaterialById = useMemo(() => {
     const m = new Map<string, RawMaterialRecord>();
@@ -1959,18 +2064,27 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       }, 0);
       return null;
     }
-    const rmCount = countMeaningfulFormulaRmLines(bomFormToRmLines(formData));
-    if (rmCount < 1) {
-      addToast('error', 'At least one Formula BOM line is required. Add ingredients in Formula BOM.');
-      setCurrentStage(1);
-      return null;
-    }
-    if (formulaPercentTotal > 100.001) {
-      const msg = `Formula BOM % w/w total cannot exceed 100% (current ${formulaPercentTotal.toFixed(2)}%).`;
-      setErrors({ formulaPercentTotal: `Step 2 — ${msg}` });
-      addToast('error', `Step 2 — ${msg}`);
-      setCurrentStage(1);
-      return null;
+    if (formData.isKit) {
+      // Kit formula lines are component PRs; bomFormToRmLines already drops rows without a product_id.
+      if (bomFormToRmLines(formData).length < 1) {
+        addToast('error', 'At least one component PR is required. Add sub-products in Formula BOM.');
+        setCurrentStage(1);
+        return null;
+      }
+    } else {
+      const rmCount = countMeaningfulFormulaRmLines(bomFormToRmLines(formData));
+      if (rmCount < 1) {
+        addToast('error', 'At least one Formula BOM line is required. Add ingredients in Formula BOM.');
+        setCurrentStage(1);
+        return null;
+      }
+      if (formulaPercentTotal > 100.001) {
+        const msg = `Formula BOM % w/w total cannot exceed 100% (current ${formulaPercentTotal.toFixed(2)}%).`;
+        setErrors({ formulaPercentTotal: `Step 2 — ${msg}` });
+        addToast('error', `Step 2 — ${msg}`);
+        setCurrentStage(1);
+        return null;
+      }
     }
     const pmCount = countMeaningfulPackLines(bomFormToPmLines(formData));
     if (pmCount < 1) {
@@ -2516,6 +2630,26 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </p>
                   )}
                 </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="isKit" className="block text-sm font-medium text-gray-700 mb-1">
+                    Kit Item
+                  </label>
+                  <select
+                    id="isKit"
+                    value={formData.isKit ? 'Yes' : 'No'}
+                    onChange={(e) => handleInputChange('isKit', e.target.value === 'Yes')}
+                    disabled={lockPrimaryFields}
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-gray-300 ${
+                      lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="No">No — Formulated product</option>
+                    <option value="Yes">Yes — Kit of sub-products (PRs)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    A kit's Formula BOM lists component PRs; its Pack BOM is the kit's outer packaging.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -2619,6 +2753,142 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           </div>
         );
       case 1:
+        if (formData.isKit) {
+          return (
+            <PrTeamSectionGate canEdit={prCanEdit('formulaBom')}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-blue-700 mb-3">
+                    FORMULA BOM — KIT COMPONENTS (PRs)
+                  </label>
+                  <p className="text-xs text-slate-600 mb-3">
+                    This is a <strong>kit</strong>. List the component PRs (finished sub-products) and how
+                    many finished units of each go into one kit. In Items Involved, each component expands
+                    into its own RM &amp; PM; the kit's outer packaging is set in the Pack BOM tab.
+                  </p>
+                  <div className="space-y-2">
+                    {formData.formulaIngredients.map((ing, i) => (
+                      <div
+                        key={ing.id}
+                        className="grid grid-cols-12 gap-2 items-center rounded border border-slate-200 bg-white p-2 text-sm"
+                      >
+                        <div className="col-span-1 text-slate-400 font-mono">{i + 1}</div>
+                        <div className="col-span-7">
+                          <RmMasterTypeahead
+                            options={kitProductTypeaheadOptions}
+                            loading={masterLoading}
+                            requirePickFromList
+                            loadingPlaceholder="Loading PRs…"
+                            noMatchText="No matching PR."
+                            placeholder="Search PR by name or code…"
+                            value={
+                              kitRowQueries[ing.id] ??
+                              (ing.componentProductId
+                                ? kitLabelById.get(String(ing.componentProductId)) ?? ing.inciName
+                                : '')
+                            }
+                            selectedId={ing.componentProductId ?? ''}
+                            onValueChange={(next) =>
+                              setKitRowQueries((prev) => ({ ...prev, [ing.id]: next }))
+                            }
+                            onSelect={(opt) => {
+                              const prod = kitProductById.get(opt.id);
+                              setFormData((prev) => ({
+                                ...prev,
+                                formulaIngredients: prev.formulaIngredients.map((it) =>
+                                  it.id === ing.id
+                                    ? {
+                                        ...it,
+                                        componentProductId: opt.id,
+                                        componentProductCode: opt.code,
+                                        inciName: prod?.product_name ?? opt.label,
+                                      }
+                                    : it
+                                ),
+                              }));
+                              setKitRowQueries((prev) => ({ ...prev, [ing.id]: opt.label }));
+                            }}
+                            onClearSelection={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                formulaIngredients: prev.formulaIngredients.map((it) =>
+                                  it.id === ing.id
+                                    ? { ...it, componentProductId: undefined, componentProductCode: '' }
+                                    : it
+                                ),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Units / kit"
+                            value={ing.unitsPerKit ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setFormData((prev) => ({
+                                ...prev,
+                                formulaIngredients: prev.formulaIngredients.map((it) =>
+                                  it.id === ing.id ? { ...it, unitsPerKit: v } : it
+                                ),
+                              }));
+                            }}
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white font-mono"
+                          />
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                formulaIngredients: prev.formulaIngredients.filter((it) => it.id !== ing.id),
+                              }))
+                            }
+                            className="text-red-500 hover:text-red-700 text-xs px-1"
+                            aria-label="Remove component"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {formData.formulaIngredients.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic px-1">No kit components added yet.</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        formulaIngredients: [
+                          ...prev.formulaIngredients,
+                          {
+                            id: `kit-${Date.now()}-${prev.formulaIngredients.length}`,
+                            inciName: '',
+                            phase: '',
+                            percentWW: '',
+                            uom: 'UNIT',
+                            specificGravity: '1',
+                            componentProductId: undefined,
+                            componentProductCode: '',
+                            unitsPerKit: '',
+                          },
+                        ],
+                      }))
+                    }
+                    className="mt-3 px-3 py-1.5 text-sm rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    + Add component PR
+                  </button>
+                </div>
+              </div>
+            </PrTeamSectionGate>
+          );
+        }
         return (
             <PrTeamSectionGate canEdit={prCanEdit('formulaBom')}>
             <div className="space-y-4">

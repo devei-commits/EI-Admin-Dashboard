@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Calendar,
   Check,
+  ClipboardList,
   Eye,
   FlaskConical,
   Info,
@@ -58,6 +59,11 @@ export interface BatchesViewBatch {
   fillBatchAccepted: boolean | null;
   fgBatchAccepted: boolean | null;
   remarks: string;
+  /** Batch priority (LOW | MEDIUM | HIGH) — drives ordering + chip. */
+  priority?: string;
+  /** BMR/BPR document QA review — gates Dispense RM until both 'approved'. */
+  bmrQaStatus?: string;
+  bprQaStatus?: string;
   muDispensingBundleId?: string | null;
 }
 
@@ -135,7 +141,6 @@ export function BatchesView<T extends BatchesViewBatch>({
     canUnreservePmForBatch,
     canReservePmForBatch,
     canShowRescheduleFooterButton,
-    canAdjustBatchSize,
     Badge,
     Btn,
   } = helpers;
@@ -212,6 +217,13 @@ export function BatchesView<T extends BatchesViewBatch>({
           (b.productName && b.productName.toLowerCase().includes(searchLower)),
       )
     : productFiltered;
+
+  // Order by priority (HIGH → MEDIUM → LOW); stable sort keeps the prior order within a priority.
+  const priorityRank = (p?: string): number => {
+    const v = String(p ?? 'MEDIUM').toUpperCase();
+    return v === 'HIGH' ? 3 : v === 'LOW' ? 1 : 2;
+  };
+  const sorted = [...filtered].sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority));
 
   const failedCount = batches.filter(
     (b) => b.bmrStatus === 'qc_failed' || b.bprStatus === 'qc_failed',
@@ -325,7 +337,7 @@ export function BatchesView<T extends BatchesViewBatch>({
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {filtered.map((b) => {
+            {sorted.map((b) => {
               const colors = batchColorMap[b.color] || batchColorMap.teal;
               const stageDateAlert = getBatchStageDateAlert(b);
               const lifecycleStage = batchLifecycleDisplayForBatch(b, outboundMrns);
@@ -363,11 +375,19 @@ export function BatchesView<T extends BatchesViewBatch>({
                       </div>
                       <div className="text-xs text-gray-600 font-medium">{b.productName}</div>
                     </div>
-                    {isFailed ? (
-                      <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed</Badge>
-                    ) : (
-                      <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{lifecycleLabel}</Badge>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {(() => {
+                        const pr = String(b.priority ?? 'MEDIUM').toUpperCase();
+                        if (pr === 'HIGH') return <Badge className="bg-rose-100 text-rose-700 border border-rose-300">HIGH</Badge>;
+                        if (pr === 'LOW') return <Badge className="bg-slate-100 text-slate-500 border border-slate-300">LOW</Badge>;
+                        return null;
+                      })()}
+                      {isFailed ? (
+                        <Badge className="bg-red-100 text-red-700 border border-red-300">QC Failed</Badge>
+                      ) : (
+                        <Badge className={`${colors.bg} ${colors.text} border ${colors.border}`}>{lifecycleLabel}</Badge>
+                      )}
+                    </div>
                   </div>
                   {isFailed && b.remarks && (
                     <div className="flex items-center gap-1.5 px-2.5 py-1.5 mb-2.5 rounded-lg bg-red-100/60 border border-red-200 text-[10px] text-red-700">
@@ -481,11 +501,9 @@ export function BatchesView<T extends BatchesViewBatch>({
                         Reschedule
                       </Btn>
                     )}
-                    {canAdjustBatchSize(b) && (
-                      <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('adjustBatch', b)}>
-                        Adjust size
-                      </Btn>
-                    )}
+                    <Btn color="orange" icon={<Settings size={11} />} onClick={() => onAction('editBatch', b)}>
+                      Edit
+                    </Btn>
                     {(b.bmrStatus === 'scheduled' || b.bmrStatus === 'rm_reserved') &&
                       b.rmReserved &&
                       !effectiveRm &&
@@ -522,11 +540,22 @@ export function BatchesView<T extends BatchesViewBatch>({
                         b.bmrStatus === 'dispensing' ||
                         b.bmrStatus === 'rm_reserved' ||
                         b.bmrStatus === 'scheduled') &&
-                      (!openRmMtr || mtrAllRmLinesReceivedAtMu(openRmMtr)) && (
-                        <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>
-                          Dispense RM
-                        </Btn>
-                      )}
+                      (!openRmMtr || mtrAllRmLinesReceivedAtMu(openRmMtr)) &&
+                      (!(b.bmrQaStatus === 'approved' && b.bprQaStatus === 'approved')
+                        ? (
+                          <Btn color="gray" icon={<ClipboardList size={11} />} onClick={() => onAction('reviewBmrBpr', b)}>
+                            Initiate Dispensing (QA pending)
+                          </Btn>
+                        ) : b.bmrStatus !== 'dispensing'
+                          ? (
+                            <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('initiateDispensing', b)}>
+                              Initiate Dispensing
+                            </Btn>
+                          ) : (
+                            <Btn color="purple" icon={<Scale size={11} />} onClick={() => onAction('dispenseRM', b)}>
+                              Dispense RM
+                            </Btn>
+                          ))}
                     {b.bmrStatus === 'in_production' && (
                       <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>
                         Bulk QC

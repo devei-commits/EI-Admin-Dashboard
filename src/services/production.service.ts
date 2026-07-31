@@ -68,6 +68,19 @@ export interface DispensingItem {
   trayContainer?: string;
   traySlot?: string;
   dispensedAt?: string;
+  /** RM master id (for the FEFO pick lookup). */
+  rawMaterialId?: number;
+  // Two-stage pick → dispense (Phase 1). Stored in dispensing_rm JSON.
+  pickedPackId?: number;
+  pickedPackNo?: string;
+  pickedPackQty?: number;
+  pickedZone?: string;
+  pickedRack?: string;
+  vendorBatch?: string;
+  mfgDate?: string;
+  expDate?: string;
+  leftoverQty?: number;
+  dispensedBy?: string;
 }
 
 export interface QCSpec {
@@ -109,6 +122,19 @@ export interface BatchRow {
   bulkYield: number | null; fillYield: number | null; fgYield: number | null;
   bulkBatchAccepted: boolean | null; fillBatchAccepted: boolean | null; fgBatchAccepted: boolean | null;
   qcSpecs: QcSpecsStored; remarks: string; dueDate: string;
+  /** Batch priority (LOW | MEDIUM | HIGH) — drives Batches-view ordering. */
+  priority?: string;
+  /** Free-text need-by note shown to the Shift Lead (distinct from `remarks`). */
+  needByNote?: string;
+  /** BMR/BPR document QA review — 'pending' | 'approved' (gates Initiate Dispensing). */
+  bmrQaStatus?: string;
+  bmrQaApprovedBy?: string;
+  bmrQaReviewedAt?: string;
+  bprQaStatus?: string;
+  bprQaApprovedBy?: string;
+  bprQaReviewedAt?: string;
+  /** IPQA pre-production gate (verifications + production confirms). */
+  preProductionGate?: PreProductionGate | null;
   compatibleVessels?: string[]; compatibleFillLines?: string[]; compatiblePackLines?: string[];
   /** Required vessel volume in liters (from BOM specific gravity + batch size). */
   requiredVolumeLiters?: number | null;
@@ -268,9 +294,60 @@ export interface BatchBOMResponse {
     source: 'planning_batch' | 'product_bom';
     /** When source is planning_batch, use this for RM/PM required (planned batch size in kg). */
     batchSizeKg?: number | null;
+    /** Bulk kg per finished unit (for the Edit Batch modal's units<->kg conversion). */
+    kgPerUnit?: number | null;
+    /** Current batch size expressed in finished units (= round(batchSizeKg / kgPerUnit)). */
+    batchUnits?: number | null;
+    /** SO customer name, for the modal's read-only header. */
+    client?: string;
     qcReference?: QcReferencePayload;
+    /** Process steps for BMR/BPR docs, split by step_kind. */
+    processSteps?: {
+      production: Array<Record<string, unknown>>;
+      packaging: Array<Record<string, unknown>>;
+    };
   };
   error?: string;
+}
+
+/** IPQA pre-production gate: verifications (IPQA-marked) + confirms (production-lead). Missing key = pending. */
+export interface PreProductionGate {
+  verifications?: Record<string, { status?: 'pass' | 'fail'; by?: string; at?: string }>;
+  confirms?: Record<string, { by?: string; at?: string }>;
+}
+
+/** IPQA marks a pre-production verification (quality.approve gated). Returns the updated batch row. */
+export async function ipqaVerifyBatch(batchPk: number, key: string, status: 'pass' | 'fail'): Promise<{ success: boolean; data?: BatchRow; error?: string }> {
+  try {
+    const res = await api.post<BatchRow>(`${BASE}/batches/${batchPk}/ipqa-verify`, { key, status });
+    return { success: true, data: ((res as { data?: BatchRow })?.data ?? res) as BatchRow };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return { success: false, error: err?.body?.error || (e instanceof Error ? e.message : 'Verification failed') };
+  }
+}
+
+/** Production lead ticks a pre-production confirmation. Returns the updated batch row. */
+export async function productionConfirmBatch(batchPk: number, key: string): Promise<{ success: boolean; data?: BatchRow; error?: string }> {
+  try {
+    const res = await api.post<BatchRow>(`${BASE}/batches/${batchPk}/production-confirm`, { key });
+    return { success: true, data: ((res as { data?: BatchRow })?.data ?? res) as BatchRow };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return { success: false, error: err?.body?.error || (e instanceof Error ? e.message : 'Confirmation failed') };
+  }
+}
+
+/** QA sign-off on a batch's BMR or BPR document (quality.approve gated). Returns the updated batch row. */
+export async function qaApproveBatchDoc(batchPk: number, doc: 'bmr' | 'bpr'): Promise<{ success: boolean; data?: BatchRow; error?: string }> {
+  try {
+    const res = await api.post<BatchRow>(`${BASE}/batches/${batchPk}/qa-approve`, { doc });
+    const data = ((res as { data?: BatchRow })?.data ?? res) as BatchRow;
+    return { success: true, data };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return { success: false, error: err?.body?.error || (e instanceof Error ? e.message : 'QA approval failed') };
+  }
 }
 
 export interface BatchDispensingMuStockResponse {
@@ -320,9 +397,9 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
   try {
     const path = `${BASE}/batches/${batchPk}/bom`;
     console.log('[BOM-DEBUG] Dashboard calling GET', path, '(production_batch id =', batchPk, ')');
-    const res = await api.get<{ success: boolean; data: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null } }>(path);
+    const res = await api.get<{ success: boolean; data: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null; kgPerUnit?: number | null; batchUnits?: number | null; client?: string; qcReference?: QcReferencePayload; processSteps?: { production: Array<Record<string, unknown>>; packaging: Array<Record<string, unknown>> } } }>(path);
     // Backend returns { success, data } directly; api.get returns that same object (not wrapped in .data).
-    const body = res as { success?: boolean; data?: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null } };
+    const body = res as { success?: boolean; data?: { rmLines: unknown[]; pmLines: unknown[]; source: string; batchSizeKg?: number | null; kgPerUnit?: number | null; batchUnits?: number | null; client?: string; qcReference?: QcReferencePayload; processSteps?: { production: Array<Record<string, unknown>>; packaging: Array<Record<string, unknown>> } } };
     if (body?.success && body?.data) {
       const qc = body.data.qcReference;
       const qcReference: QcReferencePayload | undefined =
@@ -340,7 +417,11 @@ export async function fetchBOMByBatchId(batchPk: number): Promise<BatchBOMRespon
           pmLines: Array.isArray(body.data.pmLines) ? body.data.pmLines : [],
           source: body.data.source === 'planning_batch' ? 'planning_batch' : 'product_bom',
           batchSizeKg: body.data.batchSizeKg ?? undefined,
+          kgPerUnit: body.data.kgPerUnit ?? undefined,
+          batchUnits: body.data.batchUnits ?? undefined,
+          client: body.data.client ?? undefined,
           qcReference,
+          processSteps: body.data.processSteps ?? undefined,
         },
       };
     }
