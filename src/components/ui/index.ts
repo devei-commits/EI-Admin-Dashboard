@@ -41,6 +41,10 @@ export type { FilterChipProps } from './FilterChip';
 export { SortableTableTh } from './SortableTableTh';
 export type { SortDirection, SortableTableAccent } from './SortableTableTh';
 
+// Shared modal chrome (backdrop/escape/focus-trap/scroll-lock/a11y)
+export { ModalOverlay } from './ModalOverlay';
+export type { ModalOverlayProps } from './ModalOverlay';
+
 // P5 — visual states (skeleton loaders, empty & error states)
 export { Skeleton, SkeletonText, TableSkeleton, CardSkeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';

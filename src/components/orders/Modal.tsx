@@ -3,8 +3,9 @@
  * Reusable modal wrapper with header, body, and footer
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface ModalProps {
   isOpen: boolean;
@@ -28,29 +29,6 @@ export const Modal: React.FC<ModalProps> = ({
   footer,
   bodyClassName,
 }) => {
-  // Close on Escape key
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -61,10 +39,7 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 z-200 flex items-center justify-center p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <ModalOverlay onClose={onClose} z="z-[200]" backdrop="strong">
       <div
         role="dialog"
         aria-modal="true"
@@ -113,7 +88,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

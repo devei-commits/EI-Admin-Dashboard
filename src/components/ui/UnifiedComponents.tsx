@@ -1,5 +1,5 @@
-import React, { ReactNode, useRef } from 'react';
-import { useFocusTrap } from '../../hooks/useFocusTrap';
+import React, { ReactNode } from 'react';
+import { ModalOverlay } from './ModalOverlay';
 
 /* -------------------------------------------------------------------------------------------------
  * Apple-grade design language primitives. Token-driven (see index.css) so every variant is
@@ -137,14 +137,11 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
  footer,
  size = 'lg',
 }) => {
- const dialogRef = useRef<HTMLDivElement>(null);
- useFocusTrap(isOpen, dialogRef);
  if (!isOpen) return null;
 
  return (
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
+  <ModalOverlay onClose={onClose} z="z-[50]" dismissable={false}>
    <div
-    ref={dialogRef}
     role="dialog"
     aria-modal="true"
     {...(typeof title === 'string' ? { 'aria-labelledby': 'unified-modal-title' } : { 'aria-label': 'Dialog' })}
@@ -171,7 +168,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
      <div className="p-6 border-t border-hairline flex justify-end gap-3">{footer}</div>
     )}
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 
