@@ -64,7 +64,7 @@ export function DataTable<T extends Record<string, unknown>>({
         <thead>
           <tr className="border-b border-border bg-surface-3">
             {columns.map((col) => (
-              <th scope="col"
+              <th
                 key={String(col.key)}
                 scope="col"
                 onClick={() => col.sortable && handleSort(String(col.key))}

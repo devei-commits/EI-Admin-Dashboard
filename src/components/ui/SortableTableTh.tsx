@@ -47,7 +47,7 @@ export function SortableTableTh<T extends string>({
   const alignClass = align === 'right' ? 'text-right' : 'text-left';
   const focusRing = 'focus-visible:ring-[color:var(--ring)]';
   return (
-    <th scope="col"
+    <th
       scope="col"
       className={`px-4 py-3 ${alignClass} text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${thClassName}`}
     >

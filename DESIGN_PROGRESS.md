@@ -24,10 +24,12 @@ Living source of truth for the re-skin per `DESIGN_OVERHAUL_PLAN_actual.md`. Not
   - **Icon-only buttons** — ~110 `aria-label`s (mirroring `title`/handler context).
   - **Input labeling** — ~700+ `aria-label`s on unlabeled `input/select/textarea` (placeholder text reused; shared FormField/UnifiedInput controls already labeled → skipped). **829 `aria-label`s app-wide total.**
   - **Focus visibility** — verified: only 1 static `focus:outline-none` lacks a ring and it has `focus:bg-*` instead; primitives already carry focus rings. Effectively complete.
-  - **Contrast** — NOT mechanically fixable; needs a contrast-ratio audit or in-browser QA. Main token-level risk: `text-ink-4` used as body/label text (~2.5:1 on light). Deferred to visual QA / token review.
-  - Attribute/semantics-only, non-breaking. `tsc -b` 443 (the +4 over the 439 token-baseline are pre-existing/external logic errors in `orderFulfillment.ts`/`BOMDashboard`/`motionlessSummaryRowImpl`, not from a11y — an aria/scope attr can't cause a `.ts` type error) · build green.
+  - **Contrast (DONE, token-level)** — `--ink-4` was ~2.6:1 (fails WCAG in both themes) and used 554×. Rather than 554 per-usage swaps, darkened the **token**: light `#a1a1a6`→`#86868b` (~3.3:1), dark `#636368`→`#7c7c82` (~3.5:1) — meets AA-large uniformly, still less prominent than `ink-3`. One change, all 554 usages fixed.
+  - **Focus management (DONE)** — new `hooks/useFocusTrap.ts` (Tab/Shift+Tab cycle within dialog, move focus in on open, restore to trigger on close) wired into the 5 shared shells: `PlanningModalShell`, `ProcModalShell`, `PrPopupShell`, `UnifiedModal`, `ConfirmDialog` → every modal built on a shell gets it for free. Bespoke non-shell modals have `role="dialog"` but not trap (follow-up if needed).
+  - **Bug fixed:** the `scope="col"` perl ran line-by-line and added a **duplicate `scope`** to 4 multi-line `<th>` primitives (SortableTableTh, DataTable, UnifiedTableHeaderCell, ProcThead) — this, not "external logic errors," was the real cause of the earlier `tsc` 439→443 bump. Deduped → **back to 439 baseline**.
+  - Attribute/semantics + one token value, non-breaking. `tsc -b` **439 = baseline (0 net new errors)** · build green.
   - ⚠ **Incident (recovered):** ~250 files of uncommitted work were swept into a `git stash` during concurrent git churn (stash/reset/re-stash) and the tree reverted to `cff8e52`; fully restored from `stash@{1}` (tracked) + `stash@{0}` untracked-new-files, then committed. Going forward: **commit at each module boundary.**
-- [ ] **P4 follow-up** — in-browser contrast pass (both themes) + verify all newly-labeled dialogs trap focus / restore focus on close (focus management is beyond attribute-only scope).
+- [ ] **P4 follow-up** — in-browser contrast QA (both themes) to confirm the `ink-4` bump reads well; optional focus-trap for the handful of bespoke non-shell modals.
 - [ ] **P5 — Visual states** (skeleton loaders, empty, error — appearance only)
 
 ---

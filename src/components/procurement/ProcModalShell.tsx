@@ -5,8 +5,9 @@
  * body, slate-50 footer with right-aligned actions. (Deliberately NOT the
  * dark-gradient HTML popup style.)
  */
-import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { X } from '@phosphor-icons/react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export interface ProcModalShellProps {
   eyebrow?: string;
@@ -22,6 +23,8 @@ export const ProcModalShell: React.FC<ProcModalShellProps> = ({
   eyebrow, title, subtitle, onClose, footer, width = 'max-w-2xl', children,
 }) => {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, dialogRef);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -31,6 +34,7 @@ export const ProcModalShell: React.FC<ProcModalShellProps> = ({
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="presentation" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" aria-hidden />
       <div
+        ref={dialogRef}
         className={`relative w-full ${width} max-h-[90vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-2xl flex flex-col`}
         role="dialog"
         aria-modal="true"

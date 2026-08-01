@@ -1,4 +1,5 @@
-import React, { ReactNode, useCallback, useEffect } from 'react';
+import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export interface ConfirmDialogProps {
  isOpen: boolean;
@@ -42,6 +43,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   }
  }, [isOpen, handleKeyDown]);
 
+ const dialogRef = useRef<HTMLDivElement>(null);
+ useFocusTrap(isOpen, dialogRef);
+
  if (!isOpen) return null;
 
  const confirmStyles = {
@@ -62,6 +66,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
    onClick={onClose}
   >
    <div
+    ref={dialogRef}
     role="dialog"
     aria-modal="true"
     aria-labelledby="confirm-dialog-title"

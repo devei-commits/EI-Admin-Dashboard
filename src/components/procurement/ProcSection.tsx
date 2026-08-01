@@ -189,7 +189,7 @@ export const ProcThead: React.FC<{ cols: (string | { label: string; align?: 'lef
         const label = typeof c === 'string' ? c : c.label;
         const align = typeof c === 'string' ? 'left' : c.align ?? 'left';
         return (
-          <th scope="col"
+          <th
             key={`${label}-${i}`}
             scope="col"
             className={`px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap ${

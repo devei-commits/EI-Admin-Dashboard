@@ -1,4 +1,5 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useRef } from 'react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 /* -------------------------------------------------------------------------------------------------
  * Apple-grade design language primitives. Token-driven (see index.css) so every variant is
@@ -136,11 +137,14 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
  footer,
  size = 'lg',
 }) => {
+ const dialogRef = useRef<HTMLDivElement>(null);
+ useFocusTrap(isOpen, dialogRef);
  if (!isOpen) return null;
 
  return (
   <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
    <div
+    ref={dialogRef}
     role="dialog"
     aria-modal="true"
     {...(typeof title === 'string' ? { 'aria-labelledby': 'unified-modal-title' } : { 'aria-label': 'Dialog' })}
@@ -181,7 +185,7 @@ export const UnifiedTableHeaderCell: React.FC<UnifiedTableHeaderCellProps> = ({
  className = '',
  ...props
 }) => (
- <th scope="col"
+ <th
   scope="col"
   {...props}
   className={`py-4 px-5 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider leading-relaxed border-b border-border ${className}`}

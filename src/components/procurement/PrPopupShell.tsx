@@ -3,8 +3,9 @@
  * Reproduces the spec's popup-mock: dark gradient header with title + code +
  * subtitle and a primary action button, scrollable body, fixed overlay.
  */
-import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { X } from '@phosphor-icons/react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export interface PrPopupShellProps {
   title: React.ReactNode;
@@ -24,6 +25,8 @@ export const PrPopupShell: React.FC<PrPopupShellProps> = ({
   title, code, subtitle, primaryLabel, onPrimary, primaryDisabled, primaryBusy, onClose, children, width = 'max-w-4xl',
 }) => {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, dialogRef);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -32,6 +35,7 @@ export const PrPopupShell: React.FC<PrPopupShellProps> = ({
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8" role="presentation" onClick={onClose}>
       <div
+        ref={dialogRef}
         className={`w-full ${width} my-4 rounded-[var(--r-lg)] bg-surface shadow-[var(--e3)] border border-hairline overflow-hidden`}
         role="dialog"
         aria-modal="true"

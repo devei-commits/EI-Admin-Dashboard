@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 /**
  * PlanningModalShell — one consistent overlay for every Planning modal.
@@ -43,9 +44,18 @@ export function PlanningModalShell({
 
   const items = align === 'end-mobile' ? 'items-end sm:items-center' : 'items-center';
 
+  // Trap focus within the dialog and restore it to the trigger on close.
+  const internalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, internalRef);
+  const setRef = (node: HTMLDivElement | null) => {
+    internalRef.current = node;
+    if (typeof overlayRef === 'function') overlayRef(node);
+    else if (overlayRef) (overlayRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+  };
+
   return (
     <div
-      ref={overlayRef}
+      ref={setRef}
       className={`fixed inset-0 ${z} bg-black/40 backdrop-blur-[1px] flex ${items} justify-center p-4 ${scroll ? 'overflow-y-auto' : ''}`}
       role="presentation"
       onClick={dismissable ? onClose : undefined}
