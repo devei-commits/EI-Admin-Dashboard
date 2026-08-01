@@ -207,7 +207,7 @@ export default function CustomizationPackagingCatalog() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div role="dialog" aria-modal="true" aria-label={editing ? 'Edit option' : 'New option'} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
             <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit option' : 'New option'}</h2>
             <div className="mt-4 space-y-3">
               <label className="block text-xs font-semibold text-gray-600">

@@ -495,7 +495,7 @@ const CatalogueManagement = () => {
    {/* View/Edit Modal */}
    {isViewModalOpen && selectedItem && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+     <div role="dialog" aria-modal="true" aria-label={isEditMode ? 'Edit Product' : 'Product Details'} className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
       <div className="sticky top-0 bg-slate-800 px-6 py-4 flex justify-between items-center">
        <div><h2 className="text-xl font-bold text-white">{isEditMode ? 'Edit Product' : 'Product Details'}</h2><p className="text-gray-100 text-sm">{selectedItem.productCode}</p></div>
        <button onClick={() => { setIsViewModalOpen(false); setSelectedItem(null); setIsEditMode(false); }} className="text-white/80 hover:text-white transition-colors">

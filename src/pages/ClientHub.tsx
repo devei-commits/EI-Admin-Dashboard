@@ -450,7 +450,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Client details" className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Modal Header */}
         <div className="flex items-center gap-4 p-5 border-b border-gray-100">
@@ -942,7 +942,7 @@ function AddClientModal({ onClose, onAdd, accountManagers }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="New Client" className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
             <h2 className="text-base font-bold text-gray-800">New Client</h2>

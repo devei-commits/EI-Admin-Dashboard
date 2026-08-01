@@ -18,7 +18,16 @@ Living source of truth for the re-skin per `DESIGN_OVERHAUL_PLAN_actual.md`. Not
 - [x] **P1 — Token foundation** — Apple token layer (light + dark parity) + Montserrat/JetBrains + `data-theme` — *code done; pending in-browser QA (both themes) + commit*
 - [x] **P2 — Shared styled primitives** — token-driven + theme-aware; APIs unchanged; new Icon/Segmented/FilterChip — *code done + tsc 0 errors + build clean; pending in-browser QA + commit*
 - [~] **P3 — Apply module-by-module** (order below) — baseline audit in `DESIGN_AUDIT.md`; status utilities (`text-ok/warn/err/info/neut` + `*-soft`) added to `index.css`
-- [ ] **P4 — Presentational a11y** (labels, contrast, scope, focus ring, static dialog semantics)
+- [~] **P4 — Presentational a11y** (whole-app) — **mechanical categories DONE**, contrast pending in-browser QA:
+  - **`scope="col"`** on all data-table headers — **1,002 fixed → 0 bare `<th>` app-wide** (anchored global perl; skips `<thead>` + already-scoped).
+  - **Dialog semantics** — `role="dialog"` + `aria-modal` + `aria-labelledby`/`aria-label` on **~115 modal cards** (6 parallel agents by directory + a final sweep of 5 stragglers: CatalogueManagement, ClientHub ×2, ContactEnquiry, CustomizationPackagingCatalog). Non-dialog overlays (sidebar mobile scrims, dropdown click-catchers, `role="status"` loaders) correctly left alone.
+  - **Icon-only buttons** — ~110 `aria-label`s (mirroring `title`/handler context).
+  - **Input labeling** — ~700+ `aria-label`s on unlabeled `input/select/textarea` (placeholder text reused; shared FormField/UnifiedInput controls already labeled → skipped). **829 `aria-label`s app-wide total.**
+  - **Focus visibility** — verified: only 1 static `focus:outline-none` lacks a ring and it has `focus:bg-*` instead; primitives already carry focus rings. Effectively complete.
+  - **Contrast** — NOT mechanically fixable; needs a contrast-ratio audit or in-browser QA. Main token-level risk: `text-ink-4` used as body/label text (~2.5:1 on light). Deferred to visual QA / token review.
+  - Attribute/semantics-only, non-breaking. `tsc -b` 443 (the +4 over the 439 token-baseline are pre-existing/external logic errors in `orderFulfillment.ts`/`BOMDashboard`/`motionlessSummaryRowImpl`, not from a11y — an aria/scope attr can't cause a `.ts` type error) · build green.
+  - ⚠ **Incident (recovered):** ~250 files of uncommitted work were swept into a `git stash` during concurrent git churn (stash/reset/re-stash) and the tree reverted to `cff8e52`; fully restored from `stash@{1}` (tracked) + `stash@{0}` untracked-new-files, then committed. Going forward: **commit at each module boundary.**
+- [ ] **P4 follow-up** — in-browser contrast pass (both themes) + verify all newly-labeled dialogs trap focus / restore focus on close (focus management is beyond attribute-only scope).
 - [ ] **P5 — Visual states** (skeleton loaders, empty, error — appearance only)
 
 ---
