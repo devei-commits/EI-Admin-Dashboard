@@ -4,6 +4,7 @@ import { SearchInput, Pagination } from '../components/ui';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { ProcThead } from '../components/procurement/ProcSection';
 import { Package as PackageIcon } from '@phosphor-icons/react';
 import { useDebounce } from '../hooks/useDebounce';
 import { fetchPackagingList, createPackaging, updatePackaging, deletePackaging, type PackagingItem } from '../services/packaging.service';
@@ -650,18 +651,9 @@ const PackagingManagement = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
        <table className="w-full">
-        <thead>
-         <tr className="bg-surface-3 border-b border-border">
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Package Code</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Package Name</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Cap Type</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Volume</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">MOQ</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Budget</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Status</th>
-          <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-ink-3 uppercase tracking-wider">Actions</th>
-         </tr>
-        </thead>
+        <ProcThead
+         cols={['Package Code', 'Package Name', 'Cap Type', 'Volume', 'MOQ', 'Budget', 'Status', { label: 'Actions', align: 'center' }]}
+        />
         <tbody className="divide-y divide-hairline">
          {paginatedItems.map((item) => (
           <tr key={item.id} className="hover:bg-surface-2 transition-colors">

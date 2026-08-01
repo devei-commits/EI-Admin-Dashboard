@@ -7,6 +7,7 @@ import { SortableTableTh, type SortDirection } from '../components/ui/SortableTa
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SearchInput } from '../components/ui/SearchInput';
+import { StatCard } from '../components/ui/StatCard';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { ProcFilterBar } from '../components/procurement/ProcSection';
 import { PlanningModalShell } from '../components/planning/PlanningModalShell';
@@ -7250,93 +7251,93 @@ const Planning = () => {
         <div className={`grid gap-3 mb-5 ${activeMainTab === 'items-involved' ? 'grid-cols-6' : 'grid-cols-7'}`}>
           {activeMainTab === 'items-involved' ? (
             <>
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">CONFIRMED PRODUCTS</p>
-                <p className="text-2xl font-bold text-ok">{(currentStats as PlanningTabStats).confirmedProducts.value}</p>
-                <p className="text-xs text-ink-3 mt-1">of {(currentStats as PlanningTabStats).confirmedProducts.total} total</p>
-              </div>
+              <StatCard
+                title="CONFIRMED PRODUCTS"
+                tone="ok"
+                value={(currentStats as PlanningTabStats).confirmedProducts.value}
+                description={`of ${(currentStats as PlanningTabStats).confirmedProducts.total} total`}
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">RM RELEASED</p>
-                <p className="text-2xl font-bold text-brand tabular-nums">
-                  {itemsInvolvedReleaseSplit.rm.released}/{itemsInvolvedReleaseSplit.rm.total}
-                </p>
-                <p className="text-xs text-ink-3 mt-1">
-                  {itemsInvolvedReleaseSplit.rm.remaining} remaining · {(currentStats as PlanningTabStats).rmItems?.short ?? 0} short
-                </p>
-              </div>
+              <StatCard
+                title="RM RELEASED"
+                tone="brand"
+                value={`${itemsInvolvedReleaseSplit.rm.released}/${itemsInvolvedReleaseSplit.rm.total}`}
+                description={`${itemsInvolvedReleaseSplit.rm.remaining} remaining · ${(currentStats as PlanningTabStats).rmItems?.short ?? 0} short`}
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">PM RELEASED</p>
-                <p className="text-2xl font-bold text-brand tabular-nums">
-                  {itemsInvolvedReleaseSplit.pm.released}/{itemsInvolvedReleaseSplit.pm.total}
-                </p>
-                <p className="text-xs text-ink-3 mt-1">
-                  {itemsInvolvedReleaseSplit.pm.remaining} remaining · {(currentStats as PlanningTabStats).pmItems?.short ?? 0} short
-                </p>
-              </div>
+              <StatCard
+                title="PM RELEASED"
+                tone="brand"
+                value={`${itemsInvolvedReleaseSplit.pm.released}/${itemsInvolvedReleaseSplit.pm.total}`}
+                description={`${itemsInvolvedReleaseSplit.pm.remaining} remaining · ${(currentStats as PlanningTabStats).pmItems?.short ?? 0} short`}
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">RM SHORTAGES</p>
-                <p className="text-2xl font-bold text-ink">{(currentStats as PlanningTabStats).rmShortages}</p>
-                <p className="text-xs text-ink-3 mt-1">Items below order req</p>
-              </div>
+              <StatCard
+                title="RM SHORTAGES"
+                value={(currentStats as PlanningTabStats).rmShortages}
+                description="Items below order req"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">PM SHORTAGES</p>
-                <p className="text-2xl font-bold text-err">{(currentStats as PlanningTabStats).pmShortages}</p>
-                <p className="text-xs text-ink-3 mt-1">Items below order req</p>
-              </div>
+              <StatCard
+                title="PM SHORTAGES"
+                tone="err"
+                value={(currentStats as PlanningTabStats).pmShortages}
+                description="Items below order req"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">PRS RAISED</p>
-                <p className="text-2xl font-bold text-warn">{(currentStats as PlanningTabStats).prsRaised}</p>
-                <p className="text-xs text-ink-3 mt-1">Pending procurement</p>
-              </div>
+              <StatCard
+                title="PRS RAISED"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).prsRaised}
+                description="Pending procurement"
+              />
             </>
           ) : (
             <>
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">TOTAL SOS</p>
-                <p className="text-2xl font-bold text-ink">{(currentStats as PlanningTabStats).totalSOs ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">Approved orders</p>
-              </div>
+              <StatCard
+                title="TOTAL SOS"
+                value={(currentStats as PlanningTabStats).totalSOs ?? 0}
+                description="Approved orders"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">PROD. RELEASED</p>
-                <p className="text-2xl font-bold text-ink">{(currentStats as PlanningTabStats).prodReleased ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">Released to production</p>
-              </div>
+              <StatCard
+                title="PROD. RELEASED"
+                value={(currentStats as PlanningTabStats).prodReleased ?? 0}
+                description="Released to production"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">RM/PM SHORTAGES</p>
-                <p className="text-2xl font-bold text-warn">{(currentStats as PlanningTabStats).shortages ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">needs below order req</p>
-              </div>
+              <StatCard
+                title="RM/PM SHORTAGES"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).shortages ?? 0}
+                description="needs below order req"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">BATCHES REQUIRED</p>
-                <p className="text-2xl font-bold text-ink">{(currentStats as PlanningTabStats).batchesRequired ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">Across all products</p>
-              </div>
+              <StatCard
+                title="BATCHES REQUIRED"
+                value={(currentStats as PlanningTabStats).batchesRequired ?? 0}
+                description="Across all products"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">BOMS CONFIRMED</p>
-                <p className="text-2xl font-bold text-ink">{(currentStats as PlanningTabStats).batchesConfirmed ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">Products with confirmed BOM</p>
-              </div>
+              <StatCard
+                title="BOMS CONFIRMED"
+                value={(currentStats as PlanningTabStats).batchesConfirmed ?? 0}
+                description="Products with confirmed BOM"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">NOT PLANNED</p>
-                <p className="text-2xl font-bold text-err">{(currentStats as PlanningTabStats).notPlanned ?? 0}</p>
-                <p className="text-xs text-ink-3 mt-1">SOs pending planning confirmation</p>
-              </div>
+              <StatCard
+                title="NOT PLANNED"
+                tone="err"
+                value={(currentStats as PlanningTabStats).notPlanned ?? 0}
+                description="SOs pending planning confirmation"
+              />
 
-              <div className="bg-surface rounded-xl p-4 border border-hairline">
-                <p className="text-ink-4 text-[11px] font-semibold mb-1 tracking-wide">SO VALUE</p>
-                <p className="text-2xl font-bold text-warn">{(currentStats as PlanningTabStats).soValue ?? 'N/A'}</p>
-                <p className="text-xs text-ink-3 mt-1">Order value not in planning API yet</p>
-              </div>
+              <StatCard
+                title="SO VALUE"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).soValue ?? 'N/A'}
+                description="Order value not in planning API yet"
+              />
             </>
           )}
         </div>

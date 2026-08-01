@@ -25,6 +25,7 @@ import {
 import { CardSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { ProcThead } from '../components/procurement/ProcSection';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
 interface Query {
@@ -449,7 +450,6 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
     { id: 'timeline',  label: 'Timeline',     icon: <Activity className="w-3.5 h-3.5" /> },
   ];
 
-  const thCls = 'px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 border-b border-gray-100';
   const tdCls = 'px-3 py-2.5 text-sm text-gray-700';
 
   return (
@@ -537,10 +537,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-gray-100">
                     <table className="w-full">
-                      <thead><tr>
-                        <th scope="col" className={thCls}>Type</th><th scope="col" className={thCls}>Item</th>
-                        <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th><th scope="col" className={thCls}>Days</th>
-                      </tr></thead>
+                      <ProcThead cols={['Type', 'Item', 'Due', 'Status', 'Days']} />
                       <tbody className="divide-y divide-gray-50">
                         {actionItems.map(i => {
                           const d = dDiff(i.due);
@@ -623,11 +620,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               )}
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
-                  <thead><tr>
-                    <th scope="col" className={thCls}>ID</th><th scope="col" className={thCls}>Query</th>
-                    <th scope="col" className={thCls}>Category</th><th scope="col" className={thCls}>Due</th>
-                    <th scope="col" className={thCls}>Status</th><th scope="col" className={thCls}>Note</th>
-                  </tr></thead>
+                  <ProcThead cols={['ID', 'Query', 'Category', 'Due', 'Status', 'Note']} />
                   <tbody className="divide-y divide-gray-50">
                     {client.queries.map(q => (
                       <tr key={q.id} className="hover:bg-gray-50 cursor-pointer">
@@ -691,11 +684,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               )}
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
-                  <thead><tr>
-                    <th scope="col" className={thCls}>PR Code</th><th scope="col" className={thCls}>Product</th>
-                    <th scope="col" className={thCls}>Stage</th><th scope="col" className={thCls}>Phase</th>
-                    <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th>
-                  </tr></thead>
+                  <ProcThead cols={['PR Code', 'Product', 'Stage', 'Phase', 'Due', 'Status']} />
                   <tbody className="divide-y divide-gray-50">
                     {client.devs.map(d => {
                       const da = dDiff(d.due);
@@ -756,11 +745,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               )}
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
-                  <thead><tr>
-                    <th scope="col" className={thCls}>Order ID</th><th scope="col" className={thCls}>Product</th>
-                    <th scope="col" className={thCls}>Quantity</th><th scope="col" className={thCls}>Batch No</th>
-                    <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th>
-                  </tr></thead>
+                  <ProcThead cols={['Order ID', 'Product', 'Quantity', 'Batch No', 'Due', 'Status']} />
                   <tbody className="divide-y divide-gray-50">
                     {client.orders.map(o => {
                       const d = dDiff(o.due);

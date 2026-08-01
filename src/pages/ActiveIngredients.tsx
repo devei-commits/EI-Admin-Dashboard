@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination, inputClassName, selectClassName } from '../components/ui';
+import { ProcThead } from '../components/procurement/ProcSection';
 
 type TabType = 'create' | 'list';
 
@@ -234,16 +235,9 @@ const ActiveIngredients = () => {
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
        <table className="w-full">
-        <thead>
-         <tr className="bg-surface-3 border-b border-border">
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Ingredient Name</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Description</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Category</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Percentage</th>
-          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider">Status</th>
-          <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-ink-3 uppercase tracking-wider">Actions</th>
-         </tr>
-        </thead>
+        <ProcThead
+         cols={['Ingredient Name', 'Description', 'Category', 'Percentage', 'Status', { label: 'Actions', align: 'center' }]}
+        />
         <tbody className="divide-y divide-hairline">
          {paginatedItems.map((item) => (
           <tr key={item.id} className="hover:bg-surface-2 transition-colors">

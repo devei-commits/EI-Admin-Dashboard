@@ -19,7 +19,7 @@ import {
  Settings,
  Check,
 } from 'lucide-react';
-import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
+import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName, StatCard } from '../components/ui';
 import { ModalOverlay } from '../components/ui/ModalOverlay';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -571,17 +571,15 @@ const UserManagement = () => {
      { label: 'Inactive', value: stats.inactive, icon: UserMinus, color: 'gray' },
      { label: 'Suspended', value: stats.suspended, icon: UserX, color: 'red' },
     ].map(({ label, value, icon: Icon, color }) => (
-     <div key={label} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-      <div className="flex items-center gap-3">
-       <div className={`p-2.5 bg-${color}-100 rounded-lg`}>
-        <Icon className={`w-5 h-5 text-${color}-600`} />
-       </div>
-       <div>
-        <p className="text-xs text-slate-500 font-medium">{label}</p>
-        <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
-       </div>
-      </div>
-     </div>
+     <StatCard
+      key={label}
+      icon={<Icon className="w-5 h-5" />}
+      iconBgClass={`bg-${color}-100`}
+      iconColorClass={`text-${color}-600`}
+      title={label}
+      value={value}
+      tone={color === 'green' ? 'ok' : color === 'red' ? 'err' : 'default'}
+     />
     ))}
    </div>
 

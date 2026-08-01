@@ -24,6 +24,7 @@ import {
  ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { EmptyState } from '../../ui/EmptyState';
+import { StatCard } from '../../ui';
 
 // ==================== TYPES ====================
 interface ActivityLogEntry {
@@ -941,72 +942,50 @@ export function GlobalTaskOverview() {
 
    {/* Stats Cards */}
    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-blue-100 rounded-lg">
-       <Package className="w-5 h-5 text-blue-600" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">Total Tasks</p>
-       <p className="text-xl font-bold text-gray-800">{stats.total}</p>
-      </div>
-     </div>
-    </div>
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-gray-100 rounded-lg">
-       <Clock className="w-5 h-5 text-slate-800" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">Pending</p>
-       <p className="text-xl font-bold text-slate-800">{stats.pending}</p>
-      </div>
-     </div>
-    </div>
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-blue-100 rounded-lg">
-       <PlayCircle className="w-5 h-5 text-blue-600" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">In Progress</p>
-       <p className="text-xl font-bold text-blue-600">{stats.inProgress}</p>
-      </div>
-     </div>
-    </div>
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-green-100 rounded-lg">
-       <CheckCircle2 className="w-5 h-5 text-green-600" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">Completed</p>
-       <p className="text-xl font-bold text-green-600">{stats.completed}</p>
-      </div>
-     </div>
-    </div>
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-red-100 rounded-lg">
-       <AlertTriangle className="w-5 h-5 text-red-600" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">High Priority</p>
-       <p className="text-xl font-bold text-red-600">{stats.highPriority}</p>
-      </div>
-     </div>
-    </div>
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-     <div className="flex items-center gap-3">
-      <div className="p-2 bg-orange-100 rounded-lg">
-       <Calendar className="w-5 h-5 text-slate-800" />
-      </div>
-      <div>
-       <p className="text-xs text-gray-500">Overdue</p>
-       <p className="text-xl font-bold text-slate-800">{stats.overdue}</p>
-      </div>
-     </div>
-    </div>
+    <StatCard
+     icon={<Package className="w-5 h-5" />}
+     iconBgClass="bg-blue-100"
+     iconColorClass="text-blue-600"
+     title="Total Tasks"
+     value={stats.total}
+    />
+    <StatCard
+     icon={<Clock className="w-5 h-5" />}
+     iconBgClass="bg-gray-100"
+     iconColorClass="text-slate-800"
+     title="Pending"
+     value={stats.pending}
+    />
+    <StatCard
+     icon={<PlayCircle className="w-5 h-5" />}
+     iconBgClass="bg-blue-100"
+     iconColorClass="text-blue-600"
+     title="In Progress"
+     value={stats.inProgress}
+    />
+    <StatCard
+     icon={<CheckCircle2 className="w-5 h-5" />}
+     iconBgClass="bg-green-100"
+     iconColorClass="text-green-600"
+     title="Completed"
+     value={stats.completed}
+     tone="ok"
+    />
+    <StatCard
+     icon={<AlertTriangle className="w-5 h-5" />}
+     iconBgClass="bg-red-100"
+     iconColorClass="text-red-600"
+     title="High Priority"
+     value={stats.highPriority}
+     tone="err"
+    />
+    <StatCard
+     icon={<Calendar className="w-5 h-5" />}
+     iconBgClass="bg-orange-100"
+     iconColorClass="text-slate-800"
+     title="Overdue"
+     value={stats.overdue}
+    />
    </div>
 
    {/* Stage Distribution */}

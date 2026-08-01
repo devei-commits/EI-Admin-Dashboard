@@ -5,11 +5,11 @@
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import eiLogo from '../assets/logo/eilogofull.svg';
 import { useSearchParams } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
+import { NavSidebar } from '../components/ui/NavSidebar';
 import {
-  ChevronLeft, ChevronRight, Plus, Calendar, FlaskConical, Package,
+  Plus, Calendar, FlaskConical, Package,
   Wrench, Users, Menu, X, Check, AlertTriangle, Printer,
   ClipboardList, Link2, Scale, Microscope, Zap, Info, Factory,
   Settings, Activity, Eye, CheckCircle2, ArrowRight, Send,
@@ -149,6 +149,7 @@ import { DispensingTrayView } from '../components/production/DispensingTrayView'
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { Tabs } from '../components/ui/Tabs';
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -1098,17 +1099,8 @@ function Modal({
 }
 
 function TabBar({ tabs, active, onChange }: { tabs: { key: string; label: string; icon?: React.ReactNode }[]; active: string; onChange: (k: string) => void }) {
-  return (
-    <div className="flex gap-0.5 border-b border-hairline mb-5">
-      {tabs.map(t => (
-        <button key={t.key} onClick={() => onChange(t.key)}
-          className={`flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${active === t.key ? 'border-brand-soft text-ink' : 'border-transparent text-ink-4 hover:text-ink-2'}`}>
-          {t.icon && <span className={active === t.key ? 'text-brand' : 'text-ink-4'}>{t.icon}</span>}
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
+  // Thin wrapper over the shared ui Tabs (folds the module's inline underline tab-bar).
+  return <Tabs tabs={tabs} value={active} onChange={onChange} className="mb-5" />;
 }
 
 function Tip({ color = 'blue', icon, children }: { color?: string; icon?: React.ReactNode; children: React.ReactNode }) {
@@ -8994,44 +8986,18 @@ function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose, navIte
   active: Section; onChange: (s: Section) => void; mobileOpen: boolean; onMobileClose: () => void;
   navItems: { id: Section; label: string; icon: React.ReactNode }[];
 }) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(PRODUCTION_SIDEBAR_COLLAPSE_KEY) === '1'; } catch { return false; }
-  });
-  const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      const next = !c;
-      try { localStorage.setItem(PRODUCTION_SIDEBAR_COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
-      return next;
-    });
-  };
   return (
-    <>
-      {mobileOpen && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden" onClick={onMobileClose} />}
-      <aside className={`fixed top-0 left-0 h-full z-40 w-48 bg-surface border-r border-hairline shadow-[var(--e1)] flex flex-col transition-[width,transform] duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:translate-x-0 md:flex md:shrink-0 ${collapsed ? 'md:w-16' : 'md:w-48'}`}>
-        <div className="px-4 pt-5 pb-4 border-b border-hairline flex items-center justify-center overflow-hidden">
-          <img src={eiLogo} alt="EI Logo" className={`h-7 w-auto object-contain ${collapsed ? 'md:hidden' : 'object-left'}`} />
-        </div>
-        <nav className="flex-1 py-2 overflow-y-auto overflow-x-hidden">
-          {navItems.map(item => (
-            <button key={item.id} onClick={() => { onChange(item.id); onMobileClose(); }}
-              title={collapsed ? item.label : undefined}
-              aria-label={item.label}
-              className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-[11px] font-medium transition-all duration-150 ${collapsed ? 'md:justify-center md:px-0' : ''} ${active === item.id ? 'bg-brand-soft text-brand border-l-2 border-brand font-semibold' : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2 border-l-2 border-transparent'}`}>
-              <span className="shrink-0">{item.icon}</span>
-              <span className={`leading-tight ${collapsed ? 'md:hidden' : ''}`}>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="p-2 border-t border-hairline bg-surface-2 shrink-0">
-          <button type="button" onClick={toggleCollapsed}
-            className={`hidden md:flex items-center gap-2 w-full px-3 py-2 rounded-lg text-[11px] font-semibold text-ink-3 hover:bg-surface-3 hover:text-ink transition-colors ${collapsed ? 'md:justify-center' : ''}`}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-            {collapsed ? <ChevronRight size={15} className="shrink-0" /> : <ChevronLeft size={15} className="shrink-0" />}
-            <span className={collapsed ? 'md:hidden' : ''}>Collapse</span>
-          </button>
-        </div>
-      </aside>
-    </>
+    <NavSidebar
+      title="Production"
+      moduleName="production"
+      collapseKey={PRODUCTION_SIDEBAR_COLLAPSE_KEY}
+      activeKey={active}
+      onNavigate={(k) => onChange(k as Section)}
+      sections={navItems.map((item) => ({ key: item.id, label: item.label, icon: item.icon }))}
+      mobileOpen={mobileOpen}
+      onMobileClose={onMobileClose}
+      hideMobileHeader
+    />
   );
 }
 

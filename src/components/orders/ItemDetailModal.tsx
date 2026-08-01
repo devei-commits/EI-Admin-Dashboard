@@ -7,6 +7,7 @@ import { useGlobalState } from '../../context/GlobalStateContext';
 import { fmtNum, getGap, getPriorityQty } from '../../utils/manufacturing';
 import { UnifiedModal } from '../ui/UnifiedComponents';
 import { ModalOverlay } from '../ui/ModalOverlay';
+import { Tabs } from '../ui';
 
 interface Props {
   itemId: string;
@@ -69,17 +70,15 @@ export default function ItemDetailModal({ itemId, initialMode = 'DETAIL', onClos
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b">
-          {(['DETAIL', 'STOCK', 'RESERVED'] as Mode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-5 py-3 text-sm font-medium ${mode === m ? 'border-b-2 border-brand text-brand' : 'text-ink-3 hover:text-ink-2'}`}
-            >
-              {m === 'DETAIL' ? 'Overview' : m === 'STOCK' ? 'Warehouse Stock' : 'Reservations'}
-            </button>
-          ))}
-        </div>
+        <Tabs<Mode>
+          tabs={[
+            { key: 'DETAIL', label: 'Overview' },
+            { key: 'STOCK', label: 'Warehouse Stock' },
+            { key: 'RESERVED', label: 'Reservations' },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
 
         {/* Body */}
         <div className="flex-1 overflow-auto p-6">

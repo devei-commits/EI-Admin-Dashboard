@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Package, MapPin, FileText, Truck, CheckCircle } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
+import { ProcThead } from '../procurement/ProcSection';
 import type { SODetailModalProps } from '../../types/orderFulfillment';
 import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
 import type { SoPlanningAvailabilityResponse, SoPlanningAvailabilityItem, SoPlanningBatchAvailabilityRow } from '../../services/fulfillment.service';
@@ -331,37 +332,9 @@ function ItemWithBatches({
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-surface-3">
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Batch No
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Planned
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                FG Output
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                FG Location
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Picked
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Invoice
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                AWB / Courier
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Status
-              </th>
-              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
-                Actions
-              </th>
-            </tr>
-          </thead>
+          <ProcThead
+            cols={['Batch No', 'Planned', 'FG Output', 'FG Location', 'Picked', 'Invoice', 'AWB / Courier', 'Status', 'Actions']}
+          />
           <tbody>
             {item.batchSplits.length === 0 ? (
               <tr>

@@ -45,6 +45,14 @@ export type { SortDirection, SortableTableAccent } from './SortableTableTh';
 export { ModalOverlay } from './ModalOverlay';
 export type { ModalOverlayProps } from './ModalOverlay';
 
+// Shared nav sidebar (folds the ~8 per-module sidebars)
+export { NavSidebar } from './NavSidebar';
+export type { NavSidebarProps, NavSidebarSection } from './NavSidebar';
+
+// Shared underline tabs (folds ProcTabs/TabBar/TransfersTabBar/…)
+export { Tabs } from './Tabs';
+export type { TabsProps, TabItem } from './Tabs';
+
 // P5 — visual states (skeleton loaders, empty & error states)
 export { Skeleton, SkeletonText, TableSkeleton, CardSkeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';
