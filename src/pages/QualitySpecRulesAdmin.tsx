@@ -43,6 +43,8 @@ import {
 } from '../services/productsMaster.service';
 import { hydrateRmQualitySpecRows } from '../lib/rmQualitySpecVisibility';
 import { hydratePmQualitySpecRows } from '../lib/pmQualitySpecVisibility';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 type SpecType = 'quality' | 'technical';
 
@@ -575,21 +577,20 @@ export default function QualitySpecRulesAdmin() {
 
           {/* Table / empty / loading */}
           {loading ? (
-            <div className="flex items-center gap-2 p-8 text-sm text-gray-500">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-slate-600" />
-              Loading rules…
+            <div className="p-8">
+              <TableSkeleton rows={6} cols={6} />
             </div>
           ) : unifiedRows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-10 text-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400">📋</div>
-              <p className="text-sm font-semibold text-gray-700">
-                No {typeFilter === 'all' ? '' : `${typeFilter} `}rules for this entity yet
-              </p>
-              <p className="max-w-sm text-xs text-gray-500">
-                Use <span className="font-semibold text-orange-600">+ Add rule</span> to create a Quality or Technical
-                spec rule for a category (or category + sub-category).
-              </p>
-            </div>
+            <EmptyState
+              icon={<div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400">📋</div>}
+              title={`No ${typeFilter === 'all' ? '' : `${typeFilter} `}rules for this entity yet`}
+              description={
+                <>
+                  Use <span className="font-semibold text-orange-600">+ Add rule</span> to create a Quality or Technical
+                  spec rule for a category (or category + sub-category).
+                </>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">

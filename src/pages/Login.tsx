@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../assets/logo/eilogofull.svg';
+import { CardSkeleton } from '../components/ui/Skeleton';
 
 const Login: React.FC = () => {
  const navigate = useNavigate();
@@ -112,11 +113,8 @@ const Login: React.FC = () => {
  // Show loading state while checking auth
  if (authLoading) {
   return (
-   <div className="min-h-screen flex items-center justify-center bg-gray-50">
-    <div className="flex flex-col items-center gap-4">
-     <div className="w-12 h-12 border-4 border-gray-200 border-t-amber-500 rounded-full animate-spin"></div>
-     <p className="text-gray-500 font-medium">Loading...</p>
-    </div>
+   <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <CardSkeleton className="w-full max-w-md" />
    </div>
   );
  }

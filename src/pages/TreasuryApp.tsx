@@ -6,6 +6,8 @@ import { useGlobalState } from '../context/GlobalStateContext';
 import { fetchTreasuryPurchaseOrders, type TreasuryPurchaseOrderRow } from '../services/treasury.service';
 import { TreasuryPoDetailModal } from '../components/treasury/TreasuryPoDetailModal';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 interface Notification {
   id: string;
@@ -126,8 +128,12 @@ const TreasuryApp = () => {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={9} className="px-3 py-8 text-center text-gray-400 text-sm">
-                No PO payment records yet. Release a PO from Procurement with transaction details.
+              <td colSpan={9}>
+                <EmptyState
+                  compact
+                  title="No PO payment records yet."
+                  description="Release a PO from Procurement with transaction details."
+                />
               </td>
             </tr>
           ) : (
@@ -639,7 +645,7 @@ const TreasuryApp = () => {
                 </button>
               </div>
               {treasuryPoLoading ? (
-                <p className="text-sm text-gray-500 py-6 text-center">Loading PO payment records…</p>
+                <TableSkeleton rows={6} cols={9} className="py-6" />
               ) : (
                 <>
                   <TreasuryPoPaymentsTable
@@ -846,7 +852,7 @@ const TreasuryApp = () => {
                     Summary in the table; use the view icon for full payment terms, transaction details, and line items.
                   </p>
                   {treasuryPoLoading ? (
-                    <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>
+                    <TableSkeleton rows={6} cols={9} className="py-6" />
                   ) : (
                     <>
                       <TreasuryPoPaymentsTable
@@ -861,7 +867,11 @@ const TreasuryApp = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
                   <h3 className="text-lg font-bold text-gray-800 mb-4">POs Awaiting Advance Approval</h3>
                   {treasuryPOs.length === 0 ? (
-                    <p className="text-gray-400 text-sm py-6 text-center">No POs awaiting advance payment. Create planned lines from Procurement.</p>
+                    <EmptyState
+                      compact
+                      title="No POs awaiting advance payment."
+                      description="Create planned lines from Procurement."
+                    />
                   ) : (
                     <div className="space-y-3">
                       {treasuryPOs.map((po: any) => {

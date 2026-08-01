@@ -12,6 +12,8 @@ import { PISDetailsDialog } from './PISDetailsDialog';
 import { getServerBaseUrl, pisApi } from '../utils/api';
 import QuotationsDashboardWidget from '../../../pages/quotations/QuotationsDashboardWidget';
 import { toast } from 'sonner';
+import { SkeletonText } from '../../ui/Skeleton';
+import { EmptyState } from '../../ui/EmptyState';
 
 // Type definitions for dashboard data
 interface PendingUpload {
@@ -517,9 +519,9 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
      </div>
 
      {isPendingUploadsLoading ? (
-      <div className="text-sm text-gray-500">Loading…</div>
+      <SkeletonText lines={3} />
      ) : pendingUploads.length === 0 ? (
-      <div className="text-sm text-gray-500">No pending uploads.</div>
+      <EmptyState compact title="No pending uploads." />
      ) : (
       <div className="space-y-2">
        {pendingUploads.map((a: PendingUpload) => (

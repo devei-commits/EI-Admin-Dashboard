@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { PackageX } from 'lucide-react';
 import { InventoryItem } from './Inventory';
+import { CardSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { useWarehouseLocations } from '../../hooks/useWarehouseLocations';
 import { type WarehouseLocationDTO, type WarehouseRackDTO, type StoredItemSummary } from '../../services/warehouseLocations.service';
 import { fetchWarehouseInventory } from '../../services/warehouseInventory.service';
@@ -106,8 +109,12 @@ const WarehouseLocations = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-auto p-6 bg-canvas flex items-center justify-center">
-        <p className="text-ink-2">Loading warehouse locations…</p>
+      <div className="flex-1 overflow-auto p-6 bg-canvas">
+        <div className="w-full space-y-4">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
       </div>
     );
   }
@@ -266,9 +273,11 @@ const WarehouseLocations = () => {
         })}
 
         {facilityGroups.length === 0 && (
-          <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-ink-3">
-            No warehouse locations configured yet.
-          </div>
+          <EmptyState
+            icon={<PackageX />}
+            title="No warehouse locations configured yet."
+            className="rounded-xl border border-border bg-surface"
+          />
         )}
       </div>
 

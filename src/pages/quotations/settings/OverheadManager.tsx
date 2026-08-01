@@ -4,9 +4,10 @@
  * Inline-editable band values; add/delete heads.
  */
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { inputClassName, ConfirmDialog } from '../../../components/ui';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import * as api from '../../../services/quotations.service';
 import type { OverheadRow } from '../../../services/quotations.service';
 
@@ -68,7 +69,7 @@ export default function OverheadManager() {
       </p>
 
       {loading ? (
-        <div className="p-8 text-center"><Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin" /></div>
+        <TableSkeleton rows={6} cols={8} />
       ) : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">

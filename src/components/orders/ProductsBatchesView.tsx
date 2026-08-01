@@ -33,6 +33,7 @@ import { StatusBadge } from './StatusBadge';
 import { UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { buildBatchTimelineSteps } from '../../services/fulfillment.service';
 import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
+import { EmptyState } from '../ui/EmptyState';
 
 interface ProductsBatchesViewProps {
   saleOrders: SaleOrder[];
@@ -291,14 +292,16 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
           <tbody className="divide-y divide-hairline">
             {groupedRows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-ink-3">
-                  <Package className="w-10 h-10 mx-auto mb-2 text-ink-4" />
-                  <p className="font-medium">No batches found</p>
-                  <p className="text-xs mt-1">
-                    {searchQuery || activeFilter !== 'all'
-                      ? 'Try adjusting filters or search.'
-                      : 'Batches will appear when BPR is closed and FG is ready.'}
-                  </p>
+                <td colSpan={14} className="px-4">
+                  <EmptyState
+                    icon={<Package />}
+                    title="No batches found"
+                    description={
+                      searchQuery || activeFilter !== 'all'
+                        ? 'Try adjusting filters or search.'
+                        : 'Batches will appear when BPR is closed and FG is ready.'
+                    }
+                  />
                 </td>
               </tr>
             ) : (

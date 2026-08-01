@@ -7,6 +7,8 @@ import {
   mrnDisplayBatchNumber,
   type MRNRecordFromApi,
 } from '../../../services/mrn.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 /**
  * Transfers → Returns tab. Read-only list of inbound transfers (Manufacturing Unit → Warehouse):
@@ -81,12 +83,12 @@ const WarehouseReturnsTab = ({ search = '' }: { search?: string } = {}) => {
             <tbody className="divide-y divide-hairline">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-ink-4">Loading returns…</td>
+                  <td colSpan={8} className="px-4 py-4"><TableSkeleton rows={6} cols={8} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-ink-4">
-                    {rows.length === 0 ? 'No returns yet.' : 'No returns match your search.'}
+                  <td colSpan={8}>
+                    <EmptyState title={rows.length === 0 ? 'No returns yet.' : 'No returns match your search.'} />
                   </td>
                 </tr>
               ) : (

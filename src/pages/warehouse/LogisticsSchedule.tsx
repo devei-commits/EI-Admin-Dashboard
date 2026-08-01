@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { createLogisticsSchedule, fetchLogisticsSchedules, type CreateLogisticsSchedulePayload, type LogisticsScheduleRow } from '../../services/logisticsSchedule.service';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 const EMPTY_FORM: CreateLogisticsSchedulePayload = {
   trackingNo: '',
@@ -151,11 +153,15 @@ export default function LogisticsSchedule() {
               <tbody className="divide-y divide-hairline">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-ink-3">Loading…</td>
+                    <td colSpan={5} className="px-3 py-6">
+                      <TableSkeleton rows={5} cols={5} />
+                    </td>
                   </tr>
                 ) : schedules.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-ink-3">No active schedules yet.</td>
+                    <td colSpan={5}>
+                      <EmptyState title="No active schedules yet." />
+                    </td>
                   </tr>
                 ) : (
                   schedules.map((s) => (

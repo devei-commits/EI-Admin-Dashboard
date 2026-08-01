@@ -28,6 +28,9 @@ import {
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 import StockByLocationPanel from '../../components/StockByLocationPanel';
 import { formatQtyExact } from '../../utils/formatQty';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { PackageSearch } from 'lucide-react';
 
 export interface InventoryItem {
   id: string;
@@ -1806,7 +1809,9 @@ const WarehouseInventory = () => {
           </div>
         )}
         {loading && viewMode === 'current' ? (
-          <div className="py-12 text-center text-ink-3">Loading inventory…</div>
+          <div className="py-4">
+            <TableSkeleton rows={8} cols={6} />
+          </div>
         ) : viewMode === 'history' ? (
           <div className="bg-surface rounded-lg border border-border p-6">
             <h2 className="text-lg font-semibold text-ink mb-4">Inventory History</h2>
@@ -1816,11 +1821,9 @@ const WarehouseInventory = () => {
               </div>
             )}
             {historyLoading ? (
-              <div className="py-12 text-center text-ink-3">Loading internal movement history…</div>
+              <TableSkeleton rows={8} cols={7} />
             ) : filteredHistoryRows.length === 0 ? (
-              <div className="py-12 text-center text-ink-3 text-sm">
-                No internal movements recorded yet.
-              </div>
+              <EmptyState title="No internal movements recorded yet." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1931,9 +1934,9 @@ const WarehouseInventory = () => {
           <div className="bg-surface rounded-lg border border-border p-6">
             <h2 className="text-lg font-semibold text-ink mb-4">Usage (consumption) — avg per period</h2>
             {usageLoading ? (
-              <div className="py-12 text-center text-ink-3">Loading usage stats…</div>
+              <TableSkeleton rows={8} cols={5} />
             ) : usageRows.length === 0 ? (
-              <div className="py-12 text-center text-ink-3 text-sm">No usage data yet (from movement history).</div>
+              <EmptyState title="No usage data yet (from movement history)." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2198,13 +2201,11 @@ const WarehouseInventory = () => {
 
               {/* Empty State */}
               {sortedItems.length === 0 && (
-                <div className="py-16 text-center">
-                  <div className="text-ink-4 text-5xl mb-4"></div>
-                  <h3 className="text-lg font-semibold text-ink mb-2">No items found</h3>
-                  <p className="text-ink-3 text-sm">
-                    {searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
-                  </p>
-                </div>
+                <EmptyState
+                  icon={<PackageSearch />}
+                  title="No items found"
+                  description={searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
+                />
               )}
             </div>
 

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { UserRole, Customer } from '../types/pis';
 import { usePIS } from '../context/PISContext';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface CustomersViewProps {
  currentRole: UserRole;
@@ -323,9 +324,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
     </Table>
     
     {filteredCustomers.length === 0 && (
-     <div className="p-8 text-center text-gray-500">
-      No customers found matching your criteria
-     </div>
+     <EmptyState icon={<Users />} title="No customers found matching your criteria" />
     )}
    </Card>
 

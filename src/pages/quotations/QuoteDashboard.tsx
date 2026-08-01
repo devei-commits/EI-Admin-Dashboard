@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart3, FileText, Trophy, ShoppingCart, IndianRupee } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { PageHeader, StatCard } from '../../components/ui';
+import { CardSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { QuoteAnalytics } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
@@ -40,12 +42,12 @@ export default function QuoteDashboard() {
       <QuotationsNav />
 
       {loading ? (
-        <div className="space-y-6 animate-pulse">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-56 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{Array.from({ length: 2 }).map((_, i) => <CardSkeleton key={i} />)}</div>
         </div>
       ) : !a ? (
-        <div className="p-12 text-center text-gray-500">No analytics available.</div>
+        <EmptyState icon={<BarChart3 />} title="No analytics available." />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

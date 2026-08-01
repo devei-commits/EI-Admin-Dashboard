@@ -145,6 +145,9 @@ import {
 } from '../lib/productionVesselSplit';
 import { BatchesView } from '../components/production/BatchesView';
 import { DispensingTrayView } from '../components/production/DispensingTrayView';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -8855,28 +8858,24 @@ function MaterialReservationView({
       </div>
       <div className="flex-1 overflow-auto p-5">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-40 text-ink-4">
-            <Loader2 size={28} className="animate-spin mb-2 opacity-40" />
-            <p className="text-sm">Loading reserved items…</p>
-          </div>
+          <TableSkeleton rows={6} cols={7} />
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-40 text-err">
-            <AlertTriangle size={28} className="mb-2 opacity-60" />
-            <p className="text-sm">{error}</p>
-            <button type="button" onClick={load} className="mt-3 text-xs text-warn font-semibold hover:underline">Retry</button>
-          </div>
+          <ErrorState message={error} onRetry={load} />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-ink-4">
-            <Layers size={32} className="mb-2 opacity-20" />
-            <p className="text-sm text-center max-w-md">No reserved materials match this filter. Use <b>Reserve for batch</b> or reserve from batch cards.</p>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-warn hover:bg-warn text-white shadow-sm transition-colors"
-            >
-              <Plus size={13} /> Reserve for batch
-            </button>
-          </div>
+          <EmptyState
+            icon={<Layers />}
+            title="No reserved materials match this filter."
+            description="Use Reserve for batch or reserve from batch cards."
+            action={
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-warn hover:bg-warn text-white shadow-sm transition-colors"
+              >
+                <Plus size={13} /> Reserve for batch
+              </button>
+            }
+          />
         ) : (
           <div className="tbl-wrap overflow-x-auto rounded-xl border border-hairline bg-surface">
             <table className="w-full text-xs">

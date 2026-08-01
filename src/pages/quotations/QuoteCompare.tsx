@@ -4,8 +4,10 @@
  */
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { GitCompare, ArrowLeft, Loader2 } from 'lucide-react';
+import { GitCompare, ArrowLeft } from 'lucide-react';
 import { PageHeader } from '../../components/ui';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteFull } from '../../services/quotations.service';
 import { statusBadge } from './quoteStatus';
@@ -45,8 +47,8 @@ export default function QuoteCompare() {
         actions={<button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>}
       />
 
-      {loading ? <div className="p-12 text-center"><Loader2 className="w-6 h-6 mx-auto text-slate-400 animate-spin" /></div>
-        : quotes.length < 2 ? <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-12 text-center text-gray-500">Select at least 2 quotes from the list to compare.</div>
+      {loading ? <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4"><TableSkeleton rows={6} cols={4} /></div>
+        : quotes.length < 2 ? <div className="bg-white rounded-lg shadow-sm border border-gray-100"><EmptyState icon={<GitCompare />} title="Select at least 2 quotes from the list to compare." /></div>
           : (
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-x-auto">
               <table className="w-full text-sm">

@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, DollarSign, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
+import { CardSkeleton } from '../ui/Skeleton';
 import type { InvoiceModalProps, OrderItem } from '../../types/orderFulfillment';
 import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
 import {
@@ -206,10 +207,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     <Modal isOpen={isOpen} onClose={handleClose} title={`Create Invoice for SO: ${saleOrder.soNo}`} size="xl">
       <div className="p-6">
         {loadingData ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="animate-spin text-brand mr-3" size={20} />
-            <span className="text-ink-3 text-sm">Loading invoice data...</span>
-          </div>
+          <CardSkeleton />
         ) : (
           <>
             <div className="mb-6 p-4 bg-brand-soft border border-brand-soft rounded-lg">

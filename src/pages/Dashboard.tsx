@@ -11,6 +11,8 @@ import type {
   DashboardRecentActivity,
 } from '../services/dashboard.service';
 import { queryKeys } from '../lib/queryClient';
+import { TableSkeleton, SkeletonText } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 // Icons: Phosphor (design language). Aliased to the previous lucide names to keep JSX unchanged.
 import {
   SquaresFour as LayoutDashboard,
@@ -555,9 +557,9 @@ const Dashboard = () => {
             <AlertCircle className="w-5 h-5 text-warn" /> Items at or below reorder point (planning alert)
           </h2>
           {lowThresholdLoading ? (
-            <p className="text-ink-3 text-sm">Loading…</p>
+            <TableSkeleton rows={6} cols={7} />
           ) : lowThresholdRows.length === 0 ? (
-            <p className="text-ink-3 text-sm">No items currently at or below reorder point.</p>
+            <EmptyState icon={<AlertCircle />} title="No items currently at or below reorder point." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -653,9 +655,9 @@ const Dashboard = () => {
           </div>
           <div className="space-y-3">
             {overviewLoading ? (
-              <p className="text-sm text-ink-3 py-6 text-center col-span-full">Loading activity…</p>
+              <SkeletonText lines={4} className="py-2" />
             ) : recentActivity.length === 0 ? (
-              <p className="text-sm text-ink-3 py-6 text-center">No recent activity.</p>
+              <EmptyState icon={<Activity />} title="No recent activity." compact />
             ) : recentActivity.map((activity) => (
               <div key={activity.id} className="flex items-start gap-3 p-3 rounded-[var(--r-md)] hover:bg-surface-3 transition-colors">
                 <div className={`p-2 rounded-[var(--r-sm)] ${getActivityColor(activity.type)}`}>
@@ -681,9 +683,9 @@ const Dashboard = () => {
           </div>
           <div className="space-y-3">
             {overviewLoading ? (
-              <p className="text-sm text-ink-3 py-6 text-center">Loading pending items…</p>
+              <SkeletonText lines={4} className="py-2" />
             ) : pendingItems.length === 0 ? (
-              <p className="text-sm text-ink-3 py-6 text-center">Nothing pending right now.</p>
+              <EmptyState icon={<AlertCircle />} title="Nothing pending right now." compact />
             ) : pendingItems.map((item) => (
               <div key={item.id} className="p-3 rounded-[var(--r-md)] border border-hairline hover:border-strong hover:bg-surface-3 transition-all cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
@@ -772,11 +774,11 @@ const Dashboard = () => {
         </div>
 
         {filteredModules.length === 0 && (
-          <div className="text-center py-12">
-            <Search className="w-12 h-12 mx-auto text-ink-4 mb-3" />
-            <p className="text-ink-2 font-medium">No modules found</p>
-            <p className="text-sm text-ink-4">Try adjusting your search or filter</p>
-          </div>
+          <EmptyState
+            icon={<Search />}
+            title="No modules found"
+            description="Try adjusting your search or filter"
+          />
         )}
       </div>
 

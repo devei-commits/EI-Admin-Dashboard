@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Save } from 'lucide-react';
 import { fetchConversionRates, upsertConversionRate } from '../../../services/quotations.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import type { ConversionRate } from '../../../services/quotations.service';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ export default function ConversionRateManager() {
     else toast.error(res.error ?? 'Save failed');
   };
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading conversion rates…</div>;
+  if (loading) return <div className="p-6"><TableSkeleton rows={6} cols={5} /></div>;
 
   return (
     <div className="space-y-8">

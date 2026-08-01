@@ -4,7 +4,10 @@
  * escalate, or raise a new query. Mirrors the Customer Tracker table chrome.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, Loader2, HelpCircle, Plus } from 'lucide-react';
+import { Search, RefreshCw, HelpCircle, Plus } from 'lucide-react';
+import { TableSkeleton } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 import type { BdCustomerRow, BdQueryRow } from '../../types/bd.types';
 import { QUERY_STATUS_CONFIG, formatDMY, type QueryStatus } from '../../constants/bd';
 import { fetchBdQueries } from '../../services/bd.service';
@@ -83,11 +86,11 @@ export const QueriesView: React.FC<QueriesViewProps> = ({ clients, onDataChanged
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={22} className="mr-2 animate-spin text-blue-500" /><span className="text-sm text-slate-500">Loading queries…</span></div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4"><TableSkeleton rows={6} cols={9} /></div>
       ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center"><p className="mb-3 text-sm text-red-500">{error}</p><button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry</button></div>
+        <div className="rounded-xl border border-slate-200 bg-white"><ErrorState message={error} onRetry={() => void load()} /></div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-sm text-slate-400"><HelpCircle size={30} className="mx-auto mb-2 opacity-30" />{rows.length === 0 ? 'No queries yet.' : 'No queries match your filters.'}</div>
+        <div className="rounded-xl border border-slate-200 bg-white"><EmptyState icon={<HelpCircle />} title={rows.length === 0 ? 'No queries yet.' : 'No queries match your filters.'} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">

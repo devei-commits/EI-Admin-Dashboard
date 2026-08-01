@@ -6,6 +6,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock, ShoppingCart, GitBranch, AlertTriangle, ReceiptText, ExternalLink, ClipboardCheck, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, FormField, inputClassName } from '../../components/ui';
+import { CardSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteFull, SavedQuoteListItem, QuoteActuals } from '../../services/quotations.service';
 import { generateQuotePdf } from '../../lib/quotePdf';
@@ -87,14 +89,13 @@ export default function QuoteDetail() {
   const downloadPdf = (variant: 'client' | 'internal') => { if (quote) generateQuotePdf(quote, variant); setPdfOpen(false); };
 
   if (loading) return (
-    <div className="pt-4 md:pt-6 space-y-6 animate-pulse">
-      <div className="h-20 bg-slate-200 rounded-xl" />
-      <div className="h-16 bg-white rounded-lg border border-gray-100 shadow-sm" />
-      <div className="h-44 bg-white rounded-lg border border-gray-100 shadow-sm" />
-      <div className="h-64 bg-white rounded-lg border border-gray-100 shadow-sm" />
+    <div className="pt-4 md:pt-6 space-y-6">
+      <CardSkeleton />
+      <CardSkeleton />
+      <CardSkeleton />
     </div>
   );
-  if (!quote) return <div className="pt-4 md:pt-6"><div className="bg-white rounded-lg shadow-sm border border-gray-100 p-16 text-center text-gray-500">Quote not found.</div></div>;
+  if (!quote) return <div className="pt-4 md:pt-6"><div className="bg-white rounded-lg shadow-sm border border-gray-100"><EmptyState icon={<FileText />} title="Quote not found." /></div></div>;
 
   const r = quote.result;
   const meta = [quote.customer_name && `Customer: ${quote.customer_name}`, r.bom_code && `BOM: ${r.bom_code}`, r.pack_size && `Pack: ${r.pack_size}`, r.grade_name].filter(Boolean).join('  ·  ');

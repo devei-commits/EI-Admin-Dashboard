@@ -5,7 +5,10 @@
  * Tool-native ProcModalShell.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Send, Circle } from 'lucide-react';
+import { Send, Circle, History } from 'lucide-react';
+import { SkeletonText } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 import { ProcModalShell } from '../procurement/ProcModalShell';
 import { useToast } from '../../context/ToastContext';
 import { fetchBdTimeline, addBdEvent } from '../../services/bd.service';
@@ -101,11 +104,11 @@ export const HistoryTimelinePopup: React.FC<HistoryTimelinePopupProps> = ({ code
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12"><Loader2 size={20} className="mr-2 animate-spin text-blue-500" /><span className="text-sm text-slate-500">Loading…</span></div>
+        <SkeletonText lines={6} className="py-4" />
       ) : error ? (
-        <div className="py-10 text-center"><p className="mb-3 text-sm text-red-500">{error}</p><button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry</button></div>
+        <ErrorState message={error} onRetry={() => void load()} />
       ) : visible.length === 0 ? (
-        <div className="py-12 text-center text-sm text-slate-400">No events in this filter yet.</div>
+        <EmptyState icon={<History />} title="No events in this filter yet." />
       ) : (
         <ol className="relative space-y-3 border-l-2 border-slate-100 pl-5">
           {visible.map((e) => {

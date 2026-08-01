@@ -1,5 +1,6 @@
 import React from 'react';
 import { Package, FileText, Truck, Radar, MapPin, Eye } from 'lucide-react';
+import { EmptyState } from '../ui/EmptyState';
 import type { SaleOrder, BatchSplit, OrderItem } from '../../types/orderFulfillment';
 import { StatusBadge } from './StatusBadge';
 import {
@@ -29,13 +30,11 @@ export const BatchSplitTable: React.FC<BatchSplitTableProps> = ({
 }) => {
   if (rows.length === 0) {
     return (
-      <div className="py-12 text-center text-ink-3">
-        <Package size={32} className="mx-auto mb-2" />
-        <p className="font-semibold">No batch splits found.</p>
-        <p className="text-sm">
-          No records match the current filter criteria.
-        </p>
-      </div>
+      <EmptyState
+        icon={<Package />}
+        title="No batch splits found."
+        description="No records match the current filter criteria."
+      />
     );
   }
 

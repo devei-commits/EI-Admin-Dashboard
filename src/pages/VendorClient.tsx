@@ -11,6 +11,7 @@ import {
 } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { EmptyState } from '../components/ui/EmptyState';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
 
@@ -642,7 +643,7 @@ const VendorClient: React.FC = () => {
         <tbody>
          {vendorTotal === 0 ? (
           <tr>
-           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
+           <td colSpan={11}><EmptyState compact title="No vendors found." /></td>
           </tr>
          ) : (
           sortedPagedVendors.map((v, idx) => (
@@ -687,7 +688,7 @@ const VendorClient: React.FC = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
        {vendorTotal === 0 ? (
-        <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No vendors found.</div>
+        <div className="bg-white rounded-xl border"><EmptyState compact title="No vendors found." /></div>
        ) : (
         sortedPagedVendors.map((v) => (
          <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -888,7 +889,7 @@ const VendorClient: React.FC = () => {
         <tbody>
          {clientTotal === 0 ? (
           <tr>
-           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
+           <td colSpan={11}><EmptyState compact title="No clients found." /></td>
           </tr>
          ) : (
           sortedPagedClients.map((c, idx) => (
@@ -933,7 +934,7 @@ const VendorClient: React.FC = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
        {clientTotal === 0 ? (
-        <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No clients found.</div>
+        <div className="bg-white rounded-xl border"><EmptyState compact title="No clients found." /></div>
        ) : (
         sortedPagedClients.map((c) => (
          <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">

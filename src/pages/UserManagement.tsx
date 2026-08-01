@@ -20,6 +20,9 @@ import {
  Check,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { fetchStaffUsers, updateUserRole, updateUserProfile, deleteUser as deleteUserApi, createStaffUser, type StaffUserFromApi } from '../services/user.service';
 import { listStaffRoles } from '../services/role.service';
@@ -627,12 +630,14 @@ const UserManagement = () => {
    </div>
 
    {loading && (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-     <p className="text-slate-500">Loading users…</p>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+     <TableSkeleton rows={8} cols={8} />
     </div>
    )}
    {error && (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+     <ErrorState message={error} onRetry={loadUsers} />
+    </div>
    )}
 
    {/* Users Table */}
@@ -654,9 +659,8 @@ const UserManagement = () => {
       </thead>
       <tbody className="divide-y divide-gray-100">
        {paginatedUsers.length === 0 ? (
-        <tr><td colSpan={8} className="px-4 py-12 text-center">
-         <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-         <p className="font-medium text-slate-500">No users found</p>
+        <tr><td colSpan={8} className="px-4 py-4">
+         <EmptyState icon={<Users />} title="No users found" />
         </td></tr>
        ) : paginatedUsers.map(user => (
         <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
@@ -716,7 +720,7 @@ const UserManagement = () => {
     {/* Mobile Cards */}
     <div className="md:hidden divide-y divide-gray-100">
      {paginatedUsers.length === 0 ? (
-      <div className="px-4 py-12 text-center"><Users className="w-12 h-12 mx-auto mb-3 text-gray-300" /><p className="font-medium text-slate-500">No users found</p></div>
+      <EmptyState icon={<Users />} title="No users found" />
      ) : paginatedUsers.map(user => (
       <div key={user.id} className="p-4 hover:bg-slate-50/50">
        <div className="flex items-start justify-between mb-3">

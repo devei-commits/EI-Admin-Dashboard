@@ -44,6 +44,10 @@ import {
 import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermission';
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, importPackMaterialFromZohoSku, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { TableSkeleton, CardSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Package as PackageIcon } from '@phosphor-icons/react';
 import {
   buildMasterStatBuckets,
   compareMasterTableSort,
@@ -1687,8 +1691,8 @@ const PackagingRefactored: React.FC = () => {
                 <span>Close</span>
               </button>
             </div>
-            <div className="min-h-[50vh] bg-canvas flex items-center justify-center">
-              <p className="text-ink-3">Loading pack material…</p>
+            <div className="min-h-[50vh] bg-canvas flex items-center justify-center p-6">
+              <CardSkeleton className="w-full max-w-md" />
             </div>
           </div>
         </div>
@@ -2548,15 +2552,15 @@ const BprDashboard: React.FC<{
 
         {/* ── Loading / Error ── */}
         {isLoading && (
-          <div className="flex items-center justify-center py-12 text-ink-3">
-            <span className="animate-pulse">Loading pack materials…</span>
+          <div className="py-6">
+            <TableSkeleton rows={8} cols={11} />
           </div>
         )}
         {!isLoading && error && (
-          <div className="py-8 text-center">
-            <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load pack materials'}</p>
-            <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-brand text-brand-ink rounded-lg hover:bg-brand-press">Retry</button>
-          </div>
+          <ErrorState
+            message={error instanceof Error ? error.message : 'Failed to load pack materials'}
+            onRetry={() => refetch()}
+          />
         )}
 
         {!isLoading && !error && (
@@ -2800,13 +2804,11 @@ const BprDashboard: React.FC<{
                   <tbody className="divide-y divide-hairline">
                     {totalFiltered === 0 ? (
                       <tr>
-                        <td colSpan={11} className="px-4 py-12 text-center text-ink-4 text-sm">
-                          <div className="flex flex-col items-center gap-2">
-                            <svg className="w-8 h-8 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                            </svg>
-                            No packaging materials match your search.
-                          </div>
+                        <td colSpan={11} className="px-4 py-4">
+                          <EmptyState
+                            icon={<PackageIcon />}
+                            title="No packaging materials match your search."
+                          />
                         </td>
                       </tr>
                     ) : rows.map((pm, idx) => {

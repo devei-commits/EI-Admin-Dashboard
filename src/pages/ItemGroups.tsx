@@ -17,6 +17,7 @@ import type { PackMaterialRecord } from '../services/packMaterials.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 const EMPTY_FORM = {
   name: '',
@@ -461,7 +462,7 @@ const ItemGroups: React.FC = () => {
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-ink-3">Loading…</div>
+            <TableSkeleton rows={6} cols={4} className="p-6" />
           ) : (
             <div className="divide-y divide-hairline">
               {filtered.map(ig => (

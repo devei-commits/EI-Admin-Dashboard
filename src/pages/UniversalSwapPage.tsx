@@ -11,6 +11,8 @@ import {
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { formatQtyExact } from '../utils/formatQty';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 /** Ordered product row for left panel (from planning extracted). */
 type OrderedProductRow = {
@@ -171,12 +173,18 @@ const UniversalSwapPage = () => {
   if (planningLoading || orderedProducts.length === 0) {
     return (
       <div className="p-8">
-        <div className="text-center">
-          <p className="text-gray-500">{planningLoading ? 'Loading orders…' : 'No planning orders found.'}</p>
-          <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
-            Back to Planning
-          </Link>
-        </div>
+        {planningLoading ? (
+          <TableSkeleton rows={6} cols={4} />
+        ) : (
+          <EmptyState
+            title="No planning orders found."
+            action={
+              <Link to="/planning" className="text-blue-600 hover:underline">
+                Back to Planning
+              </Link>
+            }
+          />
+        )}
       </div>
     );
   }
@@ -399,9 +407,9 @@ const UniversalSwapPage = () => {
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {itemsLoading ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">Loading items…</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-6"><TableSkeleton rows={6} cols={8} /></td></tr>
                 ) : filteredItems.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">No items for this product.</td></tr>
+                  <tr><td colSpan={8}><EmptyState compact title="No items for this product." /></td></tr>
                 ) : filteredItems.map(item => (
                   <tr 
                     key={item.id}

@@ -23,6 +23,7 @@ import type { ExecPlanningItem } from '../../lib/fulfillmentExecutionPct';
 import type { SoPlanningAvailabilityResponse } from '../../services/fulfillment.service';
 import { fetchSoPlanningAvailability } from '../../services/fulfillment.service';
 import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
+import { EmptyState } from '../ui/EmptyState';
 import type { OrderItem, BatchSplit } from '../../types/orderFulfillment';
 import { COMMERCIAL_STATUS_CONFIG } from '../../constants/orderFulfillment';
 
@@ -841,17 +842,15 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
         </div>
         </>
       ) : (
-        <div className="text-center py-16 px-4 bg-surface-3 border-2 border-dashed border-border rounded-xl">
-          <div className="inline-block bg-surface-3 p-4 rounded-full">
-            <ShoppingCart size={40} className="text-ink-3" />
-          </div>
-          <h3 className="text-lg font-semibold text-ink mt-4">No Orders Found</h3>
-          <p className="text-sm text-ink-3 mt-1 max-w-xs mx-auto">
-            {searchQuery || activeFilter !== 'all' || activePipelineStage
+        <EmptyState
+          icon={<ShoppingCart />}
+          title="No Orders Found"
+          description={
+            searchQuery || activeFilter !== 'all' || activePipelineStage
               ? 'Try adjusting your search or filter to find what you are looking for.'
-              : 'Get started by creating a new sale order. It will appear here.'}
-          </p>
-        </div>
+              : 'Get started by creating a new sale order. It will appear here.'
+          }
+        />
       )}
 
       {/* Modals */}

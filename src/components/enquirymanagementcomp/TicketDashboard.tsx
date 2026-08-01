@@ -6,6 +6,8 @@ import type {
  TicketStatus,
 } from '../../types/ticket.types';
 import { fetchTicketDashboardStats, fetchStaffPerformanceMetrics } from '../../services/ticket.service';
+import { CardSkeleton } from '../ui/Skeleton';
+import { ErrorState } from '../ui/ErrorState';
 
 // ==================== Dashboard Stat Card ====================
 interface StatCardProps {
@@ -396,24 +398,14 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
 
  if (loading) {
   return (
-   <div className="flex items-center justify-center py-20">
-    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-800" />
+   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
    </div>
   );
  }
 
  if (!stats) {
-  return (
-   <div className="text-center py-20 text-gray-500">
-    <p>Failed to load dashboard data</p>
-    <button 
-     onClick={loadDashboardData}
-     className="mt-4 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-800 transition-colors"
-    >
-     Retry
-    </button>
-   </div>
-  );
+  return <ErrorState message="Failed to load dashboard data" onRetry={loadDashboardData} />;
  }
 
  return (

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { CardSkeleton } from '../components/ui/Skeleton';
+import { ErrorState } from '../components/ui/ErrorState';
 import WarehouseSidebar from '../components/WarehouseSidebar';
 import WarehouseInventory from './WarehouseInventory';
 import { fetchWarehouseOverview } from '../services/warehouseOverview.service';
@@ -106,13 +108,13 @@ const Warehouse: React.FC = () => {
         {activeView === 'inventory' ? (
           <WarehouseInventory />
         ) : overviewLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-slate-500">Loading warehouse overview…</p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <CardSkeleton />
+            <CardSkeleton />
+            <CardSkeleton />
           </div>
         ) : overviewError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            Failed to load warehouse overview. Please try again.
-          </div>
+          <ErrorState message="Failed to load warehouse overview. Please try again." />
         ) : (
         <>
         {/* KPI cards */}

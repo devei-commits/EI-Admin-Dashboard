@@ -32,6 +32,8 @@ import {
 import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import { Pagination } from '../components/ui/Pagination';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
   formatStagedPaymentTermsSummary,
@@ -999,7 +1001,7 @@ const ItemsList: React.FC = () => {
         ) : null}
 
         {loading ? (
-          <div className="py-12 text-center text-ink-3">Loading…</div>
+          <TableSkeleton rows={8} cols={5} className="py-4" />
         ) : (
           <div id="pl-list-body" className="space-y-2.5">
             {filteredPageItems.map((item) => {
@@ -1178,17 +1180,19 @@ const ItemsList: React.FC = () => {
               );
             })}
             {filteredPageItems.length === 0 && (
-              <p className="text-ink-3 py-8 text-center">
-                {listSearchDebounced.trim()
-                  ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
-                  : activeTab === 'pr'
-                    ? clientFilterId
-                      ? 'No products with client pricing for the selected client.'
-                      : 'No products in catalogue.'
-                    : vendorFilterId
-                      ? 'No items with rates for the selected vendor.'
-                      : 'No items in this tab.'}
-              </p>
+              <EmptyState
+                title={
+                  listSearchDebounced.trim()
+                    ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
+                    : activeTab === 'pr'
+                      ? clientFilterId
+                        ? 'No products with client pricing for the selected client.'
+                        : 'No products in catalogue.'
+                      : vendorFilterId
+                        ? 'No items with rates for the selected vendor.'
+                        : 'No items in this tab.'
+                }
+              />
             )}
           </div>
         )}

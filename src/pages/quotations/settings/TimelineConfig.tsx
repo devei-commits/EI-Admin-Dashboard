@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { inputClassName, selectClassName, SearchInput, ConfirmDialog } from '../../../components/ui';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import * as api from '../../../services/quotations.service';
 import type { ProcurementRule, ManufacturingRule, QcRule, DispatchRule, LeadTimeItem } from '../../../services/quotations.service';
 
@@ -83,7 +84,7 @@ function MaterialLeadsTab() {
         <label className="flex items-center gap-1.5 text-sm text-gray-600"><input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Missing only</label>
         {dirty && <button onClick={saveAll} disabled={saving} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save {Object.keys(edits).length}</button>}
       </div>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
@@ -156,7 +157,7 @@ function ProcurementTab() {
         ))}
       </div>
       <p className="text-xs text-gray-500">'DEFAULT' is the fallback for unmatched {type === 'RM' ? 'categories' : 'materials'}. Procurement = max across all lines.</p>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
@@ -226,7 +227,7 @@ function ManufacturingTab() {
         </select>
         <span className="text-xs text-gray-400">Empty subtype = base rule for that type. Band 0 = smallest MOQ.</span>
       </div>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
@@ -274,7 +275,7 @@ function QcTab() {
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500">QC days per grade. 'default' is the fallback for custom grades without an explicit rule.</p>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
@@ -306,7 +307,7 @@ function DispatchTab() {
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500">Dispatch days. 'default' applies to all grades unless overridden.</p>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>

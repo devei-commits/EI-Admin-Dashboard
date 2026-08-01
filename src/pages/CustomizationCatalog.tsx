@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createCustomization, fetchCustomizations, type CreateCustomizationPayload, type CustomizationRow } from '../services/customizations.service';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 type CareType = 'Skin care' | 'Hair care';
 
@@ -238,7 +239,7 @@ const CustomizationCatalog = () => {
           </button>
         </div>
         {loading ? (
-          <p className="text-sm text-gray-500">Loading...</p>
+          <TableSkeleton rows={6} cols={5} />
         ) : (
           <>
             <div className="text-xs text-gray-500 mb-3">Total: {rows.length}</div>

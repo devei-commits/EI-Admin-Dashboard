@@ -1,9 +1,11 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Layers, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import { SearchInput } from '../components/ui/SearchInput';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { ProcFilterBar } from '../components/procurement/ProcSection';
@@ -2478,8 +2480,8 @@ function PlanningBatchesTab({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-2 border-ok-soft border-t-transparent rounded-full animate-spin" />
+      <div className="py-6">
+        <TableSkeleton rows={8} cols={7} />
       </div>
     );
   }
@@ -2578,11 +2580,16 @@ function PlanningBatchesTab({
           </table>
         </div>
         {sortedRows.length === 0 ? (
-          <div className="px-4 py-8 text-center text-ink-3 text-sm">
-            {allBatches.length === 0
-              ? 'No batches yet. Create batches from Plan Batches (PIs Extracted) per SO line.'
-              : 'No batches matched your current filters/search.'}
-          </div>
+          <EmptyState
+            icon={<Layers />}
+            title={allBatches.length === 0 ? 'No batches yet' : 'No batches matched your current filters/search.'}
+            description={
+              allBatches.length === 0
+                ? 'Create batches from Plan Batches (PIs Extracted) per SO line.'
+                : undefined
+            }
+            compact
+          />
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-border bg-surface-2/60">
             <span className="text-xs text-ink-2">
@@ -7378,10 +7385,19 @@ const Planning = () => {
 
             {/* PIs Extracted: list from API; row click opens detail popup */}
             {planningLoading && (
-              <div className="py-8 text-center text-ink-3">Loading…</div>
+              <div className="py-6">
+                <TableSkeleton rows={8} cols={7} />
+              </div>
             )}
             {!planningLoading && filteredPisOrders.length === 0 && (
-              <div className="py-8 text-center text-ink-3 border border-border rounded-lg bg-surface">No PRs extracted. Create SOs and they will appear here.</div>
+              <div className="border border-border rounded-lg bg-surface">
+                <EmptyState
+                  icon={<Layers />}
+                  title="No PRs extracted."
+                  description="Create SOs and they will appear here."
+                  compact
+                />
+              </div>
             )}
             <div className="bg-surface rounded-lg border border-border overflow-hidden">
               <div className="overflow-x-auto">
@@ -7858,31 +7874,32 @@ const Planning = () => {
             {/* Items Table */}
             <div className="bg-surface rounded-lg border border-border overflow-x-auto w-full">
               {activeItemsInvolvedLoading && (
-                <div className="p-8 text-center text-ink-3 text-sm">
-                  {itemsInvolvedProductFilterMode !== 'all'
-                    ? 'Loading items for selected products…'
-                    : 'Loading items from confirmed BOMs…'}
+                <div className="p-6">
+                  <TableSkeleton rows={8} cols={6} />
                 </div>
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length === 0 && (
-                <div className="p-12 text-center border border-dashed border-border rounded-lg">
-                  <div className="text-4xl mb-2">⧖</div>
-                  <div className="font-semibold text-ink-2 mb-1">
-                    {itemsInvolvedProductFilterMode !== 'all'
+                <EmptyState
+                  icon={<Layers />}
+                  title={
+                    itemsInvolvedProductFilterMode !== 'all'
                       ? 'No items for selected product(s)'
-                      : 'No confirmed batches'}
-                  </div>
-                  <div className="text-sm text-ink-3">
-                    {itemsInvolvedProductFilterMode !== 'all'
+                      : 'No confirmed batches'
+                  }
+                  description={
+                    itemsInvolvedProductFilterMode !== 'all'
                       ? 'Try another product, clear the product filter, or confirm BOM in Plan Batches (PIs Extracted).'
-                      : 'Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.'}
-                  </div>
-                </div>
+                      : 'Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.'
+                  }
+                />
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length === 0 && (
-                <div className="p-8 text-center text-ink-3 text-sm border border-dashed border-border rounded-lg">
-                  No items match the current filters or search. Try changing category, product, or search term.
-                </div>
+                <EmptyState
+                  icon={<Layers />}
+                  title="No items match the current filters or search."
+                  description="Try changing category, product, or search term."
+                  compact
+                />
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length > 0 && (
                 <>

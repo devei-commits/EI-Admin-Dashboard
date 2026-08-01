@@ -19,6 +19,9 @@ import {
 import { fetchAvailableStaff } from '../../services/ticket.service';
 import api, { getApiBaseUrl } from '../../lib/apiClient';
 import { ApiResponse } from '../../types/api.types';
+import { TableSkeleton } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { Package } from 'lucide-react';
 
 
 // ==================== Main Component ====================
@@ -520,9 +523,7 @@ useEffect(() => {
 
      {/* Tickets List */}
      {loading ? (
-      <div className="flex items-center justify-center py-20">
-       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-800" />
-      </div>
+      <TableSkeleton rows={6} cols={4} />
      ) : paginatedTickets.length > 0 ? (
       <div className="space-y-3">
        {paginatedTickets.map((ticket) => (
@@ -603,9 +604,7 @@ useEffect(() => {
       </button>
      </div>
      {loading ? (
-      <div className="flex items-center justify-center py-20">
-       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-700" />
-      </div>
+      <TableSkeleton rows={6} cols={4} />
      ) : paginatedTickets.length > 0 ? (
       <div className="space-y-3">
        {paginatedTickets.map((ticket) => (
@@ -672,9 +671,7 @@ useEffect(() => {
      </button>
     </div>
     {customizationsLoading ? (
-     <div className="flex items-center justify-center py-20">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-800" />
-     </div>
+     <TableSkeleton rows={6} cols={9} />
     ) : customizations.length > 0 ? (
      <div className="overflow-x-auto bg-white rounded-xl border border-gray-100">
       <table className="w-full text-sm">
@@ -738,9 +735,7 @@ useEffect(() => {
       </table>
      </div>
     ) : (
-     <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-500">
-      No product customizations found.
-     </div>
+     <EmptyState icon={<Package />} title="No product customizations found." />
     )}
    </div>
   )}

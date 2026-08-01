@@ -19,6 +19,9 @@ import {
 import { fetchAvailableStaff } from '../../services/ticket.service';
 import api from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import { Activity, MessageSquare } from 'lucide-react';
+import { SkeletonText } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
 
 // ==================== Activity Timeline ====================
 interface ActivityTimelineProps {
@@ -62,19 +65,11 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoadi
  };
 
  if (isLoading) {
-  return (
-   <div className="flex items-center justify-center py-8">
-    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-800" />
-   </div>
-  );
+  return <SkeletonText lines={4} className="py-4" />;
  }
 
  if (activities.length === 0) {
-  return (
-   <div className="text-center py-8 text-gray-500 text-sm">
-    No activity yet
-   </div>
-  );
+  return <EmptyState compact icon={<Activity />} title="No activity yet" />;
  }
 
  return (
@@ -157,13 +152,9 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
    {/* Messages List */}
    <div className="flex-1 overflow-y-auto space-y-4 mb-4">
     {isLoading ? (
-     <div className="flex items-center justify-center py-8">
-      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-800" />
-     </div>
+     <SkeletonText lines={4} className="py-4" />
     ) : messages.length === 0 ? (
-     <div className="text-center py-8 text-gray-500 text-sm">
-      No messages yet
-     </div>
+     <EmptyState compact icon={<MessageSquare />} title="No messages yet" />
     ) : (
      messages.map((msg) => (
       <div

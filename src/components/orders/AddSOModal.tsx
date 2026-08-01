@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { CardSkeleton } from '../ui/Skeleton';
 
 /** Default calendar days from order date to due date (business rule). */
 const LEAD_DAYS_PRODUCT = 45;
@@ -582,10 +583,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
       <div className="p-6 max-h-[85vh] overflow-y-auto">
         {loadingData ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="animate-spin text-brand mr-3" size={20} />
-            <span className="text-ink-3 text-sm">Loading form data...</span>
-          </div>
+          <CardSkeleton />
         ) : (
           <>
             {errors.length > 0 && (

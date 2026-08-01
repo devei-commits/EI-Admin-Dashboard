@@ -8,6 +8,7 @@ import {
   type CustomizationPackagingRow,
   type CustomizationPackagingSpecs,
 } from '../services/customizationPackagingCatalog.service';
+import { TableSkeleton } from '../components/ui/Skeleton';
 
 const emptySpecs = (): CustomizationPackagingSpecs => ({
   skuVol: '',
@@ -148,7 +149,7 @@ export default function CustomizationPackagingCatalog() {
         </div>
 
         {loading ? (
-          <p className="text-gray-500">Loading…</p>
+          <TableSkeleton rows={6} cols={7} />
         ) : rows.length === 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-semibold text-amber-900">No rows in the database yet</p>

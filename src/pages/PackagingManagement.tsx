@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination } from '../components/ui';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Package as PackageIcon } from '@phosphor-icons/react';
 import { useDebounce } from '../hooks/useDebounce';
 import { fetchPackagingList, createPackaging, updatePackaging, deletePackaging, type PackagingItem } from '../services/packaging.service';
 
@@ -602,18 +606,15 @@ const PackagingManagement = () => {
       </div>
 
       {loading && (
-       <div className="flex items-center justify-center py-12 text-ink-3">
-        <span className="animate-pulse">Loading packaging...</span>
+       <div className="py-6">
+        <TableSkeleton rows={8} cols={8} />
        </div>
       )}
       {!loading && loadError && (
-       <div className="py-8 text-center">
-        <p className="text-err mb-2">{loadError}</p>
-        <button type="button" onClick={loadPackaging} className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-press">Retry</button>
-       </div>
+       <ErrorState message={loadError} onRetry={loadPackaging} />
       )}
       {!loading && !loadError && packagingItems.length === 0 && (
-       <div className="py-12 text-center text-ink-3">No packaging entries found.</div>
+       <EmptyState icon={<PackageIcon />} title="No packaging entries found." />
       )}
 
       {!loading && !loadError && packagingItems.length > 0 && (

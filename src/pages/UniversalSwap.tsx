@@ -6,6 +6,8 @@ import { fetchSwapHistory, fetchAffected, applySwap, fetchHistoryAffected } from
 import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom, HistoryAffectedResponse } from '../services/universalSwap.service';
 import { searchUsers } from '../services/user.service';
 import type { UserSearchHit } from '../services/user.service';
+import { TableSkeleton, SkeletonText } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 type GroupSelection = AffectedItemGroup & { selected: boolean };
 type BomSelection = AffectedBom & { selected: boolean };
@@ -459,9 +461,9 @@ const UniversalSwap: React.FC = () => {
             </p>
 
             {loadingItems ? (
-              <p className="text-sm text-gray-500 py-4">Loading…</p>
+              <SkeletonText lines={4} className="py-4" />
             ) : itemGroups.length === 0 && boms.length === 0 && fromRawMaterialId ? (
-              <p className="text-sm text-gray-500 py-4">No item groups or PR formulas use this raw material.</p>
+              <EmptyState compact title="No item groups or PR formulas use this raw material." />
             ) : !fromRawMaterialId ? (
               <p className="text-sm text-gray-500 py-4">Select a &quot;From&quot; raw material to see affected item groups and PR formulas.</p>
             ) : (
@@ -586,9 +588,9 @@ const UniversalSwap: React.FC = () => {
           </div>
 
           {loadingHistory ? (
-            <div className="p-6 text-sm text-gray-500">Loading history…</div>
+            <div className="p-6"><TableSkeleton rows={5} cols={7} /></div>
           ) : swapHistory.length === 0 ? (
-            <div className="p-6 text-sm text-gray-500">No swap history yet.</div>
+            <EmptyState compact title="No swap history yet." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -678,11 +680,9 @@ const UniversalSwap: React.FC = () => {
 
               <div className="px-5 py-4 max-h-96 overflow-y-auto">
                 {loadingHistoryModal ? (
-                  <div className="py-6 text-sm text-gray-500">Loading PRs affected…</div>
+                  <SkeletonText lines={4} className="py-6" />
                 ) : historyModal.boms.length === 0 ? (
-                  <div className="py-6 text-sm text-gray-500">
-                    No PR BOMs were recorded as affected for this swap entry.
-                  </div>
+                  <EmptyState compact title="No PR BOMs were recorded as affected for this swap entry." />
                 ) : (
                   <div className="space-y-2">
                     {historyModal.boms.map((bom) => (

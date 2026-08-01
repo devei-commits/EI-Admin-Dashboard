@@ -11,6 +11,8 @@ import {
   type RackDTO,
 } from '../services/facilityAreas.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 const AREA_FORM_EMPTY = { code: '', name: '', area_type: 'warehouse' as 'warehouse' | 'production', icon: '', description: '' };
 const ZONE_FORM_EMPTY = { code: '', name: '', zone_label: '', icon: '', area_sqm: '', description: '' };
@@ -456,9 +458,7 @@ const FacilityManagement: React.FC = () => {
       </header>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24" role="status" aria-label="Loading facilities">
-          <div className="w-10 h-10 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin" />
-        </div>
+        <TableSkeleton rows={6} cols={4} />
       ) : (
         <>
           {/* Overview */}
@@ -668,16 +668,19 @@ const FacilityManagement: React.FC = () => {
                   )}
 
                   {selectedArea.zones.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 py-16 text-center">
-                      <p className="text-sm text-gray-600">This area has no zones yet.</p>
-                      <button
-                        type="button"
-                        onClick={openCreateZone}
-                        className="mt-3 text-sm font-medium text-gray-900 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
-                      >
-                        Create the first zone
-                      </button>
-                    </div>
+                    <EmptyState
+                      className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50"
+                      title="This area has no zones yet."
+                      action={
+                        <button
+                          type="button"
+                          onClick={openCreateZone}
+                          className="text-sm font-medium text-gray-900 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
+                        >
+                          Create the first zone
+                        </button>
+                      }
+                    />
                   ) : (
                     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden w-full">
                       <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -873,19 +876,23 @@ const FacilityManagement: React.FC = () => {
                             </tbody>
                           </table>
                         ) : (selectedZone.racks ?? []).length === 0 ? (
-                          <div className="py-16 text-center">
-                            <p className="text-sm text-gray-400">
-                              No racks in this zone yet. Add a{' '}
-                              <span className="font-mono text-gray-600">DEFAULT</span> rack for inbound putaway.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => openCreateRack(selectedZone)}
-                              className="mt-4 inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
-                            >
-                              Add rack
-                            </button>
-                          </div>
+                          <EmptyState
+                            title={
+                              <>
+                                No racks in this zone yet. Add a{' '}
+                                <span className="font-mono text-gray-600">DEFAULT</span> rack for inbound putaway.
+                              </>
+                            }
+                            action={
+                              <button
+                                type="button"
+                                onClick={() => openCreateRack(selectedZone)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                              >
+                                Add rack
+                              </button>
+                            }
+                          />
                         ) : (
                           <table className="w-full text-sm">
                             <thead>
@@ -962,12 +969,11 @@ const FacilityManagement: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 flex flex-col items-center justify-center py-16 px-6 text-center w-full">
-                  <p className="text-base font-medium text-gray-700">Select an area above to view zones</p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Choose Warehouse or Manufacturing, then pick an area chip.
-                  </p>
-                </div>
+                <EmptyState
+                  className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 w-full"
+                  title="Select an area above to view zones"
+                  description="Choose Warehouse or Manufacturing, then pick an area chip."
+                />
               )}
           </div>
         </>

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Plus, Trash2, Save } from 'lucide-react';
 import { fetchCategoryRates, upsertCategoryRate, deleteCategoryRate } from '../../../services/quotations.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import type { CategoryRate } from '../../../services/quotations.service';
 
 interface DraftRow {
@@ -75,7 +76,7 @@ export default function CategoryRateManager() {
     setRows(prev => [...prev, { category: '', wastage_pct: '3.0', notes: '', isNew: true }]);
   };
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading category rates…</div>;
+  if (loading) return <div className="p-6"><TableSkeleton rows={5} cols={3} /></div>;
 
   return (
     <div className="space-y-4">

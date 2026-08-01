@@ -7,6 +7,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Package, Plus, ArrowLeft, Trophy, ShoppingCart, IndianRupee, FileText, Target, TrendingUp, TrendingDown, Minus, FlaskConical, ClipboardCheck } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PageHeader } from '../../components/ui';
+import { CardSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem, BomQuoteStats, BomQuoteJob, QuoteActuals } from '../../services/quotations.service';
 import { fetchBOMs, type BOMRecord } from '../../services/bom.service';
@@ -143,10 +145,10 @@ export default function QuoteBomHub() {
       <QuotationsNav />
 
       {loading ? (
-        <div className="animate-pulse space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
-          <div className="h-64 bg-white rounded-lg border border-gray-100 shadow-sm" />
-          <div className="h-64 bg-white rounded-lg border border-gray-100 shadow-sm" />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)}</div>
+          <CardSkeleton />
+          <CardSkeleton />
         </div>
       ) : (
         <>
@@ -297,13 +299,17 @@ export default function QuoteBomHub() {
 
           {/* Job groups */}
           {quotes.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-16 text-center">
-              <Package className="w-10 h-10 mx-auto text-gray-200 mb-3" />
-              <p className="text-gray-500 font-medium">No quotes for this BOM yet.</p>
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><Plus className="w-4 h-4" /> Full Quote</button>
-                <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-200"><FlaskConical className="w-4 h-4" /> RM Only</button>
-              </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+              <EmptyState
+                icon={<Package />}
+                title="No quotes for this BOM yet."
+                action={
+                  <div className="flex items-center justify-center gap-2">
+                    <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><Plus className="w-4 h-4" /> Full Quote</button>
+                    <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-200"><FlaskConical className="w-4 h-4" /> RM Only</button>
+                  </div>
+                }
+              />
             </div>
           ) : (
             <div className="space-y-4">

@@ -7,6 +7,7 @@ import { useState, useEffect, useId } from 'react';
 import { Plus, Pencil, Trash2, Lock, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormField, inputClassName, selectClassName, ConfirmDialog } from '../../../components/ui';
+import { CardSkeleton } from '../../../components/ui/Skeleton';
 import * as api from '../../../services/quotations.service';
 import type { QuoteGrade, BmapEntry } from '../../../services/quotations.service';
 
@@ -49,7 +50,7 @@ export default function GradeManager() {
       </div>
 
       {loading ? (
-        <div className="p-8 text-center"><Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin" /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {grades.map((g) => (

@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
 import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { ErrorState } from '../components/ui/ErrorState';
 
 const WarehouseInventory: React.FC = () => {
   const [filterType, setFilterType] = useState<'All' | 'RM' | 'PM' | 'FG/PR' | 'Low'>('All');
@@ -219,10 +221,10 @@ const WarehouseInventory: React.FC = () => {
 
         {/* Loading / Error */}
         {loading && (
-          <div className="py-12 text-center text-gray-500">Loading inventory…</div>
+          <TableSkeleton rows={8} cols={14} />
         )}
         {error && !loading && (
-          <div className="py-12 text-center text-red-600">{error}</div>
+          <ErrorState message={error} />
         )}
         {!loading && !error && (
         <div className="w-full">

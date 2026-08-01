@@ -3,8 +3,8 @@
  * material leads). Append-only; recorded server-side on each mutation.
  */
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { selectClassName } from '../../../components/ui';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import * as api from '../../../services/quotations.service';
 import type { AuditEntry } from '../../../services/quotations.service';
 
@@ -40,7 +40,7 @@ export default function AuditLog() {
           {Object.entries(ENTITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       </div>
-      {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
+      {loading ? <div className="my-6"><TableSkeleton rows={6} cols={5} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">

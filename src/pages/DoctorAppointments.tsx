@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/apiClient';
+import { EmptyState } from '../components/ui/EmptyState';
 
 interface Appointment {
  id: number | string;
@@ -272,8 +273,8 @@ const DoctorAppointments = () => {
         ))}
         {!isLoading && currentAppointments.length === 0 && (
          <tr>
-          <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
-           No appointments found.
+          <td colSpan={8} className="px-4 py-4">
+           <EmptyState title="No appointments found." />
           </td>
          </tr>
         )}

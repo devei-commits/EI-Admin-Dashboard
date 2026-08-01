@@ -43,6 +43,9 @@ import { fetchRawMaterialsList, type RawMaterialRecord } from '../services/rawMa
 import { fetchItemGroups, type ItemGroupRecord } from '../services/itemGroups.service';
 import { formatQtyWithUnit } from '../utils/formatQty';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { TableSkeleton, SkeletonText } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
 import { compareMasterTableSort } from '../lib/masterTableSort';
 import {
   PM_SKU_CATEGORY_SELECT_OPTIONS,
@@ -1194,15 +1197,11 @@ const BOMDashboard: React.FC = () => {
 
           {/* Table */}
           {error && (
-            <div className="mx-6 mt-4 p-4 bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded-lg text-sm text-err">
-              {error}
-            </div>
+            <ErrorState message={error} onRetry={loadProducts} />
           )}
 
           {loading ? (
-            <div className="p-8 text-center text-ink-3">
-              <span className="animate-pulse">Loading Products…</span>
-            </div>
+            <TableSkeleton rows={8} cols={20} className="p-6" />
           ) : (
             <>
               <div className="overflow-x-auto">
@@ -1325,8 +1324,12 @@ const BOMDashboard: React.FC = () => {
                 <tbody className="divide-y divide-border">
                   {filteredList.length === 0 ? (
                     <tr>
-                      <td colSpan={20} className="px-4 py-12 text-center text-ink-3">
-                        No Products found. <Link to="/bom/new" className="text-brand hover:text-brand font-semibold">Create one</Link> to get started.
+                      <td colSpan={20} className="px-4 py-4">
+                        <EmptyState
+                          title="No Products found"
+                          description="Create a product registration to get started."
+                          action={<Link to="/bom/new" className="text-brand hover:text-brand font-semibold">Create one</Link>}
+                        />
                       </td>
                     </tr>
                   ) : (
@@ -1590,7 +1593,7 @@ const BOMDashboard: React.FC = () => {
             </div>
           </div>
           {detailLoading ? (
-            <div className="flex-1 flex items-center justify-center text-ink-3">Loading…</div>
+            <div className="flex-1 p-6"><SkeletonText lines={8} /></div>
           ) : selectedProduct ? (
             <>
               <div className="flex gap-1 px-4 py-2 border-b border-hairline bg-surface-2">
@@ -2222,7 +2225,9 @@ const BOMDashboard: React.FC = () => {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-ink-3">Failed to load detail</div>
+            <div className="flex-1 flex items-center justify-center">
+              <ErrorState message="Failed to load detail" />
+            </div>
           )}
         </div>
       )}

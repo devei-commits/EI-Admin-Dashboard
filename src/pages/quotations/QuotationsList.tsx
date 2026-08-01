@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Plus, Trash2, Clock, CheckCircle2, ShoppingCart, GitCompare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem, QuoteStats } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
@@ -136,35 +138,20 @@ export default function QuotationsList() {
         </div>
 
         {loading ? (
-          <div className="divide-y divide-gray-50 animate-pulse">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
-                <div className="w-4 h-4 bg-gray-100 rounded" />
-                <div className="h-3 bg-gray-100 rounded w-20" />
-                <div className="h-3 bg-gray-100 rounded flex-1 max-w-[14rem]" />
-                <div className="h-5 bg-gray-100 rounded-full w-24" />
-                <div className="h-3 bg-gray-100 rounded w-24" />
-                <div className="h-3 bg-gray-100 rounded w-16 ml-auto" />
-              </div>
-            ))}
+          <div className="p-4">
+            <TableSkeleton rows={6} cols={6} />
           </div>
         ) : displayQuotes.length === 0 ? (
-          <div className="p-16 text-center">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-slate-50 flex items-center justify-center">
-              <FileText className="w-7 h-7 text-slate-300" />
-            </div>
-            <p className="text-slate-700 font-semibold">
-              {catFilter === 'needs_actuals' ? 'All post-production quotes have actuals entered.' : (search || statusFilter ? 'No quotes match your filters.' : 'No quotes yet')}
-            </p>
-            <p className="text-gray-400 text-sm mt-1">
-              {catFilter === 'needs_actuals' ? 'Nothing pending — great job!' : (search || statusFilter ? 'Try clearing the search or status filter.' : 'Generate your first BOM-driven quote.')}
-            </p>
-            {!search && !statusFilter && catFilter !== 'needs_actuals' && (
+          <EmptyState
+            icon={<FileText />}
+            title={catFilter === 'needs_actuals' ? 'All post-production quotes have actuals entered.' : (search || statusFilter ? 'No quotes match your filters.' : 'No quotes yet')}
+            description={catFilter === 'needs_actuals' ? 'Nothing pending — great job!' : (search || statusFilter ? 'Try clearing the search or status filter.' : 'Generate your first BOM-driven quote.')}
+            action={!search && !statusFilter && catFilter !== 'needs_actuals' ? (
               <button onClick={() => navigate('/quotations/new')} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">
                 <Plus className="w-4 h-4" /> New Quote
               </button>
-            )}
-          </div>
+            ) : undefined}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

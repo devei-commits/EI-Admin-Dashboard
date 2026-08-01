@@ -5,6 +5,8 @@ import { parseApiPermissions } from './types/permissionKeys';
 import type { ModulePermission, GlobalSettings } from './types/permissions.types';
 import { DEFAULT_GLOBAL_SETTINGS } from './types/permissions.types';
 import DepartmentPermissionMatrix from './DepartmentPermissionMatrix';
+import { SkeletonText } from '../ui/Skeleton';
+import { ErrorState } from '../ui/ErrorState';
 
 interface RolePermissionsDisplayProps {
  roleId: string;
@@ -49,15 +51,15 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId,
  if (loading) {
   return (
    <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 mt-4">
-    <p className="text-gray-600 text-sm">Loading permissions…</p>
+    <SkeletonText lines={4} />
    </div>
   );
  }
 
  if (error) {
   return (
-   <div className="bg-red-50 border border-red-200 rounded-lg p-5 mt-4">
-    <p className="text-red-700 text-sm">{error}</p>
+   <div className="mt-4">
+    <ErrorState message={error} />
    </div>
   );
  }

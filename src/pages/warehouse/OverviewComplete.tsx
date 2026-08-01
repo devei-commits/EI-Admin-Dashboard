@@ -11,6 +11,9 @@ import WarehouseInvoiceTab from './transfers/InvoiceTab';
 import { type TransfersTab } from './transfers/TransfersTabBar';
 import { parseQtyInputString } from '../../utils/qtyInput';
 import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Inbox } from 'lucide-react';
 
 /** API status -> UI display (outbound list). MTR uses full workflow incl. In Transit / Received at MU. */
 export type OutboundUiStatus =
@@ -1147,9 +1150,9 @@ const OutboundDashboard = ({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-ink-3">Loading transfer orders…</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-4"><TableSkeleton rows={8} cols={9} /></td></tr>
                 ) : sortedMRNs.length === 0 ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-ink-3">No transfer orders found.</td></tr>
+                  <tr><td colSpan={9}><EmptyState icon={<Inbox />} title="No transfer orders found." /></td></tr>
                 ) : (
                   sortedMRNs.map(mrn => (
                     <tr

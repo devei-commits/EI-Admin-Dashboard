@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { UserRole, Product } from '../types/pis';
 import { usePIS } from '../context/PISContext';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface ProductsViewProps {
  currentRole: UserRole;
@@ -366,9 +367,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
     </Table>
 
     {filteredProducts.length === 0 && (
-     <div className="p-8 text-center text-gray-500">
-      No products found matching your criteria
-     </div>
+     <EmptyState icon={<Package />} title="No products found matching your criteria" />
     )}
    </Card>
 

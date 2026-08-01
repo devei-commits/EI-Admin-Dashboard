@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import ZoneDetailsSidebar from './ZoneDetailsSidebar';
+import { CardSkeleton } from '../../components/ui/Skeleton';
 import { fetchWarehouseLocationById, type WarehouseLocationDTO } from '../../services/warehouseLocations.service';
 import {
   fetchWarehouseOverview,
@@ -88,8 +89,17 @@ const Overview = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-auto bg-surface p-6 flex items-center justify-center">
-        <p className="text-ink-2">Loading warehouse overview…</p>
+      <div className="flex-1 overflow-auto bg-surface p-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+        <div className="mt-6 space-y-4">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
       </div>
     );
   }

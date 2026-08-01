@@ -21,6 +21,9 @@ import {
   type ClientRecord,
   type DashboardKPIs,
 } from '../services/clientHub.service';
+import { CardSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
 
 // ─── TYPES ───────────────────────────────────────────────────────────
 interface Query {
@@ -847,10 +850,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   })}
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-400">
-                  <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>No appointments scheduled</p>
-                </div>
+                <EmptyState icon={<CalendarDays />} title="No appointments scheduled" />
               )}
             </div>
           )}
@@ -1148,10 +1148,9 @@ const ClientHub = () => {
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-screen bg-gray-50 items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-orange-500 animate-spin mx-auto" />
-          <p className="text-sm text-gray-500 mt-3 font-medium">Loading Client Hub...</p>
+      <div className="min-h-screen bg-gray-50 p-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
       </div>
     );
@@ -1160,14 +1159,11 @@ const ClientHub = () => {
   if (error) {
     return (
       <div className="flex h-full min-h-screen bg-gray-50 items-center justify-center">
-        <div className="text-center max-w-md">
-          <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
-          <p className="text-sm font-semibold text-gray-700 mt-3">Failed to load Client Hub</p>
-          <p className="text-xs text-gray-400 mt-1">{error}</p>
-          <button onClick={loadDashboard} className="mt-4 px-4 py-2 text-sm font-semibold bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          title="Failed to load Client Hub"
+          message={error}
+          onRetry={loadDashboard}
+        />
       </div>
     );
   }
@@ -1324,15 +1320,17 @@ const ClientHub = () => {
 
           {/* Client Cards Grid */}
           {filteredClients.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-50 flex items-center justify-center">
-                <Search className="w-8 h-8 text-gray-300" />
-              </div>
-              <p className="text-sm font-bold text-gray-600">No clients match your filters</p>
-              <p className="text-xs text-gray-400 mt-1.5 max-w-xs mx-auto">Try searching for &ldquo;Skin Care&rdquo;, a client name like &ldquo;Luminos&rdquo;, or a PR code like &ldquo;PR-SUN-0042&rdquo;</p>
-              <button onClick={clearFilters} className="mt-4 px-4 py-2 text-xs font-semibold bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors">
-                Clear all filters
-              </button>
+            <div className="bg-white rounded-xl border border-gray-100">
+              <EmptyState
+                icon={<Search />}
+                title="No clients match your filters"
+                description={<>Try searching for &ldquo;Skin Care&rdquo;, a client name like &ldquo;Luminos&rdquo;, or a PR code like &ldquo;PR-SUN-0042&rdquo;</>}
+                action={
+                  <button onClick={clearFilters} className="px-4 py-2 text-xs font-semibold bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition-colors">
+                    Clear all filters
+                  </button>
+                }
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

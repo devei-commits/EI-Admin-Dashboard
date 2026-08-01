@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ShoppingCart, Package, Loader2, LayoutDashboard, ArrowDownToLine } from 'lucide-react';
+import { ShoppingCart, Package, LayoutDashboard, ArrowDownToLine } from 'lucide-react';
 import { SODashboardView } from '../components/orders/SODashboardView';
 import { BatchesDashboardView } from '../components/orders/BatchesDashboardView';
 import { FulfillmentSidebar } from '../components/orders/FulfillmentSidebar';
@@ -27,6 +27,8 @@ import { useToast } from '../context/ToastContext';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import { queryClient } from '../lib/queryClient';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { ErrorState } from '../components/ui/ErrorState';
 
 type ViewMode = 'so-dashboard' | 'products-batches';
 type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
@@ -564,17 +566,9 @@ export const OrderFulfillment: React.FC = () => {
           {viewMode === 'products-batches' ? (
             <BatchesDashboardView />
           ) : loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="animate-spin text-brand mr-3" size={24} />
-              <span className="text-ink-3">Loading fulfillment orders...</span>
-            </div>
+            <TableSkeleton rows={8} cols={6} />
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <p className="text-err mb-4">{error}</p>
-              <button onClick={loadOrders} className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-press transition-colors text-sm">
-                Retry
-              </button>
-            </div>
+            <ErrorState message={error} onRetry={loadOrders} />
           ) : (
             <SODashboardView
               saleOrders={saleOrders}

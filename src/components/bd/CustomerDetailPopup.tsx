@@ -5,7 +5,9 @@
  * grievance) and the History button hand off to the parent.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, BookText, CalendarPlus, HelpCircle, Flag } from 'lucide-react';
+import { BookText, CalendarPlus, HelpCircle, Flag } from 'lucide-react';
+import { CardSkeleton } from '../ui/Skeleton';
+import { ErrorState } from '../ui/ErrorState';
 import { ProcModalShell, ModalSection } from '../procurement/ProcModalShell';
 import { useToast } from '../../context/ToastContext';
 import { fetchBdCustomerDetail, updateBdProfile } from '../../services/bd.service';
@@ -130,9 +132,9 @@ export const CustomerDetailPopup: React.FC<CustomerDetailPopupProps> = ({ code, 
       }
     >
       {loading ? (
-        <div className="flex items-center justify-center py-12"><Loader2 size={20} className="mr-2 animate-spin text-blue-500" /><span className="text-sm text-slate-500">Loading…</span></div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : error || !detail ? (
-        <div className="py-10 text-center"><p className="mb-3 text-sm text-red-500">{error || 'Not found'}</p><button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry</button></div>
+        <ErrorState message={error || 'Not found'} onRetry={() => void load()} />
       ) : (
         <div className="space-y-4">
           {/* KPI tiles */}

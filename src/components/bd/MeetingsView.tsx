@@ -4,7 +4,10 @@
  * the confirm→attend→MoM→close lifecycle, or request a new meeting.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, Loader2, CalendarClock, Plus, Clock } from 'lucide-react';
+import { Search, RefreshCw, CalendarClock, Plus, Clock } from 'lucide-react';
+import { TableSkeleton } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 import type { BdCustomerRow, BdMeetingRow } from '../../types/bd.types';
 import { MEETING_STATUS_CONFIG, formatDMY, type MeetingStatus } from '../../constants/bd';
 import { fetchBdMeetings } from '../../services/bd.service';
@@ -105,11 +108,11 @@ export const MeetingsView: React.FC<MeetingsViewProps> = ({ clients, onDataChang
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={22} className="mr-2 animate-spin text-blue-500" /><span className="text-sm text-slate-500">Loading meetings…</span></div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4"><TableSkeleton rows={6} cols={8} /></div>
       ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center"><p className="mb-3 text-sm text-red-500">{error}</p><button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry</button></div>
+        <div className="rounded-xl border border-slate-200 bg-white"><ErrorState message={error} onRetry={() => void load()} /></div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-sm text-slate-400"><CalendarClock size={30} className="mx-auto mb-2 opacity-30" />{rows.length === 0 ? 'No meetings yet.' : 'No meetings match your filters.'}</div>
+        <div className="rounded-xl border border-slate-200 bg-white"><EmptyState icon={<CalendarClock />} title={rows.length === 0 ? 'No meetings yet.' : 'No meetings match your filters.'} /></div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">

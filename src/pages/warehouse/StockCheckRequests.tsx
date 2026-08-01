@@ -9,6 +9,10 @@ import {
   mapBackendPrToRequest,
 } from '../procurement/procurementDataMappers';
 import StockCheckAuditModal from '../../components/warehouse/StockCheckAuditModal';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { ClipboardList } from 'lucide-react';
 import {
   buildWarehouseStockCheckTableRows,
   formatAssigneeShortName,
@@ -211,20 +215,25 @@ const StockCheckRequests: React.FC = () => {
             </button>
           </div>
           {procurementError ? (
-            <div className="px-6 py-10 text-sm text-center">
-              <p className="text-err font-medium">Could not load stock-check requests.</p>
-              <p className="text-ink-3 mt-1">
-                {procurementErrorDetail instanceof Error
+            <ErrorState
+              title="Could not load stock-check requests."
+              message={
+                procurementErrorDetail instanceof Error
                   ? procurementErrorDetail.message
-                  : 'Please try again.'}
-              </p>
-            </div>
+                  : 'Please try again.'
+              }
+              onRetry={() => void refetchProcurementRequests()}
+            />
           ) : procurementLoading ? (
-            <div className="px-6 py-10 text-sm text-ink-3 text-center">Loading stock-check requests…</div>
-          ) : tableRows.length === 0 ? (
-            <div className="px-6 py-10 text-sm text-ink-3 text-center">
-              No stock-check requests yet. Raise one from Procurement → Requests → Stock Check.
+            <div className="p-4">
+              <TableSkeleton rows={8} cols={6} />
             </div>
+          ) : tableRows.length === 0 ? (
+            <EmptyState
+              icon={<ClipboardList />}
+              title="No stock-check requests yet."
+              description="Raise one from Procurement → Requests → Stock Check."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">

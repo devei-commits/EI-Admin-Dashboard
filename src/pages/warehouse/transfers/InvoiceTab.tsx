@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchFulfillmentOrders } from '../../../services/fulfillment.service';
 import type { SaleOrder } from '../../../types/orderFulfillment';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 /**
  * Transfers → Invoice tab. Read-only list of customer dispatch requests coming from the
@@ -102,12 +104,12 @@ const WarehouseInvoiceTab = ({ search = '' }: { search?: string } = {}) => {
             <tbody className="divide-y divide-hairline">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-ink-4">Loading dispatch requests…</td>
+                  <td colSpan={6} className="px-4 py-4"><TableSkeleton rows={6} cols={6} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-ink-4">
-                    {orders.length === 0 ? 'No dispatch requests yet.' : 'No dispatches match your search.'}
+                  <td colSpan={6}>
+                    <EmptyState title={orders.length === 0 ? 'No dispatch requests yet.' : 'No dispatches match your search.'} />
                   </td>
                 </tr>
               ) : (

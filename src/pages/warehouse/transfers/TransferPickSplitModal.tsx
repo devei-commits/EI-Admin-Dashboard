@@ -11,8 +11,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { X, Package, Scissors, Trash2, Loader2, Printer } from 'lucide-react';
+import { X, Package, Scissors, Trash2, Printer } from 'lucide-react';
 import { fetchAvailablePacks, type WarehousePack } from '../../../services/warehousePacks.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { ErrorState } from '../../../components/ui/ErrorState';
 
 export interface TransferPickSplitItem {
   name: string;
@@ -284,15 +287,18 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
               Available packaging{sourceLabel ? ` (source: ${sourceLabel})` : ''}
             </h3>
             {loading ? (
-              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-6 text-sm text-ink-3">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading available packs…
+              <div className="rounded-lg border border-border p-4">
+                <TableSkeleton rows={5} cols={6} />
               </div>
             ) : error ? (
-              <p className="rounded-lg border border-err-soft bg-err-soft px-3 py-3 text-sm text-err">{error}</p>
+              <ErrorState message={error} onRetry={() => void loadPacks()} compact className="rounded-lg border border-err-soft bg-err-soft" />
             ) : availableToShow.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-ink-3">
-                No available packs for this item at the source warehouse.
-              </p>
+              <EmptyState
+                icon={<Package />}
+                title="No available packs for this item at the source warehouse."
+                compact
+                className="rounded-lg border border-dashed border-border"
+              />
             ) : (
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-sm">

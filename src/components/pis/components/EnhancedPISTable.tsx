@@ -20,6 +20,7 @@ import {
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
 import { usePIS } from '../context/PISContext';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface EnhancedPISTableProps {
  data: PISRecord[];
@@ -342,12 +343,12 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
       <TableBody>
        {paginatedData.length === 0 ? (
         <TableRow>
-         <TableCell colSpan={23} className="text-center py-12 text-gray-500">
-          <div className="flex flex-col items-center gap-2">
-           <Search className="h-12 w-12 text-gray-300" />
-           <p>No PIS records found</p>
-           <p className="text-sm">Try adjusting your search or filters</p>
-          </div>
+         <TableCell colSpan={23} className="text-center">
+          <EmptyState
+           icon={<Search />}
+           title="No PIS records found"
+           description="Try adjusting your search or filters"
+          />
          </TableCell>
         </TableRow>
        ) : (
