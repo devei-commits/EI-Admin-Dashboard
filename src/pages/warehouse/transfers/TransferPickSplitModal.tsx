@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { X, Package, Scissors, Trash2, Printer } from 'lucide-react';
+import { ModalOverlay } from '../../../components/ui/ModalOverlay';
 import { fetchAvailablePacks, type WarehousePack } from '../../../services/warehousePacks.service';
 import { TableSkeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -225,12 +226,13 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
   const warehouseCount = labelPacks.filter((lp) => !lp.forTransfer).length;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+    <ModalOverlay onClose={onClose} z="z-[60]" dismissable={false} backdrop="strong" scroll align="start">
       <div
         className="relative my-4 w-full max-w-5xl rounded-xl border border-border bg-surface shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label={`Pick & split transfer — ${requestNo}`}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
@@ -541,7 +543,7 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

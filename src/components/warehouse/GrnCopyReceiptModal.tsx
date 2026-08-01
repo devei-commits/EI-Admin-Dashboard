@@ -71,6 +71,7 @@ import { GrnPackagingListSection } from './GrnPackagingListSection';
 import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
 import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
 import { GrnQcCompleteSection } from './GrnQcCompleteSection';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 /** Workflow steps the backend's "GRN Complete" gate expects (mirrors Inbound.tsx). */
 const GRN_COMPLETE_WORKFLOW_STEPS = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
@@ -882,12 +883,13 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="strong" scroll align="start">
       <div
         className="relative my-4 w-full max-w-5xl rounded-xl bg-surface shadow-2xl border border-border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="grn-copy-receipt-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 border-b border-border bg-surface px-6 py-4 rounded-t-xl">
           <div className="flex items-start justify-between gap-4">
@@ -1251,7 +1253,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

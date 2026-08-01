@@ -30,6 +30,7 @@ import StockByLocationPanel from '../../components/StockByLocationPanel';
 import { formatQtyExact } from '../../utils/formatQty';
 import { TableSkeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 import { PackageSearch } from 'lucide-react';
 
 export interface InventoryItem {
@@ -608,8 +609,8 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-location-modal-title">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-location-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <h2 id="add-location-modal-title" className="text-2xl font-bold text-ink">Add New Warehouse Location</h2>
@@ -760,7 +761,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
           </div>
         </form>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 
@@ -815,8 +816,8 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-rack-modal-title">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-rack-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <h2 id="add-rack-modal-title" className="text-2xl font-bold text-ink">Add New Rack / Bay</h2>
@@ -968,7 +969,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
           </div>
         </form>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

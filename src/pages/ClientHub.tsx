@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import eiLogo from '../assets/logo/eilogofull.svg';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 import {
   Users, AlertCircle, Clock, Package, FlaskConical, Calendar,
   TrendingUp, Search, X, ChevronDown, Plus, Phone, Mail,
@@ -452,7 +453,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
   const tdCls = 'px-3 py-2.5 text-sm text-gray-700';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
       <div role="dialog" aria-modal="true" aria-label="Client details" className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Modal Header */}
@@ -898,7 +899,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -941,7 +942,7 @@ function AddClientModal({ onClose, onAdd, accountManagers }: {
   const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 bg-white';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
       <div role="dialog" aria-modal="true" aria-label="New Client" className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <div>
@@ -968,7 +969,7 @@ function AddClientModal({ onClose, onAdd, accountManagers }: {
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

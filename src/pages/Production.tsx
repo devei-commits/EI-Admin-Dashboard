@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 import {
   fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
   fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
@@ -1073,7 +1074,7 @@ function Modal({
   const w = size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-lg';
   const dismiss = disableDismiss ? undefined : onClose;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={dismiss}>
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll dismissable={!disableDismiss} className="pt-10">
       <div className={`bg-surface rounded-2xl shadow-2xl w-full ${w} my-4 border border-hairline`} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"generic-modal-title"}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
@@ -1092,7 +1093,7 @@ function Modal({
         </div>
         <div className="relative px-6 py-5 max-h-[75vh] overflow-y-auto">{children}</div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -3187,7 +3188,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
   const overTotalCapacity = vesselCap != null && totalWithThis > vesselCap;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll className="pt-10">
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl my-4 border border-hairline" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"sch-title"}>
         <div className="modal-hdr flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
@@ -3494,7 +3495,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -5873,8 +5874,8 @@ function MRNDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby={"transfer-order-modal-title"}>
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false}>
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"transfer-order-modal-title"}>
         <div className="sticky top-0 z-10 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-ink" id="transfer-order-modal-title">Transfer order — {mrn.mrnNo}</h2>
@@ -6384,8 +6385,8 @@ function MRNDetailModal({
         </div>
       </div>
       {logisticsModalOpen && canInitiateOutboundTransfer && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl border border-border" role="dialog" aria-modal="true" aria-labelledby={"initiate-transfer-modal-title"}>
+        <ModalOverlay onClose={() => setLogisticsModalOpen(false)} z="z-[60]" dismissable={false}>
+          <div className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl border border-border" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"initiate-transfer-modal-title"}>
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <h3 className="text-base font-semibold text-ink" id="initiate-transfer-modal-title">Initiate transfer</h3>
@@ -6424,9 +6425,9 @@ function MRNDetailModal({
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -6737,7 +6738,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll className="pt-10">
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-5xl my-4 border border-hairline flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"bdm-title"}>
         {/* modal-hdr */}
         <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-hairline shrink-0">
@@ -7203,7 +7204,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-3 py-2 text-xs text-ink-3 border border-border rounded-lg hover:bg-surface-2 ml-auto transition-colors"><Printer size={12} /> Print BMR/BPR</button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
     {mrnDetailTarget && (
       <MRNDetailModal
         mrn={mrnDetailTarget}
@@ -7415,7 +7416,7 @@ function CreateNewBatchModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] p-4" onClick={onClose}>
+    <ModalOverlay onClose={onClose} z="z-50">
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md border border-hairline" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"rework-batch-modal-title"}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
@@ -7575,7 +7576,7 @@ function CreateNewBatchModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

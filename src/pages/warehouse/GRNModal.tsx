@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 interface GRN {
   id: string;
@@ -35,8 +36,8 @@ const GRNModal = ({ grn, onClose }: GRNModalProps) => {
   const currentStepIndex = steps.indexOf(activeStep);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-xl" role="dialog" aria-modal="true" aria-labelledby="grn-modal-title">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="strong">
+      <div className="bg-surface rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-xl" role="dialog" aria-modal="true" aria-labelledby="grn-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
           <h2 id="grn-modal-title" className="text-2xl font-bold text-ink">{grn.grnNo}</h2>
@@ -234,7 +235,7 @@ const GRNModal = ({ grn, onClose }: GRNModalProps) => {
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

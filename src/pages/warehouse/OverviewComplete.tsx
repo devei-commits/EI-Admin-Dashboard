@@ -8,6 +8,7 @@ import { fetchFacilityAreas, type FacilityAreaDTO } from '../../services/facilit
 import RequestTransferModal from '../../components/warehouse/RequestTransferModal';
 import WarehouseReturnsTab from './transfers/ReturnsTab';
 import WarehouseInvoiceTab from './transfers/InvoiceTab';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 import { type TransfersTab } from './transfers/TransfersTabBar';
 import { parseQtyInputString } from '../../utils/qtyInput';
 import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
@@ -1240,16 +1241,13 @@ const OutboundDashboard = ({
       </div>
 
       {selectedMRN && panelOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-          onClick={closePickPanel}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="mrn-modal-title"
-        >
+        <ModalOverlay onClose={closePickPanel} z="z-50" dismissable backdrop="default">
           <div
             className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mrn-modal-title"
           >
             <div className="shrink-0 flex items-center justify-between border-b border-border px-4 py-3">
               <h2 id="mrn-modal-title" className="text-base font-bold text-ink">Stock Request — {selectedMRN.mrnNo}</h2>
@@ -1514,7 +1512,7 @@ const OutboundDashboard = ({
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {selectedMRN && selectedMRN.lineItems[0] ? (
@@ -1550,16 +1548,13 @@ const OutboundDashboard = ({
       />
 
       {initiateModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-          onClick={closeInitiateModal}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="initiate-transfer-title"
-        >
+        <ModalOverlay onClose={closeInitiateModal} z="z-50" dismissable backdrop="default">
           <div
             className="bg-surface rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="initiate-transfer-title"
           >
             <div className="shrink-0 flex items-center justify-between border-b border-border px-4 py-3">
               <h2 id="initiate-transfer-title" className="text-base font-bold text-ink">Initiate Transfer</h2>
@@ -1829,7 +1824,7 @@ const OutboundDashboard = ({
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
       {requestTransferOpen ? (
         <RequestTransferModal

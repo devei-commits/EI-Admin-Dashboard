@@ -6,6 +6,7 @@ import React from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import { fmtNum, formatDate, addDaysISO, todayISO } from '../../utils/manufacturing';
 import { UnifiedModal } from '../ui/UnifiedComponents';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface Props {
   poId: string;
@@ -18,12 +19,12 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
   const po = state.po.issued.find((p: any) => p.id === poId);
   if (!po) {
     return (
-      <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
-        <div className="bg-surface rounded-xl p-6" role="dialog" aria-modal="true" aria-label="PO not found">
+      <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="light">
+        <div className="bg-surface rounded-xl p-6" role="dialog" aria-modal="true" aria-label="PO not found" onClick={(e) => e.stopPropagation()}>
           <p className="text-err">PO not found.</p>
           <button onClick={onClose} className="mt-3 px-4 py-2 bg-surface-3 rounded-lg">Close</button>
         </div>
-      </div>
+      </ModalOverlay>
     );
   }
 

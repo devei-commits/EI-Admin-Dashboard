@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import type { ThirdPartyTrackingRow } from '../../lib/thirdPartyTestTrackingDisplay';
 import { deriveAutoPassedFromResult } from '../../lib/grnQcAutoPass';
 import { GrnQcResultInput } from './GrnQcResultInput';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type ThirdPartyUploadReportModalProps = {
   row: ThirdPartyTrackingRow;
@@ -49,12 +50,13 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4">
+    <ModalOverlay onClose={onClose} z="z-[130]" dismissable={false} backdrop="default">
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-report-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-slate-200">
           <h2 id="upload-report-title" className="text-base font-bold text-slate-900">
@@ -137,7 +139,7 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

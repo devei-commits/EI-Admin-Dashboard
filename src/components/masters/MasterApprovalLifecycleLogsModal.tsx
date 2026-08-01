@@ -13,6 +13,7 @@ import {
   exitActionVerb,
   formatLifecycleWhen,
 } from '../../lib/masterApprovalLifecycle';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 export type MasterApprovalLifecycleLogsModalProps = {
   isOpen: boolean;
@@ -61,15 +62,6 @@ export function MasterApprovalLifecycleLogsModal({
     void load();
   }, [isOpen, load]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
-
   const stages = useMemo(
     () =>
       buildMasterApprovalLifecycleStages(entries, currentStatus, {
@@ -83,15 +75,12 @@ export function MasterApprovalLifecycleLogsModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/45 backdrop-blur-sm overflow-y-auto p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="master-approval-logs-title"
-      onClick={onClose}
-    >
+    <ModalOverlay onClose={onClose} z="z-[60]" align="start" scroll backdrop="strong">
       <div
         className="w-full max-w-3xl my-6 bg-surface rounded-2xl shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="master-approval-logs-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border bg-surface-3">
@@ -280,6 +269,6 @@ export function MasterApprovalLifecycleLogsModal({
           ) : null}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

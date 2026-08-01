@@ -19,6 +19,7 @@ import {
   mergeOptions,
 } from '../../lib/specRuleTaxonomy';
 import { SpecScopeCombobox } from './SpecScopeCombobox';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 const FIELD_TYPES: { value: MasterCustomFieldType; label: string }[] = [
   { value: 'text', label: 'Text — single line' },
@@ -190,12 +191,13 @@ export function TechnicalSpecRuleModal({
   const showUnit = draftType === 'number';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <ModalOverlay onClose={onClose} z="z-[50]" dismissable={false} backdrop="default">
       <div
         className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="technical-spec-rule-modal-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -389,6 +391,6 @@ export function TechnicalSpecRuleModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

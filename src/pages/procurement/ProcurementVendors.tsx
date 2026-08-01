@@ -7,6 +7,7 @@ import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDi
 import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
 import { ProcSection, ProcSectionHeader, ProcStatCards, ProcTableCard, ProcThead } from '../../components/procurement/ProcSection';
 import { X } from '@phosphor-icons/react';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 export type ProcurementVendorsProps = {
   vendors: Vendor[];
@@ -262,7 +263,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeAddModal}>
+        <ModalOverlay onClose={closeAddModal} z="z-50" dismissable backdrop="strong">
           <div
             role="dialog"
             aria-modal="true"
@@ -400,7 +401,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

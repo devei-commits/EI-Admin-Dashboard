@@ -1,6 +1,7 @@
 import React from 'react';
 import RolePermissionsDisplay from './RolePermissionsDisplay';
 import { UnifiedBadge, UnifiedButton, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface Role {
  id: string;
@@ -19,12 +20,13 @@ interface RoleDetailPopupProps {
 
 const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
  return (
-  <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+  <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="light">
    <div
     className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto"
     role="dialog"
     aria-modal="true"
     aria-labelledby="role-detail-popup-title"
+    onClick={(e) => e.stopPropagation()}
    >
     <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
      <h3 id="role-detail-popup-title" className="text-2xl font-semibold text-gray-800 tracking-tight">Role Details</h3>
@@ -92,7 +94,7 @@ const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
      </UnifiedButton>
     </div>
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 

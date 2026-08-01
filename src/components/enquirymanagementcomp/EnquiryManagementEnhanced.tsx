@@ -20,6 +20,7 @@ import { fetchAvailableStaff } from '../../services/ticket.service';
 import api, { getApiBaseUrl } from '../../lib/apiClient';
 import { ApiResponse } from '../../types/api.types';
 import { TableSkeleton } from '../ui/Skeleton';
+import { ModalOverlay } from '../ui/ModalOverlay';
 import { EmptyState } from '../ui/EmptyState';
 import { Package } from 'lucide-react';
 
@@ -741,9 +742,8 @@ useEffect(() => {
   )}
 
   {selectedCustomization && (
-   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedCustomization(null)} />
-    <div role="dialog" aria-modal="true" aria-labelledby="product-customization-detail-title" className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
+   <ModalOverlay onClose={() => setSelectedCustomization(null)} z="z-50" dismissable={true} backdrop="default">
+    <div role="dialog" aria-modal="true" aria-labelledby="product-customization-detail-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
      <div className="flex items-start justify-between mb-4">
       <h3 id="product-customization-detail-title" className="text-lg font-semibold text-gray-900">
        Product Customization #{selectedCustomization.customization_id}
@@ -896,7 +896,7 @@ useEffect(() => {
       </button>
      </div>
     </div>
-   </div>
+   </ModalOverlay>
   )}
 
    {/* Ticket Detail Popup */}

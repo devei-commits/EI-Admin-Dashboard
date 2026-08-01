@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination } from '../components/ui';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 
 type TabType = 'create' | 'list';
 
@@ -494,8 +495,8 @@ const CatalogueManagement = () => {
 
    {/* View/Edit Modal */}
    {isViewModalOpen && selectedItem && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div role="dialog" aria-modal="true" aria-label={isEditMode ? 'Edit Product' : 'Product Details'} className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <ModalOverlay onClose={() => { setIsViewModalOpen(false); setSelectedItem(null); setIsEditMode(false); }} z="z-50" dismissable={false} backdrop="light">
+     <div role="dialog" aria-modal="true" aria-label={isEditMode ? 'Edit Product' : 'Product Details'} onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
       <div className="sticky top-0 bg-slate-800 px-6 py-4 flex justify-between items-center">
        <div><h2 className="text-xl font-bold text-white">{isEditMode ? 'Edit Product' : 'Product Details'}</h2><p className="text-gray-100 text-sm">{selectedItem.productCode}</p></div>
        <button onClick={() => { setIsViewModalOpen(false); setSelectedItem(null); setIsEditMode(false); }} className="text-white/80 hover:text-white transition-colors">
@@ -552,7 +553,7 @@ const CatalogueManagement = () => {
        )}
       </div>
      </div>
-    </div>
+    </ModalOverlay>
    )}
   </div>
  );

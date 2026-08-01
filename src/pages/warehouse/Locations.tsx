@@ -10,6 +10,7 @@ import { fetchWarehouseInventory } from '../../services/warehouseInventory.servi
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../../lib/queryClient';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 const getUtilizationBarColor = (value: number) => {
   if (value >= 90) return 'bg-err';
@@ -282,16 +283,13 @@ const WarehouseLocations = () => {
       </div>
 
       {selectedRack && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={() => setSelectedRack(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Rack details"
-        >
+        <ModalOverlay onClose={() => setSelectedRack(null)} z="z-50" dismissable backdrop="default">
           <div
             className="w-full max-w-3xl max-h-[90vh] bg-surface rounded-xl border border-border shadow-2xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rack details"
           >
             <div className="px-6 py-5 border-b border-border flex items-center justify-between">
               <h2 className="text-3xl font-bold text-ink">
@@ -402,7 +400,7 @@ const WarehouseLocations = () => {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {selectedItem && (

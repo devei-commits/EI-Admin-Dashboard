@@ -38,6 +38,7 @@ import {
   isStockCheckAssigneeOpen,
   stockCheckLockedMessage,
 } from '../../lib/stockCheckAssigneeAccess';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 function parseNumber(v: unknown): number {
   const n = Number(v);
@@ -438,12 +439,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+    <ModalOverlay onClose={onClose} z="z-50" dismissable backdrop="default">
       <div
         className="relative w-full max-w-5xl max-h-[92vh] bg-surface rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -757,7 +753,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
           ) : null}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

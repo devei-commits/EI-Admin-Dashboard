@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, X } from 'lucide-react';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import { parseMoqInput } from '../utils/moqQuantity';
@@ -1210,8 +1211,8 @@ const ItemsList: React.FC = () => {
       </div>
 
       {showAddTierModal && (tierTarget || addPriceListMode) && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-2xl my-4" role="dialog" aria-modal="true" aria-labelledby="add-tier-modal-title">
+        <ModalOverlay onClose={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-2xl my-4" role="dialog" aria-modal="true" aria-labelledby="add-tier-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
               <span id="add-tier-modal-title" className="text-sm font-bold text-ink">
                 {addPriceListMode && !tierTarget ? 'Add Price List — Select Item' : `Add Price Tier — ${tierTarget?.name ?? ''}`}
@@ -1445,13 +1446,13 @@ const ItemsList: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit vendor rate modal */}
       {editingRate && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-rate-modal-title">
+        <ModalOverlay onClose={() => setEditingRate(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-rate-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
               <span id="edit-rate-modal-title" className="text-sm font-bold text-ink">
                 Edit rate —{' '}
@@ -1496,7 +1497,7 @@ const ItemsList: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* View price list modal (read-only card → Edit) */}
@@ -1506,8 +1507,8 @@ const ItemsList: React.FC = () => {
         const paymentLabel = formatStagedPaymentTermsSummary(rate.payment_terms) || '—';
         const tiers = rate.tiers ?? [];
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-            <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="view-rate-modal-title">
+          <ModalOverlay onClose={() => setViewingRate(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+            <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="view-rate-modal-title" onClick={(e) => e.stopPropagation()}>
               <div className="px-5 py-4 border-b border-hairline flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div id="view-rate-modal-title" className="text-sm font-bold text-ink">
@@ -1578,14 +1579,14 @@ const ItemsList: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </ModalOverlay>
         );
       })()}
 
       {/* Edit tier modal */}
       {editingTier && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-tier-modal-title">
+        <ModalOverlay onClose={() => setEditingTier(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-tier-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
               <span id="edit-tier-modal-title" className="text-sm font-bold text-ink">Edit tier — {editingTier.item.name}</span>
               <button onClick={() => setEditingTier(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">×</button>
@@ -1631,7 +1632,7 @@ const ItemsList: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

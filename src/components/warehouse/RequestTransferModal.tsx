@@ -14,6 +14,7 @@ import {
   type TransferSourceType,
 } from '../../lib/transferRequestLocationStock';
 import { materialQtyToNum, sanitizeMrnLineItemQuantity } from '../../utils/materialQtyCompare';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type TransferRequestLine = {
   id: string;
@@ -280,12 +281,13 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="strong" scroll align="start">
       <div
         className="relative my-4 w-full max-w-5xl rounded-xl border border-border bg-surface shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="request-transfer-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-surface px-6 py-4 rounded-t-xl">
           <div>
@@ -487,7 +489,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import type { Ticket, TicketCategory, TicketCollaboration, TicketPriority } from '../../types/ticket.types';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type TeamOpt = { id: string; name: string };
 type AreaOpt = { id: string; label: string };
@@ -213,9 +214,8 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
  if (!open) return null;
 
  return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-   <div className="absolute inset-0 bg-black/45" onClick={() => !submitting && onClose()} />
-   <div role="dialog" aria-modal="true" aria-labelledby="cross-team-ticket-title" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
+  <ModalOverlay onClose={() => { if (!submitting) onClose(); }} z="z-50" dismissable={true} backdrop="default">
+   <div role="dialog" aria-modal="true" aria-labelledby="cross-team-ticket-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
      <div>
       <h2 id="cross-team-ticket-title" className="text-lg font-semibold text-gray-900">Cross-team ticket</h2>
@@ -432,7 +432,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
      </div>
     </form>
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 

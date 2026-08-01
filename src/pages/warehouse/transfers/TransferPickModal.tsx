@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { ModalOverlay } from '../../../components/ui/ModalOverlay';
 
 /**
  * Transfer Copy pick modal (Option 1 — picker enters packs).
@@ -193,12 +194,13 @@ const TransferPickModal = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-auto py-8 px-4 print:bg-white print:p-0">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" scroll align="start" className="print:bg-white print:p-0">
       <div
         className="bg-surface rounded-xl shadow-2xl w-full max-w-5xl print:shadow-none print:max-w-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="transfer-pick-modal-title"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-border print:hidden">
@@ -381,7 +383,7 @@ const TransferPickModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

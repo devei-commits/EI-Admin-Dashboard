@@ -36,6 +36,7 @@ import QualityCheckAttachmentsSection from './QualityCheckAttachmentsSection';
 import ThirdPartyTestModal from './ThirdPartyTestModal';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
 import { extractThirdPartyPoRef, type ThirdPartyReleasePayload } from '../../lib/thirdPartyLabTest';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type QualityCheckModalProps = {
   row: QualityOrderManagementRow;
@@ -184,12 +185,13 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
   }, [assigneeOptions, qcBy]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm p-3 sm:p-6">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" className="p-3 sm:p-6">
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-check-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -520,7 +522,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
           onReleasedToTracking={onThirdPartyReleased}
         />
       ) : null}
-    </div>
+    </ModalOverlay>
   );
 };
 

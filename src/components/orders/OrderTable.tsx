@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { UnifiedBadge, getStatusBadgeColor } from '../ui';
+import { ModalOverlay } from '../ui/ModalOverlay';
 import { useGlobalState } from '../../context/GlobalStateContext';
 
 interface Product {
@@ -521,8 +522,8 @@ const OrderTable: React.FC = () => {
     <div className="p-6 bg-surface-3 min-h-screen">
       {/* Create Order Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="create-order-modal-title">
+        <ModalOverlay onClose={handleCloseCreateModal} z="z-[50]" backdrop="strong" dismissable={false} scroll>
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="create-order-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 id="create-order-modal-title" className="text-2xl font-bold text-ink">Create New Order</h2>
@@ -732,13 +733,13 @@ const OrderTable: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit Order Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="edit-order-modal-title">
+        <ModalOverlay onClose={handleCloseEditModal} z="z-[50]" backdrop="strong" dismissable={false} scroll>
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="edit-order-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 id="edit-order-modal-title" className="text-2xl font-bold text-ink">Edit Order</h2>
@@ -948,13 +949,13 @@ const OrderTable: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Details Modal */}
       {showDetailsModal && selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="details-order-modal-title">
+        <ModalOverlay onClose={handleCloseDetailsModal} z="z-[50]" backdrop="strong" dismissable={false} scroll>
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="details-order-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 id="details-order-modal-title" className="text-2xl font-bold text-ink">Order Details</h2>
@@ -1111,13 +1112,13 @@ const OrderTable: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Cancel Order Modal */}
       {showCancelModal && selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="cancel-order-modal-title">
+        <ModalOverlay onClose={handleCloseCancelModal} z="z-[50]" backdrop="strong" dismissable={false}>
+          <div className="bg-white rounded-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="cancel-order-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <h2 id="cancel-order-modal-title" className="text-xl font-bold text-err mb-4">Cancel Order</h2>
               <p className="text-ink-2 mb-4">
@@ -1153,7 +1154,7 @@ const OrderTable: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Quick Stats Cards */}

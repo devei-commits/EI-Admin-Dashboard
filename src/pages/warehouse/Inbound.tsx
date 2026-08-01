@@ -58,6 +58,7 @@ import {
   type QualityOrderManagementRow,
 } from '../../lib/qualityOrderManagementTableDisplay';
 import QualityCheckModal from '../../components/quality/QualityCheckModal';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
@@ -1135,8 +1136,8 @@ const GRNDetailModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="grn-detail-modal-title">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="grn-detail-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 z-10 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
@@ -1856,7 +1857,7 @@ const GRNDetailModal = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

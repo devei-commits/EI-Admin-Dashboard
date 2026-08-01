@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import type { Ticket, TicketCategory, TicketPriority } from '../../types/ticket.types';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type UserSearchRow = {
  userid: number;
@@ -224,9 +225,8 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
  if (!open) return null;
 
  return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-   <div className="absolute inset-0 bg-black/45" onClick={() => !submitting && onClose()} />
-   <div role="dialog" aria-modal="true" aria-labelledby="create-customer-ticket-title" className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
+  <ModalOverlay onClose={() => { if (!submitting) onClose(); }} z="z-50" dismissable={true} backdrop="default">
+   <div role="dialog" aria-modal="true" aria-labelledby="create-customer-ticket-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
      <div>
       <h2 id="create-customer-ticket-title" className="text-lg font-semibold text-gray-900">New customer ticket</h2>
@@ -483,7 +483,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
      </div>
     </form>
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 

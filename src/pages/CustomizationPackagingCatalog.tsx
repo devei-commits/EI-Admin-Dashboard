@@ -9,6 +9,7 @@ import {
   type CustomizationPackagingSpecs,
 } from '../services/customizationPackagingCatalog.service';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 
 const emptySpecs = (): CustomizationPackagingSpecs => ({
   skuVol: '',
@@ -207,8 +208,8 @@ export default function CustomizationPackagingCatalog() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div role="dialog" aria-modal="true" aria-label={editing ? 'Edit option' : 'New option'} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+        <ModalOverlay onClose={() => setModalOpen(false)} z="z-50" dismissable={false} backdrop="default">
+          <div role="dialog" aria-modal="true" aria-label={editing ? 'Edit option' : 'New option'} onClick={(e) => e.stopPropagation()} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
             <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit option' : 'New option'}</h2>
             <div className="mt-4 space-y-3">
               <label className="block text-xs font-semibold text-gray-600">
@@ -342,7 +343,7 @@ export default function CustomizationPackagingCatalog() {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

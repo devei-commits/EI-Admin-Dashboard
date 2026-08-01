@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import type { ThirdPartyTrackingRow } from '../../lib/thirdPartyTestTrackingDisplay';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type ThirdPartyUploadSampleModalProps = {
   row: ThirdPartyTrackingRow;
@@ -31,12 +32,13 @@ const ThirdPartyUploadSampleModal: React.FC<ThirdPartyUploadSampleModalProps> = 
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4">
+    <ModalOverlay onClose={onClose} z="z-[130]" dismissable={false} backdrop="default">
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-sample-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-slate-200">
           <h2 id="upload-sample-title" className="text-base font-bold text-slate-900">
@@ -98,7 +100,7 @@ const ThirdPartyUploadSampleModal: React.FC<ThirdPartyUploadSampleModalProps> = 
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

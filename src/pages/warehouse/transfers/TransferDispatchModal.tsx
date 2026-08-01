@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { TransferLabel } from './TransferPickModal';
+import { ModalOverlay } from '../../../components/ui/ModalOverlay';
 
 /**
  * Pick & Initiate Transfer (dispatch) modal — opens after labels are generated.
@@ -142,12 +143,13 @@ const TransferDispatchModal = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-auto py-8 px-4">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" scroll align="start">
       <div
         className="bg-surface rounded-xl shadow-2xl w-full max-w-4xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dispatch-modal-title"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between px-6 py-4 border-b border-border">
           <div>
@@ -270,7 +272,7 @@ const TransferDispatchModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

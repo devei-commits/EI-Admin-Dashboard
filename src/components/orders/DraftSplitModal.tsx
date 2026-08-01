@@ -5,6 +5,7 @@
 import React from 'react';
 import { useGlobalState } from '../../context/GlobalStateContext';
 import { UnifiedModal } from '../ui/UnifiedComponents';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 interface Props {
   draftId: string;
@@ -17,12 +18,12 @@ export default function DraftSplitModal({ draftId, onClose }: Props) {
   const draft = (state.po.drafts || []).find((d: any) => d.id === draftId);
   if (!draft) {
     return (
-      <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
-        <div role="dialog" aria-modal="true" aria-label="Draft PO not found" className="bg-surface rounded-xl p-6">
+      <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="light">
+        <div role="dialog" aria-modal="true" aria-label="Draft PO not found" className="bg-surface rounded-xl p-6" onClick={(e) => e.stopPropagation()}>
           <p className="text-err">Draft PO not found.</p>
           <button onClick={onClose} className="mt-3 px-4 py-2 bg-surface-3 rounded-lg">Close</button>
         </div>
-      </div>
+      </ModalOverlay>
     );
   }
 

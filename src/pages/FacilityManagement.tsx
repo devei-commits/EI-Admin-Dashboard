@@ -13,6 +13,7 @@ import {
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 
 const AREA_FORM_EMPTY = { code: '', name: '', area_type: 'warehouse' as 'warehouse' | 'production', icon: '', description: '' };
 const ZONE_FORM_EMPTY = { code: '', name: '', zone_label: '', icon: '', area_sqm: '', description: '' };
@@ -981,11 +982,13 @@ const FacilityManagement: React.FC = () => {
 
       {/* Area Modal */}
       {showAreaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <ModalOverlay onClose={() => setShowAreaModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
             className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="create-area-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 id="create-area-title" className="text-lg font-semibold text-gray-900">
@@ -1083,16 +1086,18 @@ const FacilityManagement: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Zone Modal */}
       {showZoneModal && selectedArea && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <ModalOverlay onClose={() => setShowZoneModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
             className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="create-zone-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 id="create-zone-title" className="text-lg font-semibold text-gray-900">
@@ -1200,16 +1205,18 @@ const FacilityManagement: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Rack Modal */}
       {showRackModal && rackZone && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <ModalOverlay onClose={() => setShowRackModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
             className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="create-rack-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 id="create-rack-title" className="text-lg font-semibold text-gray-900">
@@ -1306,7 +1313,7 @@ const FacilityManagement: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

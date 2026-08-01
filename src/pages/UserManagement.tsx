@@ -20,6 +20,7 @@ import {
  Check,
 } from 'lucide-react';
 import { SearchInput, Pagination, ConfirmDialog, PageHeader, inputClassName, selectClassName } from '../components/ui';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -759,8 +760,8 @@ const UserManagement = () => {
 
    {/* View Modal */}
    {modalType === 'view' && selectedUser && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="user-view-modal-title">
+    <ModalOverlay onClose={handleCloseModal} z="z-50" dismissable={false} backdrop="light">
+     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="user-view-modal-title" onClick={(e) => e.stopPropagation()}>
       <div className="bg-slate-800 p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <div>
@@ -803,13 +804,13 @@ const UserManagement = () => {
        </div>
       </div>
      </div>
-    </div>
+    </ModalOverlay>
    )}
 
    {/* Add/Edit Modal */}
    {(modalType === 'add' || modalType === 'edit') && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-edit-modal-title">
+    <ModalOverlay onClose={handleCloseModal} z="z-50" dismissable={false} backdrop="light">
+     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-edit-modal-title" onClick={(e) => e.stopPropagation()}>
       <div className="bg-slate-800 p-5 rounded-t-2xl sticky top-0">
        <div className="flex items-center justify-between">
         <h2 id="user-edit-modal-title" className="text-lg font-bold text-white">{modalType === 'add' ? 'Add New User' : 'Edit User'}</h2>
@@ -835,7 +836,7 @@ const UserManagement = () => {
        </div>
       </div>
      </div>
-    </div>
+    </ModalOverlay>
    )}
 
    {/* Delete Modal */}

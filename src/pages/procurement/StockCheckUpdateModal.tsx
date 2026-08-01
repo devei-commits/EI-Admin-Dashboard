@@ -1,6 +1,7 @@
 import React, { useState, useId } from 'react';
 import { X } from '@phosphor-icons/react';
 import type { ProcurementRequest, PackagingCondition, StockCheckLineData } from '../../types/procurement.types';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 interface StockCheckLine {
   itemName: string;
@@ -129,7 +130,7 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[1px] px-4" onClick={onClose}>
+    <ModalOverlay onClose={onClose} z="z-50" dismissable backdrop="default">
       <div
         role="dialog"
         aria-modal="true"
@@ -263,7 +264,7 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

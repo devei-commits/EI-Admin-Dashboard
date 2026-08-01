@@ -20,6 +20,7 @@ import { fetchAvailableStaff } from '../../services/ticket.service';
 import api from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import { Activity, MessageSquare } from 'lucide-react';
+import { ModalOverlay } from '../ui/ModalOverlay';
 import { SkeletonText } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
 
@@ -481,8 +482,8 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
  }, [ticket.id, onUpdate]);
 
  return (
-  <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-   <div role="dialog" aria-modal="true" aria-labelledby="ticket-detail-title" className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+  <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="light">
+   <div role="dialog" aria-modal="true" aria-labelledby="ticket-detail-title" onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
     {/* Header */}
     <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-gray-50/50">
      <div className="flex-1">
@@ -809,8 +810,8 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
    {/* Resolve Modal */}
    {showResolveModal && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-60">
-     <div role="dialog" aria-modal="true" aria-labelledby="resolve-ticket-title" className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+    <ModalOverlay onClose={() => setShowResolveModal(false)} z="z-60" dismissable={false} backdrop="light">
+     <div role="dialog" aria-modal="true" aria-labelledby="resolve-ticket-title" onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
       <h3 id="resolve-ticket-title" className="text-lg font-semibold text-gray-900 mb-4">Resolve Ticket</h3>
       <p className="text-sm text-gray-600 mb-4">
        Please provide resolution notes for this ticket.
@@ -839,9 +840,9 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        </button>
       </div>
      </div>
-    </div>
+    </ModalOverlay>
    )}
-  </div>
+  </ModalOverlay>
  );
 };
 

@@ -18,6 +18,7 @@ import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 
 const EMPTY_FORM = {
   name: '',
@@ -1017,9 +1018,8 @@ const ItemGroups: React.FC = () => {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={closeCreateModal} />
-          <div className="relative bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[min(90vh,720px)] flex flex-col" role="dialog" aria-modal="true" aria-labelledby="create-item-group-title">
+        <ModalOverlay onClose={closeCreateModal} z="z-50" dismissable={true} backdrop="light">
+          <div className="relative bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[min(90vh,720px)] flex flex-col" role="dialog" aria-modal="true" aria-labelledby="create-item-group-title" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
               <div>
                 <h2 id="create-item-group-title" className="text-lg font-bold text-ink">
@@ -1183,7 +1183,7 @@ const ItemGroups: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

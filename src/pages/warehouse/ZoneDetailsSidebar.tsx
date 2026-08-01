@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WarehouseLocationDTO, WarehouseRackDTO, StoredItemSummary } from '../../services/warehouseLocations.service';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 interface Bay {
   id: string;
@@ -861,12 +862,13 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
       </div>
 
       {isAddRackModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <ModalOverlay onClose={() => setIsAddRackModalOpen(false)} z="z-50" dismissable={false} backdrop="default">
           <div
             className="w-full max-w-190 rounded-2xl border border-border bg-surface text-ink shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-rack-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-7 py-5 border-b border-border">
               <h3 id="add-rack-title" className="text-3xl font-bold tracking-tight">Add New Rack / Bay</h3>
@@ -979,16 +981,17 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {isAdjustStockOpen && selectedItem && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+        <ModalOverlay onClose={() => setIsAdjustStockOpen(false)} z="z-60" dismissable={false} backdrop="strong">
           <div
             className="w-full max-w-190 rounded-2xl border border-border bg-surface text-ink shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="adjust-stock-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-7 py-5 border-b border-border">
               <div>
@@ -1099,7 +1102,7 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   );
