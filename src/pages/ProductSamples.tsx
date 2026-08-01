@@ -242,7 +242,7 @@ const ProductSamples = () => {
  };
 
  const SortIcon = ({ field }: { field: keyof ProcessSampleRequest }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {sortField === field ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
@@ -291,7 +291,7 @@ const ProductSamples = () => {
  };
 
  const ProductSortIcon = ({ field }: { field: keyof ProductSampleRequest }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {productSortField === field ? (productSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
@@ -339,7 +339,7 @@ const ProductSamples = () => {
  };
 
  const QuotationSortIcon = ({ field }: { field: keyof QuotationRequest }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {quotationSortField === field ? (quotationSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
@@ -386,7 +386,7 @@ const ProductSamples = () => {
  };
 
  const TechnicalSortIcon = ({ field }: { field: keyof TechnicalDocRequest }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {technicalSortField === field ? (technicalSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
@@ -433,7 +433,7 @@ const ProductSamples = () => {
  };
 
  const OtherSortIcon = ({ field }: { field: keyof OtherRequest }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {otherSortField === field ? (otherSortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
@@ -447,14 +447,14 @@ const ProductSamples = () => {
  ];
 
  return (
-  <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+  <div className="p-4 md:p-8 bg-surface-2/50 min-h-screen">
    <div className="mb-6">
-    <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Product Samples</h1>
-    <p className="text-gray-500 mt-1">Manage product samples and distribution</p>
+    <h1 className="text-2xl md:text-3xl font-bold text-ink">Product Samples</h1>
+    <p className="text-ink-3 mt-1">Manage product samples and distribution</p>
    </div>
 
    {/* Tab Navigation */}
-   <div className="bg-white rounded-t-xl shadow-sm border border-gray-100 overflow-x-auto">
+   <div className="bg-surface rounded-t-xl shadow-sm border border-hairline overflow-x-auto">
     <div className="flex border-b">
      {tabs.map((tab) => (
       <button
@@ -462,8 +462,8 @@ const ProductSamples = () => {
        onClick={() => setActiveTab(tab.id)}
        className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
         activeTab === tab.id
-         ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-         : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+         ? 'text-brand border-b-2 border-brand bg-brand-soft'
+         : 'text-ink-2 hover:text-ink hover:bg-surface-2'
        }`}
       >
        {tab.label}
@@ -473,16 +473,16 @@ const ProductSamples = () => {
    </div>
 
    {/* Tab Content */}
-   <div className="bg-white rounded-b-xl shadow-sm border border-t-0 border-gray-100 p-4 md:p-6">
+   <div className="bg-surface rounded-b-xl shadow-sm border border-t-0 border-hairline p-4 md:p-6">
     {loading && (
-     <div className="mb-4 text-sm text-gray-500">Loading requests...</div>
+     <div className="mb-4 text-sm text-ink-3">Loading requests...</div>
     )}
     {activeTab === 'process' && (
      <div>
       {/* Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Show</span>
+        <span className="text-ink-2 text-sm">Show</span>
         <select
          value={entriesPerPage}
          onChange={(e) => {
@@ -490,18 +490,18 @@ const ProductSamples = () => {
           setCurrentPage(1);
          }}
          aria-label="Entries per page"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
          <option value={50}>50</option>
          <option value={100}>100</option>
         </select>
-        <span className="text-gray-600 text-sm">entries</span>
+        <span className="text-ink-2 text-sm">entries</span>
        </div>
 
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Search:</span>
+        <span className="text-ink-2 text-sm">Search:</span>
         <input
          type="text"
          value={searchTerm}
@@ -510,7 +510,7 @@ const ProductSamples = () => {
           setCurrentPage(1);
          }}
          aria-label="Search"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
        </div>
@@ -520,39 +520,39 @@ const ProductSamples = () => {
       <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full border-collapse">
         <thead className="sticky top-0 z-20">
-         <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+         <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('id')}
           >
            S.No <SortIcon field="id" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('productId')}
           >
            Product Id <SortIcon field="productId" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('reqNos')}
           >
            Req Nos <SortIcon field="reqNos" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('comments')}
           >
            Comments <SortIcon field="comments" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('customer')}
           >
            Customer <SortIcon field="customer" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleSort('date')}
           >
            Date <SortIcon field="date" />
@@ -561,13 +561,13 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentEntries.map((request) => (
-          <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
-           <td className="py-3 px-4 text-sm text-gray-800">{request.id}</td>
-           <td className="py-3 px-4 text-sm text-gray-800">{request.productId}</td>
-           <td className="py-3 px-4 text-sm text-gray-800">{request.reqNos}</td>
-           <td className="py-3 px-4 text-sm text-gray-800 max-w-xs truncate">{request.comments}</td>
-           <td className="py-3 px-4 text-sm text-gray-800">{request.customer}</td>
-           <td className="py-3 px-4 text-sm text-gray-800">{request.date}</td>
+          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+           <td className="py-3 px-4 text-sm text-ink">{request.id}</td>
+           <td className="py-3 px-4 text-sm text-ink">{request.productId}</td>
+           <td className="py-3 px-4 text-sm text-ink">{request.reqNos}</td>
+           <td className="py-3 px-4 text-sm text-ink max-w-xs truncate">{request.comments}</td>
+           <td className="py-3 px-4 text-sm text-ink">{request.customer}</td>
+           <td className="py-3 px-4 text-sm text-ink">{request.date}</td>
           </tr>
          ))}
         </tbody>
@@ -577,16 +577,16 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentEntries.map((request) => (
-        <div key={request.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
          <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold text-gray-800">#{request.id}</span>
+          <span className="font-semibold text-ink">#{request.id}</span>
          </div>
          <div className="space-y-2 text-sm">
-          <div><strong className="text-gray-600">Product ID:</strong> {request.productId}</div>
-          <div><strong className="text-gray-600">Req Nos:</strong> {request.reqNos}</div>
-          <div><strong className="text-gray-600">Comments:</strong> {request.comments}</div>
-          <div><strong className="text-gray-600">Customer:</strong> {request.customer}</div>
-          <div><strong className="text-gray-600">Date:</strong> {request.date}</div>
+          <div><strong className="text-ink-2">Product ID:</strong> {request.productId}</div>
+          <div><strong className="text-ink-2">Req Nos:</strong> {request.reqNos}</div>
+          <div><strong className="text-ink-2">Comments:</strong> {request.comments}</div>
+          <div><strong className="text-ink-2">Customer:</strong> {request.customer}</div>
+          <div><strong className="text-ink-2">Date:</strong> {request.date}</div>
          </div>
         </div>
        ))}
@@ -594,14 +594,14 @@ const ProductSamples = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Showing {indexOfFirstEntry + 1} to {Math.min(indexOfLastEntry, sortedRequests.length)} of {sortedRequests.length} entries
        </div>
        <div className="flex gap-1">
         <button
          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
          disabled={currentPage === 1}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Previous
         </button>
@@ -613,8 +613,8 @@ const ProductSamples = () => {
            onClick={() => setCurrentPage(pageNum)}
            className={`px-3 py-1 border rounded text-sm ${
             currentPage === pageNum
-             ? 'bg-blue-500 text-white border-blue-500'
-             : 'border-gray-300 hover:bg-gray-50'
+             ? 'bg-brand text-white border-brand'
+             : 'border-border hover:bg-surface-2'
            }`}
           >
            {pageNum}
@@ -625,7 +625,7 @@ const ProductSamples = () => {
         <button
          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
          disabled={currentPage === totalPages}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Next
         </button>
@@ -640,7 +640,7 @@ const ProductSamples = () => {
       {/* Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Show</span>
+        <span className="text-ink-2 text-sm">Show</span>
         <select
          value={productEntriesPerPage}
          onChange={(e) => {
@@ -648,18 +648,18 @@ const ProductSamples = () => {
           setProductCurrentPage(1);
          }}
          aria-label="Entries per page"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
          <option value={50}>50</option>
          <option value={100}>100</option>
         </select>
-        <span className="text-gray-600 text-sm">entries</span>
+        <span className="text-ink-2 text-sm">entries</span>
        </div>
 
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Search:</span>
+        <span className="text-ink-2 text-sm">Search:</span>
         <input
          type="text"
          value={productSearchTerm}
@@ -668,7 +668,7 @@ const ProductSamples = () => {
           setProductCurrentPage(1);
          }}
          aria-label="Search"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
        </div>
@@ -678,39 +678,39 @@ const ProductSamples = () => {
       <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full border-collapse">
         <thead className="sticky top-0 z-20">
-         <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+         <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('id')}
           >
            S.No <ProductSortIcon field="id" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('productId')}
           >
            Product Id <ProductSortIcon field="productId" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('reqNos')}
           >
            Req Nos <ProductSortIcon field="reqNos" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('comments')}
           >
            Comments <ProductSortIcon field="comments" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('customer')}
           >
            Customer <ProductSortIcon field="customer" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleProductSort('date')}
           >
            Date <ProductSortIcon field="date" />
@@ -719,12 +719,12 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentProductEntries.map((sample) => (
-          <tr key={sample.id} className="border-b border-gray-100 hover:bg-gray-50">
-           <td className="py-3 px-4 text-sm text-gray-700">{sample.id}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{sample.productId}</td>
-           <td className="py-3 px-4 text-sm text-blue-600">{sample.reqNos}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{sample.comments || '-'}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">
+          <tr key={sample.id} className="border-b border-hairline hover:bg-surface-2">
+           <td className="py-3 px-4 text-sm text-ink-2">{sample.id}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{sample.productId}</td>
+           <td className="py-3 px-4 text-sm text-brand">{sample.reqNos}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{sample.comments || '-'}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">
             <div className="flex flex-col gap-1">
              <span>{sample.customer}</span>
              <button
@@ -732,13 +732,13 @@ const ProductSamples = () => {
                setSelectedProductSample(sample);
                setShowProductDetailsModal(true);
               }}
-              className="text-blue-500 text-xs hover:underline text-left"
+              className="text-brand text-xs hover:underline text-left"
              >
               Read more
              </button>
             </div>
            </td>
-           <td className="py-3 px-4 text-sm text-gray-700">{sample.date}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{sample.date}</td>
           </tr>
          ))}
         </tbody>
@@ -748,27 +748,27 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentProductEntries.map((sample) => (
-        <div key={sample.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div key={sample.id} className="border border-border rounded-lg p-4 bg-surface-2">
          <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold text-gray-800">#{sample.id}</span>
+          <span className="font-semibold text-ink">#{sample.id}</span>
          </div>
          <div className="space-y-2 text-sm">
-          <div><strong className="text-gray-600">Product ID:</strong> {sample.productId}</div>
-          <div><strong className="text-gray-600">Req Nos:</strong> <span className="text-blue-600">{sample.reqNos}</span></div>
-          <div><strong className="text-gray-600">Comments:</strong> {sample.comments || '-'}</div>
+          <div><strong className="text-ink-2">Product ID:</strong> {sample.productId}</div>
+          <div><strong className="text-ink-2">Req Nos:</strong> <span className="text-brand">{sample.reqNos}</span></div>
+          <div><strong className="text-ink-2">Comments:</strong> {sample.comments || '-'}</div>
           <div>
-           <strong className="text-gray-600">Customer:</strong> {sample.customer}
+           <strong className="text-ink-2">Customer:</strong> {sample.customer}
            <button
             onClick={() => {
              setSelectedProductSample(sample);
              setShowProductDetailsModal(true);
             }}
-            className="text-blue-500 text-xs hover:underline ml-2"
+            className="text-brand text-xs hover:underline ml-2"
            >
             Read more
            </button>
           </div>
-          <div><strong className="text-gray-600">Date:</strong> {sample.date}</div>
+          <div><strong className="text-ink-2">Date:</strong> {sample.date}</div>
          </div>
         </div>
        ))}
@@ -776,14 +776,14 @@ const ProductSamples = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Showing {productIndexOfFirstEntry + 1} to {Math.min(productIndexOfLastEntry, sortedProductSamples.length)} of {sortedProductSamples.length} entries
        </div>
        <div className="flex gap-1">
         <button
          onClick={() => setProductCurrentPage(prev => Math.max(prev - 1, 1))}
          disabled={productCurrentPage === 1}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Previous
         </button>
@@ -795,8 +795,8 @@ const ProductSamples = () => {
            onClick={() => setProductCurrentPage(pageNum)}
            className={`px-3 py-1 border rounded text-sm ${
             productCurrentPage === pageNum
-             ? 'bg-blue-500 text-white border-blue-500'
-             : 'border-gray-300 hover:bg-gray-50'
+             ? 'bg-brand text-white border-brand'
+             : 'border-border hover:bg-surface-2'
            }`}
           >
            {pageNum}
@@ -807,7 +807,7 @@ const ProductSamples = () => {
         <button
          onClick={() => setProductCurrentPage(prev => Math.min(prev + 1, productTotalPages))}
          disabled={productCurrentPage === productTotalPages}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Next
         </button>
@@ -820,7 +820,7 @@ const ProductSamples = () => {
       {/* Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Show</span>
+        <span className="text-ink-2 text-sm">Show</span>
         <select
          value={quotationEntriesPerPage}
          onChange={(e) => {
@@ -828,18 +828,18 @@ const ProductSamples = () => {
           setQuotationCurrentPage(1);
          }}
          aria-label="Entries per page"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
          <option value={50}>50</option>
          <option value={100}>100</option>
         </select>
-        <span className="text-gray-600 text-sm">entries</span>
+        <span className="text-ink-2 text-sm">entries</span>
        </div>
 
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Search:</span>
+        <span className="text-ink-2 text-sm">Search:</span>
         <input
          type="text"
          value={quotationSearchTerm}
@@ -848,7 +848,7 @@ const ProductSamples = () => {
           setQuotationCurrentPage(1);
          }}
          aria-label="Search"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
        </div>
@@ -858,33 +858,33 @@ const ProductSamples = () => {
       <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full border-collapse">
         <thead className="sticky top-0 z-20">
-         <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+         <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleQuotationSort('id')}
           >
            S.No <QuotationSortIcon field="id" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleQuotationSort('productId')}
           >
            Product Id <QuotationSortIcon field="productId" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleQuotationSort('requestedNumbers')}
           >
            Requested Numbers <QuotationSortIcon field="requestedNumbers" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleQuotationSort('comments')}
           >
            Comments <QuotationSortIcon field="comments" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleQuotationSort('date')}
           >
            Date <QuotationSortIcon field="date" />
@@ -893,12 +893,12 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentQuotationEntries.map((request) => (
-          <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
-           <td className="py-3 px-4 text-sm text-gray-700">{request.id}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.productId}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.requestedNumbers}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.comments || '-'}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.date}</td>
+          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+           <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.requestedNumbers}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.comments || '-'}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.date}</td>
           </tr>
          ))}
         </tbody>
@@ -908,15 +908,15 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentQuotationEntries.map((request) => (
-        <div key={request.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
          <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold text-gray-800">#{request.id}</span>
+          <span className="font-semibold text-ink">#{request.id}</span>
          </div>
          <div className="space-y-2 text-sm">
-          <div><strong className="text-gray-600">Product ID:</strong> {request.productId}</div>
-          <div><strong className="text-gray-600">Requested Numbers:</strong> {request.requestedNumbers}</div>
-          <div><strong className="text-gray-600">Comments:</strong> {request.comments || '-'}</div>
-          <div><strong className="text-gray-600">Date:</strong> {request.date}</div>
+          <div><strong className="text-ink-2">Product ID:</strong> {request.productId}</div>
+          <div><strong className="text-ink-2">Requested Numbers:</strong> {request.requestedNumbers}</div>
+          <div><strong className="text-ink-2">Comments:</strong> {request.comments || '-'}</div>
+          <div><strong className="text-ink-2">Date:</strong> {request.date}</div>
          </div>
         </div>
        ))}
@@ -924,14 +924,14 @@ const ProductSamples = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Showing {quotationIndexOfFirstEntry + 1} to {Math.min(quotationIndexOfLastEntry, sortedQuotationRequests.length)} of {sortedQuotationRequests.length} entries
        </div>
        <div className="flex gap-1">
         <button
          onClick={() => setQuotationCurrentPage(prev => Math.max(prev - 1, 1))}
          disabled={quotationCurrentPage === 1}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Previous
         </button>
@@ -943,8 +943,8 @@ const ProductSamples = () => {
            onClick={() => setQuotationCurrentPage(pageNum)}
            className={`px-3 py-1 border rounded text-sm ${
             quotationCurrentPage === pageNum
-             ? 'bg-blue-500 text-white border-blue-500'
-             : 'border-gray-300 hover:bg-gray-50'
+             ? 'bg-brand text-white border-brand'
+             : 'border-border hover:bg-surface-2'
            }`}
           >
            {pageNum}
@@ -955,7 +955,7 @@ const ProductSamples = () => {
         <button
          onClick={() => setQuotationCurrentPage(prev => Math.min(prev + 1, quotationTotalPages))}
          disabled={quotationCurrentPage === quotationTotalPages}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Next
         </button>
@@ -968,7 +968,7 @@ const ProductSamples = () => {
       {/* Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Show</span>
+        <span className="text-ink-2 text-sm">Show</span>
         <select
          value={technicalEntriesPerPage}
          onChange={(e) => {
@@ -976,18 +976,18 @@ const ProductSamples = () => {
           setTechnicalCurrentPage(1);
          }}
          aria-label="Entries per page"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
          <option value={50}>50</option>
          <option value={100}>100</option>
         </select>
-        <span className="text-gray-600 text-sm">entries</span>
+        <span className="text-ink-2 text-sm">entries</span>
        </div>
 
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Search:</span>
+        <span className="text-ink-2 text-sm">Search:</span>
         <input
          type="text"
          value={technicalSearchTerm}
@@ -996,7 +996,7 @@ const ProductSamples = () => {
           setTechnicalCurrentPage(1);
          }}
          aria-label="Search"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
        </div>
@@ -1006,27 +1006,27 @@ const ProductSamples = () => {
       <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full border-collapse">
         <thead className="sticky top-0 z-20">
-         <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+         <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleTechnicalSort('id')}
           >
            S.No <TechnicalSortIcon field="id" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleTechnicalSort('productId')}
           >
            Product Id <TechnicalSortIcon field="productId" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleTechnicalSort('comments')}
           >
            Comments <TechnicalSortIcon field="comments" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleTechnicalSort('date')}
           >
            Date <TechnicalSortIcon field="date" />
@@ -1035,11 +1035,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentTechnicalEntries.map((request) => (
-          <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
-           <td className="py-3 px-4 text-sm text-gray-700">{request.id}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.productId}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.comments || '-'}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.date}</td>
+          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+           <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.comments || '-'}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.date}</td>
           </tr>
          ))}
         </tbody>
@@ -1049,14 +1049,14 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentTechnicalEntries.map((request) => (
-        <div key={request.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
          <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold text-gray-800">#{request.id}</span>
+          <span className="font-semibold text-ink">#{request.id}</span>
          </div>
          <div className="space-y-2 text-sm">
-          <div><strong className="text-gray-600">Product ID:</strong> {request.productId}</div>
-          <div><strong className="text-gray-600">Comments:</strong> {request.comments || '-'}</div>
-          <div><strong className="text-gray-600">Date:</strong> {request.date}</div>
+          <div><strong className="text-ink-2">Product ID:</strong> {request.productId}</div>
+          <div><strong className="text-ink-2">Comments:</strong> {request.comments || '-'}</div>
+          <div><strong className="text-ink-2">Date:</strong> {request.date}</div>
          </div>
         </div>
        ))}
@@ -1064,14 +1064,14 @@ const ProductSamples = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Showing {technicalIndexOfFirstEntry + 1} to {Math.min(technicalIndexOfLastEntry, sortedTechnicalRequests.length)} of {sortedTechnicalRequests.length} entries
        </div>
        <div className="flex gap-1">
         <button
          onClick={() => setTechnicalCurrentPage(prev => Math.max(prev - 1, 1))}
          disabled={technicalCurrentPage === 1}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Previous
         </button>
@@ -1083,8 +1083,8 @@ const ProductSamples = () => {
            onClick={() => setTechnicalCurrentPage(pageNum)}
            className={`px-3 py-1 border rounded text-sm ${
             technicalCurrentPage === pageNum
-             ? 'bg-blue-500 text-white border-blue-500'
-             : 'border-gray-300 hover:bg-gray-50'
+             ? 'bg-brand text-white border-brand'
+             : 'border-border hover:bg-surface-2'
            }`}
           >
            {pageNum}
@@ -1095,7 +1095,7 @@ const ProductSamples = () => {
         <button
          onClick={() => setTechnicalCurrentPage(prev => Math.min(prev + 1, technicalTotalPages))}
          disabled={technicalCurrentPage === technicalTotalPages}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Next
         </button>
@@ -1108,7 +1108,7 @@ const ProductSamples = () => {
       {/* Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Show</span>
+        <span className="text-ink-2 text-sm">Show</span>
         <select
          value={otherEntriesPerPage}
          onChange={(e) => {
@@ -1116,18 +1116,18 @@ const ProductSamples = () => {
           setOtherCurrentPage(1);
          }}
          aria-label="Entries per page"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
          <option value={50}>50</option>
          <option value={100}>100</option>
         </select>
-        <span className="text-gray-600 text-sm">entries</span>
+        <span className="text-ink-2 text-sm">entries</span>
        </div>
 
        <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-sm">Search:</span>
+        <span className="text-ink-2 text-sm">Search:</span>
         <input
          type="text"
          value={otherSearchTerm}
@@ -1136,7 +1136,7 @@ const ProductSamples = () => {
           setOtherCurrentPage(1);
          }}
          aria-label="Search"
-         className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+         className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
        </div>
@@ -1146,27 +1146,27 @@ const ProductSamples = () => {
       <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full border-collapse">
         <thead className="sticky top-0 z-20">
-         <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+         <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleOtherSort('id')}
           >
            S.No <OtherSortIcon field="id" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleOtherSort('productId')}
           >
            Product Id <OtherSortIcon field="productId" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleOtherSort('comments')}
           >
            Comments <OtherSortIcon field="comments" />
           </th>
           <th scope="col" 
-           className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+           className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
            onClick={() => handleOtherSort('date')}
           >
            Date <OtherSortIcon field="date" />
@@ -1175,11 +1175,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentOtherEntries.map((request) => (
-          <tr key={request.id} className="border-b border-gray-100 hover:bg-gray-50">
-           <td className="py-3 px-4 text-sm text-gray-700">{request.id}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.productId}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.comments || '-'}</td>
-           <td className="py-3 px-4 text-sm text-gray-700">{request.date}</td>
+          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+           <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.comments || '-'}</td>
+           <td className="py-3 px-4 text-sm text-ink-2">{request.date}</td>
           </tr>
          ))}
         </tbody>
@@ -1189,14 +1189,14 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentOtherEntries.map((request) => (
-        <div key={request.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
          <div className="flex justify-between items-start mb-3">
-          <span className="font-semibold text-gray-800">#{request.id}</span>
+          <span className="font-semibold text-ink">#{request.id}</span>
          </div>
          <div className="space-y-2 text-sm">
-          <div><strong className="text-gray-600">Product ID:</strong> {request.productId}</div>
-          <div><strong className="text-gray-600">Comments:</strong> {request.comments || '-'}</div>
-          <div><strong className="text-gray-600">Date:</strong> {request.date}</div>
+          <div><strong className="text-ink-2">Product ID:</strong> {request.productId}</div>
+          <div><strong className="text-ink-2">Comments:</strong> {request.comments || '-'}</div>
+          <div><strong className="text-ink-2">Date:</strong> {request.date}</div>
          </div>
         </div>
        ))}
@@ -1204,14 +1204,14 @@ const ProductSamples = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Showing {otherIndexOfFirstEntry + 1} to {Math.min(otherIndexOfLastEntry, sortedOtherRequests.length)} of {sortedOtherRequests.length} entries
        </div>
        <div className="flex gap-1">
         <button
          onClick={() => setOtherCurrentPage(prev => Math.max(prev - 1, 1))}
          disabled={otherCurrentPage === 1}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Previous
         </button>
@@ -1223,8 +1223,8 @@ const ProductSamples = () => {
            onClick={() => setOtherCurrentPage(pageNum)}
            className={`px-3 py-1 border rounded text-sm ${
             otherCurrentPage === pageNum
-             ? 'bg-blue-500 text-white border-blue-500'
-             : 'border-gray-300 hover:bg-gray-50'
+             ? 'bg-brand text-white border-brand'
+             : 'border-border hover:bg-surface-2'
            }`}
           >
            {pageNum}
@@ -1235,7 +1235,7 @@ const ProductSamples = () => {
         <button
          onClick={() => setOtherCurrentPage(prev => Math.min(prev + 1, otherTotalPages))}
          disabled={otherCurrentPage === otherTotalPages}
-         className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+         className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
          Next
         </button>
@@ -1248,50 +1248,50 @@ const ProductSamples = () => {
    {/* Details Modal */}
    {showDetailsModal && selectedRequest && (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="request-details-modal-title">
+     <div className="bg-surface rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="request-details-modal-title">
       <div className="p-6">
-       <h2 id="request-details-modal-title" className="text-2xl font-bold text-gray-800 mb-6">Request Details</h2>
+       <h2 id="request-details-modal-title" className="text-2xl font-bold text-ink mb-6">Request Details</h2>
        
        <div className="space-y-4">
         {/* Product ID */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Product ID:</label>
-         <div className="col-span-9 text-gray-800">{selectedRequest.productId}</div>
+         <label className="col-span-3 text-sm text-ink-2">Product ID:</label>
+         <div className="col-span-9 text-ink">{selectedRequest.productId}</div>
         </div>
 
         {/* Req Nos */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Req Nos:</label>
-         <div className="col-span-9 text-gray-800">{selectedRequest.reqNos}</div>
+         <label className="col-span-3 text-sm text-ink-2">Req Nos:</label>
+         <div className="col-span-9 text-ink">{selectedRequest.reqNos}</div>
         </div>
 
         {/* Comments */}
         <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Comments:</label>
-         <div className="col-span-9 text-gray-800">{selectedRequest.comments}</div>
+         <label className="col-span-3 text-sm text-ink-2">Comments:</label>
+         <div className="col-span-9 text-ink">{selectedRequest.comments}</div>
         </div>
 
         {/* Customer */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Customer:</label>
-         <div className="col-span-9 text-gray-800">{selectedRequest.customer}</div>
+         <label className="col-span-3 text-sm text-ink-2">Customer:</label>
+         <div className="col-span-9 text-ink">{selectedRequest.customer}</div>
         </div>
 
         {/* Date */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Date:</label>
-         <div className="col-span-9 text-gray-800">{selectedRequest.date}</div>
+         <label className="col-span-3 text-sm text-ink-2">Date:</label>
+         <div className="col-span-9 text-ink">{selectedRequest.date}</div>
         </div>
 
         {/* Response */}
         <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Response :</label>
+         <label className="col-span-3 text-sm text-ink-2">Response :</label>
          <div className="col-span-9">
           <textarea
            value={responseText}
            onChange={(e) => setResponseText(e.target.value)}
            aria-label="Response"
-           className="w-full h-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+           className="w-full h-40 px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
            placeholder="Enter your response here..."
           />
          </div>
@@ -1306,7 +1306,7 @@ const ProductSamples = () => {
           setShowDetailsModal(false);
           setResponseText('');
          }}
-         className="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 font-medium"
+         className="px-6 py-2 bg-brand text-white rounded hover:bg-brand font-medium"
         >
          Respond
         </button>
@@ -1315,7 +1315,7 @@ const ProductSamples = () => {
           setShowDetailsModal(false);
           setResponseText('');
          }}
-         className="px-6 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 font-medium"
+         className="px-6 py-2 border border-brand text-brand rounded hover:bg-brand-soft font-medium"
         >
          Back to Request
         </button>
@@ -1327,52 +1327,52 @@ const ProductSamples = () => {
 
    {/* Product Sample Details Modal */}
    {showProductDetailsModal && selectedProductSample && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-[2px] p-4">
-     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="customer-details-modal-title">
-      <div className="border-b border-slate-200 px-6 py-4">
-       <h2 id="customer-details-modal-title" className="text-xl md:text-2xl font-semibold text-slate-800">Customer Details</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 backdrop-blur-[2px] p-4">
+     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="customer-details-modal-title">
+      <div className="border-b border-border px-6 py-4">
+       <h2 id="customer-details-modal-title" className="text-xl md:text-2xl font-semibold text-ink">Customer Details</h2>
       </div>
       <div className="p-6">
        
        <div className="space-y-4">
         {/* Product ID */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Product ID:</label>
-         <div className="col-span-8 text-slate-800">{selectedProductSample.productId}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Product ID:</label>
+         <div className="col-span-8 text-ink">{selectedProductSample.productId}</div>
         </div>
 
         {/* Req Nos */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Req Nos:</label>
-         <div className="col-span-8 font-medium text-blue-600">{selectedProductSample.reqNos}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Req Nos:</label>
+         <div className="col-span-8 font-medium text-brand">{selectedProductSample.reqNos}</div>
         </div>
 
         {/* Customer Name */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Customer Name:</label>
-         <div className="col-span-8 text-slate-800">{selectedProductSample.customer}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Customer Name:</label>
+         <div className="col-span-8 text-ink">{selectedProductSample.customer}</div>
         </div>
 
         {/* Customer Details */}
-        <div className="grid grid-cols-12 gap-4 items-start border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Customer Details:</label>
-         <div className="col-span-8 text-slate-800">
+        <div className="grid grid-cols-12 gap-4 items-start border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Customer Details:</label>
+         <div className="col-span-8 text-ink">
           {selectedProductSample.customerDetails || 'No additional details available'}
          </div>
         </div>
 
         {/* Comments */}
-        <div className="grid grid-cols-12 gap-4 items-start border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Comments:</label>
-         <div className="col-span-8 text-slate-800">
+        <div className="grid grid-cols-12 gap-4 items-start border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Comments:</label>
+         <div className="col-span-8 text-ink">
           {selectedProductSample.comments || 'No comments'}
          </div>
         </div>
 
         {/* Date */}
-        <div className="grid grid-cols-12 gap-4 items-center border-b border-slate-100 pb-3">
-         <label className="col-span-4 text-sm font-medium text-slate-500">Date:</label>
-         <div className="col-span-8 text-slate-800">{selectedProductSample.date}</div>
+        <div className="grid grid-cols-12 gap-4 items-center border-b border-hairline pb-3">
+         <label className="col-span-4 text-sm font-medium text-ink-3">Date:</label>
+         <div className="col-span-8 text-ink">{selectedProductSample.date}</div>
         </div>
        </div>
 
@@ -1383,7 +1383,7 @@ const ProductSamples = () => {
           setShowProductDetailsModal(false);
           setSelectedProductSample(null);
          }}
-         className="px-6 py-2 rounded-lg border border-blue-500 text-blue-600 hover:bg-blue-50 transition-colors font-medium"
+         className="px-6 py-2 rounded-lg border border-brand text-brand hover:bg-brand-soft transition-colors font-medium"
         >
          Close
         </button>

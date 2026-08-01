@@ -50,7 +50,7 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId,
 
  if (loading) {
   return (
-   <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 mt-4">
+   <div className="bg-surface-2 border border-border rounded-lg p-5 mt-4">
     <SkeletonText lines={4} />
    </div>
   );
@@ -72,8 +72,8 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId,
 
  if (!hasAnyGranted && !Object.values(globalSettings).some((v) => v === true || (typeof v === 'number' && v > 0))) {
   return (
-   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5 mt-4">
-    <p className="text-yellow-700 text-sm leading-relaxed tracking-wide">
+   <div className="bg-warn-soft border border-warn rounded-lg p-5 mt-4">
+    <p className="text-warn text-sm leading-relaxed tracking-wide">
      No permissions configured for this role.
     </p>
    </div>
@@ -83,7 +83,7 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId,
  return (
   <div className="space-y-8">
    <div>
-    <h4 className="text-md font-semibold text-gray-800 mb-3 uppercase tracking-wider">
+    <h4 className="text-md font-semibold text-ink mb-3 uppercase tracking-wider">
      Module Permissions
     </h4>
     <DepartmentPermissionMatrix
@@ -95,16 +95,16 @@ const RolePermissionsDisplay: React.FC<RolePermissionsDisplayProps> = ({ roleId,
    </div>
 
    <div>
-    <h4 className="text-md font-semibold text-gray-800 mb-5 uppercase tracking-wider">
+    <h4 className="text-md font-semibold text-ink mb-5 uppercase tracking-wider">
      Global Settings
     </h4>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-gray-50 p-6 rounded-lg border border-gray-200">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-surface-2 p-6 rounded-lg border border-border">
      {Object.entries(globalSettings).map(([key, value]) => (
       <div key={key} className="flex items-center space-x-3">
        <UnifiedBadge variant={getPermissionBadgeColor(!!value)}>
         {typeof value === 'number' ? value : value ? 'Yes' : 'No'}
        </UnifiedBadge>
-       <span className="text-sm text-gray-700 capitalize leading-relaxed tracking-wide">
+       <span className="text-sm text-ink-2 capitalize leading-relaxed tracking-wide">
         {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
        </span>
       </div>

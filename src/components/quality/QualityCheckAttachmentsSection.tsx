@@ -50,9 +50,9 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-bold text-slate-900 mb-2">📷 Photos &amp; report attachments</h3>
-      <p className={`text-[11px] mb-3 ${rows.length > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>{summary}</p>
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <h3 className="text-sm font-bold text-ink mb-2">📷 Photos &amp; report attachments</h3>
+      <p className={`text-[11px] mb-3 ${rows.length > 0 ? 'text-ok' : 'text-ink-3'}`}>{summary}</p>
 
       <input
         ref={inputRef}
@@ -71,7 +71,7 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
       {rows.length > 0 ? (
         <table className="w-full text-xs mb-3">
           <thead className="sticky top-0 z-20">
-            <tr className="text-left text-[10px] text-slate-500 border-b border-slate-200 [&_th]:bg-surface-2">
+            <tr className="text-left text-[10px] text-ink-3 border-b border-border [&_th]:bg-surface-2">
               <th scope="col" className="py-2 pr-3">Attachment</th>
               <th scope="col" className="py-2 pr-3">Type</th>
               <th scope="col" className="py-2 pr-3">Uploaded</th>
@@ -80,10 +80,10 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
           </thead>
           <tbody>
             {rows.map((att) => (
-              <tr key={att.id} className="border-b border-slate-100">
-                <td className="py-2 pr-3 font-medium text-slate-800">{att.name}</td>
-                <td className="py-2 pr-3 text-slate-600">{att.type}</td>
-                <td className="py-2 pr-3 text-slate-600 tabular-nums">{att.uploadedAt}</td>
+              <tr key={att.id} className="border-b border-hairline">
+                <td className="py-2 pr-3 font-medium text-ink">{att.name}</td>
+                <td className="py-2 pr-3 text-ink-2">{att.type}</td>
+                <td className="py-2 pr-3 text-ink-2 tabular-nums">{att.uploadedAt}</td>
                 <td className="py-2">
                   {att.source === 'qc-upload' ? (
                     <button
@@ -95,7 +95,7 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
                       Remove
                     </button>
                   ) : (
-                    <span className="text-[10px] text-slate-400">GRN doc</span>
+                    <span className="text-[10px] text-ink-4">GRN doc</span>
                   )}
                 </td>
               </tr>
@@ -110,7 +110,7 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
           type="button"
           disabled={disabled}
           onClick={() => setAttachMenuOpen((open) => !open)}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-ink-2 hover:text-ink disabled:opacity-40"
           aria-expanded={attachMenuOpen}
           aria-haspopup="listbox"
         >
@@ -118,8 +118,8 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
         </button>
 
         {attachMenuOpen && !disabled ? (
-          <div className="absolute left-0 top-full z-20 mt-1 min-w-[14rem] rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-            <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          <div className="absolute left-0 top-full z-20 mt-1 min-w-[14rem] rounded-lg border border-border bg-surface shadow-lg py-1">
+            <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
               Attachment type
             </p>
             {GRN_QC_ATTACHMENT_TYPES.map((type) => (
@@ -133,8 +133,8 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
                   setAttachMenuOpen(false);
                   inputRef.current?.click();
                 }}
-                className={`block w-full text-left px-3 py-2 text-xs hover:bg-slate-50 ${
-                  attachType === type ? 'font-semibold text-teal-800 bg-teal-50/50' : 'text-slate-800'
+                className={`block w-full text-left px-3 py-2 text-xs hover:bg-surface-2 ${
+                  attachType === type ? 'font-semibold text-teal-800 bg-teal-50/50' : 'text-ink'
                 }`}
               >
                 {type}

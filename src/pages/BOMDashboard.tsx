@@ -57,6 +57,7 @@ import {
   pmSubSubCategoryOptionsForDetailSubCategory,
   normalizePmSubSubCategoryForSelect,
 } from '../constants/materialMasterSkuRules';
+import { procBtnPrimary, procBtnSecondary, procBtnDanger, procInputClass, procSelectClass } from '../components/procurement/ProcSection';
 
 type PrListSortColumn =
   | 'code'
@@ -1051,7 +1052,7 @@ const BOMDashboard: React.FC = () => {
         />
 
         {/* ── Table Card ── */}
-        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+        <div className="bg-surface rounded-xl border border-border shadow-[var(--e1)] overflow-hidden">
 
           {/* toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
@@ -1071,7 +1072,7 @@ const BOMDashboard: React.FC = () => {
                   onKeyDown={(e) => e.key === 'Enter' && loadProducts()}
                   placeholder="Search name, code, SKU…"
                   aria-label="Search name, code, SKU"
-                  className="pl-9 pr-4 py-2 text-xs border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-52"
+                  className={`${procInputClass} pl-9 w-52`}
                 />
               </div>
 
@@ -1079,7 +1080,7 @@ const BOMDashboard: React.FC = () => {
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 aria-label="Filter by category"
-                className="px-3 py-2 text-xs border border-border rounded-lg bg-surface-3 text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all"
+                className={procSelectClass}
               >
                 <option>All Categories</option>
                 {[...new Set(list.map((p) => p.category).filter(Boolean))].map((c) => (
@@ -1092,7 +1093,7 @@ const BOMDashboard: React.FC = () => {
                 onChange={(e) => setRmAssignStatusFilter(e.target.value as 'all' | PrTeamAssignStatus)}
                 title="Filter by RM team assign status"
                 aria-label="Filter by RM team assign status"
-                className="px-3 py-2 text-xs border border-border rounded-lg bg-surface-3 text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all"
+                className={procSelectClass}
               >
                 <option value="all">RM status: All</option>
                 {PR_TEAM_ASSIGN_STATUSES.map((s) => (
@@ -1105,7 +1106,7 @@ const BOMDashboard: React.FC = () => {
                 onChange={(e) => setPackAssignStatusFilter(e.target.value as 'all' | PrTeamAssignStatus)}
                 title="Filter by Pack team assign status"
                 aria-label="Filter by Pack team assign status"
-                className="px-3 py-2 text-xs border border-border rounded-lg bg-surface-3 text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all"
+                className={procSelectClass}
               >
                 <option value="all">Pack status: All</option>
                 {PR_TEAM_ASSIGN_STATUSES.map((s) => (
@@ -1122,13 +1123,13 @@ const BOMDashboard: React.FC = () => {
                   placeholder="Missing SKU code…"
                   aria-label="Missing SKU code"
                   disabled={zohoImporting}
-                  className="px-3 py-2 text-xs border border-brand-soft rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-36 disabled:opacity-50"
+                  className={`${procInputClass} w-36 disabled:opacity-50`}
                 />
                 <button
                   type="button"
                   onClick={() => { void onImportZohoSku(); }}
                   disabled={zohoImporting || !zohoSku.trim()}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors whitespace-nowrap"
+                  className={procBtnSecondary}
                 >
                   <ArrowUpFromLine className="w-4 h-4" />
                   {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
@@ -1137,7 +1138,7 @@ const BOMDashboard: React.FC = () => {
 
               <Link
                 to="/bom/new"
-                className="inline-flex items-center px-3 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-press transition-colors whitespace-nowrap gap-1"
+                className={procBtnPrimary}
               >
                 <PlusCircle className="w-4 h-4" />
                 New PR
@@ -1160,7 +1161,7 @@ const BOMDashboard: React.FC = () => {
                     disabled={formulaRmExcelUploading}
                     title='Requires Summary, RM BOM, and PM BOM worksheets. Summary: category, pack, SG. RM: Formula % (RM Count). PM: Qty/Unit per FG (PM Count).'
                     onClick={() => formulaRmFileInputRef.current?.click()}
-                    className="inline-flex items-center px-3 py-2 border border-brand-soft bg-surface text-brand text-xs font-semibold rounded-lg hover:bg-brand-soft disabled:opacity-50 whitespace-nowrap gap-1"
+                    className={procBtnSecondary}
                   >
                     <Upload className="w-4 h-4" />
                     {formulaRmExcelUploading ? 'Importing…' : 'Formula BOM (Excel)'}
@@ -1170,7 +1171,7 @@ const BOMDashboard: React.FC = () => {
                     disabled={formulaRmExcelUploading || prToolbarFullResetting}
                     title="Permanently deletes all PR-linked catalogue products, every BOM row, and related planning/inventory rows. Raw and pack material masters are kept. Blocked if ecommerce orders still reference these products. Requires typing a confirmation phrase."
                     onClick={() => void handleToolbarClearAllPrBom()}
-                    className="inline-flex items-center px-3 py-2 border border-[color:var(--st-amber-fg)]/30 bg-warn-soft text-warn text-xs font-semibold rounded-lg hover:bg-warn-soft disabled:opacity-50 whitespace-nowrap gap-1"
+                    className={procBtnDanger}
                   >
                     <RotateCcw className="w-4 h-4" />
                     {prToolbarFullResetting ? 'Deleting…' : 'Delete all PR masters'}

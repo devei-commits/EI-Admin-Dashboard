@@ -41,15 +41,15 @@ const ThirdPartyPoPdfPreview: React.FC<ThirdPartyPoPdfPreviewProps> = ({ poInput
   }
 
   if (!pdfUrl) {
-    return <p className="text-xs text-slate-500 py-8 text-center">Generating PDF preview…</p>;
+    return <p className="text-xs text-ink-3 py-8 text-center">Generating PDF preview…</p>;
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-100 overflow-hidden">
+    <div className="rounded-lg border border-border bg-surface-3 overflow-hidden">
       <iframe
         title={`PO preview ${poInput.poNo}`}
         src={pdfUrl}
-        className="w-full h-[min(70vh,520px)] bg-white"
+        className="w-full h-[min(70vh,520px)] bg-surface"
       />
     </div>
   );

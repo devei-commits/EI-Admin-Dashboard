@@ -140,18 +140,18 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
  }, [selectedUser, onApply]);
 
  return (
-  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4">
+  <div className="rounded-lg border border-dashed border-border bg-surface-2/80 p-4">
    <div className="flex items-center gap-2 mb-3">
-    <Copy className="w-4 h-4 text-slate-600" />
-    <h4 className="text-sm font-semibold text-slate-800">Clone permissions from user</h4>
+    <Copy className="w-4 h-4 text-ink-2" />
+    <h4 className="text-sm font-semibold text-ink">Clone permissions from user</h4>
    </div>
-   <p className="text-xs text-slate-600 mb-3">
+   <p className="text-xs text-ink-2 mb-3">
     Type to search team members, pick one from the results, then import their role&apos;s
     permissions.
    </p>
    <div className="space-y-2">
     <div className="relative">
-     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4 pointer-events-none" />
      <input
       type="search"
       value={userSearch}
@@ -169,7 +169,7 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
       <button
        type="button"
        onClick={handleClearSelection}
-       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-ink-4 hover:text-ink-2 hover:bg-surface-3"
        aria-label="Clear selection"
       >
        <X className="w-4 h-4" />
@@ -179,19 +179,19 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
 
     {showResults && (
      <div
-      className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+      className="rounded-lg border border-border bg-surface shadow-sm overflow-hidden"
       role="listbox"
       aria-label="Team member search results"
      >
       {loadingUsers ? (
-       <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
+       <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink-3">
         <Loader2 className="w-4 h-4 animate-spin" />
         Loading users…
        </div>
       ) : filteredStaffUsers.length === 0 ? (
-       <p className="py-6 text-center text-sm text-slate-500">No users match &quot;{searchQuery}&quot;</p>
+       <p className="py-6 text-center text-sm text-ink-3">No users match &quot;{searchQuery}&quot;</p>
       ) : (
-       <ul className="max-h-52 overflow-y-auto divide-y divide-slate-100">
+       <ul className="max-h-52 overflow-y-auto divide-y divide-hairline">
         {filteredStaffUsers.map((u) => {
          const id = getUserId(u);
          const isSelected = selectedUserId === id;
@@ -206,7 +206,7 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => handleSelectUser(u)}
             className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-2 disabled:opacity-50 ${
-             isSelected ? 'bg-slate-800 text-white' : 'text-slate-800 hover:bg-slate-50'
+             isSelected ? 'bg-ink text-white' : 'text-ink hover:bg-surface-2'
             }`}
            >
             <span className="flex-1 min-w-0">
@@ -214,7 +214,7 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
              {(u.email || u.role_name) && (
               <span
                className={`block text-xs truncate ${
-                isSelected ? 'text-slate-300' : 'text-slate-500'
+                isSelected ? 'text-ink-4' : 'text-ink-3'
                }`}
               >
                {[u.email, u.role_name].filter(Boolean).join(' · ')}
@@ -232,11 +232,11 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
     )}
 
     {!showResults && !loadingUsers && !selectedUser && (
-     <p className="text-xs text-slate-500">Start typing to see matching team members.</p>
+     <p className="text-xs text-ink-3">Start typing to see matching team members.</p>
     )}
 
     {selectedUser && !showResults && (
-     <p className="text-xs text-slate-600 bg-white border border-slate-200 rounded-md px-2.5 py-1.5">
+     <p className="text-xs text-ink-2 bg-surface border border-border rounded-md px-2.5 py-1.5">
       Selected: <span className="font-medium">{getUserLabel(selectedUser)}</span>
       {selectedUser.role_name ? ` (${selectedUser.role_name})` : ''}
      </p>
@@ -246,7 +246,7 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
      type="button"
      onClick={() => void handleImport()}
      disabled={disabled || !selectedUserId || importing || loadingUsers}
-     className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+     className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-ink text-white text-sm font-medium hover:bg-ink disabled:opacity-50 disabled:cursor-not-allowed"
     >
      {importing ? (
       <>
@@ -261,9 +261,9 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
      )}
     </button>
    </div>
-   {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+   {error && <p className="mt-2 text-xs text-err">{error}</p>}
    {lastImport && (
-    <p className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1.5">
+    <p className="mt-2 text-xs text-ok bg-ok-soft border border-ok rounded-md px-2 py-1.5">
      {lastImport}
     </p>
    )}

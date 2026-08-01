@@ -30,8 +30,8 @@ const KIND_META: Record<TxnKind, { title: string; icon: typeof HelpCircle; verb:
   meeting:   { title: 'Request Meeting', icon: CalendarPlus, verb: 'Create meeting' },
 };
 
-const labelCls = 'text-[10px] font-semibold uppercase tracking-wide text-slate-500';
-const inputCls = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+const labelCls = 'text-[10px] font-semibold uppercase tracking-wide text-ink-3';
+const inputCls = 'mt-1 w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-brand';
 
 export const NewTxnPopup: React.FC<NewTxnPopupProps> = ({ kind, clients, presetClient, onClose, onCreated }) => {
   const { addToast } = useToast();
@@ -87,15 +87,15 @@ export const NewTxnPopup: React.FC<NewTxnPopupProps> = ({ kind, clients, presetC
   return (
     <ProcModalShell
       eyebrow={presetClient ? `${presetClient.name}` : 'BD'}
-      title={<span className="inline-flex items-center gap-2"><Icon size={18} className="text-blue-600" /> {meta.title}</span>}
-      subtitle={clientName ? <span className="text-xs text-slate-500">For {clientName}</span> : undefined}
+      title={<span className="inline-flex items-center gap-2"><Icon size={18} className="text-brand" /> {meta.title}</span>}
+      subtitle={clientName ? <span className="text-xs text-ink-3">For {clientName}</span> : undefined}
       width="max-w-lg"
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">Cancel</button>
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface">Cancel</button>
           <button onClick={submit} disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand disabled:opacity-50">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />} {meta.verb}
           </button>
         </>
@@ -106,7 +106,7 @@ export const NewTxnPopup: React.FC<NewTxnPopupProps> = ({ kind, clients, presetC
         <label className="block">
           <span className={labelCls}>Client</span>
           {presetClient ? (
-            <input value={presetClient.name} disabled className={`${inputCls} bg-slate-50 text-slate-500`} />
+            <input value={presetClient.name} disabled className={`${inputCls} bg-surface-2 text-ink-3`} />
           ) : (
             <select value={clientCode} onChange={(e) => setClientCode(e.target.value)} className={inputCls}>
               <option value="">Select client…</option>
@@ -158,7 +158,7 @@ export const NewTxnPopup: React.FC<NewTxnPopupProps> = ({ kind, clients, presetC
             </label>
           </div>
           <label className="block">
-            <span className={labelCls}>Proposed Date &amp; Time <span className="font-normal normal-case text-slate-400">(optional)</span></span>
+            <span className={labelCls}>Proposed Date &amp; Time <span className="font-normal normal-case text-ink-4">(optional)</span></span>
             <input type="datetime-local" value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)} className={inputCls} />
           </label>
         </>
@@ -167,7 +167,7 @@ export const NewTxnPopup: React.FC<NewTxnPopupProps> = ({ kind, clients, presetC
       {/* Query: subject */}
       {kind === 'query' && (
         <label className="block">
-          <span className={labelCls}>Subject <span className="font-normal normal-case text-slate-400">(optional)</span></span>
+          <span className={labelCls}>Subject <span className="font-normal normal-case text-ink-4">(optional)</span></span>
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Short headline" className={inputCls} />
         </label>
       )}

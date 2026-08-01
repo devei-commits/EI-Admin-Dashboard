@@ -502,15 +502,15 @@ const Dashboard = () => {
             <p className="text-white/80 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="bg-white/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
               <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.totalOrders)}</p>
               <p className="text-xs text-white/70">Total Orders</p>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
               <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.lowStockItems)}</p>
               <p className="text-xs text-white/70">Low Stock</p>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
               <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.issuedPos)}</p>
               <p className="text-xs text-white/70">Issued POs</p>
             </div>

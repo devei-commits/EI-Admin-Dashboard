@@ -34,17 +34,17 @@ const ThirdPartyUploadSampleModal: React.FC<ThirdPartyUploadSampleModalProps> = 
   return (
     <ModalOverlay onClose={onClose} z="z-[130]" dismissable={false} backdrop="default">
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-sample-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-slate-200">
-          <h2 id="upload-sample-title" className="text-base font-bold text-slate-900">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 id="upload-sample-title" className="text-base font-bold text-ink">
             Upload sample photo
           </h2>
-          <p className="text-xs text-slate-600 mt-1">
+          <p className="text-xs text-ink-2 mt-1">
             {row.poNo} · {row.testParameter} · {row.itemName}
           </p>
         </div>
@@ -64,11 +64,11 @@ const ThirdPartyUploadSampleModal: React.FC<ThirdPartyUploadSampleModalProps> = 
               e.target.value = '';
             }}
           />
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+          <div className="rounded-lg border border-dashed border-border bg-surface-2 p-4 text-center">
             {file ? (
-              <p className="text-xs font-medium text-slate-800">{file.name}</p>
+              <p className="text-xs font-medium text-ink">{file.name}</p>
             ) : (
-              <p className="text-xs text-slate-500">No file selected</p>
+              <p className="text-xs text-ink-3">No file selected</p>
             )}
             <button
               type="button"
@@ -78,15 +78,15 @@ const ThirdPartyUploadSampleModal: React.FC<ThirdPartyUploadSampleModalProps> = 
               Choose photo
             </button>
           </div>
-          <p className="text-[10px] text-slate-500">
+          <p className="text-[10px] text-ink-3">
             Photo is linked to this PO only. Status moves to Sample Picked / In Lab after upload.
           </p>
         </div>
-        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-border flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
+            className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-ink-2"
           >
             Cancel
           </button>

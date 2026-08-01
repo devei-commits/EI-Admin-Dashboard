@@ -11,7 +11,7 @@ type GrnQcResultInputProps = {
 };
 
 const inputCls =
-  'w-full min-w-[7rem] border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none bg-white disabled:bg-slate-50';
+  'w-full min-w-[7rem] border border-border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none bg-surface disabled:bg-surface-2';
 
 export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQcResultInputProps): JSX.Element {
   const outputType = resolveGrnQcResultOutputType(test);
@@ -68,7 +68,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
           step="any"
           aria-label="Measured value"
         />
-        {unit ? <span className="shrink-0 text-[10px] text-slate-500">{unit}</span> : null}
+        {unit ? <span className="shrink-0 text-[10px] text-ink-3">{unit}</span> : null}
       </div>
     );
   }

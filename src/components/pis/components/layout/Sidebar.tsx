@@ -210,7 +210,7 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
    {/* Mobile overlay */}
    {isOpen && (
     <div 
-     className="fixed inset-0 bg-white/60 backdrop-blur-md z-40 lg:hidden"
+     className="fixed inset-0 bg-surface/60 backdrop-blur-md z-40 lg:hidden"
      onClick={onClose}
     />
    )}
@@ -218,29 +218,29 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
    {/* Sidebar */}
    <aside 
     className={cn(
-     "fixed lg:sticky top-0 left-0 h-screen bg-white border-r border-gray-100 text-gray-700 w-72 transition-transform duration-300 ease-in-out z-50 shadow-xl flex flex-col",
+     "fixed lg:sticky top-0 left-0 h-screen bg-surface border-r border-hairline text-ink-2 w-72 transition-transform duration-300 ease-in-out z-50 shadow-xl flex flex-col",
      !isOpen && "-translate-x-full lg:translate-x-0"
     )}
    >
     {/* Close button for mobile */}
-    <div className="lg:hidden p-4 flex justify-end border-b border-gray-100">
+    <div className="lg:hidden p-4 flex justify-end border-b border-hairline">
      <Button
       variant="ghost"
       size="icon"
       onClick={onClose}
-      className="text-gray-500 hover:bg-gray-100 hover:text-gray-700 rounded-xl"
+      className="text-ink-3 hover:bg-surface-3 hover:text-ink-2 rounded-xl"
      >
       <X className="h-5 w-5" />
      </Button>
     </div>
 
     {/* Logo Section */}
-    <div className="hidden lg:flex p-6 items-center justify-center border-b border-gray-100 bg-gray-50">
+    <div className="hidden lg:flex p-6 items-center justify-center border-b border-hairline bg-surface-2">
      <img src={eilogofull} alt="Esthetic Insights" className="h-10 max-w-full object-contain" />
     </div>
 
     <nav className="flex-1 py-4 px-3 overflow-y-auto">
-     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-4">Navigation</p>
+     <p className="text-xs font-semibold text-ink-4 uppercase tracking-wider px-4 mb-4">Navigation</p>
      <div className="space-y-1">
      {visibleItems.map((item) => {
       const Icon = item.icon;
@@ -258,22 +258,22 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
         }}
         className={cn(
          "w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-200 rounded-xl",
-         "hover:bg-gray-50 hover:text-slate-900",
+         "hover:bg-surface-2 hover:text-ink",
          activeView === item.id 
-          ? "bg-gray-50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm" 
-          : "text-gray-600 border-l-4 border-transparent"
+          ? "bg-surface-2 text-ink font-semibold border-l-4 border-slate-800 shadow-sm" 
+          : "text-ink-2 border-l-4 border-transparent"
         )}
        >
         <div className="relative flex items-center gap-3 flex-1">
          <div className={cn(
           "p-2 rounded-lg transition-colors",
-          activeView === item.id ? "bg-gray-100" : "bg-gray-100"
+          activeView === item.id ? "bg-surface-3" : "bg-surface-3"
          )}>
           <Icon className="h-4 w-4 shrink-0" />
          </div>
          <span className="flex-1 text-left text-sm">{item.label}</span>
          {badgeCount > 0 && (
-          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium min-w-6 h-6 px-2 shadow-sm">
+          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-err text-white text-[10px] font-medium min-w-6 h-6 px-2 shadow-sm">
            {badgeCount}
           </span>
          )}
@@ -285,8 +285,8 @@ export function Sidebar({ currentRole, activeView, onViewChange, isOpen, onClose
     </nav>
 
     {/* Footer */}
-    <div className="p-4 border-t border-gray-100 bg-gray-50/50">
-     <p className="text-xs text-gray-400 text-center">
+    <div className="p-4 border-t border-hairline bg-surface-2/50">
+     <p className="text-xs text-ink-4 text-center">
       © 2024 Esthetic Insights
      </p>
     </div>

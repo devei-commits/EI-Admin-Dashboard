@@ -209,7 +209,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
               {progress.readyPct}% FG Ready · {progress.shippedPct}% Shipped
             </span>
           </div>
-          <div className="h-2 rounded-full bg-white/10 dark:bg-black/20 overflow-hidden relative">
+          <div className="h-2 rounded-full bg-surface/10 dark:bg-black/20 overflow-hidden relative">
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-ok/50 z-1 transition-all"
               style={{ width: `${progress.readyPct}%` }}

@@ -4,6 +4,7 @@ import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalSt
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
+import { procBtnPrimary, procBtnSecondary, procBtnDanger, procInputClass } from '../components/procurement/ProcSection';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { derivePmVendorFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
@@ -1799,7 +1800,7 @@ const PackagingRefactored: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleRevert}
-                      className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+                      className="px-3 py-1.5 border border-warn text-warn text-sm font-medium rounded-lg hover:bg-warn-soft transition"
                     >
                       {approvalRevertAction?.revertLabel ?? 'Send back'}
                     </button>
@@ -1826,7 +1827,7 @@ const PackagingRefactored: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setAutoSaveOn((prev) => !prev)}
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${autoSaveOn ? 'bg-emerald-100 text-emerald-700' : 'bg-surface-3 text-ink-3'}`}
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${autoSaveOn ? 'bg-ok-soft text-ok' : 'bg-surface-3 text-ink-3'}`}
                       >
                         Autosave: {autoSaveOn ? 'ON' : 'OFF'}
                       </button>
@@ -1988,19 +1989,19 @@ const PackagingRefactored: React.FC = () => {
 
 /** Same category badge hashing as Raw Material masters list (`RawMaterialForm`). */
 const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
-  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  { bg: 'bg-ok-soft', text: 'text-ok', border: 'border-ok' },
+  { bg: 'bg-ok-soft', text: 'text-ok', border: 'border-ok' },
   { bg: 'bg-surface-3', text: 'text-ink-3', border: 'border-border' },
-  { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-  { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
-  { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' },
+  { bg: 'bg-warn-soft', text: 'text-warn', border: 'border-warn' },
+  { bg: 'bg-err-soft', text: 'text-err', border: 'border-err' },
+  { bg: 'bg-warn-soft', text: 'text-warn', border: 'border-warn' },
   { bg: 'bg-brand-soft', text: 'text-brand', border: 'border-brand-soft' },
   { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200' },
   { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  { bg: 'bg-brand-soft', text: 'text-brand', border: 'border-brand' },
   { bg: 'bg-brand-soft', text: 'text-brand', border: 'border-brand-soft' },
   { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
-  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  { bg: 'bg-warn-soft', text: 'text-warn', border: 'border-warn' },
   { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' },
   { bg: 'bg-surface-3', text: 'text-ink-3', border: 'border-border' },
 ];
@@ -2640,7 +2641,7 @@ const BprDashboard: React.FC<{
             />
 
             {/* ── Table Card (columns aligned with Raw Material masters list) ── */}
-            <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+            <div className="bg-surface rounded-xl border border-border shadow-[var(--e1)] overflow-hidden">
 
               {/* toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
@@ -2661,7 +2662,7 @@ const BprDashboard: React.FC<{
                     onClick={() => { void onResetAllMasters(); }}
                     disabled={bulkUploadRunning || resetAllRunning || isLoading}
                     title="Deletes all pack material master rows and scrubs linked warehouse, BOM, planning, and procurement data."
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-surface text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className={procBtnDanger}
                   >
                     {resetAllRunning ? 'Resetting…' : 'Reset all masters'}
                   </button>
@@ -2670,7 +2671,7 @@ const BprDashboard: React.FC<{
                     onClick={onPickItemReferenceExcel}
                     disabled={bulkUploadRunning}
                     title="Multi-tab PM workbook: Primary Packaging, Labels, Monocartons, Shrink Sleeves, Shippers %CFB, Fitments & Misc — row 4 headers, data from row 5 (SKU, Item Name = INCI and trade name, Sub-Category, UOM, HSN, GST%). BOM Name column is ignored. Legacy: sheet Item Reference (cols A–C, row 2+)."
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className={procBtnSecondary}
                   >
                     {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
                   </button>
@@ -2683,7 +2684,7 @@ const BprDashboard: React.FC<{
                       onChange={e => setSearch(e.target.value)}
                       placeholder="Search PM name, code…"
                       aria-label="Search PM name, code"
-                      className="pl-9 pr-4 py-2 text-xs border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-52"
+                      className={`${procInputClass} pl-9 w-52`}
                     />
                   </div>
                   {/* Import missing SKU from Zoho */}
@@ -2695,20 +2696,20 @@ const BprDashboard: React.FC<{
                       placeholder="Missing SKU code…"
                       aria-label="Missing SKU code to import from Zoho"
                       disabled={zohoImporting}
-                      className="px-3 py-2 text-xs border border-brand-soft rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-36 disabled:opacity-50"
+                      className={`${procInputClass} w-36 disabled:opacity-50`}
                     />
                     <button
                       type="button"
                       onClick={() => { void onImportZohoSku(); }}
                       disabled={zohoImporting || !zohoSku.trim()}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                      className={procBtnSecondary}
                     >
                       {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
                     </button>
                   </div>
                   <button
                     onClick={onSwitchToForm}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+                    className={procBtnPrimary}
                   >
                     <span className="text-base leading-none">+</span> New PM
                   </button>
@@ -2881,7 +2882,7 @@ const BprDashboard: React.FC<{
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); onDeletePm(pm); }}
-                              className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
+                              className="text-[10px] font-semibold text-err hover:text-err hover:underline"
                             >
                               Delete
                             </button>
@@ -3031,7 +3032,7 @@ const InputField: React.FC<{
   <div>
     <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
       {label}
-      {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+      {requiredMark ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
     </label>
     <input
       type={type}
@@ -3042,10 +3043,10 @@ const InputField: React.FC<{
       placeholder={placeholder}
       aria-invalid={error ? true : undefined}
       className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${
-        error ? 'border-red-500 bg-red-50/40' : 'border-border'
+        error ? 'border-err bg-err-soft/40' : 'border-border'
       } ${readOnly ? 'bg-surface-3 cursor-not-allowed' : ''}`}
     />
-    {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+    {error ? <p className="mt-1 text-xs text-err">{error}</p> : null}
   </div>
 );
 
@@ -3065,7 +3066,7 @@ const SelectField: React.FC<{
   <div>
     <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
       {label}
-      {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+      {requiredMark ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
     </label>
     <select
       id={id}
@@ -3074,7 +3075,7 @@ const SelectField: React.FC<{
       disabled={disabled}
       aria-invalid={error ? true : undefined}
       className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${
-        error ? 'border-red-500 bg-red-50/40' : 'border-border'
+        error ? 'border-err bg-err-soft/40' : 'border-border'
       } ${disabled ? 'bg-surface-3' : ''}`}
     >
       <option value="">{emptyLabel}</option>
@@ -3088,7 +3089,7 @@ const SelectField: React.FC<{
         );
       })}
     </select>
-    {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+    {error ? <p className="mt-1 text-xs text-err">{error}</p> : null}
   </div>
 );
 
@@ -3125,7 +3126,7 @@ const PillCheckboxField: React.FC<{
     'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium cursor-pointer transition-colors';
   const activeColor =
     color === 'red'
-      ? 'bg-red-50 border-red-300 text-red-700'
+      ? 'bg-err-soft border-err text-err'
       : 'bg-brand-soft border-brand-soft text-brand';
   const inactiveColor = 'bg-surface border-border text-ink-2 hover:bg-surface-3';
 
@@ -3144,7 +3145,7 @@ const PillCheckboxField: React.FC<{
       <span
         className={`h-1.5 w-1.5 rounded-full ${checked
             ? color === 'red'
-              ? 'bg-red-500'
+              ? 'bg-err'
               : 'bg-brand-soft0'
             : 'bg-surface-3'
           }`}

@@ -172,17 +172,17 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
  };
 
  return (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
-   <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+  <div className="bg-surface rounded-xl shadow-sm border border-hairline mb-6 overflow-hidden">
+   <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-4 hover:bg-surface-2 transition-colors">
     <div className="flex items-center gap-2">
-     <Settings className="w-4 h-4 text-slate-500" />
-     <span className="text-sm font-semibold text-slate-700">Manage Departments</span>
-     <span className="text-xs text-slate-400 ml-1">({departments.length})</span>
+     <Settings className="w-4 h-4 text-ink-3" />
+     <span className="text-sm font-semibold text-ink-2">Manage Departments</span>
+     <span className="text-xs text-ink-4 ml-1">({departments.length})</span>
     </div>
-    {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+    {open ? <ChevronUp className="w-4 h-4 text-ink-4" /> : <ChevronDown className="w-4 h-4 text-ink-4" />}
    </button>
    {open && (
-    <div className="border-t border-gray-100 p-4">
+    <div className="border-t border-hairline p-4">
      {/* Add new department */}
      <div className="flex gap-2 mb-4">
       <input value={addName} onChange={e => { setAddName(e.target.value); setAddCode(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')); }}
@@ -190,7 +190,7 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
       <input value={addCode} onChange={e => setAddCode(e.target.value)}
        placeholder="Code (auto)" aria-label="Department code" className={`${inputClassName} w-40`} />
       <button onClick={handleAdd} disabled={saving || !addName.trim()}
-       className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+       className="px-4 py-2 bg-ink text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
        <Plus className="w-3.5 h-3.5" /> Add
       </button>
      </div>
@@ -198,34 +198,34 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
      {/* Department list */}
      <div className="space-y-1.5">
       {departments.sort((a, b) => a.name.localeCompare(b.name)).map(dept => (
-       <div key={dept.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${dept.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+       <div key={dept.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${dept.is_active ? 'border-hairline bg-surface' : 'border-hairline bg-surface-2 opacity-60'}`}>
         {editId === dept.id ? (
          <>
           <input value={editName} onChange={e => setEditName(e.target.value)} aria-label="Department name" className={`${inputClassName} flex-1 py-1.5!`} autoFocus />
           <input value={editCode} onChange={e => setEditCode(e.target.value)} aria-label="Department code" className={`${inputClassName} w-36 py-1.5!`} />
           <button onClick={() => handleUpdate(dept.id)} disabled={saving} aria-label="Save department"
-           className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><Check className="w-4 h-4" /></button>
+           className="p-1.5 text-ok hover:bg-ok-soft rounded-lg"><Check className="w-4 h-4" /></button>
           <button onClick={() => setEditId(null)} aria-label="Cancel edit"
-           className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
+           className="p-1.5 text-ink-4 hover:bg-surface-3 rounded-lg"><X className="w-4 h-4" /></button>
          </>
         ) : (
          <>
-          <Building2 className={`w-4 h-4 ${dept.is_active ? 'text-slate-500' : 'text-slate-300'}`} />
-          <span className="flex-1 text-sm font-medium text-slate-700">{dept.name}</span>
-          <span className="text-xs text-slate-400 font-mono">{dept.code}</span>
+          <Building2 className={`w-4 h-4 ${dept.is_active ? 'text-ink-3' : 'text-ink-4'}`} />
+          <span className="flex-1 text-sm font-medium text-ink-2">{dept.name}</span>
+          <span className="text-xs text-ink-4 font-mono">{dept.code}</span>
           <button onClick={() => handleToggleActive(dept)} title={dept.is_active ? 'Deactivate' : 'Activate'}
-           className={`px-2 py-0.5 text-[10px] font-semibold rounded-md border ${dept.is_active ? 'text-green-600 bg-green-50 border-green-200' : 'text-slate-400 bg-slate-50 border-slate-200'}`}>
+           className={`px-2 py-0.5 text-[10px] font-semibold rounded-md border ${dept.is_active ? 'text-ok bg-ok-soft border-ok' : 'text-ink-4 bg-surface-2 border-border'}`}>
            {dept.is_active ? 'Active' : 'Inactive'}
           </button>
           <button onClick={() => startEdit(dept)} aria-label="Edit department"
-           className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+           className="p-1.5 text-ink-4 hover:text-ink-2 hover:bg-surface-3 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
           <button onClick={() => handleDelete(dept)} aria-label="Delete department"
-           className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
+           className="p-1.5 text-err hover:text-err hover:bg-err-soft rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
          </>
         )}
        </div>
       ))}
-      {departments.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No departments yet. Add one above.</p>}
+      {departments.length === 0 && <p className="text-xs text-ink-4 text-center py-4">No departments yet. Add one above.</p>}
      </div>
     </div>
    )}
@@ -527,9 +527,9 @@ const UserManagement = () => {
 
  const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
-   active: 'bg-green-100 text-green-700 border-green-200',
-   inactive: 'bg-gray-100 text-slate-400 border-gray-200',
-   suspended: 'bg-red-100 text-red-600 border-red-200',
+   active: 'bg-ok-soft text-ok border-ok',
+   inactive: 'bg-surface-3 text-ink-4 border-border',
+   suspended: 'bg-err-soft text-err border-err',
   };
   return colors[status] || colors.inactive;
  };
@@ -544,7 +544,7 @@ const UserManagement = () => {
  };
 
  return (
-  <div className="min-h-screen bg-slate-50 p-4 md:p-6 lg:p-8">
+  <div className="min-h-screen bg-surface-2 p-4 md:p-6 lg:p-8">
    {/* Header */}
    <PageHeader
     title="User Management"
@@ -553,10 +553,10 @@ const UserManagement = () => {
     className="rounded-2xl mb-6"
     actions={
      <>
-      <button onClick={resetFilters} className="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition-colors flex items-center gap-2">
+      <button onClick={resetFilters} className="px-4 py-2 bg-surface/20 text-white rounded-lg font-medium hover:bg-surface/30 transition-colors flex items-center gap-2">
        <RefreshCw className="w-4 h-4" /> Reset
       </button>
-      <button onClick={() => handleOpenModal('add')} className="px-4 py-2 bg-white text-slate-800 rounded-lg font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
+      <button onClick={() => handleOpenModal('add')} className="px-4 py-2 bg-surface text-ink rounded-lg font-medium hover:bg-surface-2 transition-colors flex items-center gap-2">
        <Plus className="w-4 h-4" /> Add User
       </button>
      </>
@@ -587,7 +587,7 @@ const UserManagement = () => {
    <DepartmentManager departments={departments} onRefresh={loadDepartments} />
 
    {/* Search & Filters */}
-   <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
+   <div className="bg-surface rounded-xl p-4 shadow-sm border border-hairline mb-6">
     <div className="flex flex-col md:flex-row gap-4">
      <SearchInput
       value={searchTerm}
@@ -597,25 +597,25 @@ const UserManagement = () => {
      />
      <button
       onClick={() => setShowFilters(!showFilters)}
-      className={`px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 ${showFilters ? 'bg-gray-100 text-slate-900' : 'bg-gray-100 text-slate-400 hover:bg-gray-200'}`}
+      className={`px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 ${showFilters ? 'bg-surface-3 text-ink' : 'bg-surface-3 text-ink-4 hover:bg-surface-3'}`}
      >
       <Filter className="w-4 h-4" /> Filters {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
      </button>
     </div>
     {showFilters && (
-     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
+     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-hairline">
       {[
        { label: 'Status', value: statusFilter, setter: setStatusFilter, options: ['all', 'active', 'inactive', 'suspended'] },
        { label: 'Department', value: departmentFilter, setter: setDepartmentFilter, options: ['all', ...departmentNames] },
        { label: 'Role', value: roleFilter, setter: setRoleFilter, options: ['all', ...roleFilterOptions] },
       ].map(({ label, value, setter, options }) => (
        <div key={label}>
-        <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+        <label className="block text-xs font-medium text-ink-3 mb-1">{label}</label>
         <select
          aria-label={label}
          value={value}
          onChange={(e) => { setter(e.target.value); setCurrentPage(1); }}
-         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="all">All {label}s</option>
          {(label === 'Role' ? roleFilterOptions : options.filter((o) => o !== 'all')).map((o) => (
@@ -629,23 +629,23 @@ const UserManagement = () => {
    </div>
 
    {loading && (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <div className="bg-surface rounded-xl shadow-sm border border-hairline p-6">
      <TableSkeleton rows={8} cols={8} />
     </div>
    )}
    {error && (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+    <div className="bg-surface rounded-xl shadow-sm border border-hairline">
      <ErrorState message={error} onRetry={loadUsers} />
     </div>
    )}
 
    {/* Users Table */}
    {!loading && (
-   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+   <div className="bg-surface rounded-xl shadow-sm border border-hairline overflow-hidden">
     <div className="hidden md:block overflow-auto max-h-[70vh]">
      <table className="w-full table-fixed min-w-212.5">
-      <thead className="bg-slate-50 border-b border-gray-200 sticky top-0 z-20">
-       <tr className="[&_th]:bg-slate-50">
+      <thead className="bg-surface-2 border-b border-border sticky top-0 z-20">
+       <tr className="[&_th]:bg-surface-2">
         <SortableTableTh label="User" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Contact" column="email" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Masters" column="masters" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
@@ -653,61 +653,61 @@ const UserManagement = () => {
         <SortableTableTh label="Role" column="role" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Last Login" column="lastLogin" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">Actions</th>
        </tr>
       </thead>
-      <tbody className="divide-y divide-gray-100">
+      <tbody className="divide-y divide-hairline">
        {paginatedUsers.length === 0 ? (
         <tr><td colSpan={8} className="px-4 py-4">
          <EmptyState icon={<Users />} title="No users found" />
         </td></tr>
        ) : paginatedUsers.map(user => (
-        <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+        <tr key={user.id} className="hover:bg-surface-2/50 transition-colors">
          <td className="px-4 py-3">
           <div className="min-w-0">
-           <p className="font-medium text-gray-900 truncate">{user.firstName} {user.lastName}</p>
-           <p className="text-xs text-slate-500 font-mono truncate" title="User ID">
+           <p className="font-medium text-ink truncate">{user.firstName} {user.lastName}</p>
+           <p className="text-xs text-ink-3 font-mono truncate" title="User ID">
              ID {user.id}
            </p>
           </div>
          </td>
          <td className="px-4 py-3">
-          <p className="text-sm text-slate-700 truncate">
-            <span className="text-slate-500 text-xs font-medium uppercase tracking-wide mr-1.5">Email</span>
+          <p className="text-sm text-ink-2 truncate">
+            <span className="text-ink-3 text-xs font-medium uppercase tracking-wide mr-1.5">Email</span>
             {user.email || '—'}
           </p>
-          <p className="text-sm text-slate-700 mt-0.5">
-            <span className="text-slate-500 text-xs font-medium uppercase tracking-wide mr-1.5">Phone</span>
+          <p className="text-sm text-ink-2 mt-0.5">
+            <span className="text-ink-3 text-xs font-medium uppercase tracking-wide mr-1.5">Phone</span>
             {user.mobile || '—'}
           </p>
          </td>
          <td className="px-4 py-3">
           {user.vendorClientCode ? (
-           <Link to="/vendor-client" className="text-xs font-mono text-blue-600 hover:underline" title="Open Masters → Vendor / Client">
+           <Link to="/vendor-client" className="text-xs font-mono text-brand hover:underline" title="Open Masters → Vendor / Client">
             {user.vendorClientCode}
            </Link>
           ) : (
-           <span className="text-xs text-slate-400">—</span>
+           <span className="text-xs text-ink-4">—</span>
           )}
          </td>
-         <td className="px-4 py-3"><span className="text-sm text-slate-700">{user.department || '—'}</span></td>
-         <td className="px-4 py-3"><span className="text-sm font-medium text-slate-800">{user.role || '—'}</span></td>
+         <td className="px-4 py-3"><span className="text-sm text-ink-2">{user.department || '—'}</span></td>
+         <td className="px-4 py-3"><span className="text-sm font-medium text-ink">{user.role || '—'}</span></td>
          <td className="px-4 py-3">
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>
            {getStatusIcon(user.status)} {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
           </span>
          </td>
          <td className="px-4 py-3">
-          <span className="text-sm text-slate-600">{user.lastLogin || '—'}</span>
+          <span className="text-sm text-ink-2">{user.lastLogin || '—'}</span>
          </td>
          <td className="px-4 py-3">
           <div className="flex items-center justify-center gap-1">
-           <button onClick={() => handleOpenModal('view', user)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="View"><Eye className="w-4 h-4" /></button>
-           <button onClick={() => handleOpenModal('edit', user)} className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-lg" title="Edit"><Edit3 className="w-4 h-4" /></button>
-           <button onClick={() => handleToggleStatus(user)} className={`p-1.5 rounded-lg ${user.status === 'active' ? 'text-slate-500 hover:text-slate-800 hover:bg-orange-50' : 'text-slate-500 hover:text-green-600 hover:bg-green-50'}`} title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
+           <button onClick={() => handleOpenModal('view', user)} className="p-1.5 text-ink-3 hover:text-brand hover:bg-brand-soft rounded-lg" title="View"><Eye className="w-4 h-4" /></button>
+           <button onClick={() => handleOpenModal('edit', user)} className="p-1.5 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-lg" title="Edit"><Edit3 className="w-4 h-4" /></button>
+           <button onClick={() => handleToggleStatus(user)} className={`p-1.5 rounded-lg ${user.status === 'active' ? 'text-ink-3 hover:text-ink hover:bg-warn-soft' : 'text-ink-3 hover:text-ok hover:bg-ok-soft'}`} title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
             {user.status === 'active' ? <UserMinus className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
            </button>
-           <button onClick={() => handleOpenModal('delete', user)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-4 h-4" /></button>
+           <button onClick={() => handleOpenModal('delete', user)} className="p-1.5 text-ink-3 hover:text-err hover:bg-err-soft rounded-lg" title="Delete"><Trash2 className="w-4 h-4" /></button>
           </div>
          </td>
         </tr>
@@ -717,34 +717,34 @@ const UserManagement = () => {
     </div>
 
     {/* Mobile Cards */}
-    <div className="md:hidden divide-y divide-gray-100">
+    <div className="md:hidden divide-y divide-hairline">
      {paginatedUsers.length === 0 ? (
       <EmptyState icon={<Users />} title="No users found" />
      ) : paginatedUsers.map(user => (
-      <div key={user.id} className="p-4 hover:bg-slate-50/50">
+      <div key={user.id} className="p-4 hover:bg-surface-2/50">
        <div className="flex items-start justify-between mb-3">
         <div>
-         <p className="font-semibold text-gray-800">{user.firstName} {user.lastName}</p>
-         <p className="text-xs text-slate-500 font-mono">ID {user.id} · {user.role}</p>
+         <p className="font-semibold text-ink">{user.firstName} {user.lastName}</p>
+         <p className="text-xs text-ink-3 font-mono">ID {user.id} · {user.role}</p>
         </div>
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(user.status)}`}>{getStatusIcon(user.status)} {user.status}</span>
        </div>
        <div className="space-y-1.5 text-sm mb-3">
-        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Email</span>{user.email || '—'}</p>
-        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Phone</span>{user.mobile || '—'}</p>
-        <p className="text-slate-700"><span className="text-slate-500 text-xs font-medium uppercase mr-2">Dept</span>{user.department || '—'}</p>
+        <p className="text-ink-2"><span className="text-ink-3 text-xs font-medium uppercase mr-2">Email</span>{user.email || '—'}</p>
+        <p className="text-ink-2"><span className="text-ink-3 text-xs font-medium uppercase mr-2">Phone</span>{user.mobile || '—'}</p>
+        <p className="text-ink-2"><span className="text-ink-3 text-xs font-medium uppercase mr-2">Dept</span>{user.department || '—'}</p>
        </div>
        <div className="flex gap-2">
-        <button onClick={() => handleOpenModal('view', user)} className="flex-1 px-3 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium">View</button>
-        <button onClick={() => handleOpenModal('edit', user)} className="flex-1 px-3 py-2 bg-gray-100 text-slate-300 rounded-lg text-sm font-medium">Edit</button>
-        <button onClick={() => handleOpenModal('delete', user)} aria-label="Delete" className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium"><Trash2 className="w-4 h-4" /></button>
+        <button onClick={() => handleOpenModal('view', user)} className="flex-1 px-3 py-2 bg-ink text-white rounded-lg text-sm font-medium">View</button>
+        <button onClick={() => handleOpenModal('edit', user)} className="flex-1 px-3 py-2 bg-surface-3 text-ink-4 rounded-lg text-sm font-medium">Edit</button>
+        <button onClick={() => handleOpenModal('delete', user)} aria-label="Delete" className="px-3 py-2 bg-err-soft text-err rounded-lg text-sm font-medium"><Trash2 className="w-4 h-4" /></button>
        </div>
       </div>
      ))}
     </div>
 
     {/* Pagination */}
-    <div className="px-4 py-3 border-t border-gray-100 bg-slate-50">
+    <div className="px-4 py-3 border-t border-hairline bg-surface-2">
      <Pagination
       currentPage={currentPage}
       totalPages={totalPages}
@@ -759,14 +759,14 @@ const UserManagement = () => {
    {/* View Modal */}
    {modalType === 'view' && selectedUser && (
     <ModalOverlay onClose={handleCloseModal} z="z-50" dismissable={false} backdrop="light">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="user-view-modal-title" onClick={(e) => e.stopPropagation()}>
-      <div className="bg-slate-800 p-6 rounded-t-2xl">
+     <div className="bg-surface rounded-2xl w-full max-w-lg shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="user-view-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-ink p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <div>
          <h2 id="user-view-modal-title" className="text-xl font-bold text-white">{selectedUser.firstName} {selectedUser.lastName}</h2>
          <p className="text-gray-100">{selectedUser.role} • {selectedUser.department}</p>
         </div>
-        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
+        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-surface/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
        </div>
       </div>
       <div className="p-6 space-y-4">
@@ -784,21 +784,21 @@ const UserManagement = () => {
          { label: 'Created On', value: selectedUser.createdAt },
          { label: 'Last Login', value: selectedUser.lastLogin },
         ].map(({ label, value, badge, linkVendor }) => (
-         <div key={label} className="bg-slate-50 rounded-lg p-3">
-          <p className="text-xs text-slate-500">{label}</p>
+         <div key={label} className="bg-surface-2 rounded-lg p-3">
+          <p className="text-xs text-ink-3">{label}</p>
           {badge ? (
            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border mt-1 ${getStatusColor(String(value))}`}>{getStatusIcon(String(value))} {String(value)}</span>
           ) : linkVendor ? (
-           <Link to="/vendor-client" className="font-medium text-sm text-blue-600 hover:underline mt-1 inline-block font-mono">{String(value)}</Link>
+           <Link to="/vendor-client" className="font-medium text-sm text-brand hover:underline mt-1 inline-block font-mono">{String(value)}</Link>
           ) : (
-           <p className="font-medium text-gray-800 text-sm">{value}</p>
+           <p className="font-medium text-ink text-sm">{value}</p>
           )}
          </div>
         ))}
        </div>
        <div className="flex gap-3 pt-4">
-        <button onClick={() => { handleCloseModal(); handleOpenModal('edit', selectedUser); }} className="flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-800 flex items-center justify-center gap-2"><Edit3 className="w-4 h-4" /> Edit</button>
-        <button onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-gray-200 text-slate-400 rounded-lg font-medium hover:bg-slate-50">Close</button>
+        <button onClick={() => { handleCloseModal(); handleOpenModal('edit', selectedUser); }} className="flex-1 px-4 py-2.5 bg-ink text-white rounded-lg font-medium hover:bg-ink flex items-center justify-center gap-2"><Edit3 className="w-4 h-4" /> Edit</button>
+        <button onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-border text-ink-4 rounded-lg font-medium hover:bg-surface-2">Close</button>
        </div>
       </div>
      </div>
@@ -808,29 +808,29 @@ const UserManagement = () => {
    {/* Add/Edit Modal */}
    {(modalType === 'add' || modalType === 'edit') && (
     <ModalOverlay onClose={handleCloseModal} z="z-50" dismissable={false} backdrop="light">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-edit-modal-title" onClick={(e) => e.stopPropagation()}>
-      <div className="bg-slate-800 p-5 rounded-t-2xl sticky top-0">
+     <div className="bg-surface rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-edit-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-ink p-5 rounded-t-2xl sticky top-0">
        <div className="flex items-center justify-between">
         <h2 id="user-edit-modal-title" className="text-lg font-bold text-white">{modalType === 'add' ? 'Add New User' : 'Edit User'}</h2>
-        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
+        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-surface/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
        </div>
       </div>
       <div className="p-5 space-y-4">
        <div className="grid grid-cols-2 gap-4">
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">First Name *</label><input type="text" aria-label="First Name" value={formData.firstName || ''} onChange={(e) => setFormData(p => ({ ...p, firstName: e.target.value }))} className={inputClassName} required /></div>
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Last Name *</label><input type="text" aria-label="Last Name" value={formData.lastName || ''} onChange={(e) => setFormData(p => ({ ...p, lastName: e.target.value }))} className={inputClassName} required /></div>
+        <div><label className="block text-sm font-medium text-ink-4 mb-1">First Name *</label><input type="text" aria-label="First Name" value={formData.firstName || ''} onChange={(e) => setFormData(p => ({ ...p, firstName: e.target.value }))} className={inputClassName} required /></div>
+        <div><label className="block text-sm font-medium text-ink-4 mb-1">Last Name *</label><input type="text" aria-label="Last Name" value={formData.lastName || ''} onChange={(e) => setFormData(p => ({ ...p, lastName: e.target.value }))} className={inputClassName} required /></div>
        </div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Email *</label><input type="email" aria-label="Email" value={formData.email || ''} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} className={inputClassName} required /></div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Mobile *</label><input type="tel" aria-label="Mobile" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
+       <div><label className="block text-sm font-medium text-ink-4 mb-1">Email *</label><input type="email" aria-label="Email" value={formData.email || ''} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} className={inputClassName} required /></div>
+       <div><label className="block text-sm font-medium text-ink-4 mb-1">Mobile *</label><input type="tel" aria-label="Mobile" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
        {modalType === 'add' && (
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Password *</label><input type="password" aria-label="Password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
+        <div><label className="block text-sm font-medium text-ink-4 mb-1">Password *</label><input type="password" aria-label="Password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
        )}
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select aria-label="Role" value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Status</label><select aria-label="Status" value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
-       {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+       <div><label className="block text-sm font-medium text-ink-4 mb-1">Role *</label><select aria-label="Role" value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
+       <div><label className="block text-sm font-medium text-ink-4 mb-1">Status</label><select aria-label="Status" value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
+       {saveError && <p className="text-sm text-err">{saveError}</p>}
        <div className="flex gap-3 pt-4">
-        <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-gray-200 text-slate-400 rounded-lg font-medium hover:bg-slate-50" disabled={saving}>Cancel</button>
-        <button type="button" onClick={() => handleSaveUser()} className="flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-800 flex items-center justify-center gap-2 disabled:opacity-50" disabled={saving}>{saving ? 'Saving…' : (modalType === 'add' ? 'Add User' : 'Save')} {modalType === 'edit' && <Save className="w-4 h-4" />}</button>
+        <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-border text-ink-4 rounded-lg font-medium hover:bg-surface-2" disabled={saving}>Cancel</button>
+        <button type="button" onClick={() => handleSaveUser()} className="flex-1 px-4 py-2.5 bg-ink text-white rounded-lg font-medium hover:bg-ink flex items-center justify-center gap-2 disabled:opacity-50" disabled={saving}>{saving ? 'Saving…' : (modalType === 'add' ? 'Add User' : 'Save')} {modalType === 'edit' && <Save className="w-4 h-4" />}</button>
        </div>
       </div>
      </div>
@@ -843,7 +843,7 @@ const UserManagement = () => {
     onClose={handleCloseModal}
     onConfirm={handleDeleteUser}
     title="Delete User?"
-    message={selectedUser ? (<>Are you sure you want to delete <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>? This action cannot be undone.{saveError && <p className="text-red-600 mt-2">{saveError}</p>}</>) : ''}
+    message={selectedUser ? (<>Are you sure you want to delete <span className="font-semibold">{selectedUser.firstName} {selectedUser.lastName}</span>? This action cannot be undone.{saveError && <p className="text-err mt-2">{saveError}</p>}</>) : ''}
     confirmText="Delete"
     variant="danger"
     isLoading={saving}

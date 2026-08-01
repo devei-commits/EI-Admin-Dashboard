@@ -7507,7 +7507,7 @@ const Procurement: React.FC = () => {
           >
             {releasingPO ? (
               <div
-                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-surface/90 backdrop-blur-[1px]"
                 role="status"
                 aria-live="polite"
                 aria-busy="true"

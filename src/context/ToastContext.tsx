@@ -51,10 +51,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
      <div
       key={toast.id}
       className={`px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-75 animate-slide-in ${
-       toast.type === 'success' ? 'bg-green-500 text-white' :
-       toast.type === 'error' ? 'bg-red-500 text-white' :
-       toast.type === 'warning' ? 'bg-yellow-500 text-white' :
-       'bg-blue-500 text-white'
+       toast.type === 'success' ? 'bg-ok text-white' :
+       toast.type === 'error' ? 'bg-err text-white' :
+       toast.type === 'warning' ? 'bg-warn text-white' :
+       'bg-brand text-white'
       }`}
      >
       <span className="text-lg">

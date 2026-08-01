@@ -39,7 +39,7 @@ export const PrPopupShell: React.FC<PrPopupShellProps> = ({
           <div className="min-w-0">
             <h3 id={titleId} className="text-base font-bold flex items-center gap-2 flex-wrap">
               {title}
-              {code && <span className="font-mono text-[11px] bg-white/20 px-1.5 py-0.5 rounded">{code}</span>}
+              {code && <span className="font-mono text-[11px] bg-surface/20 px-1.5 py-0.5 rounded">{code}</span>}
             </h3>
             {subtitle && <p className="text-xs text-white/70 mt-1">{subtitle}</p>}
           </div>
@@ -49,12 +49,12 @@ export const PrPopupShell: React.FC<PrPopupShellProps> = ({
                 type="button"
                 onClick={onPrimary}
                 disabled={primaryDisabled || primaryBusy}
-                className="bg-white text-[#1d1d1f] px-3.5 py-1.5 rounded-md text-xs font-bold hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-surface text-[#1d1d1f] px-3.5 py-1.5 rounded-md text-xs font-bold hover:bg-surface/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {primaryBusy ? 'Saving…' : primaryLabel}
               </button>
             )}
-            <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-white/15 text-white/90">
+            <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-surface/15 text-white/90">
               <X size={18} />
             </button>
           </div>

@@ -349,7 +349,7 @@ const ViewRoles: React.FC = () => {
  if (rolesLoading) {
   return (
    <div className="w-full">
-    <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
+    <h2 className="text-2xl font-semibold text-ink mb-6 tracking-tight">View Roles</h2>
     <TableSkeleton rows={8} cols={7} />
    </div>
   );
@@ -357,28 +357,28 @@ const ViewRoles: React.FC = () => {
 
  return (
   <div className="w-full">
-   <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
+   <h2 className="text-2xl font-semibold text-ink mb-6 tracking-tight">View Roles</h2>
    
    {/* Mobile Card View */}
    <div className="md:hidden space-y-4">
     {sortedRoles.map((role) => (
-     <div key={role.id} className="bg-gray-50/50 border border-gray-100 rounded-xl p-5 hover:bg-gray-50 transition-colors">
+     <div key={role.id} className="bg-surface-2/50 border border-hairline rounded-xl p-5 hover:bg-surface-2 transition-colors">
       <div className="flex justify-between items-start mb-4">
-       <span className="font-semibold text-gray-800 leading-relaxed">{role.roleName}</span>
+       <span className="font-semibold text-ink leading-relaxed">{role.roleName}</span>
        <UnifiedBadge variant={getStatusBadgeColor(role.roleStatus)}>
         {role.roleStatus}
        </UnifiedBadge>
       </div>
       <div className="space-y-3 text-sm mb-5">
-       <p className="flex items-center gap-2"><span className="font-medium text-gray-600 tracking-wide">Level:</span> <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>{role.roleLevel}</UnifiedBadge></p>
+       <p className="flex items-center gap-2"><span className="font-medium text-ink-2 tracking-wide">Level:</span> <UnifiedBadge variant={getRoleLevelBadgeColor(role.roleLevel)}>{role.roleLevel}</UnifiedBadge></p>
        <div className="space-y-1.5">
-        <p className="font-medium text-gray-600 uppercase tracking-wide">Permissions Set:</p>
+        <p className="font-medium text-ink-2 uppercase tracking-wide">Permissions Set:</p>
         <UnifiedBadge variant={role.permissionsSet ? 'success' : 'outline'}>
          {role.permissionsSet ? 'Yes' : 'Not set'}
         </UnifiedBadge>
        </div>
-       <p><span className="font-medium text-gray-600 tracking-wide">Created:</span> <span className="text-gray-700 leading-relaxed">{role.roleCreatedAt}</span></p>
-       <p><span className="font-medium text-gray-600 tracking-wide">Updated:</span> <span className="text-gray-700 leading-relaxed">{role.roleUpdatedAt}</span></p>
+       <p><span className="font-medium text-ink-2 tracking-wide">Created:</span> <span className="text-ink-2 leading-relaxed">{role.roleCreatedAt}</span></p>
+       <p><span className="font-medium text-ink-2 tracking-wide">Updated:</span> <span className="text-ink-2 leading-relaxed">{role.roleUpdatedAt}</span></p>
       </div>
       <div className="flex flex-wrap gap-3">
        <UnifiedButton variant="primary" size="sm" onClick={() => handleViewRole(role)}>
@@ -399,22 +399,22 @@ const ViewRoles: React.FC = () => {
    <div className="hidden md:block overflow-auto max-h-[70vh]">
     <table className="w-full">
      <thead className="sticky top-0 z-20">
-      <tr className="[&_th]:bg-gray-50 border-b-2 border-gray-200 bg-gray-50">
+      <tr className="[&_th]:bg-surface-2 border-b-2 border-border bg-surface-2">
        <SortableTableTh label="Role Name" column="roleName" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Role Level" column="roleLevel" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Role Status" column="roleStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Permissions Set" column="permissionsSet" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Created At" column="createdAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Updated At" column="updatedAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
-       <th scope="col" className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
+       <th scope="col" className="px-5 py-4 text-left text-sm font-semibold text-ink-2 uppercase tracking-wider leading-relaxed">
         Actions
        </th>
       </tr>
      </thead>
-     <tbody className="divide-y divide-gray-100">
+     <tbody className="divide-y divide-hairline">
       {sortedRoles.map((role) => (
-       <tr key={role.id} className="hover:bg-gray-50/50 transition-colors">
-        <td className="px-5 py-4 font-medium text-gray-800 leading-relaxed">
+       <tr key={role.id} className="hover:bg-surface-2/50 transition-colors">
+        <td className="px-5 py-4 font-medium text-ink leading-relaxed">
          {role.roleName}
         </td>
         <td className="px-5 py-4 leading-relaxed">
@@ -432,10 +432,10 @@ const ViewRoles: React.FC = () => {
           {role.permissionsSet ? 'Yes' : 'Not set'}
          </UnifiedBadge>
         </td>
-        <td className="px-5 py-4 text-gray-700 leading-relaxed">
+        <td className="px-5 py-4 text-ink-2 leading-relaxed">
          {role.roleCreatedAt}
         </td>
-        <td className="px-5 py-4 text-gray-700 leading-relaxed">
+        <td className="px-5 py-4 text-ink-2 leading-relaxed">
          {role.roleUpdatedAt}
         </td>
         <td className="px-5 py-4 leading-relaxed">

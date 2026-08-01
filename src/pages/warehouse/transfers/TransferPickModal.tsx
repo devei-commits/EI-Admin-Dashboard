@@ -194,7 +194,7 @@ const TransferPickModal = ({
   if (!open) return null;
 
   return (
-    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" scroll align="start" className="print:bg-white print:p-0">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" scroll align="start" className="print:bg-surface print:p-0">
       <div
         className="bg-surface rounded-xl shadow-2xl w-full max-w-5xl print:shadow-none print:max-w-none"
         role="dialog"

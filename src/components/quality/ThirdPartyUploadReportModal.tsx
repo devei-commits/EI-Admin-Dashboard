@@ -52,17 +52,17 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
   return (
     <ModalOverlay onClose={onClose} z="z-[130]" dismissable={false} backdrop="default">
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-report-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-slate-200">
-          <h2 id="upload-report-title" className="text-base font-bold text-slate-900">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 id="upload-report-title" className="text-base font-bold text-ink">
             Upload lab report &amp; enter result
           </h2>
-          <p className="text-xs text-slate-600 mt-1">
+          <p className="text-xs text-ink-2 mt-1">
             {row.poNo} · {row.testParameter} · {row.itemName}
           </p>
         </div>
@@ -82,11 +82,11 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
               e.target.value = '';
             }}
           />
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+          <div className="rounded-lg border border-dashed border-border bg-surface-2 p-4">
             {file ? (
-              <p className="text-xs font-medium text-slate-800">{file.name}</p>
+              <p className="text-xs font-medium text-ink">{file.name}</p>
             ) : (
-              <p className="text-xs text-slate-500">No report file selected</p>
+              <p className="text-xs text-ink-3">No report file selected</p>
             )}
             <button
               type="button"
@@ -97,7 +97,7 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
             </button>
           </div>
           <label className="block text-xs" htmlFor="third-party-coa-result">
-            <span className="font-semibold text-slate-700">Result from COA</span>
+            <span className="font-semibold text-ink-2">Result from COA</span>
             <div className="mt-1">
               <GrnQcResultInput
                 id="third-party-coa-result"
@@ -105,27 +105,27 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
                 onChange={setResult}
               />
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Spec: {row.specLimit || '—'}</span>
+            <span className="text-[10px] text-ink-3 mt-1 block">Spec: {row.specLimit || '—'}</span>
           </label>
           {verdictPreview ? (
             <p
               className={`text-xs font-semibold ${
                 verdictPreview.tone === 'pass'
-                  ? 'text-emerald-700'
+                  ? 'text-ok'
                   : verdictPreview.tone === 'fail'
                     ? 'text-rose-700'
-                    : 'text-amber-800'
+                    : 'text-warn'
               }`}
             >
               Auto verdict: {verdictPreview.label}
             </p>
           ) : null}
         </div>
-        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-border flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700"
+            className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-ink-2"
           >
             Cancel
           </button>

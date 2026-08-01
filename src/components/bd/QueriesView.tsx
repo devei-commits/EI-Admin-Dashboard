@@ -62,23 +62,23 @@ export const QueriesView: React.FC<QueriesViewProps> = ({ clients, onDataChanged
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-          <HelpCircle size={14} className="text-amber-500" />
-          <span><b className="text-slate-800">Queries</b> · {openCount} open · {rows.length} total</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 shadow-sm">
+        <div className="flex items-center gap-1.5 text-xs text-ink-2">
+          <HelpCircle size={14} className="text-warn" />
+          <span><b className="text-ink">Queries</b> · {openCount} open · {rows.length} total</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-blue-700"><Plus size={14} /> New query</button>
-          <button onClick={() => void load()} title="Refresh" aria-label="Refresh" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
+          <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-bold text-white hover:bg-brand"><Plus size={14} /> New query</button>
+          <button onClick={() => void load()} title="Refresh" aria-label="Refresh" className="rounded-lg border border-border p-2 text-ink-3 hover:bg-surface-3"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-2/70 p-3">
         <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search query, client, assignee…" aria-label="Search query, client, assignee" className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-4" size={15} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search query, client, assignee…" aria-label="Search query, client, assignee" className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
           <option value="open">Open (active)</option>
           <option value="all">All statuses</option>
           {OPEN_STATUSES.concat('resolved').map((s) => <option key={s} value={s}>{QUERY_STATUS_CONFIG[s].label}</option>)}
@@ -86,27 +86,27 @@ export const QueriesView: React.FC<QueriesViewProps> = ({ clients, onDataChanged
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-4"><TableSkeleton rows={6} cols={9} /></div>
+        <div className="rounded-xl border border-border bg-surface p-4"><TableSkeleton rows={6} cols={9} /></div>
       ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white"><ErrorState message={error} onRetry={() => void load()} /></div>
+        <div className="rounded-xl border border-border bg-surface"><ErrorState message={error} onRetry={() => void load()} /></div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white"><EmptyState icon={<HelpCircle />} title={rows.length === 0 ? 'No queries yet.' : 'No queries match your filters.'} /></div>
+        <div className="rounded-xl border border-border bg-surface"><EmptyState icon={<HelpCircle />} title={rows.length === 0 ? 'No queries yet.' : 'No queries match your filters.'} /></div>
       ) : (
-        <div className="overflow-auto max-h-[70vh] rounded-xl border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-border">
           <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 z-20 [&_th]:bg-slate-50"><tr className="border-b border-slate-200 bg-slate-50">{HEADERS.map((h) => <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead>
-            <tbody className="divide-y divide-slate-100">
+            <thead className="sticky top-0 z-20 [&_th]:bg-surface-2"><tr className="border-b border-border bg-surface-2">{HEADERS.map((h) => <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-ink-3">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-hairline">
               {filtered.map((r) => (
-                <tr key={r.id} className="cursor-pointer transition-colors hover:bg-blue-50/30" onClick={() => setActive(r)}>
-                  <td className="px-3 py-2.5 font-mono text-[11px] font-semibold text-blue-600">{r.code}</td>
+                <tr key={r.id} className="cursor-pointer transition-colors hover:bg-brand-soft/30" onClick={() => setActive(r)}>
+                  <td className="px-3 py-2.5 font-mono text-[11px] font-semibold text-brand">{r.code}</td>
                   <td className="px-3 py-2.5"><ClientCell client={r.client} /></td>
                   <td className="px-3 py-2.5"><SourceTag origin={r.origin} /></td>
                   <td className="px-3 py-2.5"><RelatedCell type={r.relatedType} ref={r.relatedRef} info={r.relatedInfo} /></td>
-                  <td className="max-w-[200px] px-3 py-2.5"><p className="truncate text-xs text-slate-700" title={r.subject || r.description}>{r.subject || r.description}</p></td>
-                  <td className="max-w-[110px] px-3 py-2.5"><p className="truncate text-xs text-slate-600">{r.assignee.name || '—'}</p></td>
+                  <td className="max-w-[200px] px-3 py-2.5"><p className="truncate text-xs text-ink-2" title={r.subject || r.description}>{r.subject || r.description}</p></td>
+                  <td className="max-w-[110px] px-3 py-2.5"><p className="truncate text-xs text-ink-2">{r.assignee.name || '—'}</p></td>
                   <td className="px-3 py-2.5"><SlaCell createdAt={r.createdAt} targetHrs={r.slaTargetHours} resolvedAt={r.resolvedAt} /></td>
                   <td className="px-3 py-2.5"><StatusPill cfg={QUERY_STATUS_CONFIG[r.status]} /></td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-500">{formatDMY(r.createdAt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-ink-3">{formatDMY(r.createdAt)}</td>
                 </tr>
               ))}
             </tbody>

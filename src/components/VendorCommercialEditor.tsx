@@ -265,16 +265,16 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
   }, [selectedVendorId, vendorClientList, tempFields.name, paymentTermsEmpty]);
 
   return (
-    <div className="border border-gray-300 rounded-lg p-4 mb-4 space-y-4">
-      <h3 className="font-semibold text-gray-800">Vendor Manager</h3>
-      <p className="text-xs text-gray-500">
+    <div className="border border-border rounded-lg p-4 mb-4 space-y-4">
+      <h3 className="font-semibold text-ink">Vendor Manager</h3>
+      <p className="text-xs text-ink-3">
         Search and pick a vendor from suggestions to auto-fill location, lead time, MOQ (when set on the vendor master), and payment terms (same source as Items List). Add one or more MOQ/price rows; the same vendor can be added again with different pricing. Edit tiers on added vendors below before saving. Vendor pricing is synced to Items List when you submit this master.
       </p>
 
-      <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+      <div className="bg-surface-2 p-4 rounded-lg space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Vendor name</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Vendor name</label>
             <VendorClientNameTypeahead
               parties={vendorClientList}
               selectedId={selectedVendorId}
@@ -285,24 +285,24 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 if (name) hydrateFromVendorMaster(name, { forcePaymentTerms: true });
               }}
             />
-            {errors.venName ? <p className="text-red-500 text-xs mt-1">{errors.venName}</p> : null}
+            {errors.venName ? <p className="text-err text-xs mt-1">{errors.venName}</p> : null}
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Location</label>
             <input
               type="text"
               value={tempFields.location || ''}
               onChange={(e) => onTempFieldChange('location', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded text-sm"
+              className="w-full p-2 border border-border rounded text-sm"
               aria-label="Location"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Currency</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Currency</label>
             <select
               value={tempFields.currency || 'INR'}
               onChange={(e) => onTempFieldChange('currency', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded text-sm"
+              className="w-full p-2 border border-border rounded text-sm"
               aria-label="Currency"
             >
               <option value="INR">INR</option>
@@ -311,70 +311,70 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Lead time (days)</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1">Lead time (days)</label>
             <input
               type="number"
               min={0}
               value={tempFields.leadTime || ''}
               onChange={(e) => onTempFieldChange('leadTime', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded text-sm"
+              className="w-full p-2 border border-border rounded text-sm"
               placeholder="0"
               aria-label="Lead time (days)"
             />
           </div>
         </div>
 
-        <div className="border-t border-gray-200 pt-3">
-          <p className="text-[11px] font-semibold text-gray-600 mb-2">Payment terms (% of order value)</p>
-          <p className="text-[10px] text-gray-500 mb-2">Advance, pre-shipment, and post-shipment must total at most 100%.</p>
+        <div className="border-t border-border pt-3">
+          <p className="text-[11px] font-semibold text-ink-2 mb-2">Payment terms (% of order value)</p>
+          <p className="text-[10px] text-ink-3 mb-2">Advance, pre-shipment, and post-shipment must total at most 100%.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div>
-              <span className="text-[10px] font-semibold text-gray-500">Advance %</span>
+              <span className="text-[10px] font-semibold text-ink-3">Advance %</span>
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={tempFields.advancePct ?? ''}
                 onChange={(e) => onTempFieldChange('advancePct', e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono"
                 placeholder="0"
                 aria-label="Advance %"
               />
             </div>
             <div>
-              <span className="text-[10px] font-semibold text-gray-500">Pre-shipment %</span>
+              <span className="text-[10px] font-semibold text-ink-3">Pre-shipment %</span>
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={tempFields.preShipmentPct ?? ''}
                 onChange={(e) => onTempFieldChange('preShipmentPct', e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono"
                 placeholder="0"
                 aria-label="Pre-shipment %"
               />
             </div>
             <div>
-              <span className="text-[10px] font-semibold text-gray-500">Post-shipment %</span>
+              <span className="text-[10px] font-semibold text-ink-3">Post-shipment %</span>
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={tempFields.postShipmentPct ?? ''}
                 onChange={(e) => onTempFieldChange('postShipmentPct', e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono"
                 placeholder="0"
                 aria-label="Post-shipment %"
               />
             </div>
             <div>
-              <span className="text-[10px] font-semibold text-gray-500">Credit days</span>
+              <span className="text-[10px] font-semibold text-ink-3">Credit days</span>
               <input
                 type="number"
                 min={0}
                 value={tempFields.creditDays ?? ''}
                 onChange={(e) => onTempFieldChange('creditDays', e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono"
                 placeholder="0"
                 aria-label="Credit days"
               />
@@ -382,25 +382,25 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
           </div>
         </div>
 
-        <div className="border-t border-gray-200 pt-3">
+        <div className="border-t border-border pt-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-gray-600 uppercase">Price tiers</span>
+            <span className="text-[11px] font-bold text-ink-2 uppercase">Price tiers</span>
             <button type="button" onClick={onAddTempTierRow} className="text-xs text-teal-700 font-semibold hover:underline">
               + Add tier row
             </button>
           </div>
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-20">
-              <tr className="[&_th]:bg-white bg-white border-b border-gray-200">
-                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">{uomHint}</th>
-                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Price</th>
-                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Valid till</th>
-                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Note</th>
+              <tr className="[&_th]:bg-surface bg-surface border-b border-border">
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-3">{uomHint}</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-3">Price</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-3">Valid till</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-3">Note</th>
               </tr>
             </thead>
             <tbody>
               {tempTiers.map((t, idx) => (
-                <tr key={idx} className="border-b border-gray-100">
+                <tr key={idx} className="border-b border-hairline">
                   <td className="p-1">
                     <input
                       type="number"
@@ -446,50 +446,50 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               ))}
             </tbody>
           </table>
-          <p className="text-[10px] text-gray-500 mt-2">
+          <p className="text-[10px] text-ink-3 mt-2">
             Shortcut: fill <strong>MOQ</strong> + <strong>{variant === 'rm' ? 'Unit price' : 'Unit price'}</strong> below; if no tier rows have both MOQ and price, those two fields create one tier.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
             <div>
-              <label className="text-[10px] text-gray-600">MOQ (fallback)</label>
+              <label className="text-[10px] text-ink-2">MOQ (fallback)</label>
               <input
                 type="number"
                 value={tempFields.moq || ''}
                 onChange={(e) => onTempFieldChange('moq', e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-sm"
+                className="w-full p-2 border border-border rounded text-sm"
                 aria-label="MOQ (fallback)"
               />
             </div>
             <div>
-              <label className="text-[10px] text-gray-600">{variant === 'rm' ? 'Unit price' : 'Unit price'}</label>
+              <label className="text-[10px] text-ink-2">{variant === 'rm' ? 'Unit price' : 'Unit price'}</label>
               <input
                 type="number"
                 step="0.01"
                 value={tempFields[priceKey] || ''}
                 onChange={(e) => onTempFieldChange(priceKey, e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-sm"
+                className="w-full p-2 border border-border rounded text-sm"
                 aria-label="Unit price"
               />
             </div>
             {variant === 'rm' ? (
               <>
                 <div>
-                  <label className="text-[10px] text-gray-600">Approved</label>
+                  <label className="text-[10px] text-ink-2">Approved</label>
                   <input
                     type="text"
                     value={tempFields.approved || ''}
                     onChange={(e) => onTempFieldChange('approved', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Approved"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-600">Price valid till</label>
+                  <label className="text-[10px] text-ink-2">Price valid till</label>
                   <input
                     type="date"
                     value={tempFields.priceValidTill || ''}
                     onChange={(e) => onTempFieldChange('priceValidTill', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Price valid till"
                   />
                 </div>
@@ -497,43 +497,43 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
             ) : (
               <>
                 <div>
-                  <label className="text-[10px] text-gray-600">Approved</label>
+                  <label className="text-[10px] text-ink-2">Approved</label>
                   <input
                     type="text"
                     value={tempFields.approved || ''}
                     onChange={(e) => onTempFieldChange('approved', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Approved"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-600">Price type</label>
+                  <label className="text-[10px] text-ink-2">Price type</label>
                   <input
                     type="text"
                     value={tempFields.priceType || ''}
                     onChange={(e) => onTempFieldChange('priceType', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Price type"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-600">Valid till</label>
+                  <label className="text-[10px] text-ink-2">Valid till</label>
                   <input
                     type="date"
                     value={tempFields.validTill || ''}
                     onChange={(e) => onTempFieldChange('validTill', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Valid till"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-600">Sample cost</label>
+                  <label className="text-[10px] text-ink-2">Sample cost</label>
                   <input
                     type="number"
                     step="0.01"
                     value={tempFields.sampleCost || ''}
                     onChange={(e) => onTempFieldChange('sampleCost', e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                    className="w-full p-2 border border-border rounded text-sm"
                     aria-label="Sample cost"
                   />
                 </div>
@@ -545,7 +545,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
         <button
           type="button"
           onClick={onAddVendor}
-          className="w-full py-2 px-4 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 font-medium"
+          className="w-full py-2 px-4 bg-brand text-white rounded text-sm hover:bg-brand font-medium"
         >
           + Add vendor
         </button>
@@ -553,26 +553,26 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
 
       {vendors.length > 0 ? (
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold text-gray-700">Added vendors &amp; tiers</h4>
-          <p className="text-xs text-gray-500">Edit MOQ, price, valid till, or notes on any tier row. Use + Add tier to add another price break for that vendor.</p>
+          <h4 className="text-sm font-semibold text-ink-2">Added vendors &amp; tiers</h4>
+          <p className="text-xs text-ink-3">Edit MOQ, price, valid till, or notes on any tier row. Use + Add tier to add another price break for that vendor.</p>
           {vendors.map((v, vIdx) => {
             const displayTiers = getVendorTiers(v, variant);
             const editableTiers = displayTiers.length > 0 ? displayTiers : [EMPTY_TIER()];
             return (
-              <div key={v.id ?? `vendor-${vIdx}`} className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div key={v.id ?? `vendor-${vIdx}`} className="border border-border rounded-lg overflow-hidden">
+                <div className="bg-surface-2 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <span className="font-semibold text-gray-800">{v.name}</span>
-                    <span className="text-xs text-gray-500 ml-2">{v.location || '—'}</span>
-                    <span className="text-[10px] text-gray-500 ml-2">{v.currency || 'INR'}</span>
+                    <span className="font-semibold text-ink">{v.name}</span>
+                    <span className="text-xs text-ink-3 ml-2">{v.location || '—'}</span>
+                    <span className="text-[10px] text-ink-3 ml-2">{v.currency || 'INR'}</span>
                   </div>
-                  <div className="text-[10px] text-gray-600">{paymentSummary(v)}</div>
-                  <button type="button" onClick={() => onRemoveVendor(vIdx)} className="text-red-600 text-xs font-semibold hover:underline">
+                  <div className="text-[10px] text-ink-2">{paymentSummary(v)}</div>
+                  <button type="button" onClick={() => onRemoveVendor(vIdx)} className="text-err text-xs font-semibold hover:underline">
                     Remove
                   </button>
                 </div>
-                <div className="flex items-center justify-between border-b border-gray-100 bg-white px-3 py-2">
-                  <span className="text-[10px] font-bold uppercase text-gray-500">Price tiers</span>
+                <div className="flex items-center justify-between border-b border-hairline bg-surface px-3 py-2">
+                  <span className="text-[10px] font-bold uppercase text-ink-3">Price tiers</span>
                   <button
                     type="button"
                     onClick={() =>
@@ -587,12 +587,12 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 </div>
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-20">
-                    <tr className="[&_th]:bg-white border-b border-gray-100 bg-white">
-                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">{uomHint}</th>
-                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price</th>
-                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid till</th>
-                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
-                      <th scope="col" className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase w-16"> </th>
+                    <tr className="[&_th]:bg-surface border-b border-hairline bg-surface">
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">{uomHint}</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Price</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Valid till</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Note</th>
+                      <th scope="col" className="text-right py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase w-16"> </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -612,7 +612,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                                 )
                               )
                             }
-                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
+                            className="w-full px-2 py-1 border border-border rounded text-xs font-mono"
                             placeholder="MOQ"
                             aria-label="MOQ"
                           />
@@ -631,7 +631,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                                 )
                               )
                             }
-                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
+                            className="w-full px-2 py-1 border border-border rounded text-xs font-mono"
                             placeholder="Price"
                             aria-label="Price"
                           />
@@ -649,7 +649,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                                 )
                               )
                             }
-                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                            className="w-full px-2 py-1 border border-border rounded text-xs"
                             aria-label="Valid till"
                           />
                         </td>
@@ -666,7 +666,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                                 )
                               )
                             }
-                            className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                            className="w-full px-2 py-1 border border-border rounded text-xs"
                             placeholder="Note"
                             aria-label="Note"
                           />
@@ -682,7 +682,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                               )
                             }
                             disabled={editableTiers.length <= 1}
-                            className="text-[10px] font-semibold text-red-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                            className="text-[10px] font-semibold text-err hover:underline disabled:text-ink-4 disabled:no-underline"
                           >
                             Remove
                           </button>
@@ -696,7 +696,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
           })}
         </div>
       ) : (
-        <p className="text-gray-500 text-sm text-center py-2">No vendors added yet</p>
+        <p className="text-ink-3 text-sm text-center py-2">No vendors added yet</p>
       )}
     </div>
   );

@@ -153,15 +153,15 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
       ) : (
         <div ref={gridRef} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
-            <div key={row.packagingNo} className="rounded-lg border border-slate-300 p-3">
-              <div className="mb-2 text-xs font-bold text-slate-900">📦 {row.packagingNo}</div>
+            <div key={row.packagingNo} className="rounded-lg border border-border p-3">
+              <div className="mb-2 text-xs font-bold text-ink">📦 {row.packagingNo}</div>
               <div className="mb-2 flex justify-center">
                 <QRCodeCanvas value={row.packagingNo} size={132} includeMargin />
               </div>
               {fieldsFor(row).map((f) => (
                 <div key={f.label} className="flex justify-between gap-2 py-0.5 text-xs">
-                  <span className="font-semibold text-slate-500">{f.label}</span>
-                  <span className="text-right font-bold text-slate-800">{f.value}</span>
+                  <span className="font-semibold text-ink-3">{f.label}</span>
+                  <span className="text-right font-bold text-ink">{f.value}</span>
                 </div>
               ))}
             </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { procBtnPrimary, procBtnSecondary, procInputClass, procSelectClass, procChipClass } from '../components/procurement/ProcSection';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import { parseMoqInput } from '../utils/moqQuantity';
@@ -810,7 +811,7 @@ const ItemsList: React.FC = () => {
               type="button"
               disabled={importingCategoriesExcel || importingVendorExcel}
               onClick={() => masterCategoriesFileRef.current?.click()}
-              className="px-4 py-2 rounded-lg border border-border bg-surface text-ink text-sm font-semibold hover:bg-surface-3 disabled:opacity-50"
+              className={procBtnSecondary}
             >
               {importingCategoriesExcel ? 'Updating…' : 'Update RM/PM categories (Excel)'}
             </button>
@@ -818,7 +819,7 @@ const ItemsList: React.FC = () => {
               type="button"
               disabled={importingVendorExcel || importingCategoriesExcel}
               onClick={() => vendorPricingFileRef.current?.click()}
-              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-press disabled:opacity-50"
+              className={procBtnSecondary}
             >
               {importingVendorExcel ? 'Importing…' : 'Import vendor pricing (Excel)'}
             </button>
@@ -829,25 +830,37 @@ const ItemsList: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
-            <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">RM Price Lists</div>
-            <div className="text-lg font-bold text-brand">{stats.rmWithTiers}</div>
-            <div className="text-[11px] text-ink-4 mt-1">Items with tiered pricing</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">RM Price Lists</div>
+              <div className="text-lg font-bold text-brand">{stats.rmWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Items with tiered pricing</div>
+            </div>
           </div>
-          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
-            <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PM Price Lists</div>
-            <div className="text-lg font-bold text-brand">{stats.pmWithTiers}</div>
-            <div className="text-[11px] text-ink-4 mt-1">Items with MOQ tiers</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PM Price Lists</div>
+              <div className="text-lg font-bold text-brand">{stats.pmWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Items with MOQ tiers</div>
+            </div>
           </div>
-          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-warn">
-            <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PR client price lists</div>
-            <div className="text-lg font-bold text-warn">{stats.prWithTiers}</div>
-            <div className="text-[11px] text-ink-4 mt-1">Products with client tiers</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-warn" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PR client price lists</div>
+              <div className="text-lg font-bold text-warn">{stats.prWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Products with client tiers</div>
+            </div>
           </div>
-          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
-            <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">MOQ Tiers</div>
-            <div className="text-lg font-bold text-brand">{stats.totalTiers}</div>
-            <div className="text-[11px] text-ink-4 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">MOQ Tiers</div>
+              <div className="text-lg font-bold text-brand">{stats.totalTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
+            </div>
           </div>
         </div>
 
@@ -876,7 +889,7 @@ const ItemsList: React.FC = () => {
           </div>
           <button
             onClick={openAddPriceList}
-            className="px-3 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold whitespace-nowrap"
+            className={procBtnPrimary}
           >
             + New Price List
           </button>
@@ -897,11 +910,7 @@ const ItemsList: React.FC = () => {
                   setStatusTab(s);
                   setListPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold tracking-wide flex items-center gap-1.5 transition-colors ${
-                  active
-                    ? 'bg-brand text-white border-brand'
-                    : 'bg-surface text-ink-3 border-border hover:bg-surface-3'
-                }`}
+                className={procChipClass(active)}
               >
                 <span>
                   {emoji} {label}
@@ -931,7 +940,7 @@ const ItemsList: React.FC = () => {
                   ? 'Search product code, name, or client…'
                   : 'Search item code, name, or vendor…'
               }
-              className="w-full pl-9 pr-9 py-2 border border-border rounded-lg text-sm text-ink bg-surface placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+              className={`${procInputClass} pl-9 pr-9`}
               aria-label="Search items list"
             />
             {listSearchQuery ? (
@@ -952,7 +961,7 @@ const ItemsList: React.FC = () => {
               aria-label="Filter by vendor"
               value={vendorFilterId}
               onChange={(e) => setVendorFilterId(e.target.value)}
-              className="rounded-lg border border-border px-3 py-2 text-sm text-ink bg-surface min-w-[180px] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+              className={`${procSelectClass} min-w-[180px]`}
             >
               <option value="">All vendors</option>
               {vendors.map((v) => (
@@ -977,7 +986,7 @@ const ItemsList: React.FC = () => {
           <button
             type="button"
             onClick={() => setSortAsc((v) => !v)}
-            className="ml-auto px-3 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-2 whitespace-nowrap"
+            className={`${procBtnSecondary} ml-auto whitespace-nowrap`}
             title="Sort by item code"
           >
             Sort · Item Code {sortAsc ? '↑' : '↓'}

@@ -37,14 +37,14 @@ export default function QuoteSettings() {
 
       <QuotationsNav />
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="flex border-b border-gray-100 overflow-x-auto">
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline">
+        <div className="flex border-b border-hairline overflow-x-auto">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`inline-flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
-                tab === t.key ? 'border-slate-800 text-slate-900' : 'border-transparent text-gray-500 hover:text-gray-800'
+                tab === t.key ? 'border-slate-800 text-ink' : 'border-transparent text-ink-3 hover:text-ink'
               }`}
             >
               <t.icon className="w-4 h-4" /> {t.label}

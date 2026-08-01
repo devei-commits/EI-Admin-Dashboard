@@ -619,8 +619,8 @@ export const OrderFulfillment: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border border-emerald-100 bg-ok-soft/60 p-4">
-              <h4 className="text-sm font-bold text-emerald-900 mb-2">Fulfillment Completion</h4>
+            <div className="rounded-xl border border-ok bg-ok-soft/60 p-4">
+              <h4 className="text-sm font-bold text-ok mb-2">Fulfillment Completion</h4>
               <div className="grid md:grid-cols-3 gap-3 text-xs mb-3">
                 <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-surface px-3 py-2">
                   <p className="text-[10px] text-ink-3 uppercase">Planned Qty</p>
@@ -642,9 +642,9 @@ export const OrderFulfillment: React.FC = () => {
                 />
               </div>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-warn-soft/60 p-4">
-              <h4 className="text-sm font-bold text-amber-900 mb-2">Rework Batch Creation</h4>
-              <p className="text-xs text-amber-900/80 mb-3">
+            <div className="rounded-xl border border-warn bg-warn-soft/60 p-4">
+              <h4 className="text-sm font-bold text-warn mb-2">Rework Batch Creation</h4>
+              <p className="text-xs text-warn/80 mb-3">
                 If actual output is short against planned quantity after QC, create a rework batch for the same SO.
               </p>
               <div className="grid md:grid-cols-3 gap-3 mb-3">
@@ -662,7 +662,7 @@ export const OrderFulfillment: React.FC = () => {
                 </div>
               </div>
               <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-surface px-3 py-3 mb-3">
-                <p className="text-[11px] font-semibold text-amber-900 mb-2">Rework Preview (editable before create)</p>
+                <p className="text-[11px] font-semibold text-warn mb-2">Rework Preview (editable before create)</p>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-medium text-ink-3 mb-1">Rework Qty (units)</label>
@@ -719,7 +719,7 @@ export const OrderFulfillment: React.FC = () => {
                   type="button"
                   onClick={handleCreateReworkFromYield}
                   disabled={reworkSubmitting || Math.max(0, selectedYield.plannedQty - selectedYield.actualOutputUnits) <= 0}
-                  className="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-3 py-2 rounded-lg bg-warn text-white text-xs font-semibold hover:bg-warn disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {reworkSubmitting ? 'Creating Rework…' : 'Create Rework Batch'}
                 </button>

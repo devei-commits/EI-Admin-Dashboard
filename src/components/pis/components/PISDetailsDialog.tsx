@@ -294,22 +294,22 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
  const getStatusBadge = (status: string | undefined) => {
   if (!status) {
    return (
-    <Badge className="bg-gray-100 text-gray-800">
+    <Badge className="bg-surface-3 text-ink">
      Unknown
     </Badge>
    );
   }
   const variants: Record<string, string> = {
-   IN_PROGRESS: 'bg-blue-100 text-blue-800',
-   PENDING: 'bg-yellow-100 text-yellow-800',
-   APPROVED: 'bg-green-100 text-green-800',
-   REJECTED: 'bg-red-100 text-red-800',
-   COMPLETED: 'bg-green-100 text-green-800',
-   TERMINATED: 'bg-gray-100 text-gray-800',
+   IN_PROGRESS: 'bg-brand-soft text-brand',
+   PENDING: 'bg-warn-soft text-warn',
+   APPROVED: 'bg-ok-soft text-ok',
+   REJECTED: 'bg-err-soft text-err',
+   COMPLETED: 'bg-ok-soft text-ok',
+   TERMINATED: 'bg-surface-3 text-ink',
   };
 
   return (
-   <Badge className={variants[status] || 'bg-gray-100 text-gray-800'}>
+   <Badge className={variants[status] || 'bg-surface-3 text-ink'}>
     {status.replace('_', ' ')}
    </Badge>
   );
@@ -601,16 +601,16 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <Card className="p-4">
      <div className="flex items-center gap-2 mb-2">
-      <FileText className="h-5 w-5 text-blue-600" />
-      <span className="text-sm text-gray-600">PIS Code</span>
+      <FileText className="h-5 w-5 text-brand" />
+      <span className="text-sm text-ink-2">PIS Code</span>
      </div>
      <p className="font-medium">{pis.pisCode}</p>
     </Card>
 
     <Card className="p-4">
      <div className="flex items-center gap-2 mb-2">
-      <User className="h-5 w-5 text-blue-600" />
-      <span className="text-sm text-gray-600">Customer</span>
+      <User className="h-5 w-5 text-brand" />
+      <span className="text-sm text-ink-2">Customer</span>
      </div>
      <p className="font-medium">
       {resolvedCustomer ? resolvedCustomer.company : pis.customer}
@@ -619,20 +619,20 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
 
     <Card className="p-4">
      <div className="flex items-center gap-2 mb-2">
-      <TrendingUp className="h-5 w-5 text-blue-600" />
-      <span className="text-sm text-gray-600">Current Stage</span>
+      <TrendingUp className="h-5 w-5 text-brand" />
+      <span className="text-sm text-ink-2">Current Stage</span>
      </div>
      <Badge variant="outline">{getStageLabel(pis.stage)}</Badge>
     </Card>
 
     <Card className="p-4">
      <div className="flex items-center gap-2 mb-2">
-      <CheckCircle2 className="h-5 w-5 text-blue-600" />
-      <span className="text-sm text-gray-600">Status</span>
+      <CheckCircle2 className="h-5 w-5 text-brand" />
+      <span className="text-sm text-ink-2">Status</span>
      </div>
      <div className="flex items-center gap-2 flex-wrap">
       {getStatusBadge(pis.status)}
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-gray-50 text-slate-900 border border-gray-100">
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-surface-2 text-ink border border-hairline">
        Loops: {pis.loopCount ?? 0}
       </span>
      </div>
@@ -670,7 +670,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       <div className="space-y-4">
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-         <p className="text-sm text-gray-600">Customer</p>
+         <p className="text-sm text-ink-2">Customer</p>
          {canEditClientDetails && isEditingClient ? (
           <Input
            value={customer}
@@ -683,7 +683,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          )}
         </div>
         <div>
-         <p className="text-sm text-gray-600">Formulation Code</p>
+         <p className="text-sm text-ink-2">Formulation Code</p>
          {canEditClientDetails && isEditingClient ? (
           <Input
            value={formulation}
@@ -696,7 +696,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          )}
         </div>
         <div>
-         <p className="text-sm text-gray-600">Cost Name</p>
+         <p className="text-sm text-ink-2">Cost Name</p>
          {canEditClientDetails && isEditingClient ? (
           <Input
            value={costName}
@@ -709,7 +709,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          )}
         </div>
         <div>
-         <p className="text-sm text-gray-600">Form Label</p>
+         <p className="text-sm text-ink-2">Form Label</p>
          {canEditClientDetails && isEditingClient ? (
           <Input
            value={formLabel}
@@ -720,7 +720,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          )}
         </div>
         <div>
-         <p className="text-sm text-gray-600">R&D Staff</p>
+         <p className="text-sm text-ink-2">R&D Staff</p>
          <p className="font-medium">{pis.rdStaff}</p>
         </div>
        </div>
@@ -1158,7 +1158,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      </Card>
      <Card className="p-4">
       <h3 className="font-medium mb-3">Assignments &amp; Order</h3>
-      <div className="space-y-1 text-sm text-gray-700">
+      <div className="space-y-1 text-sm text-ink-2">
        <p>{getAssignedSummary()}</p>
        {pis.convertedToOrder && pis.orderReference && (
         <p>
@@ -1172,11 +1172,11 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      {clientBriefEntry && (
       <Card className="p-4">
        <h3 className="font-medium mb-3">Client Submitted Brief</h3>
-       <p className="text-xs text-gray-500 mb-2">
+       <p className="text-xs text-ink-3 mb-2">
         Captured from the Client PIS form submission.
        </p>
-       <div className="rounded-md border bg-gray-50 p-3 max-h-40 overflow-y-auto">
-        <p className="text-sm whitespace-pre-wrap text-gray-800">
+       <div className="rounded-md border bg-surface-2 p-3 max-h-40 overflow-y-auto">
+        <p className="text-sm whitespace-pre-wrap text-ink">
          {clientBriefEntry.comments || clientBriefEntry.decision}
         </p>
        </div>
@@ -1184,13 +1184,13 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      )}
 
      {checklistError && (
-      <p className="text-sm text-red-600 px-1">{checklistError}</p>
+      <p className="text-sm text-err px-1">{checklistError}</p>
      )}
 
      {checklistConfig && (
       <Card className="p-4">
        <h3 className="font-medium mb-3">Stage Checklist</h3>
-       <p className="text-xs text-gray-500 mb-2">
+       <p className="text-xs text-ink-3 mb-2">
         Complete all items before applying Take Action for this stage.
        </p>
        <div className="space-y-2">
@@ -1200,7 +1200,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          return (
           <label
            key={item.key}
-           className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"
+           className="flex items-center gap-2 text-sm text-ink-2 cursor-pointer"
           >
            <Checkbox
             checked={checked}
@@ -1257,20 +1257,20 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       {pis.wfp ? (
        <div className="space-y-3">
         <div>
-         <p className="text-sm text-gray-600">Active Ingredients</p>
+         <p className="text-sm text-ink-2">Active Ingredients</p>
          <p className="font-medium">{pis.wfp.activeIngredients}</p>
         </div>
         <div>
-         <p className="text-sm text-gray-600">Dosage Form</p>
+         <p className="text-sm text-ink-2">Dosage Form</p>
          <p className="font-medium">{pis.wfp.dosageForm}</p>
         </div>
         <div>
-         <p className="text-sm text-gray-600">Reference Product</p>
+         <p className="text-sm text-ink-2">Reference Product</p>
          <p className="font-medium">{pis.wfp.referenceProduct}</p>
         </div>
        </div>
       ) : (
-       <p className="text-gray-500 italic">WFP not yet created</p>
+       <p className="text-ink-3 italic">WFP not yet created</p>
       )}
      </Card>
 
@@ -1279,16 +1279,16 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       {pis.sampleSubmission ? (
        <div className="space-y-3">
         <div>
-         <p className="text-sm text-gray-600">TPR Version</p>
+         <p className="text-sm text-ink-2">TPR Version</p>
          <p className="font-medium">{pis.sampleSubmission.tprVersion}</p>
         </div>
         <div>
-         <p className="text-sm text-gray-600">Sample Information</p>
+         <p className="text-sm text-ink-2">Sample Information</p>
          <p className="font-medium">{pis.sampleSubmission.sampleInfo}</p>
         </div>
        </div>
       ) : (
-       <p className="text-gray-500 italic">Sample not yet submitted</p>
+       <p className="text-ink-3 italic">Sample not yet submitted</p>
       )}
      </Card>
     </TabsContent>
@@ -1298,24 +1298,24 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       <h3 className="font-medium mb-4">Important Dates</h3>
       <div className="space-y-4">
        <div className="flex items-center gap-3">
-        <Calendar className="h-5 w-5 text-blue-600" />
+        <Calendar className="h-5 w-5 text-brand" />
         <div>
-         <p className="text-sm text-gray-600">Created At</p>
+         <p className="text-sm text-ink-2">Created At</p>
          <p className="font-medium">{formatDate(pis.createdAt)}</p>
         </div>
        </div>
        <div className="flex items-center gap-3">
-        <Clock className="h-5 w-5 text-blue-600" />
+        <Clock className="h-5 w-5 text-brand" />
         <div>
-         <p className="text-sm text-gray-600">Last Updated</p>
+         <p className="text-sm text-ink-2">Last Updated</p>
          <p className="font-medium">{formatDate(pis.updatedAt)}</p>
         </div>
        </div>
        {pis.tentativeTimeline && (
         <div className="flex items-center gap-3">
-         <TrendingUp className="h-5 w-5 text-blue-600" />
+         <TrendingUp className="h-5 w-5 text-brand" />
          <div>
-          <p className="text-sm text-gray-600">Tentative Timeline</p>
+          <p className="text-sm text-ink-2">Tentative Timeline</p>
           <p className="font-medium">{formatDate(pis.tentativeTimeline)}</p>
          </div>
         </div>
@@ -1328,13 +1328,13 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      <Card className="p-4">
       <h3 className="font-medium mb-4">Audit History</h3>
       {historyEntries.length === 0 ? (
-       <p className="text-gray-500 italic">No history entries yet</p>
+       <p className="text-ink-3 italic">No history entries yet</p>
       ) : (
        <div className="space-y-3">
         {historyEntries.map((entry) => {
          const stageChange = entry.fromStage || entry.toStage;
          return (
-          <div key={entry.id} className="p-3 rounded-lg border bg-white">
+          <div key={entry.id} className="p-3 rounded-lg border bg-surface">
            <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
              <div className="flex items-center gap-2">
@@ -1344,15 +1344,15 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
                 }`
                 : 'Activity'}
               </Badge>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-ink-3">
                {formatTimestamp(entry.timestamp)}
               </span>
              </div>
-             <div className="text-sm text-gray-700">
+             <div className="text-sm text-ink-2">
               <span className="font-medium">Action:</span> {entry.action}
              </div>
              {entry.actorName && (
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-ink-2">
                <span className="font-medium">Actor:</span> {entry.actorName}
                {entry.actorRole ? ` (${entry.actorRole})` : ''}
               </div>
@@ -1364,14 +1364,14 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
             <div className="mt-3 space-y-2">
              {entry.decision && (
               <div className="text-sm">
-               <p className="text-gray-600">Decision</p>
-               <p className="font-medium text-gray-900">{entry.decision}</p>
+               <p className="text-ink-2">Decision</p>
+               <p className="font-medium text-ink">{entry.decision}</p>
               </div>
              )}
              {entry.comments && (
               <div className="text-sm">
-               <p className="text-gray-600">Comments / Reason</p>
-               <p className="text-gray-900 whitespace-pre-wrap">{entry.comments}</p>
+               <p className="text-ink-2">Comments / Reason</p>
+               <p className="text-ink whitespace-pre-wrap">{entry.comments}</p>
               </div>
              )}
             </div>
@@ -1388,7 +1388,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      {canClientConfirm && (
       <Card className="p-4">
        <h3 className="font-medium mb-3">Milestone Confirmations</h3>
-       <p className="text-sm text-gray-600 mb-4">
+       <p className="text-sm text-ink-2 mb-4">
         Confirm key milestones to keep the workflow moving.
        </p>
        <div className="flex flex-wrap gap-2">
@@ -1423,12 +1423,12 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
      {canClientUpload && (
       <Card className="p-4">
        <h3 className="font-medium mb-3">Upload Documents</h3>
-       <p className="text-sm text-gray-600 mb-4">
+       <p className="text-sm text-ink-2 mb-4">
         Upload reference documents. Submissions require approval before becoming visible.
        </p>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
-         <p className="text-sm text-gray-600">File</p>
+         <p className="text-sm text-ink-2">File</p>
          <Input
           type="file"
           onChange={(e) => {
@@ -1439,7 +1439,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
          />
         </div>
         <div className="space-y-2">
-         <p className="text-sm text-gray-600">Description (optional)</p>
+         <p className="text-sm text-ink-2">Description (optional)</p>
          <Input
           value={uploadDescription}
           onChange={(e) => setUploadDescription(e.target.value)}
@@ -1474,15 +1474,15 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       ) : (
        <div className="space-y-2">
         {attachments.map((a) => (
-         <div key={a.id} className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-white">
+         <div key={a.id} className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-surface">
           <div className="min-w-0">
            <p className="font-medium truncate">{a.fileName || 'Attachment'}</p>
-           <p className="text-xs text-gray-500">
+           <p className="text-xs text-ink-3">
             {(a as any).category ? String((a as any).category).replace(/_/g, ' ') : '—'}
             {a.createdAt ? ` • ${formatTimestamp(a.createdAt)}` : ''}
            </p>
            {a.description && (
-            <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{a.description}</p>
+            <p className="text-xs text-ink-2 mt-1 whitespace-pre-wrap">{a.description}</p>
            )}
           </div>
           {a.fileUrl ? (
@@ -1490,12 +1490,12 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
             href={String(a.fileUrl).startsWith('http') ? a.fileUrl : `${serverBaseUrl}${a.fileUrl}`}
             target="_blank"
             rel="noreferrer"
-            className="text-sm text-blue-600 hover:underline whitespace-nowrap"
+            className="text-sm text-brand hover:underline whitespace-nowrap"
            >
             Open
            </a>
           ) : (
-           <span className="text-sm text-gray-400">—</span>
+           <span className="text-sm text-ink-4">—</span>
           )}
          </div>
         ))}
@@ -1548,7 +1548,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
 
     <div className="space-y-4">
      <div className="space-y-2">
-      <p className="text-sm text-gray-600">Decision</p>
+      <p className="text-sm text-ink-2">Decision</p>
       {pis.stage === 'WAY_FORWARD' ? (
        <Select
         value={decisionValue || 'PROCEED'}
@@ -1573,7 +1573,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       )}
      </div>
      <div className="space-y-2">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-2">
        Comments{decisionMandatoryComment ? ' (required)' : ''}
       </p>
       <Textarea
@@ -1654,7 +1654,7 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
 function ProgressIndicator({ label, completed }: { label: string; completed: boolean }) {
  return (
   <div className="flex flex-col items-center gap-2">
-   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${completed ? 'bg-green-500' : 'bg-gray-200'
+   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${completed ? 'bg-ok' : 'bg-surface-3'
     }`}>
     {completed && <CheckCircle2 className="h-6 w-6 text-white" />}
    </div>
@@ -1666,7 +1666,7 @@ function ProgressIndicator({ label, completed }: { label: string; completed: boo
 function AssignmentRow({ label, value }: { label: string; value?: string }) {
  return (
   <div className="flex justify-between items-center py-2 border-b last:border-0">
-   <span className="text-sm text-gray-600">{label}</span>
+   <span className="text-sm text-ink-2">{label}</span>
    <span className="font-medium">{value || 'Not Assigned'}</span>
   </div>
  );

@@ -13,6 +13,7 @@ import { MasterApprovalStatusCell } from '../components/masters/MasterApprovalSt
 import { MasterApprovalAssignCell } from '../components/masters/MasterApprovalAssignCell';
 import { MasterApprovalLogsCell } from '../components/masters/MasterApprovalLogsCell';
 import { MasterApprovalStatusTabs } from '../components/masters/MasterApprovalStatusTabs';
+import { procBtnPrimary, procBtnSecondary, procBtnDanger, procInputClass } from '../components/procurement/ProcSection';
 import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { RM_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { deriveRmSourcingFieldsFromVendors } from '../constants/masterVendorSectionRedundantFields';
@@ -1882,19 +1883,19 @@ type RawMaterialDashboardProps = {
 
 /** Palette of category badge styles; any category (including new ones from API) gets a stable style via hash. */
 const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
- { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
- { bg: 'bg-green-50',    text: 'text-green-700',    border: 'border-green-200' },
+ { bg: 'bg-ok-soft',  text: 'text-ok',  border: 'border-ok' },
+ { bg: 'bg-ok-soft',    text: 'text-ok',    border: 'border-ok' },
  { bg: 'bg-surface-3',   text: 'text-ink-3',    border: 'border-border' },
- { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
- { bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
- { bg: 'bg-yellow-50',   text: 'text-yellow-700',   border: 'border-yellow-200' },
+ { bg: 'bg-warn-soft',   text: 'text-warn',   border: 'border-warn' },
+ { bg: 'bg-err-soft',      text: 'text-err',      border: 'border-err' },
+ { bg: 'bg-warn-soft',   text: 'text-warn',   border: 'border-warn' },
  { bg: 'bg-violet-50',   text: 'text-violet-700',   border: 'border-violet-200' },
  { bg: 'bg-pink-50',     text: 'text-pink-700',     border: 'border-pink-200' },
  { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200' },
- { bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
+ { bg: 'bg-brand-soft',     text: 'text-brand',     border: 'border-brand' },
  { bg: 'bg-brand-soft',   text: 'text-brand',   border: 'border-brand-soft' },
  { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200' },
- { bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200' },
+ { bg: 'bg-warn-soft',    text: 'text-warn',    border: 'border-warn' },
  { bg: 'bg-sky-50',      text: 'text-sky-700',     border: 'border-sky-200' },
  { bg: 'bg-surface-3',    text: 'text-ink-3',     border: 'border-border' },
 ];
@@ -2263,7 +2264,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     />
 
     {/* ── Table Card ── */}
-    <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+    <div className="bg-surface rounded-xl border border-border shadow-[var(--e1)] overflow-hidden">
 
      {/* toolbar */}
      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
@@ -2284,7 +2285,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         onClick={() => { void onResetAllMasters(); }}
         disabled={bulkUploadRunning || resetAllRunning || isLoading}
         title="Deletes all raw material master rows and scrubs linked warehouse, BOM, planning, and procurement data."
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-surface text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+        className={procBtnDanger}
        >
         {resetAllRunning ? 'Resetting…' : 'Reset all masters'}
        </button>
@@ -2293,7 +2294,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         onClick={onPickItemReferenceExcel}
         disabled={bulkUploadRunning}
         title="Multi-tab RM workbook: tabs Raw Materials, Fragrances, Colors & Pigments — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
+        className={procBtnSecondary}
        >
         {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
        </button>
@@ -2307,7 +2308,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          onChange={e => setSearch(e.target.value)}
          placeholder="Search name, INCI, code…"
          aria-label="Search name, INCI, code"
-         className="pl-9 pr-4 py-2 text-xs border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-52"
+         className={`${procInputClass} pl-9 w-52`}
         />
        </div>
       {/* category filter removed (server-side pagination uses search + backend ordering) */}
@@ -2320,13 +2321,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          placeholder="Missing SKU code…"
          aria-label="Missing SKU code to import from Zoho"
          disabled={zohoImporting}
-         className="px-3 py-2 text-xs border border-brand-soft rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-36 disabled:opacity-50"
+         className={`${procInputClass} w-36 disabled:opacity-50`}
         />
         <button
          type="button"
          onClick={() => { void onImportZohoSku(); }}
          disabled={zohoImporting || !zohoSku.trim()}
-         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
+         className={procBtnSecondary}
         >
          {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
         </button>
@@ -2334,7 +2335,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        {/* new RM button */}
        <button
         onClick={onSwitchToForm}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+        className={procBtnPrimary}
        >
         <span className="text-base leading-none">+</span> New RM
        </button>
@@ -2521,7 +2522,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             <button
              type="button"
              onClick={(e) => { e.stopPropagation(); onDeleteRm(rm); }}
-             className="text-[10px] font-semibold text-red-600 hover:text-red-800 hover:underline"
+             className="text-[10px] font-semibold text-err hover:text-err hover:underline"
             >
              Delete
             </button>
@@ -2654,7 +2655,7 @@ const InputField: React.FC<{
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
-   {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+   {requiredMark ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
   </label>
   <input
    type={type}
@@ -2666,10 +2667,10 @@ const InputField: React.FC<{
    placeholder={placeholder}
    aria-invalid={error ? true : undefined}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-border'
+    error ? 'border-err bg-err-soft/40' : 'border-border'
    } ${readOnly || disabled ? 'bg-surface-3 text-ink cursor-not-allowed' : ''}`}
   />
-  {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+  {error ? <p className="mt-1 text-xs text-err">{error}</p> : null}
  </div>
 );
 
@@ -2689,7 +2690,7 @@ const SelectField: React.FC<{
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
-   {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+   {requiredMark ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
   </label>
   <select
    id={id}
@@ -2698,7 +2699,7 @@ const SelectField: React.FC<{
    disabled={disabled}
    aria-invalid={error ? true : undefined}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-border'
+    error ? 'border-err bg-err-soft/40' : 'border-border'
    } ${disabled ? 'bg-surface-3' : ''}`}
   >
    <option value="">{emptyLabel ?? 'Select...'}</option>
@@ -2708,7 +2709,7 @@ const SelectField: React.FC<{
     return <option key={v} value={v}>{l}</option>;
    })}
   </select>
-  {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+  {error ? <p className="mt-1 text-xs text-err">{error}</p> : null}
  </div>
 );
 
@@ -2725,7 +2726,7 @@ const TextareaField: React.FC<{
  <div>
   <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
-   {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+   {requiredMark ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
   </label>
   <textarea
    id={id}
@@ -2735,10 +2736,10 @@ const TextareaField: React.FC<{
    rows={rows}
    placeholder={placeholder}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-border'
+    error ? 'border-err bg-err-soft/40' : 'border-border'
    }`}
   />
-  {error ? <p className="mt-1 text-xs text-red-600" role="alert">{error}</p> : null}
+  {error ? <p className="mt-1 text-xs text-err" role="alert">{error}</p> : null}
  </div>
 );
 

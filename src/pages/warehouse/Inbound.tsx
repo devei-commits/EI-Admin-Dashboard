@@ -59,6 +59,7 @@ import {
 } from '../../lib/qualityOrderManagementTableDisplay';
 import QualityCheckModal from '../../components/quality/QualityCheckModal';
 import { ModalOverlay } from '../../components/ui/ModalOverlay';
+import { procInputClass, procChipClass } from '../../components/procurement/ProcSection';
 
 type GRNType = 'RM' | 'PM';
 type QCStatus = 'Under test' | 'Quality checked' | 'Passed' | 'Rejected';
@@ -2300,11 +2301,7 @@ const WarehouseInbound = () => {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveSourceTab(tab.key)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeSourceTab === tab.key
-                    ? 'bg-ink text-white shadow-sm'
-                    : 'text-ink-2 bg-surface-3 hover:bg-surface-3'
-                }`}
+                className={procChipClass(activeSourceTab === tab.key)}
               >
                 {tab.label}
               </button>
@@ -2325,10 +2322,7 @@ const WarehouseInbound = () => {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                      ? 'bg-brand text-white shadow-sm'
-                      : 'text-ink-2 hover:bg-surface-3'
-                    }`}
+                  className={procChipClass(activeTab === tab)}
                 >
                   {tab}
                 </button>
@@ -2343,7 +2337,7 @@ const WarehouseInbound = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search GRN or item…"
-                className="w-full pl-10 pr-4 py-2.5 bg-surface-2 border border-border rounded-lg text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+                className={`${procInputClass} pl-10`}
               />
             </div>
           </div>

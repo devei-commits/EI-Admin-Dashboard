@@ -32,6 +32,7 @@ import { TableSkeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ModalOverlay } from '../../components/ui/ModalOverlay';
 import { PackageSearch } from 'lucide-react';
+import { procBtnSecondary, procInputClass, procSelectClass, procChipClass } from '../../components/procurement/ProcSection';
 
 export interface InventoryItem {
   id: string;
@@ -1592,7 +1593,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => inventorySummaryFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-ink hover:bg-surface-2 disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="Zoho Inventory Summary export"
                   >
                     {importingInventoryExcel ? 'Importing…' : 'Zoho stock Excel'}
@@ -1601,7 +1602,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => mainWarehouseSihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-soft bg-brand-soft text-brand hover:bg-brand-soft disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="Main warehouse workbook — CONSOLIDATED SIH sheet with sku, item_name, SIH"
                   >
                     {importingSihBucket === 'warehouse'
@@ -1612,7 +1613,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => ml1SihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-soft bg-brand-soft text-brand hover:bg-brand-soft disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="ML1 workbook — STOCK IN HAND sheet: sku, item_name, PHYSICAL QTY"
                   >
                     {importingSihBucket === 'ml1' ? 'Importing…' : 'Upload ML1 SIH'}
@@ -1621,7 +1622,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => ml2SihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-soft bg-brand-soft text-brand hover:bg-brand-soft disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="ML2 workbook — Sheet3 with sku, item_name, SIH"
                   >
                     {importingSihBucket === 'ml2' ? 'Importing…' : 'Upload ML2 SIH'}
@@ -1675,10 +1676,7 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
-                      ? 'bg-brand text-white shadow-md'
-                      : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
-                      }`}
+                    className={procChipClass(activeFilter === filter.key)}
                   >
                     {filter.label}
                   </button>
@@ -1689,7 +1687,7 @@ const WarehouseInventory = () => {
                   id="item-group-filter"
                   value={itemGroupFilter}
                   onChange={(e) => setItemGroupFilter(e.target.value)}
-                  className="px-4 py-2 rounded-lg border border-border bg-surface text-ink-2 font-medium text-sm focus:ring-2 focus:ring-brand focus:border-brand"
+                  className={procSelectClass}
                 >
                   <option value="">All item groups</option>
                   {itemGroups.map((g) => (
@@ -1712,10 +1710,7 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
-                      ? 'bg-brand text-white shadow-md'
-                      : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
-                      }`}
+                    className={procChipClass(activeFilter === filter.key)}
                   >
                     {filter.label}
                   </button>
@@ -1735,12 +1730,12 @@ const WarehouseInventory = () => {
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search item, code, category..."
                   aria-label="Search item, code, category"
-                  className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand"
+                  className={`${procInputClass} pl-10`}
                 />
               </div>
               <button
                 onClick={() => navigate('/facility-management')}
-                className="flex items-center gap-2 px-4 py-2.5 bg-surface border border-border rounded-lg hover:bg-surface-2 font-medium text-sm text-ink-2"
+                className={procBtnSecondary}
                 title="Manage areas/zones in Facility Management"
               >
                 <MapPin className="w-4 h-4" />
@@ -1748,7 +1743,7 @@ const WarehouseInventory = () => {
               </button>
               <button
                 onClick={() => navigate('/facility-management')}
-                className="flex items-center gap-2 px-4 py-2.5 bg-surface border border-border rounded-lg hover:bg-surface-2 font-medium text-sm text-ink-2"
+                className={procBtnSecondary}
                 title="Manage racks in Facility Management"
               >
                 <Grid3x3 className="w-4 h-4" />
@@ -1767,7 +1762,7 @@ const WarehouseInventory = () => {
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search history by item, code, zone, rack..."
                   aria-label="Search history by item, code, zone, rack"
-                  className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand"
+                  className={`${procInputClass} pl-10`}
                 />
               </div>
             </div>

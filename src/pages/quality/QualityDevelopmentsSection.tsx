@@ -11,10 +11,10 @@ type QualityDevelopmentsSectionProps = {
 };
 
 const STATUS_STYLES: Record<QualityDevelopmentStatus, string> = {
-  Draft: 'bg-slate-100 text-slate-700 ring-slate-200',
-  'In Review': 'bg-amber-50 text-amber-800 ring-amber-200',
+  Draft: 'bg-surface-3 text-ink-2 ring-border',
+  'In Review': 'bg-warn-soft text-warn ring-amber-200',
   Testing: 'bg-sky-50 text-sky-800 ring-sky-200',
-  Approved: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  Approved: 'bg-ok-soft text-ok ring-emerald-200',
   'On Hold': 'bg-rose-50 text-rose-800 ring-rose-200',
 };
 
@@ -69,15 +69,15 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
   );
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6 sm:p-8">
+    <div className="flex-1 overflow-y-auto bg-surface-2 p-6 sm:p-8">
       <div className="max-w-[90rem] mx-auto space-y-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">
             Order Management / Quality / {config.scopeLabel}
           </p>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">{config.pageTitle}</h1>
-          <p className="text-sm text-slate-600 mt-2">{config.pageSubtitle}</p>
-          <p className="text-xs text-slate-400 mt-2">Static preview data — live workflow coming later.</p>
+          <h1 className="text-2xl font-bold text-ink mt-1">{config.pageTitle}</h1>
+          <p className="text-sm text-ink-2 mt-2">{config.pageSubtitle}</p>
+          <p className="text-xs text-ink-4 mt-2">Static preview data — live workflow coming later.</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -86,20 +86,20 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
               key={status}
               type="button"
               onClick={() => setStatusFilter((prev) => (prev === status ? 'all' : status))}
-              className={`rounded-xl border bg-white p-4 text-left shadow-sm transition-colors ${
+              className={`rounded-xl border bg-surface p-4 text-left shadow-sm transition-colors ${
                 statusFilter === status
                   ? 'border-teal-300 ring-2 ring-teal-100'
-                  : 'border-slate-200 hover:border-slate-300'
+                  : 'border-border hover:border-border'
               }`}
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{status}</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{statusCounts[status]}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">{status}</p>
+              <p className="text-2xl font-bold text-ink mt-1">{statusCounts[status]}</p>
             </button>
           ))}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div className="w-full sm:w-72">
               <SearchInput
                 value={search}
@@ -108,15 +108,15 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
                 aria-label={`Search ${config.scopeLabel} developments`}
               />
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-3">
               Showing {filteredRows.length} of {config.rows.length} records
             </p>
           </div>
 
           <div className="overflow-auto max-h-[70vh]">
             <table className="min-w-full text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr className="[&_th]:bg-slate-50">
+              <thead className="sticky top-0 z-20 bg-surface-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-3">
+                <tr className="[&_th]:bg-surface-2">
                   <th scope="col" className="px-4 py-3">Reference</th>
                   <th scope="col" className="px-4 py-3">Item / PIS</th>
                   <th scope="col" className="px-4 py-3">Title</th>
@@ -128,24 +128,24 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
                   <th scope="col" className="px-4 py-3">Notes</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-hairline">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-4 py-10 text-center text-ink-3">
                       No developments match your filters.
                     </td>
                   </tr>
                 ) : (
                   filteredRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700 whitespace-nowrap">
+                    <tr key={row.id} className="hover:bg-surface-2/80">
+                      <td className="px-4 py-3 font-mono text-xs text-ink-2 whitespace-nowrap">
                         {row.reference}
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 whitespace-nowrap">
+                      <td className="px-4 py-3 font-semibold text-ink whitespace-nowrap">
                         {row.itemCode}
                       </td>
-                      <td className="px-4 py-3 text-slate-800 min-w-[14rem]">{row.title}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{row.category}</td>
+                      <td className="px-4 py-3 text-ink min-w-[14rem]">{row.title}</td>
+                      <td className="px-4 py-3 text-ink-2 whitespace-nowrap">{row.category}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${STATUS_STYLES[row.status]}`}
@@ -153,14 +153,14 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
                           {row.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{row.assignee}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-ink-2 whitespace-nowrap">{row.assignee}</td>
+                      <td className="px-4 py-3 text-ink-2 whitespace-nowrap">
                         {formatDisplayDate(row.requestedOn)}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                      <td className="px-4 py-3 text-ink-2 whitespace-nowrap">
                         {formatDisplayDate(row.targetDate)}
                       </td>
-                      <td className="px-4 py-3 text-slate-500 min-w-[16rem]">{row.notes}</td>
+                      <td className="px-4 py-3 text-ink-3 min-w-[16rem]">{row.notes}</td>
                     </tr>
                   ))
                 )}

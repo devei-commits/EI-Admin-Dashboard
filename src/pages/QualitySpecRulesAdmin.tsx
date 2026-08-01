@@ -45,6 +45,7 @@ import { hydrateRmQualitySpecRows } from '../lib/rmQualitySpecVisibility';
 import { hydratePmQualitySpecRows } from '../lib/pmQualitySpecVisibility';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { procBtnPrimary, procBtnSecondary, procInputClass, procChipClass } from '../components/procurement/ProcSection';
 
 type SpecType = 'quality' | 'technical';
 
@@ -418,15 +419,15 @@ export default function QualitySpecRulesAdmin() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-surface-2 p-6">
       <div className="mx-auto max-w-6xl">
         {/* Header — title + description only */}
         <header className="mb-4">
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900">Spec Rules</h1>
-          <p className="mt-1 max-w-3xl text-sm text-gray-600">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-ink">Spec Rules</h1>
+          <p className="mt-1 max-w-3xl text-sm text-ink-2">
             Category / sub-category templates for{' '}
-            <span className="font-semibold text-emerald-700">Quality</span> and{' '}
-            <span className="font-semibold text-indigo-700">Technical</span> specs. Items pull these live until a user
+            <span className="font-semibold text-ok">Quality</span> and{' '}
+            <span className="font-semibold text-brand">Technical</span> specs. Items pull these live until a user
             edits an item&apos;s own specs — after that the item keeps its own saved specs and stops tracking rule
             changes.
           </p>
@@ -434,17 +435,17 @@ export default function QualitySpecRulesAdmin() {
 
         {/* Entity segmented control */}
         <div className="mb-4">
-          <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-4">
             Entity type
           </span>
-          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1 shadow-sm">
             {QUALITY_SPEC_RULE_ENTITY_TYPES.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => setEntityType(opt.value)}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  entityType === opt.value ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-gray-100'
+                  entityType === opt.value ? 'bg-ink text-white shadow-sm' : 'text-ink-2 hover:bg-surface-3'
                 }`}
               >
                 {opt.label}
@@ -454,9 +455,9 @@ export default function QualitySpecRulesAdmin() {
         </div>
 
         {/* Content card */}
-        <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           {/* Toolbar — filters (left) + Add rule (right) */}
-          <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-b border-hairline p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               {([
                 { key: 'all', label: 'All', n: counts.all },
@@ -467,16 +468,12 @@ export default function QualitySpecRulesAdmin() {
                   key={chip.key}
                   type="button"
                   onClick={() => setTypeFilter(chip.key)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    typeFilter === chip.key
-                      ? 'bg-slate-900 text-white'
-                      : 'border border-gray-300 bg-white text-slate-600 hover:bg-gray-50'
-                  }`}
+                  className={procChipClass(typeFilter === chip.key)}
                 >
                   {chip.label}
                   <span
                     className={`rounded-full px-1.5 text-[10px] ${
-                      typeFilter === chip.key ? 'bg-white/20' : 'bg-gray-100 text-gray-500'
+                      typeFilter === chip.key ? 'bg-surface/20' : 'bg-surface-3 text-ink-3'
                     }`}
                   >
                     {chip.n}
@@ -488,7 +485,7 @@ export default function QualitySpecRulesAdmin() {
               type="button"
               onClick={() => setAddMenuOpen((v) => !v)}
               aria-expanded={addMenuOpen}
-              className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-700 sm:self-auto"
+              className={procBtnPrimary}
             >
               + Add rule
               <span className={`text-xs transition-transform ${addMenuOpen ? 'rotate-180' : ''}`}>▾</span>
@@ -497,15 +494,15 @@ export default function QualitySpecRulesAdmin() {
 
           {/* Inline type chooser — in-flow, no stacking conflict */}
           {addMenuOpen && (
-            <div className="border-b border-gray-100 bg-gray-50/70 p-4">
+            <div className="border-b border-hairline bg-surface-2/70 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
                   What do you want to add?
                 </p>
                 <button
                   type="button"
                   onClick={() => setAddMenuOpen(false)}
-                  className="text-xs text-gray-400 hover:text-gray-600"
+                  className="text-xs text-ink-4 hover:text-ink-2"
                 >
                   ✕ Close
                 </button>
@@ -517,14 +514,14 @@ export default function QualitySpecRulesAdmin() {
                     setAddMenuOpen(false);
                     openCreateQuality();
                   }}
-                  className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50/60"
+                  className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left shadow-sm transition-colors hover:border-ok hover:bg-ok-soft/60"
                 >
-                  <span className="mt-0.5 shrink-0 rounded-md bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                  <span className="mt-0.5 shrink-0 rounded-md bg-ok-soft px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-ok">
                     Quality
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-gray-900">Quality spec rule</span>
-                    <span className="block text-xs leading-snug text-gray-500">
+                    <span className="block text-sm font-semibold text-ink">Quality spec rule</span>
+                    <span className="block text-xs leading-snug text-ink-3">
                       Test parameters (spec limit, method, tolerance…) for QC.
                     </span>
                   </span>
@@ -535,14 +532,14 @@ export default function QualitySpecRulesAdmin() {
                     setAddMenuOpen(false);
                     openCreateTechnical();
                   }}
-                  className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/60"
+                  className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left shadow-sm transition-colors hover:border-brand hover:bg-brand-soft/60"
                 >
-                  <span className="mt-0.5 shrink-0 rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+                  <span className="mt-0.5 shrink-0 rounded-md bg-brand-soft px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-brand">
                     Technical
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-gray-900">Technical spec (custom field)</span>
-                    <span className="block text-xs leading-snug text-gray-500">
+                    <span className="block text-sm font-semibold text-ink">Technical spec (custom field)</span>
+                    <span className="block text-xs leading-snug text-ink-3">
                       Material/product attributes — label, type, unit, options.
                     </span>
                   </span>
@@ -553,14 +550,14 @@ export default function QualitySpecRulesAdmin() {
                     setAddMenuOpen(false);
                     openItemSpecific();
                   }}
-                  className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-50/60"
+                  className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left shadow-sm transition-colors hover:border-warn hover:bg-warn-soft/60"
                 >
-                  <span className="mt-0.5 shrink-0 rounded-md bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                  <span className="mt-0.5 shrink-0 rounded-md bg-warn-soft px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-warn">
                     Item
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-gray-900">Item specific</span>
-                    <span className="block text-xs leading-snug text-gray-500">
+                    <span className="block text-sm font-semibold text-ink">Item specific</span>
+                    <span className="block text-xs leading-snug text-ink-3">
                       Override quality specs for ONE {entityLabel} item — locks it to its own specs.
                     </span>
                   </span>
@@ -570,7 +567,7 @@ export default function QualitySpecRulesAdmin() {
           )}
 
           {isPrEntity && (
-            <p className="border-b border-gray-100 bg-indigo-50/40 px-4 py-2 text-[11px] text-indigo-700/80">
+            <p className="border-b border-hairline bg-brand-soft/40 px-4 py-2 text-[11px] text-brand/80">
               ℹ Technical specs are shared across all PR clearance stages.
             </p>
           )}
@@ -582,11 +579,11 @@ export default function QualitySpecRulesAdmin() {
             </div>
           ) : unifiedRows.length === 0 ? (
             <EmptyState
-              icon={<div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400">📋</div>}
+              icon={<div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-3 text-ink-4">📋</div>}
               title={`No ${typeFilter === 'all' ? '' : `${typeFilter} `}rules for this entity yet`}
               description={
                 <>
-                  Use <span className="font-semibold text-orange-600">+ Add rule</span> to create a Quality or Technical
+                  Use <span className="font-semibold text-warn">+ Add rule</span> to create a Quality or Technical
                   spec rule for a category (or category + sub-category).
                 </>
               }
@@ -594,8 +591,8 @@ export default function QualitySpecRulesAdmin() {
           ) : (
             <div className="overflow-auto max-h-[70vh]">
               <table className="min-w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 border-b border-gray-100 bg-gray-50/80">
-                  <tr className="[&_th]:bg-surface-2 text-[11px] uppercase tracking-wide text-gray-500">
+                <thead className="sticky top-0 z-20 border-b border-hairline bg-surface-2/80">
+                  <tr className="[&_th]:bg-surface-2 text-[11px] uppercase tracking-wide text-ink-3">
                     <th scope="col" className="px-4 py-2.5 font-semibold">Type</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Category</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Sub-category</th>
@@ -604,32 +601,32 @@ export default function QualitySpecRulesAdmin() {
                     <th scope="col" className="px-4 py-2.5 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-hairline">
                   {unifiedRows.map((row) => (
-                    <tr key={`${row.specType}-${row.rule.id}`} className="transition-colors hover:bg-gray-50/80">
+                    <tr key={`${row.specType}-${row.rule.id}`} className="transition-colors hover:bg-surface-2/80">
                       <td className="px-4 py-3">
                         {row.specType === 'quality' ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                          <span className="inline-flex items-center rounded-full bg-ok-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ok ring-1 ring-inset ring-emerald-100">
                             Quality
                           </span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700 ring-1 ring-inset ring-indigo-100">
+                          <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand ring-1 ring-inset ring-indigo-100">
                             Technical
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">{row.rule.category}</td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 font-medium text-ink">{row.rule.category}</td>
+                      <td className="px-4 py-3 text-ink-2">
                         {row.rule.subCategory || (
-                          <span className="italic text-gray-400">— all sub-categories</span>
+                          <span className="italic text-ink-4">— all sub-categories</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        <span className="inline-flex items-center rounded-md bg-surface-3 px-2 py-0.5 text-xs font-medium text-ink-2">
                           {row.rule.rows.length} {row.specType === 'quality' ? 'rows' : 'fields'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-ink-3">
                         {row.rule.updatedAt ? new Date(row.rule.updatedAt).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-4 py-3">
@@ -639,14 +636,14 @@ export default function QualitySpecRulesAdmin() {
                             onClick={() =>
                               row.specType === 'quality' ? openEditQuality(row.rule) : openEditTechnical(row.rule)
                             }
-                            className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                            className="rounded-md px-2 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-3"
                           >
                             Edit
                           </button>
                           <button
                             type="button"
                             onClick={() => void removeRow(row)}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                            className="rounded-md px-2 py-1 text-xs font-medium text-err transition-colors hover:bg-err-soft"
                           >
                             Delete
                           </button>
@@ -664,18 +661,18 @@ export default function QualitySpecRulesAdmin() {
       {/* Quality rule editor */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="quality-rule-modal-title">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="quality-rule-modal-title">
             <div className="flex items-start justify-between gap-3">
-              <h2 id="quality-rule-modal-title" className="text-lg font-bold text-gray-900">
+              <h2 id="quality-rule-modal-title" className="text-lg font-bold text-ink">
                 {editingRule ? 'Edit quality rule' : 'New quality rule'} —{' '}
                 {QUALITY_SPEC_RULE_ENTITY_TYPES.find((o) => o.value === entityType)?.label}
               </h2>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+              <span className="rounded-full bg-ok-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ok">
                 Quality
               </span>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Category
                 <SpecScopeCombobox
                   accent="emerald"
@@ -689,7 +686,7 @@ export default function QualitySpecRulesAdmin() {
                   placeholder="Select or type a category"
                 />
               </label>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Sub-category (leave blank for a category-wide rule)
                 <SpecScopeCombobox
                   accent="emerald"
@@ -717,14 +714,14 @@ export default function QualitySpecRulesAdmin() {
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setModalOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
+              <button type="button" onClick={() => setModalOpen(false)} className={procBtnSecondary}>
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void saveQuality()}
                 disabled={saving || !editCategory.trim()}
-                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className={procBtnPrimary}
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>
@@ -754,23 +751,23 @@ export default function QualitySpecRulesAdmin() {
       {/* Item-specific quality-spec editor */}
       {itemModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="item-specific-modal-title">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="item-specific-modal-title">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 id="item-specific-modal-title" className="text-lg font-bold text-gray-900">Item-specific quality specs — {entityLabel}</h2>
-                <p className="mt-1 text-sm text-gray-600">
+                <h2 id="item-specific-modal-title" className="text-lg font-bold text-ink">Item-specific quality specs — {entityLabel}</h2>
+                <p className="mt-1 text-sm text-ink-2">
                   Pick one item and set its own quality specs. Saving locks the item to these specs — it stops
                   tracking category / sub-category rule changes.
                 </p>
               </div>
-              <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+              <span className="shrink-0 rounded-full bg-warn-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warn">
                 Item
               </span>
             </div>
 
             {!selectedItem ? (
               <div className="mt-5">
-                <label className="block text-xs font-semibold text-gray-600">
+                <label className="block text-xs font-semibold text-ink-2">
                   Search {entityLabel} by name or code
                   <input
                     type="text"
@@ -778,28 +775,28 @@ export default function QualitySpecRulesAdmin() {
                     value={itemSearch}
                     onChange={(e) => setItemSearch(e.target.value)}
                     placeholder="Type to search…"
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className={`mt-1 ${procInputClass}`}
                   />
                 </label>
-                <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-gray-200">
+                <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-border">
                   {itemSearching ? (
-                    <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-slate-600" />
+                    <div className="flex items-center gap-2 p-4 text-sm text-ink-3">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-slate-600" />
                       Searching…
                     </div>
                   ) : itemResults.length === 0 ? (
-                    <p className="p-4 text-sm text-gray-500">No matching items.</p>
+                    <p className="p-4 text-sm text-ink-3">No matching items.</p>
                   ) : (
-                    <ul className="divide-y divide-gray-100">
+                    <ul className="divide-y divide-hairline">
                       {itemResults.map((item) => (
                         <li key={item.id}>
                           <button
                             type="button"
                             onClick={() => void selectItem(item)}
-                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-amber-50/60"
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-warn-soft/60"
                           >
-                            <span className="min-w-0 truncate text-sm font-medium text-gray-900">{item.name}</span>
-                            <span className="shrink-0 rounded bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-600">
+                            <span className="min-w-0 truncate text-sm font-medium text-ink">{item.name}</span>
+                            <span className="shrink-0 rounded bg-surface-3 px-2 py-0.5 text-xs font-mono text-ink-2">
                               {item.code}
                             </span>
                           </button>
@@ -811,23 +808,23 @@ export default function QualitySpecRulesAdmin() {
               </div>
             ) : (
               <div className="mt-5">
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5">
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-warn bg-warn-soft/60 px-4 py-2.5">
                   <div className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-gray-900">{selectedItem.name}</span>
-                    <span className="text-xs font-mono text-gray-500">{selectedItem.code}</span>
+                    <span className="block truncate text-sm font-semibold text-ink">{selectedItem.name}</span>
+                    <span className="text-xs font-mono text-ink-3">{selectedItem.code}</span>
                   </div>
                   <button
                     type="button"
                     onClick={clearSelectedItem}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-2 hover:bg-surface-3"
                   >
                     Change item
                   </button>
                 </div>
 
                 {itemSeedLoading ? (
-                  <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-slate-600" />
+                  <div className="flex items-center gap-2 p-6 text-sm text-ink-3">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-slate-600" />
                     Loading this item&apos;s current specs…
                   </div>
                 ) : (
@@ -850,7 +847,7 @@ export default function QualitySpecRulesAdmin() {
               <button
                 type="button"
                 onClick={closeItemSpecific}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
+                className={procBtnSecondary}
               >
                 Cancel
               </button>
@@ -858,7 +855,7 @@ export default function QualitySpecRulesAdmin() {
                 type="button"
                 onClick={() => void saveItemSpecs()}
                 disabled={!selectedItem || itemSeedLoading || itemSaving}
-                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className={procBtnPrimary}
               >
                 {itemSaving ? 'Saving…' : 'Save to item'}
               </button>

@@ -109,22 +109,22 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ label, value, hint, tone = 'neutral' }) => {
   const toneClasses = {
-    neutral: 'border-gray-200 bg-white',
-    warehouse: 'border-blue-200 bg-blue-50/50',
-    production: 'border-amber-200 bg-amber-50/50',
-    warning: 'border-amber-300 bg-amber-50',
+    neutral: 'border-border bg-surface',
+    warehouse: 'border-brand bg-brand-soft/50',
+    production: 'border-warn bg-warn-soft/50',
+    warning: 'border-warn bg-warn-soft',
   };
   const valueClasses = {
-    neutral: 'text-gray-900',
-    warehouse: 'text-blue-900',
-    production: 'text-amber-900',
-    warning: 'text-amber-900',
+    neutral: 'text-ink',
+    warehouse: 'text-brand',
+    production: 'text-warn',
+    warning: 'text-warn',
   };
   return (
     <div className={`rounded-xl border p-4 ${toneClasses[tone]}`}>
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-3">{label}</p>
       <p className={`mt-1 text-2xl font-bold tabular-nums ${valueClasses[tone]}`}>{value}</p>
-      <p className="mt-1 text-xs text-gray-600 leading-snug">{hint}</p>
+      <p className="mt-1 text-xs text-ink-2 leading-snug">{hint}</p>
     </div>
   );
 };
@@ -408,20 +408,20 @@ const FacilityManagement: React.FC = () => {
         key={area.id}
         type="button"
         onClick={() => selectArea(area)}
-        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2 ${
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2 ${
           isSelected
             ? isWh
-              ? 'border-blue-600 bg-blue-50 shadow-sm'
-              : 'border-amber-600 bg-amber-50 shadow-sm'
-            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
+              ? 'border-brand bg-brand-soft shadow-sm'
+              : 'border-warn bg-warn-soft shadow-sm'
+            : 'border-border bg-surface hover:border-border hover:bg-surface-2/80'
         }`}
       >
         <span className="text-base" aria-hidden>
           {area.icon || (isWh ? '🏭' : '⚙️')}
         </span>
         <span className="min-w-0">
-          <span className="block font-semibold text-sm text-gray-900 truncate">{area.name}</span>
-          <span className="block font-mono text-xs text-gray-500">
+          <span className="block font-semibold text-sm text-ink truncate">{area.name}</span>
+          <span className="block font-mono text-xs text-ink-3">
             {area.code} · {zoneCount}z · {rackCount}r
           </span>
         </span>
@@ -439,8 +439,8 @@ const FacilityManagement: React.FC = () => {
       {/* Header */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2 max-w-2xl">
-          <h1 className="text-2xl font-bold text-gray-900">Facility Management</h1>
-          <p className="text-sm text-gray-600 leading-relaxed">
+          <h1 className="text-2xl font-bold text-ink">Facility Management</h1>
+          <p className="text-sm text-ink-2 leading-relaxed">
             Define where stock lives in your operation: <strong>areas</strong> group buildings or sites,{' '}
             <strong>zones</strong> are stores or ML lines, and <strong>racks</strong> are physical putaway slots.
             Defaults drive GRN inbound and MTR transfers automatically.
@@ -449,7 +449,7 @@ const FacilityManagement: React.FC = () => {
         <button
           type="button"
           onClick={() => openCreateArea()}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-ink text-white rounded-xl text-sm font-medium hover:bg-ink transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -486,44 +486,44 @@ const FacilityManagement: React.FC = () => {
 
           {/* How it works */}
           <section
-            className="rounded-xl border border-gray-200 bg-gray-50/60 p-5"
+            className="rounded-xl border border-border bg-surface-2/60 p-5"
             aria-labelledby="facility-hierarchy-heading"
           >
-            <h2 id="facility-hierarchy-heading" className="text-sm font-semibold text-gray-900">
+            <h2 id="facility-hierarchy-heading" className="text-sm font-semibold text-ink">
               How locations are used
             </h2>
             <ol className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
               <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-800">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-brand">
                   1
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Warehouse areas</p>
-                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  <p className="text-sm font-medium text-ink">Warehouse areas</p>
+                  <p className="text-xs text-ink-2 mt-1 leading-relaxed">
                     RM, PM, and FG zones. One zone must be the <strong>GRN default</strong> — all inbound receipts
                     post there (DEFAULT rack if none specified).
                   </p>
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm font-bold text-amber-900">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-warn-soft text-sm font-bold text-warn">
                   2
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Manufacturing units</p>
-                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  <p className="text-sm font-medium text-ink">Manufacturing units</p>
+                  <p className="text-xs text-ink-2 mt-1 leading-relaxed">
                     ML1 / ML2 zones per unit. Set an <strong>MTR default</strong> for transfers from warehouse when
                     Send MTR does not pick a destination.
                   </p>
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-800">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-3 text-sm font-bold text-ink">
                   3
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Area → Zone → Rack</p>
-                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  <p className="text-sm font-medium text-ink">Area → Zone → Rack</p>
+                  <p className="text-xs text-ink-2 mt-1 leading-relaxed">
                     Pick an area below, then click a zone to view its racks. Codes appear on labels,
                     pick lists, and transfer orders.
                   </p>
@@ -531,12 +531,12 @@ const FacilityManagement: React.FC = () => {
               </li>
             </ol>
             <div className="mt-4 flex flex-wrap gap-3 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-gray-700">
-                <span className="font-semibold text-amber-800">GRN default</span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface border border-border px-3 py-1.5 text-ink-2">
+                <span className="font-semibold text-warn">GRN default</span>
                 {stats.whDefaultLabel}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-gray-700">
-                <span className="font-semibold text-amber-800">MTR default</span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-surface border border-border px-3 py-1.5 text-ink-2">
+                <span className="font-semibold text-warn">MTR default</span>
                 {stats.prodDefaultLabel}
               </span>
             </div>
@@ -544,17 +544,17 @@ const FacilityManagement: React.FC = () => {
 
           {/* Full-width layout */}
           <div className="space-y-4 w-full">
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden w-full">
-              <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="rounded-xl border border-border bg-surface overflow-hidden w-full">
+              <div className="px-4 py-3 border-b border-hairline flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-lg border border-gray-200 p-0.5 flex">
+                  <div className="rounded-lg border border-border p-0.5 flex">
                     <button
                       type="button"
                       onClick={() => switchFacilityGroup('warehouse')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 ${
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border ${
                         facilityGroup === 'warehouse'
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-50'
+                          ? 'bg-brand text-white'
+                          : 'text-ink-2 hover:bg-surface-2'
                       }`}
                     >
                       Warehouse
@@ -562,16 +562,16 @@ const FacilityManagement: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => switchFacilityGroup('production')}
-                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 ${
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-border ${
                         facilityGroup === 'production'
-                          ? 'bg-amber-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-50'
+                          ? 'bg-warn text-white'
+                          : 'text-ink-2 hover:bg-surface-2'
                       }`}
                     >
                       Manufacturing
                     </button>
                   </div>
-                  <span className="text-xs text-gray-500 hidden sm:inline">
+                  <span className="text-xs text-ink-3 hidden sm:inline">
                     {facilityGroup === 'warehouse'
                       ? 'GRN · storage · outbound pick'
                       : 'MTR receive · batch ML stock'}
@@ -580,19 +580,19 @@ const FacilityManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => openCreateArea(facilityGroup)}
-                  className="text-sm font-medium text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900"
+                  className="text-sm font-medium text-ink-2 border border-border rounded-lg px-3 py-1.5 hover:bg-surface-2 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-border"
                 >
                   + Add area
                 </button>
               </div>
               <div className="p-3 flex flex-wrap gap-2">
                 {groupAreas.length === 0 ? (
-                  <p className="text-sm text-gray-400 py-2 px-1">
+                  <p className="text-sm text-ink-4 py-2 px-1">
                     No {facilityGroup === 'warehouse' ? 'warehouse' : 'manufacturing'} areas yet.{' '}
                     <button
                       type="button"
                       onClick={() => openCreateArea(facilityGroup)}
-                      className="text-gray-900 font-medium underline"
+                      className="text-ink font-medium underline"
                     >
                       Create one
                     </button>
@@ -605,14 +605,14 @@ const FacilityManagement: React.FC = () => {
 
             {selectedArea ? (
               <div className="space-y-4 w-full">
-                <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+                <div className="rounded-xl border border-border bg-surface px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-2xl shrink-0" aria-hidden>
                       {selectedArea.icon || (selectedArea.areaType === 'warehouse' ? '🏭' : '⚙️')}
                     </span>
                     <div className="min-w-0">
-                      <h2 className="text-lg font-bold text-gray-900 truncate">{selectedArea.name}</h2>
-                      <p className="font-mono text-xs text-gray-500">
+                      <h2 className="text-lg font-bold text-ink truncate">{selectedArea.name}</h2>
+                      <p className="font-mono text-xs text-ink-3">
                         {selectedArea.code} · {selectedArea.zones.length} zones ·{' '}
                         {countRacksInArea(selectedArea)} racks
                       </p>
@@ -621,7 +621,7 @@ const FacilityManagement: React.FC = () => {
                   <button
                     type="button"
                     onClick={openCreateZone}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink text-white rounded-lg text-sm font-medium hover:bg-ink shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2"
                   >
                     Add zone
                   </button>
@@ -632,8 +632,8 @@ const FacilityManagement: React.FC = () => {
                       role="alert"
                       className={`rounded-xl px-4 py-3 text-sm border ${
                         warehouseDefaultZones.length === 0
-                          ? 'bg-amber-50 text-amber-950 border-amber-200'
-                          : 'bg-red-50 text-red-950 border-red-200'
+                          ? 'bg-warn-soft text-warn border-warn'
+                          : 'bg-err-soft text-err border-err'
                       }`}
                     >
                       {warehouseDefaultZones.length === 0 ? (
@@ -653,7 +653,7 @@ const FacilityManagement: React.FC = () => {
                   )}
 
                   {selectedArea.areaType === 'warehouse' && warehouseDefaultZones.length === 1 && (
-                    <p className="text-sm text-blue-900 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                    <p className="text-sm text-brand bg-brand-soft border border-brand rounded-xl px-4 py-3">
                       Inbound <strong>GRN</strong> posts to{' '}
                       <span className="font-mono">{warehouseDefaultZones[0].code}</span> —{' '}
                       {warehouseDefaultZones[0].name}.
@@ -661,7 +661,7 @@ const FacilityManagement: React.FC = () => {
                   )}
 
                   {selectedArea.areaType === 'production' && (
-                    <p className="text-sm text-amber-950 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                    <p className="text-sm text-warn bg-warn-soft border border-warn rounded-xl px-4 py-3">
                       Outbound <strong>MTR</strong> transfers should specify Transfer To (ML zone) in Production.
                       The facility <strong>MTR default</strong> zone applies when that field is left empty:{' '}
                       <span className="font-medium">{stats.prodDefaultLabel}</span>.
@@ -670,47 +670,47 @@ const FacilityManagement: React.FC = () => {
 
                   {selectedArea.zones.length === 0 ? (
                     <EmptyState
-                      className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50"
+                      className="rounded-xl border border-dashed border-border bg-surface-2/50"
                       title="This area has no zones yet."
                       action={
                         <button
                           type="button"
                           onClick={openCreateZone}
-                          className="text-sm font-medium text-gray-900 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
+                          className="text-sm font-medium text-ink underline focus:outline-none focus-visible:ring-2 focus-visible:ring-border rounded"
                         >
                           Create the first zone
                         </button>
                       }
                     />
                   ) : (
-                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden w-full">
-                      <div className="px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="rounded-xl border border-border bg-surface overflow-hidden w-full">
+                      <div className="px-4 py-3 border-b border-hairline flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="min-w-0">
-                          <nav className="flex flex-wrap items-center gap-1 text-xs text-gray-500 mb-1" aria-label="Breadcrumb">
+                          <nav className="flex flex-wrap items-center gap-1 text-xs text-ink-3 mb-1" aria-label="Breadcrumb">
                             {selectedZone ? (
                               <button
                                 type="button"
                                 onClick={goBackToZones}
-                                className="text-gray-700 font-medium hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 rounded"
+                                className="text-ink-2 font-medium hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-border rounded"
                               >
                                 {selectedArea.name}
                               </button>
                             ) : (
-                              <span className="text-gray-900 font-semibold">{selectedArea.name}</span>
+                              <span className="text-ink font-semibold">{selectedArea.name}</span>
                             )}
                             {selectedZone && (
                               <>
                                 <span aria-hidden>/</span>
-                                <span className="text-gray-900 font-semibold truncate">{selectedZone.name}</span>
+                                <span className="text-ink font-semibold truncate">{selectedZone.name}</span>
                               </>
                             )}
                           </nav>
-                          <h3 className="text-sm font-semibold text-gray-900">
+                          <h3 className="text-sm font-semibold text-ink">
                             {selectedZone
                               ? `Racks — ${selectedZone.code}`
                               : `Zones — ${selectedArea.name}`}
                           </h3>
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-ink-3 mt-0.5">
                             {selectedZone
                               ? 'Putaway slots in this zone'
                               : 'Click a zone row to view its racks'}
@@ -722,7 +722,7 @@ const FacilityManagement: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={goBackToZones}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 border border-border text-ink-2 rounded-lg text-xs font-medium hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -732,13 +732,13 @@ const FacilityManagement: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => openCreateRack(selectedZone)}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-ink text-white rounded-lg text-xs font-medium hover:bg-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2"
                               >
                                 Add rack
                               </button>
                             </>
                           ) : (
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-ink-3">
                               {selectedArea.zones.length} zone{selectedArea.zones.length !== 1 ? 's' : ''}
                             </span>
                           )}
@@ -749,7 +749,7 @@ const FacilityManagement: React.FC = () => {
                         {!selectedZone ? (
                           <table className="w-full text-sm">
                             <thead className="sticky top-0 z-20">
-                              <tr className="[&_th]:bg-surface-2 bg-gray-50/80 border-b border-gray-100">
+                              <tr className="[&_th]:bg-surface-2 bg-surface-2/80 border-b border-hairline">
                                 <th scope="col" className="px-4 py-3 font-medium w-10" />
                                 <SortableTableTh
                                   label="Code"
@@ -809,7 +809,7 @@ const FacilityManagement: React.FC = () => {
                                 />
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-hairline">
                               {sortedZones.map((zone) => {
                                 const isWh = selectedArea.areaType === 'warehouse';
                                 const rackCount = zone.racks?.length ?? 0;
@@ -817,11 +817,11 @@ const FacilityManagement: React.FC = () => {
                                   <tr
                                     key={zone.id}
                                     onClick={() => selectZone(zone)}
-                                    className="cursor-pointer transition-colors hover:bg-gray-50/80"
+                                    className="cursor-pointer transition-colors hover:bg-surface-2/80"
                                   >
                                     <td className="px-4 py-3 text-lg">{zone.icon || (isWh ? '📦' : '⚙️')}</td>
-                                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{zone.code}</td>
-                                    <td className="px-4 py-3 font-medium text-gray-900">
+                                    <td className="px-4 py-3 font-mono text-xs text-ink-2">{zone.code}</td>
+                                    <td className="px-4 py-3 font-medium text-ink">
                                       {zone.name}
                                       {zone.zohoWarehouseId && (
                                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700">
@@ -833,21 +833,21 @@ const FacilityManagement: React.FC = () => {
                                       <span
                                         className={`px-2 py-0.5 text-xs font-medium rounded-full ${
                                           zone.isActive === false
-                                            ? 'bg-gray-100 text-gray-600'
-                                            : 'bg-emerald-100 text-emerald-700'
+                                            ? 'bg-surface-3 text-ink-2'
+                                            : 'bg-ok-soft text-ok'
                                         }`}
                                       >
                                         {zone.isActive === false ? 'Inactive' : 'Active'}
                                       </span>
                                     </td>
-                                    <td className="px-4 py-3 text-gray-600">{zone.zoneLabel || '—'}</td>
-                                    <td className="px-4 py-3 text-gray-600">
+                                    <td className="px-4 py-3 text-ink-2">{zone.zoneLabel || '—'}</td>
+                                    <td className="px-4 py-3 text-ink-2">
                                       {zone.areaSqm != null ? `${zone.areaSqm} m²` : '—'}
                                     </td>
-                                    <td className="px-4 py-3 text-gray-700 tabular-nums">{rackCount}</td>
+                                    <td className="px-4 py-3 text-ink-2 tabular-nums">{rackCount}</td>
                                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                       {zone.isDefault ? (
-                                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-900">
+                                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-warn-soft text-warn">
                                           {isWh ? 'GRN default' : 'MTR default'}
                                         </span>
                                       ) : (
@@ -855,7 +855,7 @@ const FacilityManagement: React.FC = () => {
                                           type="button"
                                           disabled={defaultSavingZoneId === zone.id}
                                           onClick={() => handleSetDefaultZone(zone)}
-                                          className="text-xs font-medium text-gray-700 hover:text-gray-900 underline disabled:opacity-50"
+                                          className="text-xs font-medium text-ink-2 hover:text-ink underline disabled:opacity-50"
                                         >
                                           {defaultSavingZoneId === zone.id
                                             ? 'Saving…'
@@ -866,7 +866,7 @@ const FacilityManagement: React.FC = () => {
                                       )}
                                     </td>
                                     <td
-                                      className="px-4 py-3 text-gray-500 max-w-xs truncate"
+                                      className="px-4 py-3 text-ink-3 max-w-xs truncate"
                                       title={zone.description || undefined}
                                     >
                                       {zone.description || '—'}
@@ -881,14 +881,14 @@ const FacilityManagement: React.FC = () => {
                             title={
                               <>
                                 No racks in this zone yet. Add a{' '}
-                                <span className="font-mono text-gray-600">DEFAULT</span> rack for inbound putaway.
+                                <span className="font-mono text-ink-2">DEFAULT</span> rack for inbound putaway.
                               </>
                             }
                             action={
                               <button
                                 type="button"
                                 onClick={() => openCreateRack(selectedZone)}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 focus-visible:ring-offset-2"
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-ink text-white rounded-lg text-xs font-medium hover:bg-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-2"
                               >
                                 Add rack
                               </button>
@@ -897,7 +897,7 @@ const FacilityManagement: React.FC = () => {
                         ) : (
                           <table className="w-full text-sm">
                             <thead className="sticky top-0 z-20">
-                              <tr className="[&_th]:bg-surface-2 bg-gray-50/50 border-b border-gray-100">
+                              <tr className="[&_th]:bg-surface-2 bg-surface-2/50 border-b border-hairline">
                                 <SortableTableTh
                                   label="Code"
                                   column="code"
@@ -942,20 +942,20 @@ const FacilityManagement: React.FC = () => {
                                 />
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-hairline">
                               {sortedRacks.map((rack) => (
-                                <tr key={rack.id} className="hover:bg-gray-50/50">
-                                  <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">
+                                <tr key={rack.id} className="hover:bg-surface-2/50">
+                                  <td className="px-4 py-3 font-mono text-xs font-medium text-ink">
                                     {rack.code}
                                   </td>
-                                  <td className="px-4 py-3 text-gray-700">{rack.name || '—'}</td>
-                                  <td className="px-4 py-3 text-gray-700 tabular-nums">{rack.levels}</td>
-                                  <td className="px-4 py-3 text-gray-700 tabular-nums">{rack.slotsTotal}</td>
-                                  <td className="px-4 py-3 text-gray-600 text-xs">
+                                  <td className="px-4 py-3 text-ink-2">{rack.name || '—'}</td>
+                                  <td className="px-4 py-3 text-ink-2 tabular-nums">{rack.levels}</td>
+                                  <td className="px-4 py-3 text-ink-2 tabular-nums">{rack.slotsTotal}</td>
+                                  <td className="px-4 py-3 text-ink-2 text-xs">
                                     {rack.levels} × {rack.slotsTotal} slots
                                   </td>
                                   <td
-                                    className="px-4 py-3 text-gray-500 max-w-xs truncate"
+                                    className="px-4 py-3 text-ink-3 max-w-xs truncate"
                                     title={rack.description || undefined}
                                   >
                                     {rack.description || '—'}
@@ -971,7 +971,7 @@ const FacilityManagement: React.FC = () => {
                 </div>
               ) : (
                 <EmptyState
-                  className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 w-full"
+                  className="rounded-xl border border-dashed border-border bg-surface-2/50 w-full"
                   title="Select an area above to view zones"
                   description="Choose Warehouse or Manufacturing, then pick an area chip."
                 />
@@ -984,22 +984,22 @@ const FacilityManagement: React.FC = () => {
       {showAreaModal && (
         <ModalOverlay onClose={() => setShowAreaModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            className="bg-surface rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-area-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 id="create-area-title" className="text-lg font-semibold text-gray-900">
+            <div className="px-6 py-4 border-b border-hairline">
+              <h3 id="create-area-title" className="text-lg font-semibold text-ink">
                 Create area
               </h3>
-              <p className="text-xs text-gray-500 mt-1">Top-level building or site (warehouse or manufacturing).</p>
+              <p className="text-xs text-ink-3 mt-1">Top-level building or site (warehouse or manufacturing).</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="area-code" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="area-code" className="block text-xs font-medium text-ink-2 mb-1">
                     Code *
                   </label>
                   <input
@@ -1007,12 +1007,12 @@ const FacilityManagement: React.FC = () => {
                     type="text"
                     value={areaForm.code}
                     onChange={(e) => setAreaForm((f) => ({ ...f, code: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                     placeholder="AREA-WH"
                   />
                 </div>
                 <div>
-                  <label htmlFor="area-type" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="area-type" className="block text-xs font-medium text-ink-2 mb-1">
                     Type *
                   </label>
                   <select
@@ -1021,7 +1021,7 @@ const FacilityManagement: React.FC = () => {
                     onChange={(e) =>
                       setAreaForm((f) => ({ ...f, area_type: e.target.value as 'warehouse' | 'production' }))
                     }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   >
                     <option value="warehouse">Warehouse</option>
                     <option value="production">Manufacturing</option>
@@ -1029,7 +1029,7 @@ const FacilityManagement: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label htmlFor="area-name" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="area-name" className="block text-xs font-medium text-ink-2 mb-1">
                   Name *
                 </label>
                 <input
@@ -1037,12 +1037,12 @@ const FacilityManagement: React.FC = () => {
                   type="text"
                   value={areaForm.name}
                   onChange={(e) => setAreaForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   placeholder="Main Warehouse"
                 />
               </div>
               <div>
-                <label htmlFor="area-icon" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="area-icon" className="block text-xs font-medium text-ink-2 mb-1">
                   Icon (emoji)
                 </label>
                 <input
@@ -1050,29 +1050,29 @@ const FacilityManagement: React.FC = () => {
                   type="text"
                   value={areaForm.icon}
                   onChange={(e) => setAreaForm((f) => ({ ...f, icon: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   placeholder="🏭"
                 />
               </div>
               <div>
-                <label htmlFor="area-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="area-desc" className="block text-xs font-medium text-ink-2 mb-1">
                   Description
                 </label>
                 <textarea
                   id="area-desc"
                   value={areaForm.description}
                   onChange={(e) => setAreaForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400 resize-none"
                   rows={2}
                   placeholder="What is stored or produced here?"
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowAreaModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
+                className="px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink rounded-lg"
               >
                 Cancel
               </button>
@@ -1080,7 +1080,7 @@ const FacilityManagement: React.FC = () => {
                 type="button"
                 onClick={saveArea}
                 disabled={areaSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-ink text-white rounded-lg hover:bg-ink disabled:opacity-50"
               >
                 {areaSaving ? 'Saving…' : 'Create'}
               </button>
@@ -1093,22 +1093,22 @@ const FacilityManagement: React.FC = () => {
       {showZoneModal && selectedArea && (
         <ModalOverlay onClose={() => setShowZoneModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            className="bg-surface rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-zone-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 id="create-zone-title" className="text-lg font-semibold text-gray-900">
+            <div className="px-6 py-4 border-b border-hairline">
+              <h3 id="create-zone-title" className="text-lg font-semibold text-ink">
                 Add zone — {selectedArea.name}
               </h3>
-              <p className="text-xs text-gray-500 mt-1">A store, ML line, or room inside this area.</p>
+              <p className="text-xs text-ink-3 mt-1">A store, ML line, or room inside this area.</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="zone-code" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="zone-code" className="block text-xs font-medium text-ink-2 mb-1">
                     Code *
                   </label>
                   <input
@@ -1116,12 +1116,12 @@ const FacilityManagement: React.FC = () => {
                     type="text"
                     value={zoneForm.code}
                     onChange={(e) => setZoneForm((f) => ({ ...f, code: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                     placeholder="LOC-RM"
                   />
                 </div>
                 <div>
-                  <label htmlFor="zone-label" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="zone-label" className="block text-xs font-medium text-ink-2 mb-1">
                     Label
                   </label>
                   <input
@@ -1129,13 +1129,13 @@ const FacilityManagement: React.FC = () => {
                     type="text"
                     value={zoneForm.zone_label}
                     onChange={(e) => setZoneForm((f) => ({ ...f, zone_label: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                     placeholder="Zone A"
                   />
                 </div>
               </div>
               <div>
-                <label htmlFor="zone-name" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="zone-name" className="block text-xs font-medium text-ink-2 mb-1">
                   Name *
                 </label>
                 <input
@@ -1143,13 +1143,13 @@ const FacilityManagement: React.FC = () => {
                   type="text"
                   value={zoneForm.name}
                   onChange={(e) => setZoneForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   placeholder="RM Store"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="zone-icon" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="zone-icon" className="block text-xs font-medium text-ink-2 mb-1">
                     Icon
                   </label>
                   <input
@@ -1157,11 +1157,11 @@ const FacilityManagement: React.FC = () => {
                     type="text"
                     value={zoneForm.icon}
                     onChange={(e) => setZoneForm((f) => ({ ...f, icon: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   />
                 </div>
                 <div>
-                  <label htmlFor="zone-sqm" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="zone-sqm" className="block text-xs font-medium text-ink-2 mb-1">
                     Area (m²)
                   </label>
                   <input
@@ -1169,29 +1169,29 @@ const FacilityManagement: React.FC = () => {
                     type="number"
                     value={zoneForm.area_sqm}
                     onChange={(e) => setZoneForm((f) => ({ ...f, area_sqm: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                     placeholder="100"
                   />
                 </div>
               </div>
               <div>
-                <label htmlFor="zone-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="zone-desc" className="block text-xs font-medium text-ink-2 mb-1">
                   Description
                 </label>
                 <textarea
                   id="zone-desc"
                   value={zoneForm.description}
                   onChange={(e) => setZoneForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400 resize-none"
                   rows={2}
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowZoneModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
+                className="px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink rounded-lg"
               >
                 Cancel
               </button>
@@ -1199,7 +1199,7 @@ const FacilityManagement: React.FC = () => {
                 type="button"
                 onClick={saveZone}
                 disabled={zoneSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-ink text-white rounded-lg hover:bg-ink disabled:opacity-50"
               >
                 {zoneSaving ? 'Saving…' : 'Create'}
               </button>
@@ -1212,21 +1212,21 @@ const FacilityManagement: React.FC = () => {
       {showRackModal && rackZone && (
         <ModalOverlay onClose={() => setShowRackModal(false)} z="z-50" dismissable={false} backdrop="default">
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            className="bg-surface rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-rack-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 id="create-rack-title" className="text-lg font-semibold text-gray-900">
+            <div className="px-6 py-4 border-b border-hairline">
+              <h3 id="create-rack-title" className="text-lg font-semibold text-ink">
                 Add rack — {rackZone.name}
               </h3>
-              <p className="text-xs text-gray-500 mt-1 font-mono">{rackZone.code}</p>
+              <p className="text-xs text-ink-3 mt-1 font-mono">{rackZone.code}</p>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label htmlFor="rack-code" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="rack-code" className="block text-xs font-medium text-ink-2 mb-1">
                   Code *
                 </label>
                 <input
@@ -1234,12 +1234,12 @@ const FacilityManagement: React.FC = () => {
                   type="text"
                   value={rackForm.code}
                   onChange={(e) => setRackForm((f) => ({ ...f, code: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   placeholder="DEFAULT or A1"
                 />
               </div>
               <div>
-                <label htmlFor="rack-name" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="rack-name" className="block text-xs font-medium text-ink-2 mb-1">
                   Name
                 </label>
                 <input
@@ -1247,13 +1247,13 @@ const FacilityManagement: React.FC = () => {
                   type="text"
                   value={rackForm.name}
                   onChange={(e) => setRackForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   placeholder="Default storage"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="rack-levels" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="rack-levels" className="block text-xs font-medium text-ink-2 mb-1">
                     Levels
                   </label>
                   <input
@@ -1262,11 +1262,11 @@ const FacilityManagement: React.FC = () => {
                     min={1}
                     value={rackForm.levels}
                     onChange={(e) => setRackForm((f) => ({ ...f, levels: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   />
                 </div>
                 <div>
-                  <label htmlFor="rack-slots" className="block text-xs font-medium text-gray-700 mb-1">
+                  <label htmlFor="rack-slots" className="block text-xs font-medium text-ink-2 mb-1">
                     Slots total
                   </label>
                   <input
@@ -1275,31 +1275,31 @@ const FacilityManagement: React.FC = () => {
                     min={1}
                     value={rackForm.slots_total}
                     onChange={(e) => setRackForm((f) => ({ ...f, slots_total: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400"
                   />
                 </div>
               </div>
               <div>
-                <label htmlFor="rack-desc" className="block text-xs font-medium text-gray-700 mb-1">
+                <label htmlFor="rack-desc" className="block text-xs font-medium text-ink-2 mb-1">
                   Description
                 </label>
                 <textarea
                   id="rack-desc"
                   value={rackForm.description}
                   onChange={(e) => setRackForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 resize-none"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border/10 focus:border-gray-400 resize-none"
                   rows={2}
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setShowRackModal(false);
                   setRackZone(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
+                className="px-4 py-2 text-sm font-medium text-ink-2 hover:text-ink rounded-lg"
               >
                 Cancel
               </button>
@@ -1307,7 +1307,7 @@ const FacilityManagement: React.FC = () => {
                 type="button"
                 onClick={saveRack}
                 disabled={rackSaving}
-                className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-ink text-white rounded-lg hover:bg-ink disabled:opacity-50"
               >
                 {rackSaving ? 'Saving…' : 'Create'}
               </button>

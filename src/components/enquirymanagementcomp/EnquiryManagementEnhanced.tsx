@@ -406,13 +406,13 @@ useEffect(() => {
  return (
   <div className="w-full space-y-6">
    {/* View Toggle */}
-   <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-100 rounded-xl w-full sm:w-fit">
+   <div className="flex flex-wrap items-center gap-1 p-1 bg-surface-3 rounded-xl w-full sm:w-fit">
     <button
      onClick={() => setActiveView('dashboard')}
      className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'dashboard'
-       ? 'bg-white text-gray-900 shadow-sm'
-       : 'text-gray-600 hover:text-gray-900'
+       ? 'bg-surface text-ink shadow-sm'
+       : 'text-ink-2 hover:text-ink'
      }`}
     >
      <span className="flex items-center gap-2">
@@ -426,8 +426,8 @@ useEffect(() => {
      onClick={() => setActiveView('tickets')}
      className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'tickets'
-       ? 'bg-white text-gray-900 shadow-sm'
-       : 'text-gray-600 hover:text-gray-900'
+       ? 'bg-surface text-ink shadow-sm'
+       : 'text-ink-2 hover:text-ink'
      }`}
     >
      <span className="flex items-center gap-2">
@@ -435,7 +435,7 @@ useEffect(() => {
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
       Customer tickets
-      <span className="px-2 py-0.5 bg-gray-100 text-slate-900 text-xs rounded-full">
+      <span className="px-2 py-0.5 bg-surface-3 text-ink text-xs rounded-full">
        {tickets.filter((t) => (t.ticketScope || 'customer') === 'customer').length}
       </span>
      </span>
@@ -444,8 +444,8 @@ useEffect(() => {
      onClick={() => setActiveView('cross-team')}
      className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'cross-team'
-       ? 'bg-white text-gray-900 shadow-sm'
-       : 'text-gray-600 hover:text-gray-900'
+       ? 'bg-surface text-ink shadow-sm'
+       : 'text-ink-2 hover:text-ink'
      }`}
     >
      <span className="flex items-center gap-2">
@@ -462,8 +462,8 @@ useEffect(() => {
      onClick={() => setActiveView('customizations')}
      className={`px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all w-full sm:w-auto ${
       activeView === 'customizations'
-       ? 'bg-white text-gray-900 shadow-sm'
-       : 'text-gray-600 hover:text-gray-900'
+       ? 'bg-surface text-ink shadow-sm'
+       : 'text-ink-2 hover:text-ink'
      }`}
     >
      <span className="flex items-center gap-2">
@@ -471,7 +471,7 @@ useEffect(() => {
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
       </svg>
       Product Customizations
-      <span className="px-2 py-0.5 bg-gray-100 text-slate-900 text-xs rounded-full">
+      <span className="px-2 py-0.5 bg-surface-3 text-ink text-xs rounded-full">
        {customizations.length}
       </span>
      </span>
@@ -499,11 +499,11 @@ useEffect(() => {
 
      {/* Actions Bar */}
      <div className="flex items-center justify-between">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-2">
        Showing {paginatedTickets.length} of {filteredTickets.length} tickets
       </p>
       <div className="flex items-center gap-2">
-       <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+       <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 transition-colors">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
         </svg>
@@ -512,7 +512,7 @@ useEffect(() => {
        <button
         type="button"
         onClick={() => setCreateCustomerModalOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-ink rounded-lg hover:bg-ink transition-colors"
        >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -547,7 +547,7 @@ useEffect(() => {
        <button
         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
         disabled={currentPage === 1}
-        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
        >
         Previous
        </button>
@@ -558,8 +558,8 @@ useEffect(() => {
           onClick={() => setCurrentPage(page)}
           className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${
            currentPage === page
-            ? 'bg-slate-800 text-white'
-            : 'text-gray-700 hover:bg-gray-100'
+            ? 'bg-ink text-white'
+            : 'text-ink-2 hover:bg-surface-3'
           }`}
          >
           {page}
@@ -569,7 +569,7 @@ useEffect(() => {
        <button
         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
         disabled={currentPage === totalPages}
-        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
        >
         Next
        </button>
@@ -590,7 +590,7 @@ useEffect(() => {
       availableStaff={availableStaff}
      />
      <div className="flex items-center justify-between">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-ink-2">
        Showing {paginatedTickets.length} of {filteredTickets.length} cross-team tickets
       </p>
       <button
@@ -626,7 +626,7 @@ useEffect(() => {
        <button
         onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
         disabled={currentPage === 1}
-        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
        >
         Previous
        </button>
@@ -638,7 +638,7 @@ useEffect(() => {
           className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${
            currentPage === page
             ? 'bg-violet-700 text-white'
-            : 'text-gray-700 hover:bg-gray-100'
+            : 'text-ink-2 hover:bg-surface-3'
           }`}
          >
           {page}
@@ -648,7 +648,7 @@ useEffect(() => {
        <button
         onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
         disabled={currentPage === totalPages}
-        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
        >
         Next
        </button>
@@ -660,13 +660,13 @@ useEffect(() => {
   {activeView === 'customizations' && (
    <div className="space-y-4">
     <div className="flex items-center justify-between">
-     <p className="text-sm text-gray-600">
+     <p className="text-sm text-ink-2">
       Showing {customizations.length} submitted product customizations
      </p>
      <button
       type="button"
       onClick={() => void loadCustomizations()}
-      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+      className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-2 transition-colors"
      >
       Refresh
      </button>
@@ -674,10 +674,10 @@ useEffect(() => {
     {customizationsLoading ? (
      <TableSkeleton rows={6} cols={9} />
     ) : customizations.length > 0 ? (
-     <div className="overflow-auto max-h-[70vh] bg-white rounded-xl border border-gray-100">
+     <div className="overflow-auto max-h-[70vh] bg-surface rounded-xl border border-hairline">
       <table className="w-full text-sm">
        <thead className="sticky top-0 z-20">
-        <tr className="[&_th]:bg-gray-50 bg-gray-50 border-b border-gray-200 text-left">
+        <tr className="[&_th]:bg-surface-2 bg-surface-2 border-b border-border text-left">
          <th scope="col" className="px-4 py-3">ID</th>
          <th scope="col" className="px-4 py-3">Customer</th>
          <th scope="col" className="px-4 py-3">Product</th>
@@ -694,37 +694,37 @@ useEffect(() => {
          const customerName = [row.user?.fname, row.user?.lname].filter(Boolean).join(' ').trim() || row.user?.email || '-';
          const productName = row.product?.product_name || (row.product_id ? `Product #${row.product_id}` : '-');
          return (
-          <tr key={row.customization_id} className="border-b border-gray-100 align-top">
+          <tr key={row.customization_id} className="border-b border-hairline align-top">
            <td className="px-4 py-3 font-medium">#{row.customization_id}</td>
            <td className="px-4 py-3">
-            <div className="font-medium text-gray-900">{customerName}</div>
-            <div className="text-xs text-gray-500">{row.user?.mobile || row.user?.email || '-'}</div>
+            <div className="font-medium text-ink">{customerName}</div>
+            <div className="text-xs text-ink-3">{row.user?.mobile || row.user?.email || '-'}</div>
            </td>
            <td className="px-4 py-3">
-            <div className="font-medium text-gray-900">{productName}</div>
-            <div className="text-xs text-gray-500">{row.product?.zoho_sku_code ?? row.product?.product_sku ?? '-'}</div>
+            <div className="font-medium text-ink">{productName}</div>
+            <div className="text-xs text-ink-3">{row.product?.zoho_sku_code ?? row.product?.product_sku ?? '-'}</div>
            </td>
            <td className="px-4 py-3">
-            <div className="text-gray-900">{row.care || '-'}</div>
-            <div className="text-xs text-gray-500">{row.category || '-'}</div>
+            <div className="text-ink">{row.care || '-'}</div>
+            <div className="text-xs text-ink-3">{row.category || '-'}</div>
            </td>
            <td className="px-4 py-3 max-w-80">
-            <div className="line-clamp-2 text-gray-700">{row.formulationSummary || row.userNotes || '-'}</div>
+            <div className="line-clamp-2 text-ink-2">{row.formulationSummary || row.userNotes || '-'}</div>
            </td>
            <td className="px-4 py-3">{row.packagingType || '-'}</td>
            <td className="px-4 py-3">
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+            <span className="inline-flex items-center rounded-full bg-surface-3 px-2.5 py-0.5 text-xs font-medium text-ink">
              {row.status || 'Pending'}
             </span>
            </td>
-           <td className="px-4 py-3 text-gray-600">
+           <td className="px-4 py-3 text-ink-2">
             {row.created_at ? new Date(row.created_at).toLocaleDateString('en-GB') : '-'}
            </td>
            <td className="px-4 py-3">
             <button
              type="button"
              onClick={() => setSelectedCustomization(row)}
-             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-white hover:bg-slate-900"
+             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-ink text-white hover:bg-ink"
             >
              View
             </button>
@@ -743,62 +743,62 @@ useEffect(() => {
 
   {selectedCustomization && (
    <ModalOverlay onClose={() => setSelectedCustomization(null)} z="z-50" dismissable={true} backdrop="default">
-    <div role="dialog" aria-modal="true" aria-labelledby="product-customization-detail-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
+    <div role="dialog" aria-modal="true" aria-labelledby="product-customization-detail-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-surface border border-border shadow-xl p-5">
      <div className="flex items-start justify-between mb-4">
-      <h3 id="product-customization-detail-title" className="text-lg font-semibold text-gray-900">
+      <h3 id="product-customization-detail-title" className="text-lg font-semibold text-ink">
        Product Customization #{selectedCustomization.customization_id}
       </h3>
-      <button type="button" onClick={() => setSelectedCustomization(null)} className="text-gray-500 hover:text-gray-800">
+      <button type="button" onClick={() => setSelectedCustomization(null)} className="text-ink-3 hover:text-ink">
        Close
       </button>
      </div>
 
      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="rounded-lg border border-gray-200 p-3">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Customer</p>
-       <p className="text-sm text-gray-900">
+      <div className="rounded-lg border border-border p-3">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Customer</p>
+       <p className="text-sm text-ink">
         {[selectedCustomization.user?.fname, selectedCustomization.user?.lname].filter(Boolean).join(' ').trim()
          || selectedCustomization.user?.email || '-'}
        </p>
-       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.user?.mobile || '-'}</p>
+       <p className="text-xs text-ink-3 mt-1">{selectedCustomization.user?.mobile || '-'}</p>
       </div>
-      <div className="rounded-lg border border-gray-200 p-3">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Product</p>
-       <p className="text-sm text-gray-900">
+      <div className="rounded-lg border border-border p-3">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Product</p>
+       <p className="text-sm text-ink">
         {selectedCustomization.product?.product_name || (selectedCustomization.product_id ? `Product #${selectedCustomization.product_id}` : '-')}
        </p>
-       <p className="text-xs text-gray-500 mt-1">{selectedCustomization.product?.zoho_sku_code ?? selectedCustomization.product?.product_sku ?? '-'}</p>
+       <p className="text-xs text-ink-3 mt-1">{selectedCustomization.product?.zoho_sku_code ?? selectedCustomization.product?.product_sku ?? '-'}</p>
       </div>
-      <div className="rounded-lg border border-gray-200 p-3">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Care / Category</p>
-       <p className="text-sm text-gray-900">{selectedCustomization.care || '-'} / {selectedCustomization.category || '-'}</p>
+      <div className="rounded-lg border border-border p-3">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Care / Category</p>
+       <p className="text-sm text-ink">{selectedCustomization.care || '-'} / {selectedCustomization.category || '-'}</p>
       </div>
-      <div className="rounded-lg border border-gray-200 p-3">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Packaging Type</p>
-       <p className="text-sm text-gray-900">{selectedCustomization.packagingType || '-'}</p>
+      <div className="rounded-lg border border-border p-3">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Packaging Type</p>
+       <p className="text-sm text-ink">{selectedCustomization.packagingType || '-'}</p>
       </div>
      </div>
 
-     <div className="mt-4 rounded-lg border border-gray-200 p-3">
-      <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Formulation Summary</p>
-      <p className="text-sm text-gray-800 whitespace-pre-wrap">
+     <div className="mt-4 rounded-lg border border-border p-3">
+      <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Formulation Summary</p>
+      <p className="text-sm text-ink whitespace-pre-wrap">
        {selectedCustomization.formulationSummary || '-'}
       </p>
       {selectedCustomization.formulation && (
-       <pre className="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700 overflow-x-auto">
+       <pre className="mt-2 rounded bg-surface-2 p-2 text-xs text-ink-2 overflow-x-auto">
         {JSON.stringify(selectedCustomization.formulation, null, 2)}
        </pre>
       )}
      </div>
 
-     <div className="mt-4 rounded-lg border border-gray-200 p-3">
-      <p className="text-xs font-semibold uppercase text-gray-500 mb-2">Client Uploaded Photo</p>
+     <div className="mt-4 rounded-lg border border-border p-3">
+      <p className="text-xs font-semibold uppercase text-ink-3 mb-2">Client Uploaded Photo</p>
       {selectedCustomization.packaging_image ? (
        <div>
         <img
          src={resolveImageUrl(selectedCustomization.packaging_image)}
          alt="Client packaging upload"
-         className="max-h-56 rounded border border-gray-200 object-contain bg-gray-50"
+         className="max-h-56 rounded border border-border object-contain bg-surface-2"
          onError={(e) => {
           const target = e.currentTarget as HTMLImageElement;
           target.style.display = 'none';
@@ -808,23 +808,23 @@ useEffect(() => {
          href={resolveImageUrl(selectedCustomization.packaging_image)}
          target="_blank"
          rel="noreferrer"
-         className="mt-2 inline-block text-xs text-blue-600 hover:underline"
+         className="mt-2 inline-block text-xs text-brand hover:underline"
         >
          Open original image
         </a>
       </div>
       ) : (
-       <p className="text-sm text-gray-500">No uploaded image found.</p>
+       <p className="text-sm text-ink-3">No uploaded image found.</p>
       )}
      </div>
 
      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="rounded-lg border border-gray-200 p-3">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Status</p>
+      <div className="rounded-lg border border-border p-3">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Status</p>
        <select
         value={selectedCustomization.status || 'Pending'}
         onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, status: e.target.value } : prev)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm"
         aria-label="Status"
        >
         <option value="Pending">Pending</option>
@@ -834,8 +834,8 @@ useEffect(() => {
        </select>
       </div>
 
-      <div className="rounded-lg border border-gray-200 p-3 md:col-span-2">
-       <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Allot BD Team Member</p>
+      <div className="rounded-lg border border-border p-3 md:col-span-2">
+       <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Allot BD Team Member</p>
        <select
         value={selectedCustomization.assigned_bd_user_id ?? ''}
         onChange={(e) => {
@@ -848,7 +848,7 @@ useEffect(() => {
           assigned_bd_email: selectedUser?.email ?? null,
          } : prev);
         }}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm"
         aria-label="Allot BD Team Member"
        >
         <option value="">Unassigned</option>
@@ -859,20 +859,20 @@ useEffect(() => {
         ))}
        </select>
        {selectedCustomization.assigned_bd_name && (
-        <p className="mt-2 text-xs text-gray-600">
+        <p className="mt-2 text-xs text-ink-2">
          Assigned: {selectedCustomization.assigned_bd_name} ({selectedCustomization.assigned_bd_email || 'no email'})
         </p>
        )}
       </div>
      </div>
 
-     <div className="mt-4 rounded-lg border border-gray-200 p-3">
-      <p className="text-xs font-semibold uppercase text-gray-500 mb-1">Internal Notes</p>
+     <div className="mt-4 rounded-lg border border-border p-3">
+      <p className="text-xs font-semibold uppercase text-ink-3 mb-1">Internal Notes</p>
       <textarea
        rows={3}
        value={selectedCustomization.internal_notes || ''}
        onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, internal_notes: e.target.value } : prev)}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+       className="w-full px-3 py-2 border border-border rounded-lg text-sm"
        placeholder="Add internal notes for BD/operations follow-up"
        aria-label="Internal Notes"
       />
@@ -882,7 +882,7 @@ useEffect(() => {
       <button
        type="button"
        onClick={() => setSelectedCustomization(null)}
-       className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700"
+       className="px-4 py-2 border border-border rounded-lg text-sm text-ink-2"
       >
        Cancel
       </button>
@@ -890,7 +890,7 @@ useEffect(() => {
        type="button"
        disabled={savingCustomization}
        onClick={() => void handleCustomizationSave()}
-       className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm disabled:opacity-60"
+       className="px-4 py-2 bg-ink text-white rounded-lg text-sm disabled:opacity-60"
       >
        {savingCustomization ? 'Saving...' : 'Save Allotment'}
       </button>

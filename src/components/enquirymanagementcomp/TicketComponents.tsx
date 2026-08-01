@@ -17,13 +17,13 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<TicketStatus, { label: string; color: string; bgColor: string }> = {
- 'new': { label: 'New', color: 'text-blue-700', bgColor: 'bg-blue-50 border-blue-200' },
- 'open': { label: 'Open', color: 'text-slate-900', bgColor: 'bg-gray-50 border-gray-200' },
+ 'new': { label: 'New', color: 'text-brand', bgColor: 'bg-brand-soft border-brand' },
+ 'open': { label: 'Open', color: 'text-ink', bgColor: 'bg-surface-2 border-border' },
  'in-progress': { label: 'In Progress', color: 'text-purple-700', bgColor: 'bg-purple-50 border-purple-200' },
- 'pending-customer': { label: 'Pending Customer', color: 'text-orange-700', bgColor: 'bg-orange-50 border-orange-200' },
- 'pending-internal': { label: 'Pending Internal', color: 'text-yellow-700', bgColor: 'bg-yellow-50 border-yellow-200' },
- 'resolved': { label: 'Resolved', color: 'text-emerald-700', bgColor: 'bg-emerald-50 border-emerald-200' },
- 'closed': { label: 'Closed', color: 'text-gray-600', bgColor: 'bg-gray-100 border-gray-200' },
+ 'pending-customer': { label: 'Pending Customer', color: 'text-warn', bgColor: 'bg-warn-soft border-warn' },
+ 'pending-internal': { label: 'Pending Internal', color: 'text-warn', bgColor: 'bg-warn-soft border-warn' },
+ 'resolved': { label: 'Resolved', color: 'text-ok', bgColor: 'bg-ok-soft border-ok' },
+ 'closed': { label: 'Closed', color: 'text-ink-2', bgColor: 'bg-surface-3 border-border' },
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' }) => {
@@ -44,10 +44,10 @@ interface PriorityBadgeProps {
 }
 
 const priorityConfig: Record<TicketPriority, { label: string; color: string; bgColor: string; icon: string }> = {
- 'low': { label: 'Low', color: 'text-gray-600', bgColor: 'bg-gray-100', icon: '' },
- 'medium': { label: 'Medium', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: '' },
- 'high': { label: 'High', color: 'text-slate-800', bgColor: 'bg-orange-100', icon: '' },
- 'urgent': { label: 'Urgent', color: 'text-red-600', bgColor: 'bg-red-100', icon: '' },
+ 'low': { label: 'Low', color: 'text-ink-2', bgColor: 'bg-surface-3', icon: '' },
+ 'medium': { label: 'Medium', color: 'text-brand', bgColor: 'bg-brand-soft', icon: '' },
+ 'high': { label: 'High', color: 'text-ink', bgColor: 'bg-warn-soft', icon: '' },
+ 'urgent': { label: 'Urgent', color: 'text-err', bgColor: 'bg-err-soft', icon: '' },
 };
 
 export const PriorityBadge: React.FC<PriorityBadgeProps> = ({ priority, size = 'md' }) => {
@@ -86,7 +86,7 @@ export const CategoryBadge: React.FC<{ category: TicketCategory | string }> = ({
    .replace(/-/g, ' ')
    .replace(/\b\w/g, (c) => c.toUpperCase());
  return (
-  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-3 text-ink-2 border border-border">
    {label}
   </span>
  );
@@ -127,28 +127,28 @@ export const StaffAssignmentDropdown: React.FC<StaffAssignmentDropdownProps> = (
     disabled={disabled}
     className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
      disabled 
-      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-      : 'bg-white hover:bg-gray-50 border-gray-300'
+      ? 'bg-surface-3 text-ink-4 cursor-not-allowed' 
+      : 'bg-surface hover:bg-surface-2 border-border'
     }`}
    >
     {currentAssignee ? (
      <>
-      <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-white text-xs font-semibold">
+      <div className="w-7 h-7 rounded-full bg-ink flex items-center justify-center text-white text-xs font-semibold">
        {currentAssignee.staffName.split(' ').map(n => n[0]).join('')}
       </div>
-      <span className="text-sm font-medium text-gray-700">{currentAssignee.staffName}</span>
+      <span className="text-sm font-medium text-ink-2">{currentAssignee.staffName}</span>
      </>
     ) : (
      <>
-      <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
-       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="w-7 h-7 rounded-full bg-surface-3 flex items-center justify-center">
+       <svg className="w-4 h-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
        </svg>
       </div>
-      <span className="text-sm text-gray-500">Unassigned</span>
+      <span className="text-sm text-ink-3">Unassigned</span>
      </>
     )}
-    <svg className="w-4 h-4 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-ink-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
    </button>
@@ -156,15 +156,15 @@ export const StaffAssignmentDropdown: React.FC<StaffAssignmentDropdownProps> = (
    {isOpen && (
     <>
      <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-     <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 z-20 overflow-hidden">
+     <div className="absolute top-full left-0 mt-2 w-72 bg-surface rounded-xl shadow-lg border border-border z-20 overflow-hidden">
       {/* Search */}
-      <div className="p-3 border-b border-gray-100">
+      <div className="p-3 border-b border-hairline">
        <input
         type="text"
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         placeholder="Search staff..."
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:ring-2 focus:ring-border focus:border-transparent"
         aria-label="Search staff"
        />
       </div>
@@ -177,14 +177,14 @@ export const StaffAssignmentDropdown: React.FC<StaffAssignmentDropdownProps> = (
           onUnassign();
           setIsOpen(false);
          }}
-         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left border-b border-gray-100"
+         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-2 text-left border-b border-hairline"
         >
-         <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
+          <svg className="w-4 h-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
          </div>
-         <span className="text-sm text-gray-600">Remove Assignment</span>
+         <span className="text-sm text-ink-2">Remove Assignment</span>
         </button>
        )}
        
@@ -196,32 +196,32 @@ export const StaffAssignmentDropdown: React.FC<StaffAssignmentDropdownProps> = (
           setIsOpen(false);
          }}
          disabled={!staff.isAvailable || staff.activeTicketCount >= staff.maxTicketCapacity}
-         className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left ${
+         className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-2 text-left ${
           !staff.isAvailable || staff.activeTicketCount >= staff.maxTicketCapacity
            ? 'opacity-50 cursor-not-allowed'
            : ''
-         } ${currentAssignee?.staffId === staff.id ? 'bg-gray-50' : ''}`}
+         } ${currentAssignee?.staffId === staff.id ? 'bg-surface-2' : ''}`}
         >
-         <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white text-xs font-semibold">
+         <div className="w-8 h-8 rounded-full bg-ink flex items-center justify-center text-white text-xs font-semibold">
           {staff.name.split(' ').map(n => n[0]).join('')}
          </div>
          <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{staff.name}</p>
-          <p className="text-xs text-gray-500">{staff.department}</p>
+          <p className="text-sm font-medium text-ink truncate">{staff.name}</p>
+          <p className="text-xs text-ink-3">{staff.department}</p>
          </div>
          <div className="text-right">
-          <p className="text-xs font-medium text-gray-600">
+          <p className="text-xs font-medium text-ink-2">
            {staff.activeTicketCount}/{staff.maxTicketCapacity}
           </p>
           {!staff.isAvailable && (
-           <span className="text-xs text-red-500">Unavailable</span>
+           <span className="text-xs text-err">Unavailable</span>
           )}
          </div>
         </button>
        ))}
 
        {filteredStaff.length === 0 && (
-        <div className="px-4 py-8 text-center text-gray-500 text-sm">
+        <div className="px-4 py-8 text-center text-ink-3 text-sm">
          No staff found
         </div>
        )}
@@ -259,7 +259,7 @@ export const StatusDropdown: React.FC<StatusDropdownProps> = ({
    >
     <StatusBadge status={currentStatus} />
     {!disabled && (
-     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+     <svg className="w-4 h-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
      </svg>
     )}
@@ -268,7 +268,7 @@ export const StatusDropdown: React.FC<StatusDropdownProps> = ({
    {isOpen && (
     <>
      <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-     <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-2">
+     <div className="absolute top-full left-0 mt-2 w-48 bg-surface rounded-xl shadow-lg border border-border z-20 py-2">
       {statuses.map(status => (
        <button
         key={status}
@@ -276,8 +276,8 @@ export const StatusDropdown: React.FC<StatusDropdownProps> = ({
          onStatusChange(status);
          setIsOpen(false);
         }}
-        className={`w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 ${
-         currentStatus === status ? 'bg-gray-50' : ''
+        className={`w-full px-4 py-2 text-left hover:bg-surface-2 flex items-center gap-2 ${
+         currentStatus === status ? 'bg-surface-2' : ''
         }`}
        >
         <StatusBadge status={status} size="sm" />
@@ -314,7 +314,7 @@ export const PriorityDropdown: React.FC<PriorityDropdownProps> = ({
    >
     <PriorityBadge priority={currentPriority} />
     {!disabled && (
-     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+     <svg className="w-4 h-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
      </svg>
     )}
@@ -323,7 +323,7 @@ export const PriorityDropdown: React.FC<PriorityDropdownProps> = ({
    {isOpen && (
     <>
      <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-     <div className="absolute top-full left-0 mt-2 w-40 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-2">
+     <div className="absolute top-full left-0 mt-2 w-40 bg-surface rounded-xl shadow-lg border border-border z-20 py-2">
       {priorities.map(priority => (
        <button
         key={priority}
@@ -331,8 +331,8 @@ export const PriorityDropdown: React.FC<PriorityDropdownProps> = ({
          onPriorityChange(priority);
          setIsOpen(false);
         }}
-        className={`w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 ${
-         currentPriority === priority ? 'bg-gray-50' : ''
+        className={`w-full px-4 py-2 text-left hover:bg-surface-2 flex items-center gap-2 ${
+         currentPriority === priority ? 'bg-surface-2' : ''
         }`}
        >
         <PriorityBadge priority={priority} size="sm" />
@@ -375,11 +375,11 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
  }).length;
 
  return (
-  <div className="bg-white rounded-xl border border-gray-200 p-4">
+  <div className="bg-surface rounded-xl border border-border p-4">
    {/* Search Bar */}
    <div className="flex flex-col sm:flex-row gap-4">
     <div className="flex-1 relative">
-     <svg className="absolute left-3 top-3 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+     <svg className="absolute left-3 top-3 w-5 h-5 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
      </svg>
      <input
@@ -387,7 +387,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       placeholder="Search by ticket #, customer name, email..."
       value={filters.searchTerm || ''}
       onChange={(e) => onFiltersChange({ ...filters, searchTerm: e.target.value })}
-      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+      className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
       aria-label="Search by ticket #, customer name, email"
      />
     </div>
@@ -396,8 +396,8 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       onClick={() => setIsExpanded(!isExpanded)}
       className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-colors ${
        isExpanded || activeFilterCount > 0
-        ? 'bg-gray-50 border-amber-300 text-slate-900'
-        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+        ? 'bg-surface-2 border-warn text-ink'
+        : 'bg-surface border-border text-ink-2 hover:bg-surface-2'
       }`}
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -405,7 +405,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       </svg>
       Filters
       {activeFilterCount > 0 && (
-       <span className="w-5 h-5 bg-slate-800 text-white text-xs rounded-full flex items-center justify-center">
+       <span className="w-5 h-5 bg-ink text-white text-xs rounded-full flex items-center justify-center">
         {activeFilterCount}
        </span>
       )}
@@ -413,7 +413,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
      {activeFilterCount > 0 && (
       <button
        onClick={onClear}
-       className="px-4 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+       className="px-4 py-2.5 text-ink-2 hover:text-ink hover:bg-surface-3 rounded-lg transition-colors"
       >
        Clear
       </button>
@@ -423,17 +423,17 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
    {/* Expanded Filters */}
    {isExpanded && (
-    <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="mt-4 pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
      {/* Status */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Status</label>
       <select
        value={filters.status?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
         status: e.target.value ? [e.target.value as TicketStatus] : undefined
        })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="Status"
       >
        <option value="">All Status</option>
@@ -445,14 +445,14 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
      {/* Priority */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Priority</label>
       <select
        value={filters.priority?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
         priority: e.target.value ? [e.target.value as TicketPriority] : undefined
        })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="Priority"
       >
        <option value="">All Priorities</option>
@@ -464,14 +464,14 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
      {/* Category */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Category</label>
       <select
        value={filters.category?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
         category: e.target.value ? [e.target.value as TicketCategory] : undefined
        })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="Category"
       >
        <option value="">All Categories</option>
@@ -483,14 +483,14 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
      {/* Assignee */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Assigned To</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Assigned To</label>
       <select
        value={filters.assigneeId || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
         assigneeId: e.target.value || undefined
        })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="Assigned To"
       >
        <option value="">All Staff</option>
@@ -503,24 +503,24 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
      {/* Date From */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">From Date</label>
       <input
        type="date"
        value={filters.dateFrom || ''}
        onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value || undefined })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="From Date"
       />
      </div>
 
      {/* Date To */}
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">To Date</label>
       <input
        type="date"
        value={filters.dateTo || ''}
        onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value || undefined })}
-       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-border focus:border-transparent"
        aria-label="To Date"
       />
      </div>
@@ -532,9 +532,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         type="checkbox"
         checked={filters.isOverdue || false}
         onChange={(e) => onFiltersChange({ ...filters, isOverdue: e.target.checked || undefined })}
-        className="w-4 h-4 text-slate-700 border-gray-300 rounded focus:ring-slate-800"
+        className="w-4 h-4 text-ink-2 border-border rounded focus:ring-border"
        />
-       <span className="text-sm text-gray-700">Overdue Only</span>
+       <span className="text-sm text-ink-2">Overdue Only</span>
       </label>
      </div>
 
@@ -545,9 +545,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         type="checkbox"
         checked={filters.hasLinkedOrders || false}
         onChange={(e) => onFiltersChange({ ...filters, hasLinkedOrders: e.target.checked || undefined })}
-        className="w-4 h-4 text-slate-700 border-gray-300 rounded focus:ring-slate-800"
+        className="w-4 h-4 text-ink-2 border-border rounded focus:ring-border"
        />
-       <span className="text-sm text-gray-700">Has Linked Orders</span>
+       <span className="text-sm text-ink-2">Has Linked Orders</span>
       </label>
      </div>
     </div>
@@ -590,8 +590,8 @@ export const TicketRow: React.FC<TicketRowProps> = ({
   <div
    className={`border rounded-xl p-4 transition-all cursor-pointer hover:shadow-md ${
     isSelected 
-     ? 'border-amber-400 bg-gray-50/50 shadow-sm' 
-     : 'border-gray-200 hover:border-gray-300 bg-white'
+     ? 'border-warn bg-surface-2/50 shadow-sm' 
+     : 'border-border hover:border-border bg-surface'
    } ${ticket.isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
    onClick={() => onSelect(ticket)}
   >
@@ -599,7 +599,7 @@ export const TicketRow: React.FC<TicketRowProps> = ({
     {/* Left: Ticket Info */}
     <div className="flex-1 min-w-0">
      <div className="flex items-center gap-2 mb-2 flex-wrap">
-      <span className="font-mono text-sm font-semibold text-gray-600">
+      <span className="font-mono text-sm font-semibold text-ink-2">
        #{ticket.ticketNumber}
       </span>
       {ticket.ticketScope === 'internal' && (
@@ -610,36 +610,36 @@ export const TicketRow: React.FC<TicketRowProps> = ({
       <StatusBadge status={ticket.status} size="sm" />
       <PriorityBadge priority={ticket.priority} size="sm" />
       {ticket.isOverdue && (
-       <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
+       <span className="px-2 py-0.5 bg-err-soft text-err text-xs font-medium rounded">
         OVERDUE
        </span>
       )}
      </div>
-     <h4 className="font-medium text-gray-900 truncate">{ticket.subject}</h4>
+     <h4 className="font-medium text-ink truncate">{ticket.subject}</h4>
      {ticket.collaboration && ticket.ticketScope === 'internal' && (
       <div className="mt-2 flex flex-wrap gap-1.5">
        {ticket.collaboration.issueAreas?.includes('pis') && (
-        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-900">
+        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-warn-soft text-warn">
          PIS
         </span>
        )}
        {ticket.collaboration.taggedTeams?.slice(0, 4).map((t) => (
         <span
          key={t.id}
-         className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200"
+         className="px-2 py-0.5 rounded text-xs bg-surface-3 text-ink-2 border border-border"
         >
          {t.name || t.id}
         </span>
        ))}
        {ticket.collaboration.taggedMembers && ticket.collaboration.taggedMembers.length > 0 && (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-ink-3">
          @{ticket.collaboration.taggedMembers.length} colleague
          {ticket.collaboration.taggedMembers.length > 1 ? 's' : ''}
         </span>
        )}
       </div>
      )}
-     <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
+     <div className="flex items-center gap-3 mt-2 text-sm text-ink-3">
       <span className="flex items-center gap-1">
        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -653,7 +653,7 @@ export const TicketRow: React.FC<TicketRowProps> = ({
        {timeAgo(ticket.createdAt)}
       </span>
       {ticket.linkedOrders.length > 0 && (
-       <span className="flex items-center gap-1 text-blue-600">
+       <span className="flex items-center gap-1 text-brand">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
@@ -668,22 +668,22 @@ export const TicketRow: React.FC<TicketRowProps> = ({
      {/* Assignee */}
      {ticket.currentAssignee ? (
       <div className="flex items-center gap-2">
-       <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-white text-xs font-semibold">
+       <div className="w-8 h-8 rounded-full bg-ink flex items-center justify-center text-white text-xs font-semibold">
         {ticket.currentAssignee.staffName.split(' ').map(n => n[0]).join('')}
        </div>
        <div className="hidden sm:block">
-        <p className="text-sm font-medium text-gray-900">{ticket.currentAssignee.staffName}</p>
-        <p className="text-xs text-gray-500">{ticket.currentAssignee.department}</p>
+        <p className="text-sm font-medium text-ink">{ticket.currentAssignee.staffName}</p>
+        <p className="text-xs text-ink-3">{ticket.currentAssignee.department}</p>
        </div>
       </div>
      ) : (
       <div className="flex items-center gap-2">
-       <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+       <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
+        <svg className="w-4 h-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
        </div>
-       <span className="hidden sm:block text-sm text-gray-500">Unassigned</span>
+       <span className="hidden sm:block text-sm text-ink-3">Unassigned</span>
       </div>
      )}
 

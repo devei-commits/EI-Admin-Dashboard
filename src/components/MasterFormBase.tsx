@@ -245,7 +245,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       </div>
 
       {/* Bottom sticky actions for long sections */}
-      <div className="sticky bottom-0 z-10 border-t border-border bg-white/95 backdrop-blur">
+      <div className="sticky bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur">
        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
         <button
          type="button"

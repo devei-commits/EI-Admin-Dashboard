@@ -68,8 +68,8 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
       </div>
 
       <div className="flex flex-wrap gap-4 p-4">
-        <div className="w-[320px] shrink-0 rounded-lg border border-slate-300 p-3">
-          <div className="mb-2 text-xs font-bold text-slate-900">
+        <div className="w-[320px] shrink-0 rounded-lg border border-border p-3">
+          <div className="mb-2 text-xs font-bold text-ink">
             GRN {displayGrnNo(grnNo)} - Box {active.boxIndex}
           </div>
           <div className="mb-2 text-center">
@@ -80,7 +80,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
             />
           </div>
           {labelFieldRows(active, grnNo).map((row) => (
-            <p key={row.label} className="my-1 text-xs text-slate-800">
+            <p key={row.label} className="my-1 text-xs text-ink">
               <strong className="font-bold">{row.label}:</strong> {row.value}
             </p>
           ))}

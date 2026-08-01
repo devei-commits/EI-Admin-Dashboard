@@ -23,6 +23,7 @@ import {
   canUserPerformStockCheck,
   resolveStockCheckActorName,
 } from '../../lib/stockCheckAssigneeAccess';
+import { procBtnSecondary } from '../../components/procurement/ProcSection';
 
 const StockCheckRequests: React.FC = () => {
   const queryClient = useQueryClient();
@@ -209,7 +210,7 @@ const StockCheckRequests: React.FC = () => {
               type="button"
               onClick={() => void refetchProcurementRequests()}
               disabled={procurementLoading}
-              className="text-[11px] font-semibold text-ink-2 hover:text-ink disabled:opacity-50"
+              className={procBtnSecondary}
             >
               Refresh
             </button>

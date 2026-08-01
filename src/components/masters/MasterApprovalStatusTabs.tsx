@@ -31,7 +31,7 @@ const ACCENT_RING: Record<MasterApprovalStatusTabsAccent, string> = {
 };
 
 function tabBadgeClass(statusId: string, isSelected: boolean): string {
-  if (isSelected) return 'bg-white/20 text-inherit border-white/30';
+  if (isSelected) return 'bg-surface/20 text-inherit border-white/30';
   if (statusId === 'all') return 'bg-surface-3 text-ink-3 border-hairline';
   return masterApprovalStatusBadgeClass(statusId);
 }

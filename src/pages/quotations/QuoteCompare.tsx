@@ -44,34 +44,34 @@ export default function QuoteCompare() {
         title="Compare Quotes"
         subtitle={`${quotes.length} quotes side by side`}
         icon={<GitCompare className="w-6 h-6" />}
-        actions={<button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>}
+        actions={<button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>}
       />
 
-      {loading ? <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4"><TableSkeleton rows={6} cols={4} /></div>
-        : quotes.length < 2 ? <div className="bg-white rounded-lg shadow-sm border border-gray-100"><EmptyState icon={<GitCompare />} title="Select at least 2 quotes from the list to compare." /></div>
+      {loading ? <div className="bg-surface rounded-lg shadow-sm border border-hairline p-4"><TableSkeleton rows={6} cols={4} /></div>
+        : quotes.length < 2 ? <div className="bg-surface rounded-lg shadow-sm border border-hairline"><EmptyState icon={<GitCompare />} title="Select at least 2 quotes from the list to compare." /></div>
           : (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-auto max-h-[70vh]">
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-20">
-                  <tr className="border-b border-gray-100 [&_th]:bg-surface-2">
-                    <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-40">Metric</th>
+                  <tr className="border-b border-hairline [&_th]:bg-surface-2">
+                    <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider w-40">Metric</th>
                     {quotes.map((q) => (
                       <th scope="col" key={q.id} className="py-3 px-4 text-left min-w-[12rem]">
-                        <button onClick={() => navigate(`/quotations/${q.id}`)} className="font-semibold text-slate-900 hover:underline">{q.quote_ref}</button>
-                        <div className="text-xs text-gray-500 font-normal truncate max-w-[12rem]" title={q.quote_name}>{q.quote_name}</div>
+                        <button onClick={() => navigate(`/quotations/${q.id}`)} className="font-semibold text-ink hover:underline">{q.quote_ref}</button>
+                        <div className="text-xs text-ink-3 font-normal truncate max-w-[12rem]" title={q.quote_name}>{q.quote_name}</div>
                         <div className="mt-1 flex items-center gap-1.5">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
-                          {q.version > 1 && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">v{q.version}</span>}
+                          {q.version > 1 && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-surface-3 text-ink-2">v{q.version}</span>}
                         </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-hairline">
                   <Row label="Grade">{quotes.map((q) => <Cell key={q.id}>{q.result.grade_name}</Cell>)}</Row>
                   <Row label="Product type">{quotes.map((q) => <Cell key={q.id} className="capitalize">{q.result.product_type}</Cell>)}</Row>
                   <Row label="Avg margin">{quotes.map((q) => <Cell key={q.id}>{avgMargin(q) != null ? `${(avgMargin(q)! * 100).toFixed(1)}%` : '—'}</Cell>)}</Row>
-                  <tr className="bg-gray-50"><td colSpan={quotes.length + 1} className="py-2 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sell price per MOQ band (best highlighted)</td></tr>
+                  <tr className="bg-surface-2"><td colSpan={quotes.length + 1} className="py-2 px-4 text-xs font-semibold text-ink-3 uppercase tracking-wider">Sell price per MOQ band (best highlighted)</td></tr>
                   {Array.from({ length: 7 }).map((_, bi) => {
                     const best = bestPerBand(bi);
                     return (
@@ -79,12 +79,12 @@ export default function QuoteCompare() {
                         {quotes.map((q) => {
                           const b = q.result.bands[bi];
                           const isBest = b && best != null && Math.abs(b.sell_price - best) < 0.001;
-                          return <Cell key={q.id}>{b ? <span className={isBest ? 'font-bold text-emerald-700' : 'text-slate-800'}>₹{f2(b.sell_price)} <span className="text-gray-400 text-xs">({b.moq})</span></span> : '—'}</Cell>;
+                          return <Cell key={q.id}>{b ? <span className={isBest ? 'font-bold text-ok' : 'text-ink'}>₹{f2(b.sell_price)} <span className="text-ink-4 text-xs">({b.moq})</span></span> : '—'}</Cell>;
                         })}
                       </Row>
                     );
                   })}
-                  <tr className="bg-gray-50"><td colSpan={quotes.length + 1} className="py-2 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Delivery (weeks) per band</td></tr>
+                  <tr className="bg-surface-2"><td colSpan={quotes.length + 1} className="py-2 px-4 text-xs font-semibold text-ink-3 uppercase tracking-wider">Delivery (weeks) per band</td></tr>
                   {Array.from({ length: 7 }).map((_, bi) => (
                     <Row key={`t${bi}`} label={`Band ${bi + 1}`}>
                       {quotes.map((q) => { const b = q.result.bands[bi]; return <Cell key={q.id}>{b ? `${b.timeline.weeks}w` : '—'}</Cell>; })}
@@ -99,8 +99,8 @@ export default function QuoteCompare() {
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return <tr className="hover:bg-slate-50/40"><td className="py-2.5 px-4 text-gray-500 font-medium">{label}</td>{children}</tr>;
+  return <tr className="hover:bg-surface-2/40"><td className="py-2.5 px-4 text-ink-3 font-medium">{label}</td>{children}</tr>;
 }
 function Cell({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`py-2.5 px-4 text-gray-700 ${className}`}>{children}</td>;
+  return <td className={`py-2.5 px-4 text-ink-2 ${className}`}>{children}</td>;
 }

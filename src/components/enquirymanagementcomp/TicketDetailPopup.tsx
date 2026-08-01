@@ -33,22 +33,22 @@ interface ActivityTimelineProps {
 const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoading }) => {
  const getActivityIcon = (type: TicketActivity['type']) => {
   const iconMap: Record<TicketActivity['type'], { icon: string; color: string }> = {
-   'created': { icon: '', color: 'bg-blue-100 text-blue-600' },
+   'created': { icon: '', color: 'bg-brand-soft text-brand' },
    'assigned': { icon: '', color: 'bg-purple-100 text-purple-600' },
    'reassigned': { icon: '', color: 'bg-purple-100 text-purple-600' },
-   'status-change': { icon: '', color: 'bg-gray-100 text-slate-800' },
-   'priority-change': { icon: '', color: 'bg-orange-100 text-slate-800' },
-   'note-added': { icon: '', color: 'bg-gray-100 text-gray-600' },
-   'response-sent': { icon: '', color: 'bg-emerald-100 text-emerald-600' },
-   'customer-replied': { icon: '', color: 'bg-blue-100 text-blue-600' },
-   'escalated': { icon: '', color: 'bg-red-100 text-red-600' },
-   'order-linked': { icon: '', color: 'bg-indigo-100 text-indigo-600' },
-   'attachment-added': { icon: '', color: 'bg-gray-100 text-gray-600' },
-   'resolved': { icon: '', color: 'bg-emerald-100 text-emerald-600' },
-   'reopened': { icon: '', color: 'bg-gray-100 text-slate-800' },
-   'closed': { icon: '', color: 'bg-gray-100 text-gray-600' },
+   'status-change': { icon: '', color: 'bg-surface-3 text-ink' },
+   'priority-change': { icon: '', color: 'bg-warn-soft text-ink' },
+   'note-added': { icon: '', color: 'bg-surface-3 text-ink-2' },
+   'response-sent': { icon: '', color: 'bg-ok-soft text-ok' },
+   'customer-replied': { icon: '', color: 'bg-brand-soft text-brand' },
+   'escalated': { icon: '', color: 'bg-err-soft text-err' },
+   'order-linked': { icon: '', color: 'bg-brand-soft text-brand' },
+   'attachment-added': { icon: '', color: 'bg-surface-3 text-ink-2' },
+   'resolved': { icon: '', color: 'bg-ok-soft text-ok' },
+   'reopened': { icon: '', color: 'bg-surface-3 text-ink' },
+   'closed': { icon: '', color: 'bg-surface-3 text-ink-2' },
   };
-  return iconMap[type] || { icon: '•', color: 'bg-gray-100 text-gray-600' };
+  return iconMap[type] || { icon: '•', color: 'bg-surface-3 text-ink-2' };
  };
 
  const formatTime = (timestamp: string) => {
@@ -85,24 +85,24 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, isLoadi
         {icon}
        </div>
        {index < activities.length - 1 && (
-        <div className="w-0.5 bg-gray-200 flex-1 mt-2" />
+        <div className="w-0.5 bg-surface-3 flex-1 mt-2" />
        )}
       </div>
       {/* Content */}
       <div className="flex-1 pb-4">
-       <p className="text-sm text-gray-800">{activity.description}</p>
-       <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+       <p className="text-sm text-ink">{activity.description}</p>
+       <div className="flex items-center gap-2 mt-1 text-xs text-ink-3">
         <span>{activity.performedBy.name}</span>
         <span>•</span>
         <span>{formatTime(activity.timestamp)}</span>
        </div>
        {activity.previousValue && activity.newValue && (
         <div className="mt-2 flex items-center gap-2 text-xs">
-         <span className="px-2 py-0.5 bg-gray-100 rounded line-through text-gray-500">
+         <span className="px-2 py-0.5 bg-surface-3 rounded line-through text-ink-3">
           {activity.previousValue}
          </span>
-         <span className="text-gray-400">{'>'}</span>
-         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded">
+         <span className="text-ink-4">{'>'}</span>
+         <span className="px-2 py-0.5 bg-ok-soft text-ok rounded">
           {activity.newValue}
          </span>
         </div>
@@ -165,27 +165,27 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
        <div
         className={`max-w-[80%] rounded-xl p-4 ${
          msg.isInternal
-          ? 'bg-yellow-50 border border-yellow-200'
+          ? 'bg-warn-soft border border-warn'
           : msg.senderType === 'staff'
-          ? 'bg-slate-800 text-white'
+          ? 'bg-ink text-white'
           : msg.senderType === 'customer'
-          ? 'bg-gray-100'
-          : 'bg-blue-50 border border-blue-200'
+          ? 'bg-surface-3'
+          : 'bg-brand-soft border border-brand'
         }`}
        >
         {msg.isInternal && (
-         <div className="flex items-center gap-1 text-xs text-yellow-600 mb-2">
+         <div className="flex items-center gap-1 text-xs text-warn mb-2">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
           Internal Note
          </div>
         )}
-        <p className={`text-sm ${msg.senderType === 'staff' && !msg.isInternal ? 'text-white' : 'text-gray-800'}`}>
+        <p className={`text-sm ${msg.senderType === 'staff' && !msg.isInternal ? 'text-white' : 'text-ink'}`}>
          {msg.content}
         </p>
         <div className={`flex items-center justify-between mt-2 text-xs ${
-         msg.senderType === 'staff' && !msg.isInternal ? 'text-gray-100' : 'text-gray-500'
+         msg.senderType === 'staff' && !msg.isInternal ? 'text-gray-100' : 'text-ink-3'
         }`}>
          <span>{msg.senderName}</span>
          <span>{formatTime(msg.sentAt)}</span>
@@ -197,16 +197,16 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
    </div>
 
    {/* Message Input */}
-   <div className="border-t border-gray-200 pt-4">
+   <div className="border-t border-border pt-4">
     <div className="flex items-center gap-2 mb-2">
      <label className="flex items-center gap-2 text-sm cursor-pointer">
       <input
        type="checkbox"
        checked={isInternal}
        onChange={(e) => setIsInternal(e.target.checked)}
-       className="w-4 h-4 text-slate-700 border-gray-300 rounded focus:ring-slate-800"
+       className="w-4 h-4 text-ink-2 border-border rounded focus:ring-border"
       />
-      <span className="text-gray-600">Internal note (not visible to customer)</span>
+      <span className="text-ink-2">Internal note (not visible to customer)</span>
      </label>
     </div>
     <div className="flex gap-2">
@@ -215,15 +215,15 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
       onChange={(e) => setNewMessage(e.target.value)}
       aria-label={isInternal ? "Add internal note" : "Type your response"}
       placeholder={isInternal ? "Add internal note..." : "Type your response..."}
-      className={`flex-1 px-4 py-3 border rounded-xl resize-none focus:ring-2 focus:ring-slate-800 focus:border-transparent ${
-       isInternal ? 'border-yellow-300 bg-yellow-50' : 'border-gray-300'
+      className={`flex-1 px-4 py-3 border rounded-xl resize-none focus:ring-2 focus:ring-border focus:border-transparent ${
+       isInternal ? 'border-warn bg-warn-soft' : 'border-border'
       }`}
       rows={3}
      />
      <button
       onClick={handleSend}
       disabled={!newMessage.trim()}
-      className="px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors self-end"
+      className="px-4 py-2 bg-ink text-white rounded-xl hover:bg-ink disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors self-end"
       aria-label="Send message"
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -250,22 +250,22 @@ const LinkedOrdersSection: React.FC<LinkedOrdersSectionProps> = ({
 }) => {
  const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
-   'pending': 'bg-gray-100 text-slate-900',
-   'processing': 'bg-blue-100 text-blue-700',
+   'pending': 'bg-surface-3 text-ink',
+   'processing': 'bg-brand-soft text-brand',
    'shipped': 'bg-purple-100 text-purple-700',
-   'delivered': 'bg-emerald-100 text-emerald-700',
-   'cancelled': 'bg-red-100 text-red-700',
+   'delivered': 'bg-ok-soft text-ok',
+   'cancelled': 'bg-err-soft text-err',
   };
-  return colors[status.toLowerCase()] || 'bg-gray-100 text-gray-700';
+  return colors[status.toLowerCase()] || 'bg-surface-3 text-ink-2';
  };
 
  return (
   <div className="space-y-4">
    <div className="flex items-center justify-between">
-    <h4 className="font-medium text-gray-800">Linked Orders</h4>
+    <h4 className="font-medium text-ink">Linked Orders</h4>
     <button
      onClick={onLinkOrder}
-     className="flex items-center gap-1 text-sm text-slate-800 hover:text-slate-900 font-medium"
+     className="flex items-center gap-1 text-sm text-ink hover:text-ink font-medium"
     >
      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -275,7 +275,7 @@ const LinkedOrdersSection: React.FC<LinkedOrdersSectionProps> = ({
    </div>
 
    {orders.length === 0 ? (
-    <div className="text-center py-6 text-gray-500 text-sm bg-gray-50 rounded-lg">
+    <div className="text-center py-6 text-ink-3 text-sm bg-surface-2 rounded-lg">
      No linked orders
     </div>
    ) : (
@@ -283,28 +283,28 @@ const LinkedOrdersSection: React.FC<LinkedOrdersSectionProps> = ({
      {orders.map((order) => (
       <div
        key={order.orderId}
-       className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+       className="flex items-center justify-between p-4 bg-surface-2 rounded-lg border border-border"
       >
        <div className="flex-1">
         <div className="flex items-center gap-2">
-         <span className="font-mono text-sm font-semibold text-gray-800">
+         <span className="font-mono text-sm font-semibold text-ink">
           #{order.orderNumber}
          </span>
          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(order.orderStatus)}`}>
           {order.orderStatus}
          </span>
         </div>
-        <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+        <div className="flex items-center gap-3 mt-1 text-sm text-ink-3">
          <span>{new Date(order.orderDate).toLocaleDateString()}</span>
          <span>₹{order.orderTotal.toLocaleString()}</span>
         </div>
         {order.relevance && (
-         <p className="text-xs text-gray-500 mt-1">{order.relevance}</p>
+         <p className="text-xs text-ink-3 mt-1">{order.relevance}</p>
         )}
        </div>
        <button
         onClick={() => onUnlinkOrder(order.orderId)}
-        className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+        className="p-2 text-ink-4 hover:text-err transition-colors"
         title="Unlink order"
         aria-label="Unlink order"
        >
@@ -483,32 +483,32 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
  return (
   <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="light">
-   <div role="dialog" aria-modal="true" aria-labelledby="ticket-detail-title" onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+   <div role="dialog" aria-modal="true" aria-labelledby="ticket-detail-title" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
     {/* Header */}
-    <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-gray-50/50">
+    <div className="flex items-start justify-between p-6 border-b border-border bg-surface-2/50">
      <div className="flex-1">
       <div className="flex items-center gap-3 mb-2">
-       <span className="font-mono text-lg font-bold text-gray-800">
+       <span className="font-mono text-lg font-bold text-ink">
         #{ticket.ticketNumber}
        </span>
        <StatusBadge status={ticket.status} />
        <PriorityBadge priority={ticket.priority} />
        <CategoryBadge category={ticket.category as string} />
        {ticket.isOverdue && (
-        <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
+        <span className="px-2 py-1 bg-err-soft text-err text-xs font-semibold rounded-full">
          OVERDUE
         </span>
        )}
       </div>
-      <h2 id="ticket-detail-title" className="text-xl font-semibold text-gray-900">{ticket.subject}</h2>
-      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+      <h2 id="ticket-detail-title" className="text-xl font-semibold text-ink">{ticket.subject}</h2>
+      <div className="flex items-center gap-4 mt-2 text-sm text-ink-3">
        <span>Created {new Date(ticket.createdAt).toLocaleDateString()}</span>
        <span>•</span>
        <span>{ticket.responseCount} responses</span>
        {ticket.slaDeadline && (
         <>
          <span>•</span>
-         <span className={ticket.isOverdue ? 'text-red-600 font-medium' : ''}>
+         <span className={ticket.isOverdue ? 'text-err font-medium' : ''}>
           SLA: {new Date(ticket.slaDeadline).toLocaleDateString()}
          </span>
         </>
@@ -517,7 +517,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
      </div>
      <button
       onClick={onClose}
-      className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      className="w-10 h-10 flex items-center justify-center rounded-lg text-ink-4 hover:text-ink-2 hover:bg-surface-3 transition-colors"
       aria-label="Close"
      >
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -529,32 +529,32 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
     {/* Content */}
     <div className="flex-1 overflow-hidden flex">
      {/* Left Panel - Details */}
-     <div className="w-80 border-r border-gray-200 p-6 overflow-y-auto bg-gray-50/30">
+     <div className="w-80 border-r border-border p-6 overflow-y-auto bg-surface-2/30">
       {/* Customer / reporter */}
       <div className="mb-6">
-       <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+       <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
         {ticket.ticketScope === 'internal' ? 'Reporter' : 'Customer'}
        </h4>
-       <div className="bg-white rounded-lg p-4 border border-gray-200">
+       <div className="bg-surface rounded-lg p-4 border border-border">
         <div className="flex items-center gap-3 mb-3">
          <div className="w-10 h-10 rounded-full bg-blue-400 flex items-center justify-center text-white font-semibold">
           {(ticket.customer?.name || '?').split(' ').map(n => n[0]).join('')}
          </div>
          <div>
-          <p className="font-medium text-gray-900">{ticket.customer?.name || '—'}</p>
+          <p className="font-medium text-ink">{ticket.customer?.name || '—'}</p>
           {ticket.customer?.company && (
-           <p className="text-xs text-gray-500">{ticket.customer.company}</p>
+           <p className="text-xs text-ink-3">{ticket.customer.company}</p>
           )}
          </div>
         </div>
         <div className="space-y-2 text-sm">
-         <div className="flex items-center gap-2 text-gray-600">
+         <div className="flex items-center gap-2 text-ink-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
           <span className="truncate">{ticket.customer?.email || '—'}</span>
          </div>
-         <div className="flex items-center gap-2 text-gray-600">
+         <div className="flex items-center gap-2 text-ink-2">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
           </svg>
@@ -566,19 +566,19 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
       {ticket.ticketScope === 'internal' && ticket.collaboration && (
        <div className="mb-6">
-        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
          Tags &amp; areas
         </h4>
-        <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3 text-sm">
+        <div className="bg-surface rounded-lg p-4 border border-border space-y-3 text-sm">
          {ticket.collaboration.issueAreas && ticket.collaboration.issueAreas.length > 0 && (
           <div>
-           <p className="text-xs font-medium text-gray-500 mb-1">Issue areas</p>
+           <p className="text-xs font-medium text-ink-3 mb-1">Issue areas</p>
            <div className="flex flex-wrap gap-1.5">
             {ticket.collaboration.issueAreas.map((id) => (
              <span
               key={id}
               className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-               id === 'pis' ? 'bg-amber-100 text-amber-900' : 'bg-gray-100 text-gray-700'
+               id === 'pis' ? 'bg-warn-soft text-warn' : 'bg-surface-3 text-ink-2'
               }`}
              >
               {id === 'pis' ? 'PIS' : id.replace(/-/g, ' ')}
@@ -589,7 +589,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
          )}
          {ticket.collaboration.taggedTeams && ticket.collaboration.taggedTeams.length > 0 && (
           <div>
-           <p className="text-xs font-medium text-gray-500 mb-1">Teams</p>
+           <p className="text-xs font-medium text-ink-3 mb-1">Teams</p>
            <div className="flex flex-wrap gap-1.5">
             {ticket.collaboration.taggedTeams.map((t) => (
              <span key={t.id} className="px-2 py-0.5 rounded-full text-xs bg-violet-50 text-violet-900 border border-violet-100">
@@ -601,12 +601,12 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
          )}
          {ticket.collaboration.taggedMembers && ticket.collaboration.taggedMembers.length > 0 && (
           <div>
-           <p className="text-xs font-medium text-gray-500 mb-1">Tagged colleagues</p>
-           <ul className="space-y-1 text-gray-800">
+           <p className="text-xs font-medium text-ink-3 mb-1">Tagged colleagues</p>
+           <ul className="space-y-1 text-ink">
             {ticket.collaboration.taggedMembers.map((m) => (
              <li key={m.userid}>
               {m.displayName || m.email || `User ${m.userid}`}
-              {m.email ? <span className="text-gray-500 text-xs ml-1">({m.email})</span> : null}
+              {m.email ? <span className="text-ink-3 text-xs ml-1">({m.email})</span> : null}
              </li>
             ))}
            </ul>
@@ -618,7 +618,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
       {/* Assignment */}
       <div className="mb-6">
-       <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+       <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
         Assigned To
        </h4>
        <StaffAssignmentDropdown
@@ -631,27 +631,27 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
         onUnassign={handleUnassign}
         disabled={loading.staff}
        />
-       <p className="text-xs text-gray-500 mt-2">
+       <p className="text-xs text-ink-3 mt-2">
         Use the menu above to change assignee after creation. Past assignees appear below.
        </p>
       </div>
 
       {ticket.assignmentHistory && ticket.assignmentHistory.length > 0 && (
        <div className="mb-6">
-        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
          Assignment history
         </h4>
         <ul className="space-y-2 text-sm">
          {[...ticket.assignmentHistory].reverse().map((entry, idx) => (
           <li
            key={`${entry.staffId}-${entry.endedAt || idx}`}
-           className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-700"
+           className="rounded-lg border border-border bg-surface px-3 py-2 text-ink-2"
           >
-           <span className="font-medium text-gray-900">{entry.staffName}</span>
+           <span className="font-medium text-ink">{entry.staffName}</span>
            {entry.department ? (
-            <span className="text-gray-500"> · {entry.department}</span>
+            <span className="text-ink-3"> · {entry.department}</span>
            ) : null}
-           <div className="text-xs text-gray-500 mt-1">
+           <div className="text-xs text-ink-3 mt-1">
             {entry.endedAt
              ? `Until ${new Date(entry.endedAt).toLocaleString('en-GB', {
                 day: '2-digit',
@@ -672,19 +672,19 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
       {/* Status & Priority */}
       <div className="mb-6">
-       <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+       <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
         Status & Priority
        </h4>
        <div className="space-y-3">
         <div className="flex items-center justify-between">
-         <span className="text-sm text-gray-600">Status</span>
+         <span className="text-sm text-ink-2">Status</span>
          <StatusDropdown
           currentStatus={ticket.status}
           onStatusChange={handleStatusChange}
          />
         </div>
         <div className="flex items-center justify-between">
-         <span className="text-sm text-gray-600">Priority</span>
+         <span className="text-sm text-ink-2">Priority</span>
          <PriorityDropdown
           currentPriority={ticket.priority}
           onPriorityChange={handlePriorityChange}
@@ -695,10 +695,10 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
       {/* Description */}
       <div className="mb-6">
-       <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+       <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
         Description
        </h4>
-       <div className="bg-white rounded-lg p-4 border border-gray-200 text-sm text-gray-700 whitespace-pre-wrap">
+       <div className="bg-surface rounded-lg p-4 border border-border text-sm text-ink-2 whitespace-pre-wrap">
         {ticket.description}
        </div>
       </div>
@@ -706,14 +706,14 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
       {/* Tags */}
       {ticket.tags && ticket.tags.length > 0 && (
        <div className="mb-6">
-        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        <h4 className="text-sm font-semibold text-ink-3 uppercase tracking-wide mb-3">
          Tags
         </h4>
         <div className="flex flex-wrap gap-2">
          {ticket.tags.map((tag, index) => (
           <span
            key={index}
-           className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full"
+           className="px-2 py-1 bg-surface-3 text-ink-2 text-xs rounded-full"
           >
            {tag}
           </span>
@@ -726,7 +726,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
      {/* Right Panel - Tabs */}
      <div className="flex-1 flex flex-col overflow-hidden">
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-border">
        {[
         { id: 'messages', label: 'Messages', count: messages.length },
         { id: 'activity', label: 'Activity', count: activities.length },
@@ -737,14 +737,14 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
          onClick={() => setActiveTab(tab.id as typeof activeTab)}
          className={`px-6 py-4 text-sm font-medium transition-colors relative ${
           activeTab === tab.id
-           ? 'text-slate-800 border-b-2 border-slate-800'
-           : 'text-gray-500 hover:text-gray-700'
+           ? 'text-ink border-b-2 border-slate-800'
+           : 'text-ink-3 hover:text-ink-2'
          }`}
         >
          {tab.label}
          {tab.count > 0 && (
           <span className={`ml-2 px-1.5 py-0.5 text-xs rounded-full ${
-           activeTab === tab.id ? 'bg-gray-100 text-slate-900' : 'bg-gray-100 text-gray-600'
+           activeTab === tab.id ? 'bg-surface-3 text-ink' : 'bg-surface-3 text-ink-2'
           }`}>
            {tab.count}
           </span>
@@ -780,12 +780,12 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
     </div>
 
     {/* Footer Actions */}
-    <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50/50">
+    <div className="flex items-center justify-between p-6 border-t border-border bg-surface-2/50">
      <div className="flex items-center gap-2">
       {ticket.status !== 'closed' && ticket.status !== 'resolved' && (
        <button
         onClick={() => setShowResolveModal(true)}
-        className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors font-medium"
+        className="px-4 py-2 bg-ok text-white rounded-lg hover:bg-ok transition-colors font-medium"
        >
         Mark Resolved
        </button>
@@ -801,7 +801,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
      </div>
      <button
       onClick={onClose}
-      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+      className="px-4 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 transition-colors font-medium"
      >
       Close
      </button>
@@ -811,9 +811,9 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
    {/* Resolve Modal */}
    {showResolveModal && (
     <ModalOverlay onClose={() => setShowResolveModal(false)} z="z-60" dismissable={false} backdrop="light">
-     <div role="dialog" aria-modal="true" aria-labelledby="resolve-ticket-title" onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-      <h3 id="resolve-ticket-title" className="text-lg font-semibold text-gray-900 mb-4">Resolve Ticket</h3>
-      <p className="text-sm text-gray-600 mb-4">
+     <div role="dialog" aria-modal="true" aria-labelledby="resolve-ticket-title" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-xl shadow-xl w-full max-w-md p-6">
+      <h3 id="resolve-ticket-title" className="text-lg font-semibold text-ink mb-4">Resolve Ticket</h3>
+      <p className="text-sm text-ink-2 mb-4">
        Please provide resolution notes for this ticket.
       </p>
       <textarea
@@ -821,20 +821,20 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
        onChange={(e) => setResolutionNotes(e.target.value)}
        aria-label="Resolution notes"
        placeholder="Describe how the issue was resolved..."
-       className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+       className="w-full px-4 py-3 border border-border rounded-lg resize-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
        rows={4}
       />
       <div className="flex justify-end gap-3 mt-4">
        <button
         onClick={() => setShowResolveModal(false)}
-        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        className="px-4 py-2 text-ink-2 hover:bg-surface-3 rounded-lg transition-colors"
        >
         Cancel
        </button>
        <button
         onClick={handleResolve}
         disabled={!resolutionNotes.trim()}
-        className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        className="px-4 py-2 bg-ok text-white rounded-lg hover:bg-ok disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
        >
         Resolve
        </button>

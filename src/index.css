@@ -28,8 +28,11 @@
   }
 }
 
-/* Dark theme trigger: support BOTH the legacy `.dark` class and the new `[data-theme="dark"]`
-   attribute (the design system drives theming via <html data-theme>). */
+/* Dark mode is REMOVED — the app is light-only (<html data-theme="light">, no toggle).
+   This variant is intentionally kept so any leftover `dark:` utilities (e.g. in the pis
+   shadcn primitives) stay INERT: they bind to `.dark` / `[data-theme="dark"]`, which never
+   occur. Do NOT delete it — without it Tailwind's default `dark:` falls back to
+   prefers-color-scheme and those utilities would reactivate under system dark. */
 @custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 
 :root {
@@ -176,7 +179,8 @@
  --ease: cubic-bezier(.4, 0, .2, 1); --ease-out: cubic-bezier(.16, 1, .3, 1); --dur: .22s;
 }
 
-[data-theme="light"] {
+/* Light-only theme (dark mode removed). Tokens apply unconditionally. */
+:root {
  --canvas: #f5f5f7; --surface: #ffffff; --surface-2: #fafafc; --surface-3: #f0f0f3; --surface-sunken: #ececf0;
  --rail: rgba(252, 252, 253, .72); --nav-bg: rgba(255, 255, 255, .72); --topbar-bg: rgba(245, 245, 247, .68);
  --ink: #1d1d1f; --ink-2: #48484a; --ink-3: #6e6e73; --ink-4: #86868b;
@@ -195,27 +199,6 @@
  --e2: 0 2px 6px rgba(0, 0, 0, .05), 0 8px 24px rgba(0, 0, 0, .05);
  --e3: 0 8px 24px rgba(0, 0, 0, .10), 0 32px 64px rgba(0, 0, 0, .14);
  --inset-hi: inset 0 1px 0 rgba(255, 255, 255, .7);
-}
-
-[data-theme="dark"] {
- --canvas: #000000; --surface: #1c1c1e; --surface-2: #222224; --surface-3: #2c2c2e; --surface-sunken: #161618;
- --rail: rgba(22, 22, 24, .72); --nav-bg: rgba(28, 28, 30, .72); --topbar-bg: rgba(0, 0, 0, .6);
- --ink: #f5f5f7; --ink-2: #c7c7cd; --ink-3: #98989f; --ink-4: #7c7c82;
- --border: rgba(255, 255, 255, .1); --border-2: rgba(255, 255, 255, .16); --hairline: rgba(255, 255, 255, .07);
- --accent: #0a84ff; --accent-press: #3a9bff; --accent-soft: rgba(10, 132, 255, .16); --accent-soft-2: rgba(10, 132, 255, .24); --accent-ink: #ffffff;
- --accent-gradient: linear-gradient(180deg, #3a9bff 0%, #0a84ff 100%);
- --brand-gradient: linear-gradient(180deg, #48484a 0%, #2c2c2e 100%);
- --ring: rgba(10, 132, 255, .45);
- --c1: #0a84ff; --c2: #8e8e93; --c3: #48484a; --c4: #3a3a3c;
- --st-blue-bg: rgba(10, 132, 255, .18); --st-blue-fg: #4ca5ff;
- --st-green-bg: rgba(48, 209, 88, .18); --st-green-fg: #5fe07f;
- --st-amber-bg: rgba(255, 159, 10, .18); --st-amber-fg: #ffb340;
- --st-red-bg: rgba(255, 59, 48, .18); --st-red-fg: #ff6961;
- --st-neutral-bg: rgba(255, 255, 255, .08); --st-neutral-fg: #a0a0a8;
- --e1: 0 .5px 1px rgba(0, 0, 0, .5), 0 1px 2px rgba(0, 0, 0, .5);
- --e2: 0 2px 6px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .55);
- --e3: 0 8px 24px rgba(0, 0, 0, .55), 0 32px 64px rgba(0, 0, 0, .6);
- --inset-hi: inset 0 1px 0 rgba(255, 255, 255, .06);
 }
 
 /* Fonts → Tailwind utilities (font-sans / font-mono) + preflight default. */

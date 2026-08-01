@@ -35,7 +35,7 @@ const DEFAULT_FILTERS: QualityOrderManagementFilters = {
 };
 
 const FILTER_SELECT_CLASS =
-  'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500';
+  'rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-ink-2 focus:outline-none focus:ring-2 focus:ring-teal-500';
 
 const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = ({
   grns,
@@ -82,21 +82,21 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
   const filtersActive = hasActiveQualityOrderManagementFilters(filters);
 
   if (loading) {
-    return <p className="text-sm text-slate-500 px-1">Loading order management queue…</p>;
+    return <p className="text-sm text-ink-3 px-1">Loading order management queue…</p>;
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-slate-900">Order Management</h2>
-        <p className="text-[11px] text-slate-500">
+    <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-surface-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-ink">Order Management</h2>
+        <p className="text-[11px] text-ink-3">
           {tableRows.length === allRows.length
             ? `${tableRows.length} quarantine / QC line${tableRows.length === 1 ? '' : 's'}`
             : `${tableRows.length} of ${allRows.length} lines`}
         </p>
       </div>
 
-      <div className="px-4 py-3 border-b border-slate-200 bg-white flex flex-wrap items-center gap-2">
+      <div className="px-4 py-3 border-b border-border bg-surface flex flex-wrap items-center gap-2">
         <SearchInput
           value={filters.search}
           onChange={(value) => updateFilter('search', value)}
@@ -104,7 +104,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
           widthClass="w-full sm:w-64"
           aria-label="Search order management queue"
         />
-        <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+        <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
           <span className="sr-only">Filter by section</span>
           <select
             value={filters.section}
@@ -116,7 +116,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
             <option value="PM">PM</option>
           </select>
         </label>
-        <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+        <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
           <span className="sr-only">Filter by priority</span>
           <select
             value={filters.priority}
@@ -129,7 +129,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
             <option value="Low">Low</option>
           </select>
         </label>
-        <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+        <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
           <span className="sr-only">Filter by source type</span>
           <select
             value={filters.sourceKind}
@@ -143,7 +143,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
             <option value="routine">Routine</option>
           </select>
         </label>
-        <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+        <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
           <span className="sr-only">Filter by assign status</span>
           <select
             value={filters.assignStatus}
@@ -161,7 +161,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
           <button
             type="button"
             onClick={clearFilters}
-            className="text-xs font-semibold text-slate-600 hover:text-slate-900 underline-offset-2 hover:underline"
+            className="text-xs font-semibold text-ink-2 hover:text-ink underline-offset-2 hover:underline"
           >
             Clear filters
           </button>
@@ -169,11 +169,11 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
       </div>
 
       {allRows.length === 0 ? (
-        <div className="px-6 py-10 text-sm text-slate-500 text-center">
+        <div className="px-6 py-10 text-sm text-ink-3 text-center">
           No quarantined or pending-QC GRNs in the order management queue.
         </div>
       ) : tableRows.length === 0 ? (
-        <div className="px-6 py-10 text-sm text-slate-500 text-center">
+        <div className="px-6 py-10 text-sm text-ink-3 text-center">
           No lines match your search or filters.{' '}
           <button
             type="button"
@@ -187,7 +187,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
         <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-xs min-w-[1100px]">
             <thead className="sticky top-0 z-20">
-              <tr className="border-b border-slate-200 bg-slate-50 [&_th]:bg-slate-50">
+              <tr className="border-b border-border bg-surface-2 [&_th]:bg-surface-2">
                 <SortableTableTh
                   label="Section"
                   column="section"
@@ -278,18 +278,18 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   accent="teal"
                   thClassName="px-4 py-2.5 text-[10px] tracking-wide normal-case"
                 />
-                <th scope="col" className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-wide text-slate-500 whitespace-nowrap">
+                <th scope="col" className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-wide text-ink-3 whitespace-nowrap">
                   Action
                 </th>
               </tr>
             </thead>
             <tbody>
               {tableRows.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50/80">
-                  <td className="px-4 py-3 align-top whitespace-nowrap text-slate-800 font-medium">
+                <tr key={row.id} className="border-b border-hairline hover:bg-surface-2/80">
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-ink font-medium">
                     {row.section}
                   </td>
-                  <td className="px-4 py-3 align-top whitespace-nowrap text-slate-800 tabular-nums">
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-ink tabular-nums">
                     {row.quarantineDateDisplay}
                   </td>
                   <td className="px-4 py-3 align-top whitespace-nowrap">
@@ -302,26 +302,26 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   </td>
                   <td className="px-4 py-3 align-top min-w-[9rem]">
                     <Link to={row.itemMasterHref} className="group block hover:underline">
-                      <p className="font-semibold text-slate-900 leading-snug group-hover:text-teal-900">
+                      <p className="font-semibold text-ink leading-snug group-hover:text-teal-900">
                         {row.itemName}
                       </p>
-                      <p className="text-[11px] text-slate-500 font-mono mt-0.5 group-hover:text-teal-800">
+                      <p className="text-[11px] text-ink-3 font-mono mt-0.5 group-hover:text-teal-800">
                         {row.itemCode}
                       </p>
                     </Link>
                   </td>
-                  <td className="px-4 py-3 align-top whitespace-nowrap text-slate-800 tabular-nums">
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-ink tabular-nums">
                     {row.qtyInQ}
                   </td>
-                  <td className="px-4 py-3 align-top whitespace-nowrap text-slate-700">{row.source}</td>
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2">{row.source}</td>
                   <td className="px-4 py-3 align-top whitespace-nowrap">
-                    <label className="inline-flex items-center gap-0.5 text-slate-800">
+                    <label className="inline-flex items-center gap-0.5 text-ink">
                       <span className="sr-only">Assign reviewer for {row.itemName}</span>
                       <select
                         value={row.assignedTo}
                         disabled={assignSavingId === row.id}
                         onChange={(e) => onAssign(row, e.target.value)}
-                        className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-400 rounded disabled:opacity-60 max-w-[6.5rem] truncate"
+                        className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-ink cursor-pointer focus:outline-none focus:ring-2 focus:ring-border rounded disabled:opacity-60 max-w-[6.5rem] truncate"
                       >
                         <option value="">Open</option>
                         {assigneeOptions.map((name) => (
@@ -334,12 +334,12 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                           <option value={row.assignedTo}>{row.assignDisplay}</option>
                         ) : null}
                       </select>
-                      <span className="text-slate-500 text-[10px] leading-none" aria-hidden="true">
+                      <span className="text-ink-3 text-[10px] leading-none" aria-hidden="true">
                         ▾
                       </span>
                     </label>
                   </td>
-                  <td className="px-4 py-3 align-top whitespace-nowrap text-slate-700">
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2">
                     {row.approverDisplay}
                   </td>
                   <td className={`px-4 py-3 align-top whitespace-nowrap text-[11px] tracking-wide ${row.priorityClass}`}>
@@ -357,7 +357,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                     <button
                       type="button"
                       onClick={() => onOpenQc(row)}
-                      className="text-[11px] font-semibold text-slate-800 hover:text-slate-950 hover:underline"
+                      className="text-[11px] font-semibold text-ink hover:text-slate-950 hover:underline"
                     >
                       {row.actionPrefix ? `${row.actionPrefix} ` : ''}
                       {row.actionLabel}

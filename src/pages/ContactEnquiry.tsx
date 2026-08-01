@@ -153,49 +153,49 @@ const ContactEnquiry = () => {
 
  const getStatusColor = (status: ContactEnquiry['status']) => {
   const colors = {
-   'New': 'bg-blue-100 text-blue-800',
-   'Responded': 'bg-yellow-100 text-yellow-800',
-   'Closed': 'bg-green-100 text-green-800'
+   'New': 'bg-brand-soft text-brand',
+   'Responded': 'bg-warn-soft text-warn',
+   'Closed': 'bg-ok-soft text-ok'
   };
   return colors[status];
  };
 
  const SortIcon = ({ field }: { field: keyof ContactEnquiry }) => (
-  <span className="ml-1 text-xs text-gray-400">
+  <span className="ml-1 text-xs text-ink-4">
    {sortField === field ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
   </span>
  );
 
  return (
-  <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+  <div className="p-4 md:p-8 bg-surface-2/50 min-h-screen">
    <div className="mb-6">
-    <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Contact Form Enquiries</h1>
-    <p className="text-gray-500 mt-1">Manage contact enquiries and customer interactions</p>
+    <h1 className="text-2xl md:text-3xl font-bold text-ink">Contact Form Enquiries</h1>
+    <p className="text-ink-3 mt-1">Manage contact enquiries and customer interactions</p>
    </div>
 
-   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+   <div className="bg-surface rounded-xl shadow-sm border border-hairline p-4 md:p-6">
     {/* Controls */}
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
      <div className="flex items-center gap-2">
-      <span className="text-gray-600 text-sm">Show</span>
+      <span className="text-ink-2 text-sm">Show</span>
       <select
        value={entriesPerPage}
        onChange={(e) => {
         setEntriesPerPage(Number(e.target.value));
         setCurrentPage(1);
        }}
-       className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+       className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
       >
        <option value={10}>10</option>
        <option value={25}>25</option>
        <option value={50}>50</option>
        <option value={100}>100</option>
       </select>
-      <span className="text-gray-600 text-sm">entries</span>
+      <span className="text-ink-2 text-sm">entries</span>
      </div>
 
      <div className="flex items-center gap-2">
-      <span className="text-gray-600 text-sm">Search:</span>
+      <span className="text-ink-2 text-sm">Search:</span>
       <input
        type="text"
        value={searchTerm}
@@ -203,7 +203,7 @@ const ContactEnquiry = () => {
         setSearchTerm(e.target.value);
         setCurrentPage(1);
        }}
-       className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+       className="px-3 py-1 border border-border rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
        placeholder="Search..."
       />
      </div>
@@ -213,63 +213,63 @@ const ContactEnquiry = () => {
     <div className="hidden md:block overflow-auto max-h-[70vh]">
      <table className="w-full border-collapse">
       <thead className="sticky top-0 z-20">
-       <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
+       <tr className="[&_th]:bg-surface-2 border-b-2 border-border">
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('id')}
         >
          S.No <SortIcon field="id" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('contactName')}
         >
          Contact Name <SortIcon field="contactName" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('mobile')}
         >
          Mobile <SortIcon field="mobile" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('email')}
         >
          Email <SortIcon field="email" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('date')}
         >
          Date <SortIcon field="date" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('subject')}
         >
          Subject <SortIcon field="subject" />
         </th>
         <th scope="col" 
-         className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+         className="text-left py-3 px-4 text-sm font-semibold text-ink-2 cursor-pointer hover:bg-surface-2"
          onClick={() => handleSort('status')}
         >
          Status <SortIcon field="status" />
         </th>
-        <th scope="col" className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
+        <th scope="col" className="text-center py-3 px-4 text-sm font-semibold text-ink-2">
          View
         </th>
        </tr>
       </thead>
       <tbody>
        {currentEntries.map((enquiry) => (
-        <tr key={enquiry.id} className="border-b border-gray-100 hover:bg-gray-50">
-         <td className="py-3 px-4 text-sm text-gray-800">{enquiry.id}</td>
-         <td className="py-3 px-4 text-sm text-gray-800">{enquiry.contactName}</td>
-         <td className="py-3 px-4 text-sm text-gray-800">{enquiry.mobile}</td>
-         <td className="py-3 px-4 text-sm text-gray-800">{enquiry.email}</td>
-         <td className="py-3 px-4 text-sm text-gray-800">{enquiry.date}</td>
-         <td className="py-3 px-4 text-sm text-gray-800 max-w-xs truncate">{enquiry.subject}</td>
+        <tr key={enquiry.id} className="border-b border-hairline hover:bg-surface-2">
+         <td className="py-3 px-4 text-sm text-ink">{enquiry.id}</td>
+         <td className="py-3 px-4 text-sm text-ink">{enquiry.contactName}</td>
+         <td className="py-3 px-4 text-sm text-ink">{enquiry.mobile}</td>
+         <td className="py-3 px-4 text-sm text-ink">{enquiry.email}</td>
+         <td className="py-3 px-4 text-sm text-ink">{enquiry.date}</td>
+         <td className="py-3 px-4 text-sm text-ink max-w-xs truncate">{enquiry.subject}</td>
          <td className="py-3 px-4">
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(enquiry.status)}`}>
            {enquiry.status}
@@ -281,7 +281,7 @@ const ContactEnquiry = () => {
             setSelectedEnquiry(enquiry);
             setShowDetailsModal(true);
            }}
-           className="text-blue-600 hover:text-blue-800"
+           className="text-brand hover:text-brand"
           >
            <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -297,26 +297,26 @@ const ContactEnquiry = () => {
     {/* Mobile Cards */}
     <div className="md:hidden space-y-4">
      {currentEntries.map((enquiry) => (
-      <div key={enquiry.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+      <div key={enquiry.id} className="border border-border rounded-lg p-4 bg-surface-2">
        <div className="flex justify-between items-start mb-3">
-        <span className="font-semibold text-gray-800">#{enquiry.id}</span>
+        <span className="font-semibold text-ink">#{enquiry.id}</span>
         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(enquiry.status)}`}>
          {enquiry.status}
         </span>
        </div>
        <div className="space-y-2 text-sm">
-        <div><strong className="text-gray-600">Name:</strong> {enquiry.contactName}</div>
-        <div><strong className="text-gray-600">Mobile:</strong> {enquiry.mobile}</div>
-        <div><strong className="text-gray-600">Email:</strong> {enquiry.email}</div>
-        <div><strong className="text-gray-600">Date:</strong> {enquiry.date}</div>
-        <div><strong className="text-gray-600">Subject:</strong> {enquiry.subject}</div>
+        <div><strong className="text-ink-2">Name:</strong> {enquiry.contactName}</div>
+        <div><strong className="text-ink-2">Mobile:</strong> {enquiry.mobile}</div>
+        <div><strong className="text-ink-2">Email:</strong> {enquiry.email}</div>
+        <div><strong className="text-ink-2">Date:</strong> {enquiry.date}</div>
+        <div><strong className="text-ink-2">Subject:</strong> {enquiry.subject}</div>
        </div>
        <button
         onClick={() => {
          setSelectedEnquiry(enquiry);
          setShowDetailsModal(true);
         }}
-        className="mt-3 w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+        className="mt-3 w-full py-2 bg-brand text-white rounded-lg hover:bg-brand text-sm"
        >
         View Details
        </button>
@@ -326,14 +326,14 @@ const ContactEnquiry = () => {
 
     {/* Pagination */}
     <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
-     <div className="text-sm text-gray-600">
+     <div className="text-sm text-ink-2">
       Showing {indexOfFirstEntry + 1} to {Math.min(indexOfLastEntry, sortedEnquiries.length)} of {sortedEnquiries.length} entries
      </div>
      <div className="flex gap-1">
       <button
        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
        disabled={currentPage === 1}
-       className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+       className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
       >
        Previous
       </button>
@@ -345,8 +345,8 @@ const ContactEnquiry = () => {
          onClick={() => setCurrentPage(pageNum)}
          className={`px-3 py-1 border rounded text-sm ${
           currentPage === pageNum
-           ? 'bg-blue-500 text-white border-blue-500'
-           : 'border-gray-300 hover:bg-gray-50'
+           ? 'bg-brand text-white border-brand'
+           : 'border-border hover:bg-surface-2'
          }`}
         >
          {pageNum}
@@ -357,7 +357,7 @@ const ContactEnquiry = () => {
       <button
        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
        disabled={currentPage === totalPages}
-       className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+       className="px-3 py-1 border border-border rounded hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
       >
        Next
       </button>
@@ -368,65 +368,65 @@ const ContactEnquiry = () => {
    {/* Details Modal */}
    {showDetailsModal && selectedEnquiry && (
     <ModalOverlay onClose={() => { setShowDetailsModal(false); setResponseText(''); }} z="z-50" dismissable={false} backdrop="strong">
-     <div role="dialog" aria-modal="true" aria-label="Enquiry Details" onClick={(e) => e.stopPropagation()} className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+     <div role="dialog" aria-modal="true" aria-label="Enquiry Details" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
       <div className="p-6">
-       <h2 className="text-2xl font-bold text-gray-800 mb-6">Enquiry Details</h2>
+       <h2 className="text-2xl font-bold text-ink mb-6">Enquiry Details</h2>
        
        <div className="space-y-4">
         {/* Name */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Name:</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.contactName}</div>
+         <label className="col-span-3 text-sm text-ink-2">Name:</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.contactName}</div>
         </div>
 
         {/* Email */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">EMail:</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.email}</div>
+         <label className="col-span-3 text-sm text-ink-2">EMail:</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.email}</div>
         </div>
 
         {/* Phone */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Phone:</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.mobile}</div>
+         <label className="col-span-3 text-sm text-ink-2">Phone:</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.mobile}</div>
         </div>
 
         {/* Subject */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Subject:</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.subject || 'N/A'}</div>
+         <label className="col-span-3 text-sm text-ink-2">Subject:</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.subject || 'N/A'}</div>
         </div>
 
         {/* Message */}
         <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Message:</label>
-         <div className="col-span-9 text-gray-800">
+         <label className="col-span-3 text-sm text-ink-2">Message:</label>
+         <div className="col-span-9 text-ink">
           {selectedEnquiry.message || 'Hi, I would like to discuss regarding formulation of new products in skin and hair care.'}
          </div>
         </div>
 
         {/* Enquiry Date */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Enquiry Date :</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.date}</div>
+         <label className="col-span-3 text-sm text-ink-2">Enquiry Date :</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.date}</div>
         </div>
 
         {/* Enquiry Status */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Enquiry Status :</label>
+         <label className="col-span-3 text-sm text-ink-2">Enquiry Status :</label>
          <div className="col-span-9">
-          <span className="text-blue-600 font-medium">{selectedEnquiry.status}</span>
+          <span className="text-brand font-medium">{selectedEnquiry.status}</span>
          </div>
         </div>
 
         {/* Response */}
         <div className="grid grid-cols-12 gap-4 items-start border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Response :</label>
+         <label className="col-span-3 text-sm text-ink-2">Response :</label>
          <div className="col-span-9">
           <textarea
            value={responseText}
            onChange={(e) => setResponseText(e.target.value)}
-           className="w-full h-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+           className="w-full h-40 px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
            placeholder="Enter your response here..."
           />
          </div>
@@ -434,8 +434,8 @@ const ContactEnquiry = () => {
 
         {/* Response Date */}
         <div className="grid grid-cols-12 gap-4 items-center border-b pb-3">
-         <label className="col-span-3 text-sm text-gray-600">Response Date:</label>
-         <div className="col-span-9 text-gray-800">{selectedEnquiry.responseDate || ''}</div>
+         <label className="col-span-3 text-sm text-ink-2">Response Date:</label>
+         <div className="col-span-9 text-ink">{selectedEnquiry.responseDate || ''}</div>
         </div>
        </div>
 
@@ -448,7 +448,7 @@ const ContactEnquiry = () => {
           setShowDetailsModal(false);
           setResponseText('');
          }}
-         className="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 font-medium"
+         className="px-6 py-2 bg-brand text-white rounded hover:bg-brand font-medium"
         >
          Respond
         </button>
@@ -457,7 +457,7 @@ const ContactEnquiry = () => {
           setShowDetailsModal(false);
           setResponseText('');
          }}
-         className="px-6 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 font-medium"
+         className="px-6 py-2 border border-brand text-brand rounded hover:bg-brand-soft font-medium"
         >
          Back to Enquiry
         </button>

@@ -89,8 +89,8 @@ export default function ConversionRateManager() {
   return (
     <div className="space-y-8">
       <div>
-        <h3 className="text-base font-semibold text-gray-900 mb-1">Filling Conversion Rates (₹ / unit)</h3>
-        <p className="text-sm text-gray-500 mb-4">
+        <h3 className="text-base font-semibold text-ink mb-1">Filling Conversion Rates (₹ / unit)</h3>
+        <p className="text-sm text-ink-3 mb-4">
           Rates used by the pricing engine per packaging type, MOQ band, and volume range.
           Click a cell and press Enter or click Save to update.
         </p>
@@ -99,37 +99,37 @@ export default function ConversionRateManager() {
       {PKG_TYPES.map(pkg => {
         const vols = VOL_KEYS[pkg];
         return (
-          <div key={pkg} className="rounded-lg border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-              <span className="font-medium text-sm text-gray-800">{pkg}</span>
+          <div key={pkg} className="rounded-lg border border-border overflow-hidden">
+            <div className="bg-surface-2 px-4 py-2 border-b border-border">
+              <span className="font-medium text-sm text-ink">{pkg}</span>
             </div>
             <div className="overflow-auto max-h-[70vh]">
               <table className="min-w-full text-sm">
                 <thead className="sticky top-0 z-20">
-                  <tr className="bg-gray-50 border-b border-gray-200 [&_th]:bg-gray-50">
-                    <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">MOQ Band</th>
+                  <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                    <th scope="col" className="px-4 py-2 text-left font-medium text-ink-2">MOQ Band</th>
                     {vols.map(v => (
-                      <th scope="col" key={v} className="px-4 py-2 text-center font-medium text-gray-600">{v} mL</th>
+                      <th scope="col" key={v} className="px-4 py-2 text-center font-medium text-ink-2">{v} mL</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {MOQ_BANDS.map((band, bi) => (
-                    <tr key={band} className={bi % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-4 py-2 font-medium text-gray-700">{band}</td>
+                    <tr key={band} className={bi % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
+                      <td className="px-4 py-2 font-medium text-ink-2">{band}</td>
                       {vols.map(vol => {
                         const cellKey = `${pkg}|${band}|${vol}`;
                         const isSaving = saving === cellKey;
                         return (
                           <td key={vol} className="px-4 py-2">
                             <div className="flex items-center gap-1">
-                              <span className="text-gray-400 text-xs">₹</span>
+                              <span className="text-ink-4 text-xs">₹</span>
                               <input
                                 type="number"
                                 step="0.5"
                                 min="0"
                                 aria-label={`Rate for ${pkg}, ${band}, ${vol} mL`}
-                                className="w-20 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-20 border border-border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 value={map[pkg]?.[band]?.[vol] ?? ''}
                                 onChange={e => setCell(pkg, band, vol, e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') saveCell(pkg, band, vol); }}
@@ -137,7 +137,7 @@ export default function ConversionRateManager() {
                               <button
                                 onClick={() => saveCell(pkg, band, vol)}
                                 disabled={isSaving}
-                                className="p-1 text-blue-600 hover:text-blue-800 disabled:opacity-40"
+                                className="p-1 text-brand hover:text-brand disabled:opacity-40"
                                 title="Save"
                                 aria-label="Save"
                               >
@@ -156,17 +156,17 @@ export default function ConversionRateManager() {
         );
       })}
 
-      <div className="rounded-lg border border-gray-200 p-4 max-w-xs">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+      <div className="rounded-lg border border-border p-4 max-w-xs">
+        <label className="block text-sm font-medium text-ink-2 mb-1">
           No-Monocarton Discount (₹ deducted from base rate)
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 text-xs">₹</span>
+          <span className="text-ink-4 text-xs">₹</span>
           <input
             type="number"
             step="0.1"
             min="0"
-            className="w-24 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-24 border border-border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             value={monoDisc}
             onChange={e => setMonoDisc(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') saveMonoDiscount(); }}
@@ -174,13 +174,13 @@ export default function ConversionRateManager() {
           <button
             onClick={saveMonoDiscount}
             disabled={saving === 'mono'}
-            className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+            className="flex items-center gap-1 px-3 py-1 text-sm bg-brand text-white rounded hover:bg-brand disabled:opacity-40"
           >
             <Save className="h-3.5 w-3.5" />
             Save
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-1">Applied when monocarton = No</p>
+        <p className="text-xs text-ink-4 mt-1">Applied when monocarton = No</p>
       </div>
     </div>
   );

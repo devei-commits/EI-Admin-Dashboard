@@ -77,12 +77,12 @@ interface GlobalTask {
 
 // ==================== STAGE DEFINITIONS ====================
 const STAGES = [
- { id: 1, name: 'Planning', color: 'bg-blue-500' },
+ { id: 1, name: 'Planning', color: 'bg-brand' },
  { id: 2, name: 'Design', color: 'bg-purple-500' },
  { id: 3, name: 'Label', color: 'bg-pink-500' },
- { id: 4, name: 'Production', color: 'bg-orange-500' },
+ { id: 4, name: 'Production', color: 'bg-warn' },
  { id: 5, name: 'Packaging', color: 'bg-slate-700' },
- { id: 6, name: 'Dispatch', color: 'bg-green-500' },
+ { id: 6, name: 'Dispatch', color: 'bg-ok' },
  { id: 7, name: 'Closed', color: 'bg-gray-500' },
 ];
 
@@ -680,17 +680,17 @@ export function GlobalTaskOverview() {
  const getStatusColor = (status: string) => {
   switch (status) {
    case 'Pending':
-    return 'bg-gray-100 text-slate-900 border-gray-200';
+    return 'bg-surface-3 text-ink border-border';
    case 'In Progress':
-    return 'bg-blue-100 text-blue-700 border-blue-200';
+    return 'bg-brand-soft text-brand border-brand';
    case 'Completed':
-    return 'bg-green-100 text-green-700 border-green-200';
+    return 'bg-ok-soft text-ok border-ok';
    case 'On Hold':
-    return 'bg-orange-100 text-orange-700 border-orange-200';
+    return 'bg-warn-soft text-warn border-warn';
    case 'Cancelled':
-    return 'bg-gray-100 text-gray-700 border-gray-200';
+    return 'bg-surface-3 text-ink-2 border-border';
    default:
-    return 'bg-gray-100 text-gray-700 border-gray-200';
+    return 'bg-surface-3 text-ink-2 border-border';
   }
  };
 
@@ -698,13 +698,13 @@ export function GlobalTaskOverview() {
  const getPriorityColor = (priority?: string) => {
   switch (priority) {
    case 'high':
-    return 'bg-red-100 text-red-600';
+    return 'bg-err-soft text-err';
    case 'medium':
-    return 'bg-gray-100 text-slate-800';
+    return 'bg-surface-3 text-ink';
    case 'low':
-    return 'bg-slate-100 text-slate-600';
+    return 'bg-surface-3 text-ink-2';
    default:
-    return 'bg-gray-100 text-gray-500';
+    return 'bg-surface-3 text-ink-3';
   }
  };
 
@@ -904,7 +904,7 @@ export function GlobalTaskOverview() {
  return (
   <div className="space-y-6">
    {/* Header */}
-   <div className="bg-slate-800 rounded-2xl p-6 text-white shadow-lg">
+   <div className="bg-ink rounded-2xl p-6 text-white shadow-lg">
     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
      <div>
       <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3">
@@ -918,7 +918,7 @@ export function GlobalTaskOverview() {
      <div className="flex items-center gap-3">
       <button
        onClick={() => setShowAddTaskModal(true)}
-       className="px-4 py-2 bg-white text-slate-800 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2 shadow-sm"
+       className="px-4 py-2 bg-surface text-ink rounded-lg font-medium hover:bg-surface-2 transition-colors flex items-center gap-2 shadow-sm"
       >
        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -927,12 +927,12 @@ export function GlobalTaskOverview() {
       </button>
       <button
        onClick={resetFilters}
-       className="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition-colors flex items-center gap-2"
+       className="px-4 py-2 bg-surface/20 text-white rounded-lg font-medium hover:bg-surface/30 transition-colors flex items-center gap-2"
       >
        <RefreshCw className="w-4 h-4" />
        Reset
       </button>
-      <button className="px-4 py-2 bg-white text-slate-800 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2">
+      <button className="px-4 py-2 bg-surface text-ink rounded-lg font-medium hover:bg-surface-2 transition-colors flex items-center gap-2">
        <Download className="w-4 h-4" />
        Export
       </button>
@@ -944,53 +944,53 @@ export function GlobalTaskOverview() {
    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
     <StatCard
      icon={<Package className="w-5 h-5" />}
-     iconBgClass="bg-blue-100"
-     iconColorClass="text-blue-600"
+     iconBgClass="bg-brand-soft"
+     iconColorClass="text-brand"
      title="Total Tasks"
      value={stats.total}
     />
     <StatCard
      icon={<Clock className="w-5 h-5" />}
-     iconBgClass="bg-gray-100"
-     iconColorClass="text-slate-800"
+     iconBgClass="bg-surface-3"
+     iconColorClass="text-ink"
      title="Pending"
      value={stats.pending}
     />
     <StatCard
      icon={<PlayCircle className="w-5 h-5" />}
-     iconBgClass="bg-blue-100"
-     iconColorClass="text-blue-600"
+     iconBgClass="bg-brand-soft"
+     iconColorClass="text-brand"
      title="In Progress"
      value={stats.inProgress}
     />
     <StatCard
      icon={<CheckCircle2 className="w-5 h-5" />}
-     iconBgClass="bg-green-100"
-     iconColorClass="text-green-600"
+     iconBgClass="bg-ok-soft"
+     iconColorClass="text-ok"
      title="Completed"
      value={stats.completed}
      tone="ok"
     />
     <StatCard
      icon={<AlertTriangle className="w-5 h-5" />}
-     iconBgClass="bg-red-100"
-     iconColorClass="text-red-600"
+     iconBgClass="bg-err-soft"
+     iconColorClass="text-err"
      title="High Priority"
      value={stats.highPriority}
      tone="err"
     />
     <StatCard
      icon={<Calendar className="w-5 h-5" />}
-     iconBgClass="bg-orange-100"
-     iconColorClass="text-slate-800"
+     iconBgClass="bg-warn-soft"
+     iconColorClass="text-ink"
      title="Overdue"
      value={stats.overdue}
     />
    </div>
 
    {/* Stage Distribution */}
-   <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-    <h3 className="text-sm font-medium text-gray-700 mb-3">Tasks by Stage</h3>
+   <div className="bg-surface rounded-xl p-4 shadow-sm border border-hairline">
+    <h3 className="text-sm font-medium text-ink-2 mb-3">Tasks by Stage</h3>
     <div className="flex flex-wrap gap-2">
      {STAGES.map(stage => (
       <button
@@ -999,7 +999,7 @@ export function GlobalTaskOverview() {
        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
         stageFilter === stage.name
          ? `${stage.color} text-white`
-         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+         : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
        }`}
       >
        {stage.name}: {stats.byStage[stage.name] || 0}
@@ -1009,11 +1009,11 @@ export function GlobalTaskOverview() {
    </div>
 
    {/* Search and Filters */}
-   <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+   <div className="bg-surface rounded-xl p-4 shadow-sm border border-hairline">
     <div className="flex flex-col md:flex-row gap-4">
      {/* Search */}
      <div className="flex-1 relative">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-ink-4" />
       <input
        type="text"
        aria-label="Search by Order No, Item, SKU, POC, or Assignee"
@@ -1023,7 +1023,7 @@ export function GlobalTaskOverview() {
         setSearchTerm(e.target.value);
         setCurrentPage(1);
        }}
-       className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+       className="w-full pl-10 pr-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
       />
      </div>
 
@@ -1031,7 +1031,7 @@ export function GlobalTaskOverview() {
      <button
       onClick={() => setShowFilters(!showFilters)}
       className={`px-4 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-       showFilters ? 'bg-gray-100 text-slate-900' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+       showFilters ? 'bg-surface-3 text-ink' : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
       }`}
      >
       <Filter className="w-4 h-4" />
@@ -1042,17 +1042,17 @@ export function GlobalTaskOverview() {
 
     {/* Expanded Filters */}
     {showFilters && (
-     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-100">
+     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-hairline">
       {/* Status Filter */}
       <div>
-       <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+       <label className="block text-xs font-medium text-ink-3 mb-1">Status</label>
        <select
         value={statusFilter}
         onChange={(e) => {
          setStatusFilter(e.target.value);
          setCurrentPage(1);
         }}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border"
        >
         <option value="all">All Statuses</option>
         <option value="Pending">Pending</option>
@@ -1064,14 +1064,14 @@ export function GlobalTaskOverview() {
 
       {/* Priority Filter */}
       <div>
-       <label className="block text-xs font-medium text-gray-500 mb-1">Priority</label>
+       <label className="block text-xs font-medium text-ink-3 mb-1">Priority</label>
        <select
         value={priorityFilter}
         onChange={(e) => {
          setPriorityFilter(e.target.value);
          setCurrentPage(1);
         }}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border"
        >
         <option value="all">All Priorities</option>
         <option value="high">High</option>
@@ -1082,14 +1082,14 @@ export function GlobalTaskOverview() {
 
       {/* Team Filter */}
       <div>
-       <label className="block text-xs font-medium text-gray-500 mb-1">Team</label>
+       <label className="block text-xs font-medium text-ink-3 mb-1">Team</label>
        <select
         value={teamFilter}
         onChange={(e) => {
          setTeamFilter(e.target.value);
          setCurrentPage(1);
         }}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border"
        >
         <option value="all">All Teams</option>
         {Object.entries(TEAM_NAMES).map(([key, name]) => (
@@ -1100,7 +1100,7 @@ export function GlobalTaskOverview() {
 
       {/* Sort By */}
       <div>
-       <label className="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
+       <label className="block text-xs font-medium text-ink-3 mb-1">Sort By</label>
        <select
         value={`${sortBy}-${sortOrder}`}
         onChange={(e) => {
@@ -1108,7 +1108,7 @@ export function GlobalTaskOverview() {
          setSortBy(field as typeof sortBy);
          setSortOrder(order as 'asc' | 'desc');
         }}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-border"
        >
         <option value="estDelDate-asc">Due Date (Earliest)</option>
         <option value="estDelDate-desc">Due Date (Latest)</option>
@@ -1125,42 +1125,42 @@ export function GlobalTaskOverview() {
    </div>
 
    {/* Task Table - Desktop */}
-   <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+   <div className="hidden md:block bg-surface rounded-xl shadow-sm border border-hairline overflow-hidden">
     <div className="overflow-auto max-h-[70vh]">
      <table className="w-full">
-      <thead className="bg-gray-50 sticky top-0 z-20 [&_th]:bg-gray-50">
+      <thead className="bg-surface-2 sticky top-0 z-20 [&_th]:bg-surface-2">
        <tr>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-         <button onClick={() => toggleSort('orderNo')} className="flex items-center gap-1 hover:text-slate-800">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
+         <button onClick={() => toggleSort('orderNo')} className="flex items-center gap-1 hover:text-ink">
           Order No
           {sortBy === 'orderNo' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Item / Task</th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-         <button onClick={() => toggleSort('stage')} className="flex items-center gap-1 hover:text-slate-800">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">Item / Task</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
+         <button onClick={() => toggleSort('stage')} className="flex items-center gap-1 hover:text-ink">
           Stage
           {sortBy === 'stage' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-         <button onClick={() => toggleSort('priority')} className="flex items-center gap-1 hover:text-slate-800">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">Status</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
+         <button onClick={() => toggleSort('priority')} className="flex items-center gap-1 hover:text-ink">
           Priority
           {sortBy === 'priority' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigned To</th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-         <button onClick={() => toggleSort('estDelDate')} className="flex items-center gap-1 hover:text-slate-800">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">Assigned To</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
+         <button onClick={() => toggleSort('estDelDate')} className="flex items-center gap-1 hover:text-ink">
           Due Date
           {sortBy === 'estDelDate' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+        <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-ink-2 uppercase tracking-wider">Actions</th>
        </tr>
       </thead>
-      <tbody className="divide-y divide-gray-100">
+      <tbody className="divide-y divide-hairline">
        {paginatedTasks.length === 0 ? (
         <tr>
          <td colSpan={8}>
@@ -1169,16 +1169,16 @@ export function GlobalTaskOverview() {
         </tr>
        ) : (
         paginatedTasks.map((task) => (
-         <tr key={task.id} className={`hover:bg-gray-50/50 transition-colors ${isOverdue(task) ? 'bg-red-50/30' : ''}`}>
+         <tr key={task.id} className={`hover:bg-surface-2/50 transition-colors ${isOverdue(task) ? 'bg-err-soft/30' : ''}`}>
           <td className="px-4 py-3">
-           <div className="text-sm font-medium text-gray-900">{task.orderNo}</div>
-           <div className="text-xs text-gray-500">{task.orderType}</div>
+           <div className="text-sm font-medium text-ink">{task.orderNo}</div>
+           <div className="text-xs text-ink-3">{task.orderType}</div>
           </td>
           <td className="px-4 py-3">
-           <div className="text-sm font-medium text-gray-800 truncate max-w-50" title={task.itemName}>
+           <div className="text-sm font-medium text-ink truncate max-w-50" title={task.itemName}>
             {task.itemName}
            </div>
-           <div className="text-xs text-gray-500">{task.sku}</div>
+           <div className="text-xs text-ink-3">{task.sku}</div>
           </td>
           <td className="px-4 py-3">
            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-white ${getStageColor(task.stage)}`}>
@@ -1197,21 +1197,21 @@ export function GlobalTaskOverview() {
           </td>
           <td className="px-4 py-3">
            <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-             <User className="w-3 h-3 text-slate-800" />
+            <div className="w-6 h-6 rounded-full bg-surface-3 flex items-center justify-center">
+             <User className="w-3 h-3 text-ink" />
             </div>
             <div>
-             <div className="text-sm text-gray-800">
+             <div className="text-sm text-ink">
               {task.assignedTo ? TEAM_MEMBERS[task.assignedTo] || 'Unknown' : 'Unassigned'}
              </div>
-             <div className="text-xs text-gray-500">
+             <div className="text-xs text-ink-3">
               {task.assignedTeam ? TEAM_NAMES[task.assignedTeam]?.split(' ')[1] || task.assignedTeam : ''}
              </div>
             </div>
            </div>
           </td>
           <td className="px-4 py-3">
-           <div className={`flex items-center gap-1.5 ${isOverdue(task) ? 'text-red-600' : 'text-gray-700'}`}>
+           <div className={`flex items-center gap-1.5 ${isOverdue(task) ? 'text-err' : 'text-ink-2'}`}>
             {isOverdue(task) && <AlertTriangle className="w-4 h-4" />}
             <span className="text-sm">{new Date(task.estDelDate).toLocaleDateString()}</span>
            </div>
@@ -1220,7 +1220,7 @@ export function GlobalTaskOverview() {
            <div className="flex items-center justify-center gap-1">
             <button
              onClick={() => handleViewTask(task)}
-             className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+             className="p-1.5 text-ink-3 hover:text-brand hover:bg-brand-soft rounded-lg transition-colors"
              title="View Details"
              aria-label="View Details"
             >
@@ -1228,7 +1228,7 @@ export function GlobalTaskOverview() {
             </button>
             <button
              onClick={() => handleEditTask(task)}
-             className="p-1.5 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg transition-colors"
+             className="p-1.5 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-lg transition-colors"
              title="Edit Task"
              aria-label="Edit Task"
             >
@@ -1237,7 +1237,7 @@ export function GlobalTaskOverview() {
             {task.currentStage < 7 && (
              <button
               onClick={() => handlePushTask(task)}
-              className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              className="p-1.5 text-ink-3 hover:text-ok hover:bg-ok-soft rounded-lg transition-colors"
               title="Push to Next Stage"
               aria-label="Push to Next Stage"
              >
@@ -1255,8 +1255,8 @@ export function GlobalTaskOverview() {
 
     {/* Pagination */}
     {totalPages > 1 && (
-     <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-      <div className="text-sm text-gray-500">
+     <div className="flex items-center justify-between px-4 py-3 border-t border-hairline bg-surface-2">
+      <div className="text-sm text-ink-3">
        Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredTasks.length)} of {filteredTasks.length} tasks
       </div>
       <div className="flex items-center gap-2">
@@ -1264,7 +1264,7 @@ export function GlobalTaskOverview() {
         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
         disabled={currentPage === 1}
         aria-label="Previous page"
-        className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-2 rounded-lg border border-border text-ink-2 hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
        >
         <ChevronLeft className="w-4 h-4" />
        </button>
@@ -1285,8 +1285,8 @@ export function GlobalTaskOverview() {
           onClick={() => setCurrentPage(pageNum)}
           className={`w-8 h-8 rounded-lg text-sm font-medium ${
            currentPage === pageNum
-            ? 'bg-slate-800 text-white'
-            : 'border border-gray-200 text-gray-600 hover:bg-white'
+            ? 'bg-ink text-white'
+            : 'border border-border text-ink-2 hover:bg-surface'
           }`}
          >
           {pageNum}
@@ -1297,7 +1297,7 @@ export function GlobalTaskOverview() {
         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         disabled={currentPage === totalPages}
         aria-label="Next page"
-        className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-2 rounded-lg border border-border text-ink-2 hover:bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
        >
         <ChevronRightIcon className="w-4 h-4" />
        </button>
@@ -1309,35 +1309,35 @@ export function GlobalTaskOverview() {
    {/* Task Cards - Mobile */}
    <div className="md:hidden space-y-3">
     {paginatedTasks.length === 0 ? (
-     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+     <div className="bg-surface rounded-xl shadow-sm border border-hairline">
       <EmptyState icon={<Package />} title="No tasks found" description="Try adjusting your filters" />
      </div>
     ) : (
      paginatedTasks.map((task) => (
-      <div key={task.id} className={`bg-white rounded-xl shadow-sm border ${isOverdue(task) ? 'border-red-200 bg-red-50/30' : 'border-gray-100'} p-4`}>
+      <div key={task.id} className={`bg-surface rounded-xl shadow-sm border ${isOverdue(task) ? 'border-err bg-err-soft/30' : 'border-hairline'} p-4`}>
        <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
          <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-bold text-gray-800">{task.orderNo}</span>
+          <span className="text-sm font-bold text-ink">{task.orderNo}</span>
           <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${getPriorityColor(task.priority)}`}>
            {task.priority || 'N/A'}
           </span>
          </div>
-         <p className="text-sm text-gray-600 truncate" title={task.itemName}>{task.itemName}</p>
-         <p className="text-xs text-gray-400">{task.sku}</p>
+         <p className="text-sm text-ink-2 truncate" title={task.itemName}>{task.itemName}</p>
+         <p className="text-xs text-ink-4">{task.sku}</p>
         </div>
         <div className="flex items-center gap-1 ml-2">
          <button
           onClick={() => handleViewTask(task)}
           aria-label="View Details"
-          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+          className="p-2 text-ink-3 hover:text-brand hover:bg-brand-soft rounded-lg"
          >
           <Eye className="w-4 h-4" />
          </button>
          <button
           onClick={() => handleEditTask(task)}
           aria-label="Edit Task"
-          className="p-2 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg"
+          className="p-2 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-lg"
          >
           <Edit3 className="w-4 h-4" />
          </button>
@@ -1345,33 +1345,33 @@ export function GlobalTaskOverview() {
        </div>
        <div className="grid grid-cols-2 gap-2 text-sm">
         <div className="flex items-center gap-2">
-         <span className="text-gray-500">Stage:</span>
+         <span className="text-ink-3">Stage:</span>
          <span className={`px-2 py-0.5 rounded text-xs font-medium text-white ${getStageColor(task.stage)}`}>
           {task.stage}
          </span>
         </div>
         <div className="flex items-center gap-2">
-         <span className="text-gray-500">Status:</span>
+         <span className="text-ink-3">Status:</span>
          <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(task.currentStatus)}`}>
           {task.currentStatus}
          </span>
         </div>
         <div className="flex items-center gap-2">
-         <User className="w-3 h-3 text-gray-400" />
-         <span className="text-gray-700 truncate">
+         <User className="w-3 h-3 text-ink-4" />
+         <span className="text-ink-2 truncate">
           {task.assignedTo ? TEAM_MEMBERS[task.assignedTo] || 'Unknown' : 'Unassigned'}
          </span>
         </div>
-        <div className={`flex items-center gap-2 ${isOverdue(task) ? 'text-red-600' : 'text-gray-700'}`}>
+        <div className={`flex items-center gap-2 ${isOverdue(task) ? 'text-err' : 'text-ink-2'}`}>
          {isOverdue(task) && <AlertTriangle className="w-3 h-3" />}
-         <Calendar className="w-3 h-3 text-gray-400" />
+         <Calendar className="w-3 h-3 text-ink-4" />
          <span>{new Date(task.estDelDate).toLocaleDateString()}</span>
         </div>
        </div>
        {task.currentStage < 7 && (
         <button
          onClick={() => handlePushTask(task)}
-         className="w-full mt-3 py-2 bg-gray-50 text-slate-900 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+         className="w-full mt-3 py-2 bg-surface-2 text-ink rounded-lg text-sm font-medium hover:bg-surface-3 transition-colors flex items-center justify-center gap-2"
         >
          <ArrowRight className="w-4 h-4" />
          Push to Next Stage
@@ -1387,17 +1387,17 @@ export function GlobalTaskOverview() {
       <button
        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
        disabled={currentPage === 1}
-       className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm disabled:opacity-50"
+       className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm disabled:opacity-50"
       >
        Previous
       </button>
-      <span className="text-sm text-gray-500">
+      <span className="text-sm text-ink-3">
        {currentPage} / {totalPages}
       </span>
       <button
        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
        disabled={currentPage === totalPages}
-       className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm disabled:opacity-50"
+       className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm disabled:opacity-50"
       >
        Next
       </button>
@@ -1407,9 +1407,9 @@ export function GlobalTaskOverview() {
 
    {/* View Task Modal */}
    {showTaskModal && selectedTask && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div role="dialog" aria-modal="true" aria-labelledby="view-task-modal-title" className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
-      <div className="sticky top-0 bg-slate-800 p-6 rounded-t-2xl">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+     <div role="dialog" aria-modal="true" aria-labelledby="view-task-modal-title" className="bg-surface rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="sticky top-0 bg-ink p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <div>
          <h2 id="view-task-modal-title" className="text-xl font-bold text-white">{selectedTask.orderNo}</h2>
@@ -1418,7 +1418,7 @@ export function GlobalTaskOverview() {
         <button
          onClick={() => setShowTaskModal(false)}
          aria-label="Close"
-         className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+         className="p-2 hover:bg-surface/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
         </button>
@@ -1427,48 +1427,48 @@ export function GlobalTaskOverview() {
       <div className="p-6 space-y-6">
        {/* Task Info Grid */}
        <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Stage</p>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Stage</p>
          <p className={`text-sm font-medium mt-1 inline-block px-2 py-0.5 rounded text-white ${getStageColor(selectedTask.stage)}`}>
           {selectedTask.stage}
          </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Status</p>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Status</p>
          <p className={`text-sm font-medium mt-1 inline-block px-2 py-0.5 rounded border ${getStatusColor(selectedTask.currentStatus)}`}>
           {selectedTask.currentStatus}
          </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Priority</p>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Priority</p>
          <p className={`text-sm font-medium mt-1 inline-block px-2 py-0.5 rounded capitalize ${getPriorityColor(selectedTask.priority)}`}>
           {selectedTask.priority || 'N/A'}
          </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Quantity</p>
-         <p className="text-sm font-medium text-gray-800 mt-1">{selectedTask.qty.toLocaleString()} units</p>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Quantity</p>
+         <p className="text-sm font-medium text-ink mt-1">{selectedTask.qty.toLocaleString()} units</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Order Date</p>
-         <p className="text-sm font-medium text-gray-800 mt-1">{new Date(selectedTask.odrDate).toLocaleDateString()}</p>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Order Date</p>
+         <p className="text-sm font-medium text-ink mt-1">{new Date(selectedTask.odrDate).toLocaleDateString()}</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Due Date</p>
-         <p className={`text-sm font-medium mt-1 ${isOverdue(selectedTask) ? 'text-red-600' : 'text-gray-800'}`}>
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Due Date</p>
+         <p className={`text-sm font-medium mt-1 ${isOverdue(selectedTask) ? 'text-err' : 'text-ink'}`}>
           {new Date(selectedTask.estDelDate).toLocaleDateString()}
           {isOverdue(selectedTask) && ' (Overdue)'}
          </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Assigned Team</p>
-         <p className="text-sm font-medium text-gray-800 mt-1">
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Assigned Team</p>
+         <p className="text-sm font-medium text-ink mt-1">
           {selectedTask.assignedTeam ? TEAM_NAMES[selectedTask.assignedTeam] || selectedTask.assignedTeam : 'Unassigned'}
          </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
-         <p className="text-xs text-gray-500">Assigned To</p>
-         <p className="text-sm font-medium text-gray-800 mt-1">
+        <div className="bg-surface-2 rounded-lg p-3">
+         <p className="text-xs text-ink-3">Assigned To</p>
+         <p className="text-sm font-medium text-ink mt-1">
           {selectedTask.assignedTo ? TEAM_MEMBERS[selectedTask.assignedTo] || 'Unknown' : 'Unassigned'}
          </p>
         </div>
@@ -1476,15 +1476,15 @@ export function GlobalTaskOverview() {
 
        {/* Comments */}
        {selectedTask.comments && (
-        <div className="bg-gray-50 rounded-lg p-4">
-         <p className="text-xs font-medium text-slate-900 mb-2">Comments</p>
-         <p className="text-sm text-gray-700">{selectedTask.comments}</p>
+        <div className="bg-surface-2 rounded-lg p-4">
+         <p className="text-xs font-medium text-ink mb-2">Comments</p>
+         <p className="text-sm text-ink-2">{selectedTask.comments}</p>
         </div>
        )}
 
        {/* Stage Progress */}
        <div>
-        <p className="text-xs font-medium text-gray-500 mb-3">Stage Progress</p>
+        <p className="text-xs font-medium text-ink-3 mb-3">Stage Progress</p>
         <div className="flex items-center gap-2">
          {STAGES.slice(0, 6).map((stage, _index) => {
           const progress = selectedTask.stageProgress[stage.id];
@@ -1493,13 +1493,13 @@ export function GlobalTaskOverview() {
             <div
              className={`h-2 rounded-full ${
               progress === 'completed'
-               ? 'bg-green-500'
+               ? 'bg-ok'
                : progress === 'in-progress'
-               ? 'bg-blue-500'
-               : 'bg-gray-200'
+               ? 'bg-brand'
+               : 'bg-surface-3'
              }`}
             />
-            <p className="text-xs text-center mt-1 text-gray-500">{stage.name}</p>
+            <p className="text-xs text-center mt-1 text-ink-3">{stage.name}</p>
            </div>
           );
          })}
@@ -1509,14 +1509,14 @@ export function GlobalTaskOverview() {
        {/* Activity Log */}
        {selectedTask.activityLog && selectedTask.activityLog.length > 0 && (
         <div>
-         <p className="text-xs font-medium text-gray-500 mb-3">Recent Activity</p>
+         <p className="text-xs font-medium text-ink-3 mb-3">Recent Activity</p>
          <div className="space-y-2 max-h-40 overflow-y-auto">
           {selectedTask.activityLog.slice(-5).reverse().map(log => (
            <div key={log.id} className="flex items-start gap-3 text-sm">
-            <div className="w-2 h-2 rounded-full bg-slate-800 mt-1.5 shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-ink mt-1.5 shrink-0" />
             <div>
-             <p className="text-gray-800">{log.action}</p>
-             <p className="text-xs text-gray-500">{log.performedBy} • {new Date(log.performedAt).toLocaleString()}</p>
+             <p className="text-ink">{log.action}</p>
+             <p className="text-xs text-ink-3">{log.performedBy} • {new Date(log.performedAt).toLocaleString()}</p>
             </div>
            </div>
           ))}
@@ -1525,13 +1525,13 @@ export function GlobalTaskOverview() {
        )}
 
        {/* Action Buttons */}
-       <div className="flex gap-3 pt-4 border-t border-gray-100">
+       <div className="flex gap-3 pt-4 border-t border-hairline">
         <button
          onClick={() => {
           setShowTaskModal(false);
           handleEditTask(selectedTask);
          }}
-         className="flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+         className="flex-1 px-4 py-2.5 bg-ink text-white rounded-lg font-medium hover:bg-ink transition-colors flex items-center justify-center gap-2"
         >
          <Edit3 className="w-4 h-4" />
          Edit Task
@@ -1542,7 +1542,7 @@ export function GlobalTaskOverview() {
            setShowTaskModal(false);
            handlePushTask(selectedTask);
           }}
-          className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-2.5 bg-ok text-white rounded-lg font-medium hover:bg-ok transition-colors flex items-center justify-center gap-2"
          >
           <ArrowRight className="w-4 h-4" />
           Push to Next Stage
@@ -1556,15 +1556,15 @@ export function GlobalTaskOverview() {
 
    {/* Edit Task Modal */}
    {showEditModal && selectedTask && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div role="dialog" aria-modal="true" aria-labelledby="edit-task-modal-title" className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-      <div className="bg-slate-800 p-5 rounded-t-2xl">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+     <div role="dialog" aria-modal="true" aria-labelledby="edit-task-modal-title" className="bg-surface rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-ink p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <h2 id="edit-task-modal-title" className="text-lg font-bold text-white">Edit Task</h2>
         <button
          onClick={() => setShowEditModal(false)}
          aria-label="Close"
-         className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+         className="p-2 hover:bg-surface/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
         </button>
@@ -1574,11 +1574,11 @@ export function GlobalTaskOverview() {
       <div className="p-5 space-y-4">
        {/* Status */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Status</label>
         <select
          value={editForm.status}
          onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="Pending">Pending</option>
          <option value="In Progress">In Progress</option>
@@ -1589,11 +1589,11 @@ export function GlobalTaskOverview() {
 
        {/* Priority */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Priority</label>
         <select
          value={editForm.priority}
          onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="high">High</option>
          <option value="medium">Medium</option>
@@ -1603,11 +1603,11 @@ export function GlobalTaskOverview() {
 
        {/* Assigned To */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Assigned To</label>
         <select
          value={editForm.assignedTo}
          onChange={(e) => setEditForm({ ...editForm, assignedTo: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="">Unassigned</option>
          {Object.entries(TEAM_MEMBERS).map(([id, name]) => (
@@ -1618,12 +1618,12 @@ export function GlobalTaskOverview() {
 
        {/* Comments */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Comments</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Comments</label>
         <textarea
          value={editForm.comments}
          onChange={(e) => setEditForm({ ...editForm, comments: e.target.value })}
          rows={3}
-         className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 resize-none"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border resize-none"
          placeholder="Add comments..."
         />
        </div>
@@ -1632,13 +1632,13 @@ export function GlobalTaskOverview() {
        <div className="flex gap-3 pt-2">
         <button
          onClick={() => setShowEditModal(false)}
-         className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+         className="flex-1 px-4 py-2.5 border border-border text-ink-2 rounded-lg font-medium hover:bg-surface-2 transition-colors"
         >
          Cancel
         </button>
         <button
          onClick={handleSaveEdit}
-         className="flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+         className="flex-1 px-4 py-2.5 bg-ink text-white rounded-lg font-medium hover:bg-ink transition-colors flex items-center justify-center gap-2"
         >
          <Save className="w-4 h-4" />
          Save Changes
@@ -1651,15 +1651,15 @@ export function GlobalTaskOverview() {
 
    {/* Push Task Modal */}
    {showPushModal && selectedTask && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div role="dialog" aria-modal="true" aria-labelledby="push-task-modal-title" className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-      <div className="bg-green-500 p-5 rounded-t-2xl">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+     <div role="dialog" aria-modal="true" aria-labelledby="push-task-modal-title" className="bg-surface rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-ok p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <h2 id="push-task-modal-title" className="text-lg font-bold text-white">Push Task to Next Stage</h2>
         <button
          onClick={() => setShowPushModal(false)}
          aria-label="Close"
-         className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+         className="p-2 hover:bg-surface/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
         </button>
@@ -1667,7 +1667,7 @@ export function GlobalTaskOverview() {
       </div>
       <div className="p-5 space-y-4">
        <div className="text-center">
-        <p className="text-gray-600 mb-4">
+        <p className="text-ink-2 mb-4">
          Are you sure you want to push this task to the next stage?
         </p>
         <div className="flex items-center justify-center gap-4 mb-4">
@@ -1675,21 +1675,21 @@ export function GlobalTaskOverview() {
           <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium text-white ${getStageColor(selectedTask.stage)}`}>
            {selectedTask.stage}
           </span>
-          <p className="text-xs text-gray-500 mt-1">Current</p>
+          <p className="text-xs text-ink-3 mt-1">Current</p>
          </div>
-         <ArrowRight className="w-6 h-6 text-green-500" />
+         <ArrowRight className="w-6 h-6 text-ok" />
          <div className="text-center">
           <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium text-white ${getStageColor(STAGES.find(s => s.id === selectedTask.currentStage + 1)?.name || '')}`}>
            {STAGES.find(s => s.id === selectedTask.currentStage + 1)?.name || 'N/A'}
           </span>
-          <p className="text-xs text-gray-500 mt-1">Next</p>
+          <p className="text-xs text-ink-3 mt-1">Next</p>
          </div>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-left">
-         <p className="text-sm text-slate-900">
+        <div className="bg-surface-2 rounded-lg p-3 text-left">
+         <p className="text-sm text-ink">
           <strong>Order:</strong> {selectedTask.orderNo}
          </p>
-         <p className="text-sm text-slate-900 mt-1">
+         <p className="text-sm text-ink mt-1">
           <strong>Item:</strong> {selectedTask.itemName}
          </p>
         </div>
@@ -1699,13 +1699,13 @@ export function GlobalTaskOverview() {
        <div className="flex gap-3 pt-2">
         <button
          onClick={() => setShowPushModal(false)}
-         className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+         className="flex-1 px-4 py-2.5 border border-border text-ink-2 rounded-lg font-medium hover:bg-surface-2 transition-colors"
         >
          Cancel
         </button>
         <button
          onClick={handleConfirmPush}
-         className="flex-1 px-4 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+         className="flex-1 px-4 py-2.5 bg-ok text-white rounded-lg font-medium hover:bg-ok transition-colors flex items-center justify-center gap-2"
         >
          <TrendingUp className="w-4 h-4" />
          Confirm Push
@@ -1718,15 +1718,15 @@ export function GlobalTaskOverview() {
 
    {/* Add Task Modal */}
    {showAddTaskModal && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-     <div role="dialog" aria-modal="true" aria-labelledby="add-task-modal-title" className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl my-8">
-      <div className="bg-slate-800 p-5 rounded-t-2xl">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
+     <div role="dialog" aria-modal="true" aria-labelledby="add-task-modal-title" className="bg-surface rounded-2xl w-full max-w-2xl shadow-2xl my-8">
+      <div className="bg-ink p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <h2 id="add-task-modal-title" className="text-lg font-bold text-white">New Task</h2>
         <button
          onClick={() => setShowAddTaskModal(false)}
          aria-label="Close"
-         className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+         className="p-2 hover:bg-surface/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
         </button>
@@ -1735,51 +1735,51 @@ export function GlobalTaskOverview() {
       <div className="p-6 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
        {/* Title */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-         Title <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-ink-2 mb-1">
+         Title <span className="text-err">*</span>
         </label>
         <input
          type="text"
          value={addTaskForm.title}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, title: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
          placeholder="Enter task title"
         />
        </div>
 
        {/* Client Name */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Client Name</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Client Name</label>
         <input
          type="text"
          value={addTaskForm.clientName}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, clientName: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
          placeholder="NA"
         />
-        <p className="text-xs text-gray-500 mt-1">Leave empty to show as "NA"</p>
+        <p className="text-xs text-ink-3 mt-1">Leave empty to show as "NA"</p>
        </div>
 
        {/* Due Date */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Due Date</label>
         <input
          type="date"
          value={addTaskForm.dueDate}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, dueDate: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         />
        </div>
 
        {/* Assign To */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-         Assign To <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-ink-2 mb-1">
+         Assign To <span className="text-err">*</span>
         </label>
         <select
          value={addTaskForm.assignTo}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, assignTo: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="">Select User</option>
          {Object.entries(TEAM_MEMBERS).map(([id, name]) => (
@@ -1790,11 +1790,11 @@ export function GlobalTaskOverview() {
 
        {/* Priority */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Priority</label>
         <select
          value={addTaskForm.priority}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, priority: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="Very Low">Very Low</option>
          <option value="low">Low</option>
@@ -1806,27 +1806,27 @@ export function GlobalTaskOverview() {
 
        {/* Description */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Description</label>
         <textarea
          value={addTaskForm.description}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, description: e.target.value })}
          rows={4}
          maxLength={10000}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700 resize-none"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border resize-none"
          placeholder="Max. 10000 characters"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-ink-3 mt-1">
          {addTaskForm.description.length}/10000 characters
         </p>
        </div>
 
        {/* Created By */}
        <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Created By</label>
+        <label className="block text-sm font-medium text-ink-2 mb-1">Created By</label>
         <select
          value={addTaskForm.createdBy}
          onChange={(e) => setAddTaskForm({ ...addTaskForm, createdBy: e.target.value })}
-         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-700"
+         className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         >
          <option value="">Select User</option>
          {Object.entries(TEAM_MEMBERS).map(([id, name]) => (
@@ -1836,17 +1836,17 @@ export function GlobalTaskOverview() {
        </div>
 
        {/* Set Reminder */}
-       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <label className="text-sm font-medium text-gray-700">Set Reminder</label>
+       <div className="flex items-center justify-between p-3 bg-surface-2 rounded-lg">
+        <label className="text-sm font-medium text-ink-2">Set Reminder</label>
         <button
          type="button"
          onClick={() => setAddTaskForm({ ...addTaskForm, setReminder: !addTaskForm.setReminder })}
          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          addTaskForm.setReminder ? 'bg-slate-800' : 'bg-gray-300'
+          addTaskForm.setReminder ? 'bg-ink' : 'bg-gray-300'
          }`}
         >
          <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+          className={`inline-block h-4 w-4 transform rounded-full bg-surface transition-transform ${
            addTaskForm.setReminder ? 'translate-x-6' : 'translate-x-1'
           }`}
          />
@@ -1854,16 +1854,16 @@ export function GlobalTaskOverview() {
        </div>
 
        {/* Buttons */}
-       <div className="flex gap-3 pt-4 border-t border-gray-200">
+       <div className="flex gap-3 pt-4 border-t border-border">
         <button
          onClick={() => setShowAddTaskModal(false)}
-         className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+         className="flex-1 px-4 py-2.5 border border-border text-ink-2 rounded-lg font-medium hover:bg-surface-2 transition-colors"
         >
          Cancel
         </button>
         <button
          onClick={handleAddTask}
-         className="flex-1 px-4 py-2.5 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-800 hover: transition-colors flex items-center justify-center gap-2"
+         className="flex-1 px-4 py-2.5 bg-ink text-white rounded-lg font-medium hover:bg-ink hover: transition-colors flex items-center justify-center gap-2"
         >
          <Save className="w-4 h-4" />
          Save Task

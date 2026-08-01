@@ -19,6 +19,7 @@ import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { procBtnPrimary, procInputClass } from '../components/procurement/ProcSection';
 
 const EMPTY_FORM = {
   name: '',
@@ -419,7 +420,7 @@ const ItemGroups: React.FC = () => {
           ))}
         </div>
 
-        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl border border-border shadow-[var(--e1)] overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-ink">Item Groups</span>
@@ -433,7 +434,7 @@ const ItemGroups: React.FC = () => {
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search group…"
                 aria-label="Search group"
-                className="pl-9 pr-4 py-2 text-xs border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] w-44"
+                className={`${procInputClass} w-44`}
               />
               <div className="flex items-center gap-1 border border-border rounded-lg p-0.5 bg-surface-3">
                 {(['All', 'RM', 'PM'] as const).map(type => (
@@ -451,7 +452,7 @@ const ItemGroups: React.FC = () => {
                   setCreateSubmitStep('form');
                   setShowCreateModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-semibold shadow-lg"
+                className={procBtnPrimary}
               >
                 <span className="text-base leading-none">+</span> New Group
               </button>
@@ -589,7 +590,7 @@ const ItemGroups: React.FC = () => {
           <button
             type="button"
             aria-label="Close panel"
-            className="lg:hidden fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm"
+            className="lg:hidden fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm"
             onClick={closeDetailPanel}
           />
           <aside

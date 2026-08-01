@@ -113,29 +113,29 @@ const Login: React.FC = () => {
  // Show loading state while checking auth
  if (authLoading) {
   return (
-   <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+   <div className="min-h-screen flex items-center justify-center bg-surface-2 p-4">
     <CardSkeleton className="w-full max-w-md" />
    </div>
   );
  }
 
  return (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+  <div className="min-h-screen flex items-center justify-center bg-surface-2 p-4">
    {/* Background Pattern */}
    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-    <div className="absolute -top-40 -right-40 w-80 h-80 bg-gray-200/30 rounded-full blur-3xl"></div>
+    <div className="absolute -top-40 -right-40 w-80 h-80 bg-surface-3/30 rounded-full blur-3xl"></div>
     <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-200/30 rounded-full blur-3xl"></div>
-    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 bg-yellow-100/20 rounded-full blur-3xl"></div>
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 bg-warn-soft/20 rounded-full blur-3xl"></div>
    </div>
 
    {/* Login Card */}
    <div className="relative w-full max-w-md">
     {/* Card */}
-    <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-2xl shadow-amber-500/10 border border-white/50 overflow-hidden">
+    <div className="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-2xl shadow-amber-500/10 border border-white/50 overflow-hidden">
      {/* Header */}
-     <div className="bg-slate-800 px-8 py-8 text-center">
+     <div className="bg-ink px-8 py-8 text-center">
       <div className="flex justify-center mb-4">
-       <div className="bg-white rounded-2xl p-3 shadow-lg">
+       <div className="bg-surface rounded-2xl p-3 shadow-lg">
         <img 
          src={Logo} 
          alt="Eisthetic Logo" 
@@ -151,22 +151,22 @@ const Login: React.FC = () => {
      <form onSubmit={handleSubmit} className="p-8 space-y-5">
       {/* Error Message */}
       {error && (
-       <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-        <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+       <div className="bg-err-soft border border-err rounded-xl p-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+        <svg className="w-5 h-5 text-err shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-err">{error}</p>
        </div>
       )}
 
       {/* Email Field */}
       <div>
-       <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-        Email Address <span className="text-red-500">*</span>
+       <label htmlFor="email" className="block text-sm font-medium text-ink-2 mb-2">
+        Email Address <span className="text-err">*</span>
        </label>
        <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-         <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <svg className="w-5 h-5 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
          </svg>
         </div>
@@ -175,7 +175,7 @@ const Login: React.FC = () => {
          type="email"
          value={email}
          onChange={(e) => setEmail(e.target.value)}
-         className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 disabled:opacity-60"
+         className="w-full pl-12 pr-4 py-3 bg-surface-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-border/50 focus:border-slate-800 transition-all duration-200 text-ink placeholder-ink-4 disabled:opacity-60"
          placeholder="Enter your email"
          autoComplete="email"
          required
@@ -186,12 +186,12 @@ const Login: React.FC = () => {
 
       {/* Password Field */}
       <div>
-       <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-        Password <span className="text-red-500">*</span>
+       <label htmlFor="password" className="block text-sm font-medium text-ink-2 mb-2">
+        Password <span className="text-err">*</span>
        </label>
        <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-         <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+         <svg className="w-5 h-5 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
          </svg>
         </div>
@@ -200,7 +200,7 @@ const Login: React.FC = () => {
          type={showPassword ? 'text' : 'password'}
          value={password}
          onChange={(e) => setPassword(e.target.value)}
-         className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 disabled:opacity-60"
+         className="w-full pl-12 pr-12 py-3 bg-surface-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-border/50 focus:border-slate-800 transition-all duration-200 text-ink placeholder-ink-4 disabled:opacity-60"
          placeholder="Enter your password"
          autoComplete="current-password"
          required
@@ -210,7 +210,7 @@ const Login: React.FC = () => {
          type="button"
          onClick={() => setShowPassword(!showPassword)}
          aria-label={showPassword ? 'Hide password' : 'Show password'}
-         className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors disabled:pointer-events-none"
+         className="absolute inset-y-0 right-0 pr-4 flex items-center text-ink-4 hover:text-ink-2 transition-colors disabled:pointer-events-none"
          tabIndex={-1}
          disabled={isLoading || pendingOtpUserId != null}
         >
@@ -229,17 +229,17 @@ const Login: React.FC = () => {
       </div>
 
       {pendingOtpUserId != null && displayedOtpFromApi && (
-       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-        <p className="text-sm font-medium text-amber-900">One-time password (from server response)</p>
-        <p className="text-2xl font-mono font-semibold tracking-[0.2em] text-amber-950 text-center py-1">{displayedOtpFromApi}</p>
-        <p className="text-xs text-amber-800">Also check your email. Enter the same code below to continue.</p>
+       <div className="bg-warn-soft border border-warn rounded-xl p-4 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <p className="text-sm font-medium text-warn">One-time password (from server response)</p>
+        <p className="text-2xl font-mono font-semibold tracking-[0.2em] text-warn text-center py-1">{displayedOtpFromApi}</p>
+        <p className="text-xs text-warn">Also check your email. Enter the same code below to continue.</p>
        </div>
       )}
 
       {pendingOtpUserId != null && (
        <div>
-        <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
-         Enter OTP <span className="text-red-500">*</span>
+        <label htmlFor="otp" className="block text-sm font-medium text-ink-2 mb-2">
+         Enter OTP <span className="text-err">*</span>
         </label>
         <input
          id="otp"
@@ -250,7 +250,7 @@ const Login: React.FC = () => {
          maxLength={12}
          value={otpEntry}
          onChange={(e) => setOtpEntry(e.target.value.replace(/\D/g, ''))}
-         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-800/50 focus:border-slate-800 transition-all duration-200 text-gray-800 placeholder-gray-400 text-center text-xl font-mono tracking-widest"
+         className="w-full px-4 py-3 bg-surface-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-border/50 focus:border-slate-800 transition-all duration-200 text-ink placeholder-ink-4 text-center text-xl font-mono tracking-widest"
          placeholder="6-digit code"
          required
          disabled={isLoading}
@@ -265,7 +265,7 @@ const Login: React.FC = () => {
          clearOtpStep();
          setError('');
         }}
-        className="w-full py-2 text-sm font-medium text-slate-700 hover:text-slate-900 underline-offset-2 hover:underline"
+        className="w-full py-2 text-sm font-medium text-ink-2 hover:text-ink underline-offset-2 hover:underline"
        >
         Use a different account
        </button>
@@ -282,17 +282,17 @@ const Login: React.FC = () => {
           className="sr-only peer"
           disabled={isLoading || pendingOtpUserId != null}
          />
-         <div className="w-5 h-5 border-2 border-gray-300 rounded-md peer-checked:border-slate-800 peer-checked:bg-slate-800 transition-all duration-200 flex items-center justify-center">
+         <div className="w-5 h-5 border-2 border-border rounded-md peer-checked:border-slate-800 peer-checked:bg-ink transition-all duration-200 flex items-center justify-center">
           <svg className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
          </div>
         </div>
-        <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors">Remember me</span>
+        <span className="text-sm text-ink-2 group-hover:text-ink transition-colors">Remember me</span>
        </label>
        <button
         type="button"
-        className="text-sm text-slate-800 hover:text-slate-900 font-medium transition-colors"
+        className="text-sm text-ink hover:text-ink font-medium transition-colors"
         onClick={() => alert('Please contact your administrator to reset your password.')}
        >
         Forgot password?
@@ -308,7 +308,7 @@ const Login: React.FC = () => {
         setError('');
        }}
        disabled={isLoading || pendingOtpUserId != null}
-       className="w-full py-2.5 text-sm font-medium text-slate-900 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 hover:border-amber-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+       className="w-full py-2.5 text-sm font-medium text-ink bg-surface-2 border border-border rounded-xl hover:bg-surface-3 hover:border-warn transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
        Fill demo credentials (Super Admin)
       </button>
@@ -317,7 +317,7 @@ const Login: React.FC = () => {
       <button
        type="submit"
        disabled={isLoading}
-       className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+       className="w-full py-3.5 bg-ink hover:bg-ink text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
        {isLoading ? (
         <>
@@ -337,14 +337,14 @@ const Login: React.FC = () => {
 
      {/* Footer */}
      <div className="px-8 pb-6 text-center">
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-ink-4">
        Protected by enterprise-grade security
       </p>
      </div>
     </div>
 
     {/* Copyright */}
-    <p className="mt-6 text-center text-xs text-gray-400">
+    <p className="mt-6 text-center text-xs text-ink-4">
      © {new Date().getFullYear()} Eisthetic. All rights reserved.
     </p>
    </div>

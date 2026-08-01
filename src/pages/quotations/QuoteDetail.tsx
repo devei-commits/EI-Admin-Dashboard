@@ -95,7 +95,7 @@ export default function QuoteDetail() {
       <CardSkeleton />
     </div>
   );
-  if (!quote) return <div className="pt-4 md:pt-6"><div className="bg-white rounded-lg shadow-sm border border-gray-100"><EmptyState icon={<FileText />} title="Quote not found." /></div></div>;
+  if (!quote) return <div className="pt-4 md:pt-6"><div className="bg-surface rounded-lg shadow-sm border border-hairline"><EmptyState icon={<FileText />} title="Quote not found." /></div></div>;
 
   const r = quote.result;
   const meta = [quote.customer_name && `Customer: ${quote.customer_name}`, r.bom_code && `BOM: ${r.bom_code}`, r.pack_size && `Pack: ${r.pack_size}`, r.grade_name].filter(Boolean).join('  ·  ');
@@ -108,22 +108,22 @@ export default function QuoteDetail() {
         icon={<FileText className="w-6 h-6" />}
         actions={
           <>
-            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
-            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Pencil className="w-4 h-4" /> Edit</button>
-            {!quote.superseded_by && <button onClick={doRevise} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><GitBranch className="w-4 h-4" /> Revise</button>}
+            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
+            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><Pencil className="w-4 h-4" /> Edit</button>
+            {!quote.superseded_by && <button onClick={doRevise} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><GitBranch className="w-4 h-4" /> Revise</button>}
             {quote.quote_category !== 'post_production' && !quote.superseded_by && (
-              <button onClick={() => navigate(`/quotations/new?fromQuoteId=${quote.id}`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all text-sm font-semibold"><ReceiptText className="w-4 h-4" /> Post-Production Bill</button>
+              <button onClick={() => navigate(`/quotations/new?fromQuoteId=${quote.id}`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-ok text-white rounded-lg hover:bg-ok transition-all text-sm font-semibold"><ReceiptText className="w-4 h-4" /> Post-Production Bill</button>
             )}
             {quote.quote_category === 'post_production' && (
               <button onClick={() => setActualsOpen(true)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-all text-sm font-semibold"><ClipboardCheck className="w-4 h-4" /> {actuals.length > 0 ? 'Edit Actuals' : 'Enter Actuals'}</button>
             )}
-            <button onClick={emailStub} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><Mail className="w-4 h-4" /> Email</button>
+            <button onClick={emailStub} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><Mail className="w-4 h-4" /> Email</button>
             <div ref={pdfRef} className="relative">
-              <button onClick={() => setPdfOpen((o) => !o)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold"><Download className="w-4 h-4" /> PDF <ChevronDown className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setPdfOpen((o) => !o)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface text-ink rounded-lg hover:bg-surface-3 transition-all text-sm font-semibold"><Download className="w-4 h-4" /> PDF <ChevronDown className="w-3.5 h-3.5" /></button>
               {pdfOpen && (
-                <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-30 overflow-hidden">
-                  <button onClick={() => downloadPdf('client')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50">Client PDF <span className="block text-xs text-gray-400">price + delivery</span></button>
-                  <button onClick={() => downloadPdf('internal')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-50">Internal PDF <span className="block text-xs text-gray-400">full cost breakdown</span></button>
+                <div className="absolute right-0 mt-1 w-44 bg-surface border border-border rounded-lg shadow-lg z-30 overflow-hidden">
+                  <button onClick={() => downloadPdf('client')} className="w-full text-left px-4 py-2.5 text-sm text-ink-2 hover:bg-surface-2">Client PDF <span className="block text-xs text-ink-4">price + delivery</span></button>
+                  <button onClick={() => downloadPdf('internal')} className="w-full text-left px-4 py-2.5 text-sm text-ink-2 hover:bg-surface-2 border-t border-gray-50">Internal PDF <span className="block text-xs text-ink-4">full cost breakdown</span></button>
                 </div>
               )}
             </div>
@@ -132,98 +132,98 @@ export default function QuoteDetail() {
       />
 
       {quote.superseded_by && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-          <span className="text-sm text-amber-800 flex-1">This quote has been superseded by a newer version.</span>
-          <button onClick={() => navigate(`/quotations/${quote.superseded_by}`)} className="text-sm font-semibold text-amber-700 hover:underline">View newer version →</button>
+        <div className="bg-warn-soft border border-warn rounded-lg p-4 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-warn shrink-0" />
+          <span className="text-sm text-warn flex-1">This quote has been superseded by a newer version.</span>
+          <button onClick={() => navigate(`/quotations/${quote.superseded_by}`)} className="text-sm font-semibold text-warn hover:underline">View newer version →</button>
         </div>
       )}
       {quote.price_warnings && quote.price_warnings.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <div className="bg-warn-soft border border-warn rounded-lg p-4">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span className="text-sm font-semibold text-amber-800">{quote.price_warnings.length} price change{quote.price_warnings.length !== 1 ? 's' : ''} since this quote was saved</span>
+              <AlertTriangle className="w-4 h-4 text-warn shrink-0" />
+              <span className="text-sm font-semibold text-warn">{quote.price_warnings.length} price change{quote.price_warnings.length !== 1 ? 's' : ''} since this quote was saved</span>
             </div>
-            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="text-sm font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1 rounded-lg">Open to recalculate →</button>
+            <button onClick={() => navigate(`/quotations/${quote.id}/edit`)} className="text-sm font-semibold text-warn bg-warn-soft hover:bg-amber-200 px-3 py-1 rounded-lg">Open to recalculate →</button>
           </div>
           <ul className="ml-6 space-y-0.5">
             {quote.price_warnings.map((w, i) => (
-              <li key={i} className="text-xs text-amber-700">
+              <li key={i} className="text-xs text-warn">
                 <span className="font-medium">{w.name}</span> ({w.type}): ₹{w.was.toFixed(2)} → ₹{w.now.toFixed(2)}
-                <span className={`ml-1 font-semibold ${w.pct_change > 0 ? 'text-red-600' : 'text-emerald-600'}`}>({w.pct_change > 0 ? '+' : ''}{w.pct_change.toFixed(1)}%)</span>
+                <span className={`ml-1 font-semibold ${w.pct_change > 0 ? 'text-err' : 'text-ok'}`}>({w.pct_change > 0 ? '+' : ''}{w.pct_change.toFixed(1)}%)</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           {quote.quote_type && quote.quote_type !== 'full' && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${quote.quote_type === 'rm_only' ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-700'}`}>{quote.quote_type === 'rm_only' ? 'RM Only' : 'PM Only'}</span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${quote.quote_type === 'rm_only' ? 'bg-warn-soft text-warn' : 'bg-violet-100 text-violet-700'}`}>{quote.quote_type === 'rm_only' ? 'RM Only' : 'PM Only'}</span>
           )}
           {quote.quote_category === 'post_production' ? (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Post-Production Actual</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-ok-soft text-ok border border-ok">Post-Production Actual</span>
           ) : (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200">Pre-Production Estimate</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-soft text-brand border border-brand">Pre-Production Estimate</span>
           )}
-          {quote.job_ref && <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{quote.job_ref}</span>}
-          {quote.version > 1 && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">v{quote.version}</span>}
-          {quote.client_id && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">linked client</span>}
+          {quote.job_ref && <span className="text-xs text-ink-3 bg-surface-3 px-2 py-0.5 rounded-full">{quote.job_ref}</span>}
+          {quote.version > 1 && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-3 text-ink-2">v{quote.version}</span>}
+          {quote.client_id && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-brand-soft text-brand">linked client</span>}
           {quote.bom_code && (
-            <button onClick={() => navigate(`/quotations/bom/${quote.bom_code}`)} className="inline-flex items-center gap-1 text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-full transition-colors">
+            <button onClick={() => navigate(`/quotations/bom/${quote.bom_code}`)} className="inline-flex items-center gap-1 text-xs text-ink-2 bg-surface-3 hover:bg-surface-3 px-2 py-0.5 rounded-full transition-colors">
               BOM Hub <ExternalLink className="w-3 h-3" />
             </button>
           )}
         </div>
-        <p className="text-sm text-gray-500">{meta}</p>
-        {quote.notes && <p className="text-sm text-gray-600 mt-2">{quote.notes}</p>}
+        <p className="text-sm text-ink-3">{meta}</p>
+        {quote.notes && <p className="text-sm text-ink-2 mt-2">{quote.notes}</p>}
         <div className="mt-2 flex flex-wrap gap-2">
           {quote.result?.batch_yield_pct != null && quote.result.batch_yield_pct < 100 && (
-            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Yield: {quote.result.batch_yield_pct}%</span>
+            <span className="text-xs text-ink-3 bg-surface-3 px-2 py-0.5 rounded-full">Yield: {quote.result.batch_yield_pct}%</span>
           )}
           {quote.result?.effective_rm_wastage_pct != null && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
               RM Wastage: {Number(quote.result.effective_rm_wastage_pct).toFixed(1)}%
             </span>
           )}
-          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-ink-4 bg-surface-2 px-2 py-0.5 rounded-full">
             Prices locked {new Date(quote.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
           </span>
         </div>
       </div>
 
       {preQuote && (
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-center gap-3">
-          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+        <div className="bg-brand-soft border border-brand rounded-lg p-4 flex items-center gap-3">
+          <FileText className="w-4 h-4 text-brand shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-blue-500 font-medium uppercase tracking-wider mb-0.5">Linked Pre-Production Estimate</p>
-            <p className="text-sm font-semibold text-slate-900 truncate">{preQuote.quote_ref} · {preQuote.quote_name}</p>
+            <p className="text-xs text-brand font-medium uppercase tracking-wider mb-0.5">Linked Pre-Production Estimate</p>
+            <p className="text-sm font-semibold text-ink truncate">{preQuote.quote_ref} · {preQuote.quote_name}</p>
             {preQuote.headline_sell != null && quote.result?.bands?.[3]?.sell_price != null && (
-              <p className="text-xs text-gray-600 mt-0.5">
+              <p className="text-xs text-ink-2 mt-0.5">
                 Pre-prod sell: ₹{Number(preQuote.headline_sell).toFixed(2)} → Post-prod: ₹{Number(quote.result.bands[3].sell_price).toFixed(2)}
-                {' '}<span className={`font-semibold ${quote.result.bands[3].sell_price > preQuote.headline_sell ? 'text-red-600' : 'text-emerald-600'}`}>
+                {' '}<span className={`font-semibold ${quote.result.bands[3].sell_price > preQuote.headline_sell ? 'text-err' : 'text-ok'}`}>
                   ({quote.result.bands[3].sell_price > preQuote.headline_sell ? '+' : ''}{((quote.result.bands[3].sell_price - Number(preQuote.headline_sell)) / Number(preQuote.headline_sell) * 100).toFixed(1)}%)
                 </span>
               </p>
             )}
           </div>
-          <button onClick={() => navigate(`/quotations/${preQuote.id}`)} className="text-blue-600 hover:text-blue-700 text-sm font-medium shrink-0">View →</button>
+          <button onClick={() => navigate(`/quotations/${preQuote.id}`)} className="text-brand hover:text-brand text-sm font-medium shrink-0">View →</button>
         </div>
       )}
 
       {versions.length > 1 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3"><GitBranch className="w-4 h-4" /> Revision History ({versions.length})</div>
-          <ul className="divide-y divide-gray-50">
+        <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-ink-2 uppercase tracking-wider mb-3"><GitBranch className="w-4 h-4" /> Revision History ({versions.length})</div>
+          <ul className="divide-y divide-hairline">
             {versions.map((v) => (
               <li key={v.id}>
-                <button onClick={() => v.id !== quote.id && navigate(`/quotations/${v.id}`)} className={`w-full text-left py-2 flex items-center gap-3 rounded-lg px-2 -mx-2 ${v.id === quote.id ? 'bg-slate-50' : 'hover:bg-slate-50/50'}`}>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">v{v.version}</span>
-                  <span className="font-medium text-slate-900 text-sm">{v.quote_ref}</span>
-                  {v.id === quote.id && <span className="text-xs text-slate-500">(viewing)</span>}
-                  {!v.superseded_by && <span className="text-xs text-emerald-600 font-medium">current</span>}
+                <button onClick={() => v.id !== quote.id && navigate(`/quotations/${v.id}`)} className={`w-full text-left py-2 flex items-center gap-3 rounded-lg px-2 -mx-2 ${v.id === quote.id ? 'bg-surface-2' : 'hover:bg-surface-2/50'}`}>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-3 text-ink-2">v{v.version}</span>
+                  <span className="font-medium text-ink text-sm">{v.quote_ref}</span>
+                  {v.id === quote.id && <span className="text-xs text-ink-3">(viewing)</span>}
+                  {!v.superseded_by && <span className="text-xs text-ok font-medium">current</span>}
                   <span className={`ml-auto px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(v.status).cls}`}>{statusBadge(v.status).label}</span>
                 </button>
               </li>
@@ -233,16 +233,16 @@ export default function QuoteDetail() {
       )}
 
       {quote.client_id && clientQuotes.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Other quotes from this client ({clientQuotes.length})</h3>
-          <ul className="divide-y divide-gray-50">
+        <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+          <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-3">Other quotes from this client ({clientQuotes.length})</h3>
+          <ul className="divide-y divide-hairline">
             {clientQuotes.map((q) => (
               <li key={q.id}>
-                <button onClick={() => navigate(`/quotations/${q.id}`)} className="w-full text-left py-2 flex items-center gap-3 hover:bg-slate-50/50 rounded-lg px-2 -mx-2">
-                  <span className="font-medium text-slate-900 text-sm">{q.quote_ref}</span>
-                  <span className="text-sm text-gray-600 flex-1 truncate">{q.quote_name}</span>
+                <button onClick={() => navigate(`/quotations/${q.id}`)} className="w-full text-left py-2 flex items-center gap-3 hover:bg-surface-2/50 rounded-lg px-2 -mx-2">
+                  <span className="font-medium text-ink text-sm">{q.quote_ref}</span>
+                  <span className="text-sm text-ink-2 flex-1 truncate">{q.quote_name}</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
-                  <span className="text-sm text-gray-500 w-20 text-right">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</span>
+                  <span className="text-sm text-ink-3 w-20 text-right">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</span>
                 </button>
               </li>
             ))}
@@ -251,35 +251,35 @@ export default function QuoteDetail() {
       )}
 
       {/* Status & approvals */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Status</span>
+            <span className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Status</span>
             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusBadge(quote.status).cls}`}>{statusBadge(quote.status).label}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {(NEXT_ACTIONS[quote.status] || []).map((a) => (
               <button key={a.to} onClick={() => setPendingAction(a)}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  a.variant === 'primary' ? 'bg-slate-800 text-white hover:bg-slate-900'
-                    : a.variant === 'danger' ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                  a.variant === 'primary' ? 'bg-ink text-white hover:bg-ink'
+                    : a.variant === 'danger' ? 'bg-err-soft text-err hover:bg-err-soft'
+                      : 'bg-surface-3 text-ink-2 hover:bg-surface-3'}`}>
                 {a.label}
               </button>
             ))}
-            {(NEXT_ACTIONS[quote.status] || []).length === 0 && <span className="text-sm text-gray-400">No further actions</span>}
+            {(NEXT_ACTIONS[quote.status] || []).length === 0 && <span className="text-sm text-ink-4">No further actions</span>}
           </div>
         </div>
         {quote.status_history.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2"><Clock className="w-3.5 h-3.5" /> History</div>
+          <div className="mt-4 pt-4 border-t border-hairline">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-3 uppercase tracking-wider mb-2"><Clock className="w-3.5 h-3.5" /> History</div>
             <ul className="space-y-1.5">
               {quote.status_history.slice().reverse().map((h, i) => (
-                <li key={i} className="text-sm text-gray-600 flex flex-wrap gap-x-2">
-                  <span className="text-gray-400">{new Date(h.at).toLocaleString()}</span>
-                  <span><span className="text-gray-500">{statusBadge(h.from).label}</span> → <span className="font-medium text-slate-800">{statusBadge(h.to).label}</span></span>
-                  {h.by_name && <span className="text-gray-400">by {h.by_name}</span>}
-                  {h.note && <span className="text-gray-500 italic">“{h.note}”</span>}
+                <li key={i} className="text-sm text-ink-2 flex flex-wrap gap-x-2">
+                  <span className="text-ink-4">{new Date(h.at).toLocaleString()}</span>
+                  <span><span className="text-ink-3">{statusBadge(h.from).label}</span> → <span className="font-medium text-ink">{statusBadge(h.to).label}</span></span>
+                  {h.by_name && <span className="text-ink-4">by {h.by_name}</span>}
+                  {h.note && <span className="text-ink-3 italic">“{h.note}”</span>}
                 </li>
               ))}
             </ul>
@@ -289,13 +289,13 @@ export default function QuoteDetail() {
 
       {/* Sales Order */}
       {(quote.status === 'accepted' || quote.sales_order_ref) && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
+        <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <span className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Sales Order</span>
+            <span className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Sales Order</span>
             {quote.sales_order_ref ? (
-              <span className="inline-flex items-center gap-2 text-sm"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{quote.sales_order_ref}</span><span className="text-gray-400">created from this quote</span></span>
+              <span className="inline-flex items-center gap-2 text-sm"><span className="px-3 py-1 rounded-full text-xs font-semibold bg-ok-soft text-ok">{quote.sales_order_ref}</span><span className="text-ink-4">created from this quote</span></span>
             ) : (
-              <button onClick={() => setConvertOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><ShoppingCart className="w-4 h-4" /> Convert to Sales Order</button>
+              <button onClick={() => setConvertOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink"><ShoppingCart className="w-4 h-4" /> Convert to Sales Order</button>
             )}
           </div>
         </div>
@@ -315,27 +315,27 @@ export default function QuoteDetail() {
       )}
 
       {/* Pricing */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3></div>
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+        <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3></div>
         <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">
               <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th>
               <th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th>
               <th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {r.bands.map((b) => (
-                <tr key={b.moqv} className="hover:bg-slate-50/50">
-                  <td className="py-2.5 px-4 font-medium text-slate-900">{b.moq}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{f2(b.rm)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{f2(b.pm)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{f2(b.conversion)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{f2(b.overhead)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700">{f2(b.total_cost)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-500">{pct(b.markup_pct)}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-500">{pct(b.gross_margin_pct)}</td>
-                  <td className="py-2.5 px-4 text-right font-semibold text-slate-900">{f2(b.sell_price)}</td>
+                <tr key={b.moqv} className="hover:bg-surface-2/50">
+                  <td className="py-2.5 px-4 font-medium text-ink">{b.moq}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.rm)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.pm)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.conversion)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.overhead)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.total_cost)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-3">{pct(b.markup_pct)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-3">{pct(b.gross_margin_pct)}</td>
+                  <td className="py-2.5 px-4 text-right font-semibold text-ink">{f2(b.sell_price)}</td>
                 </tr>
               ))}
             </tbody>
@@ -344,24 +344,24 @@ export default function QuoteDetail() {
       </div>
 
       {/* Timeline */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+        <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
         <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">
               <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th>
               <th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {r.bands.map((b) => (
-                <tr key={b.moqv} className="hover:bg-slate-50/50">
-                  <td className="py-2.5 px-4 font-medium text-slate-900">{b.moq}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.procurement}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.manufacturing}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.qc}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.dispatch}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-700 font-medium">{b.timeline.total}</td>
-                  <td className="py-2.5 px-4 text-right font-semibold text-slate-900">{b.timeline.weeks}w</td>
+                <tr key={b.moqv} className="hover:bg-surface-2/50">
+                  <td className="py-2.5 px-4 font-medium text-ink">{b.moq}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.procurement}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.manufacturing}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.qc}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.dispatch}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-2 font-medium">{b.timeline.total}</td>
+                  <td className="py-2.5 px-4 text-right font-semibold text-ink">{b.timeline.weeks}w</td>
                 </tr>
               ))}
             </tbody>
@@ -400,11 +400,11 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
   ];
   const fmt = (n: number | null | undefined) => n == null ? '—' : `₹${Number(n).toFixed(2)}`;
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+    <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+      <div className="px-5 py-3 border-b border-hairline flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Production Actuals vs Estimate</h3>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Production Actuals vs Estimate</h3>
+          <p className="text-xs text-ink-4 mt-0.5">
             {a.batch_size != null && `Batch: ${a.batch_size.toLocaleString()} units · `}
             {a.yield_pct != null && `Yield: ${a.yield_pct}% · `}
             Entered {new Date(a.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -412,20 +412,20 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={onEdit} className="text-sm text-slate-600 hover:text-slate-900 font-medium">Edit →</button>
-          <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete</button>
+          <button onClick={onEdit} className="text-sm text-ink-2 hover:text-ink font-medium">Edit →</button>
+          <button onClick={onDelete} className="text-xs text-err hover:text-err font-medium">Delete</button>
         </div>
       </div>
       <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-gray-50/40 [&_th]:bg-gray-50">
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-4 uppercase tracking-wider border-b border-hairline bg-surface-2/40 [&_th]:bg-surface-2">
             <th scope="col" className="py-2.5 px-4">Component</th>
             <th scope="col" className="py-2.5 px-3 text-right">Estimated</th>
             <th scope="col" className="py-2.5 px-3 text-right">Actual</th>
             <th scope="col" className="py-2.5 px-3 text-right">Variance ₹</th>
             <th scope="col" className="py-2.5 px-3 text-right">Variance %</th>
           </tr></thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-hairline">
             {rows.map(({ label, key }) => {
               const estKey = `est_${key}` as keyof QuoteActuals;
               const actKey = `actual_${key === 'total' ? 'total' : key}` as keyof QuoteActuals;
@@ -434,14 +434,14 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
               const isPositive = v && v.diff > 0.005;
               const isNegative = v && v.diff < -0.005;
               return (
-                <tr key={key} className={`${isTotalRow ? 'bg-gray-50/60 font-semibold' : 'hover:bg-slate-50/40'}`}>
-                  <td className="py-2.5 px-4 text-slate-700">{label}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-500">{fmt(a[estKey] as number)}</td>
-                  <td className="py-2.5 px-3 text-right text-slate-900">{fmt(a[actKey] as number)}</td>
-                  <td className={`py-2.5 px-3 text-right ${isPositive ? 'text-red-600' : isNegative ? 'text-emerald-600' : 'text-gray-500'}`}>
+                <tr key={key} className={`${isTotalRow ? 'bg-surface-2/60 font-semibold' : 'hover:bg-surface-2/40'}`}>
+                  <td className="py-2.5 px-4 text-ink-2">{label}</td>
+                  <td className="py-2.5 px-3 text-right text-ink-3">{fmt(a[estKey] as number)}</td>
+                  <td className="py-2.5 px-3 text-right text-ink">{fmt(a[actKey] as number)}</td>
+                  <td className={`py-2.5 px-3 text-right ${isPositive ? 'text-err' : isNegative ? 'text-ok' : 'text-ink-3'}`}>
                     {v ? `${v.diff > 0 ? '+' : ''}₹${Math.abs(v.diff).toFixed(2)}` : '—'}
                   </td>
-                  <td className={`py-2.5 px-3 text-right ${isPositive ? 'text-red-600' : isNegative ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  <td className={`py-2.5 px-3 text-right ${isPositive ? 'text-err' : isNegative ? 'text-ok' : 'text-ink-4'}`}>
                     <span className="inline-flex items-center gap-1">
                       {isPositive ? <TrendingUp className="w-3 h-3" /> : isNegative ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
                       {v?.pct != null ? `${v.pct > 0 ? '+' : ''}${v.pct.toFixed(1)}%` : '—'}
@@ -453,7 +453,7 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
           </tbody>
         </table>
       </div>
-      {a.notes && <div className="px-5 py-3 border-t border-gray-50 text-sm text-gray-500 italic">{a.notes}</div>}
+      {a.notes && <div className="px-5 py-3 border-t border-gray-50 text-sm text-ink-3 italic">{a.notes}</div>}
     </div>
   );
 }
@@ -519,20 +519,20 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
   const VarBadge = ({ act, est }: { act: string; est: string }) => {
     const { diff, pct: p } = varRow(act, est);
     if (!pf(act) && !pf(est)) return null;
-    const cls = diff > 0.01 ? 'text-red-600' : diff < -0.01 ? 'text-emerald-600' : 'text-gray-400';
+    const cls = diff > 0.01 ? 'text-err' : diff < -0.01 ? 'text-ok' : 'text-ink-4';
     return <span className={`text-xs font-semibold ${cls}`}>{diff > 0 ? '+' : ''}{diff.toFixed(2)}{p != null ? ` (${p > 0 ? '+' : ''}${p.toFixed(1)}%)` : ''}</span>;
   };
 
   const headingId = useId();
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200 sticky top-0 bg-white z-10">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-surface rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-border sticky top-0 bg-surface z-10">
           <div>
-            <h2 id={headingId} className="text-lg font-bold text-slate-900">{existing ? 'Edit' : 'Enter'} Production Actuals</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{quote.quote_ref} · {quote.bom_code}</p>
+            <h2 id={headingId} className="text-lg font-bold text-ink">{existing ? 'Edit' : 'Enter'} Production Actuals</h2>
+            <p className="text-xs text-ink-4 mt-0.5">{quote.quote_ref} · {quote.bom_code}</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-ink-4 hover:text-ink-2"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-5">
           <div className="grid grid-cols-2 gap-3">
@@ -556,16 +556,16 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
           )}
 
           <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cost per Unit (₹)</p>
-            <div className="border border-gray-100 rounded-lg overflow-hidden">
+            <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Cost per Unit (₹)</p>
+            <div className="border border-hairline rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead><tr className="text-xs font-semibold text-gray-400 uppercase border-b border-gray-100 bg-gray-50/60">
+                <thead><tr className="text-xs font-semibold text-ink-4 uppercase border-b border-hairline bg-surface-2/60">
                   <th scope="col" className="py-2 px-3 text-left">Component</th>
                   <th scope="col" className="py-2 px-3 text-center">Estimated</th>
                   <th scope="col" className="py-2 px-3 text-center">Actual</th>
                   <th scope="col" className="py-2 px-3 text-right">Variance</th>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-hairline">
                   {[
                     { label: 'Raw Materials (RM)', act: actRm, setAct: setActRm, est: estRm, setEst: setEstRm },
                     { label: 'Pack Materials (PM)', act: actPm, setAct: setActPm, est: estPm, setEst: setEstPm },
@@ -573,16 +573,16 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
                     { label: 'Overhead', act: actOh, setAct: setActOh, est: estOh, setEst: setEstOh },
                   ].map(({ label, act, setAct, est, setEst }) => (
                     <tr key={label}>
-                      <td className="py-2 px-3 text-gray-700 font-medium w-40">{label}</td>
+                      <td className="py-2 px-3 text-ink-2 font-medium w-40">{label}</td>
                       <td className="py-2 px-2"><input className={`${inputClassName} text-center text-sm py-1`} type="number" step="0.01" value={est} onChange={(e) => setEst(e.target.value)} /></td>
                       <td className="py-2 px-2"><input className={`${inputClassName} text-center text-sm py-1`} type="number" step="0.01" value={act} onChange={(e) => setAct(e.target.value)} /></td>
                       <td className="py-2 px-3 text-right"><VarBadge act={act} est={est} /></td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50/60 font-semibold">
-                    <td className="py-2 px-3 text-slate-900">Total</td>
-                    <td className="py-2 px-3 text-center text-gray-600">₹{estTotal.toFixed(2)}</td>
-                    <td className="py-2 px-3 text-center text-slate-900">₹{actTotal.toFixed(2)}</td>
+                  <tr className="bg-surface-2/60 font-semibold">
+                    <td className="py-2 px-3 text-ink">Total</td>
+                    <td className="py-2 px-3 text-center text-ink-2">₹{estTotal.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-center text-ink">₹{actTotal.toFixed(2)}</td>
                     <td className="py-2 px-3 text-right"><VarBadge act={String(actTotal)} est={String(estTotal)} /></td>
                   </tr>
                 </tbody>
@@ -594,8 +594,8 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
             <textarea className={inputClassName} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes about this production run…" />
           </FormField>
         </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
+        <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-surface">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">Cancel</button>
           <button onClick={submit} disabled={saving} className="inline-flex items-center gap-2 px-5 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-semibold disabled:opacity-50">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />} {existing ? 'Update' : 'Save'} Actuals
           </button>
@@ -625,9 +625,9 @@ function ConvertModal({ quote, onClose, onDone }: { quote: SavedQuoteFull; onClo
 
   const headingId = useId();
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 id={headingId} className="text-lg font-bold text-slate-900">Convert to Sales Order</h2><button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-surface rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-border"><h2 id={headingId} className="text-lg font-bold text-ink">Convert to Sales Order</h2><button onClick={onClose} aria-label="Close" className="text-ink-4 hover:text-ink-2"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="MOQ Band">
             <select className={inputClassName} value={bandIdx} onChange={(e) => pickBand(Number(e.target.value))}>
@@ -638,11 +638,11 @@ function ConvertModal({ quote, onClose, onDone }: { quote: SavedQuoteFull; onClo
             <FormField label="Quantity"><input className={inputClassName} type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></FormField>
             <FormField label="Unit Price ₹"><input className={inputClassName} type="number" value={price} onChange={(e) => setPrice(e.target.value)} /></FormField>
           </div>
-          <div className="bg-slate-50 rounded-lg px-4 py-3 flex justify-between text-sm"><span className="text-gray-500">Order total</span><span className="font-semibold text-slate-900">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+          <div className="bg-surface-2 rounded-lg px-4 py-3 flex justify-between text-sm"><span className="text-ink-3">Order total</span><span className="font-semibold text-ink">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
         </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
-          <button onClick={submit} disabled={busy || !(Number(qty) > 0)} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">{busy && <Loader2 className="w-4 h-4 animate-spin" />} Create Sales Order</button>
+        <div className="p-5 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={busy || !(Number(qty) > 0)} className="inline-flex items-center gap-2 px-5 py-2 bg-ink text-white rounded-lg hover:bg-ink text-sm font-semibold disabled:opacity-50">{busy && <Loader2 className="w-4 h-4 animate-spin" />} Create Sales Order</button>
         </div>
       </div>
     </div>
@@ -661,15 +661,15 @@ function StatusModal({ action, quoteId, quoteRef, onClose, onDone }: { action: A
   };
   const headingId = useId();
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 id={headingId} className="text-lg font-bold text-slate-900">{action.label}</h2><button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-surface rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-border"><h2 id={headingId} className="text-lg font-bold text-ink">{action.label}</h2><button onClick={onClose} aria-label="Close" className="text-ink-4 hover:text-ink-2"><X className="w-5 h-5" /></button></div>
         <div className="p-5">
           <FormField label="Note (optional)"><textarea className={inputClassName} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason or comment for the audit trail…" /></FormField>
         </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
-          <button onClick={submit} disabled={busy} className={`inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 ${action.variant === 'danger' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-800 text-white hover:bg-slate-900'}`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} {action.label}</button>
+        <div className="p-5 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={busy} className={`inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 ${action.variant === 'danger' ? 'bg-err text-white hover:bg-err' : 'bg-ink text-white hover:bg-ink'}`}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} {action.label}</button>
         </div>
       </div>
     </div>

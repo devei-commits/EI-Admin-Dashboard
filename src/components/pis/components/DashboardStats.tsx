@@ -158,8 +158,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'My PIS',
    value: myPISTotalActive,
    icon: FileText,
-   color: 'bg-indigo-500',
-   textColor: 'text-indigo-600',
+   color: 'bg-brand',
+   textColor: 'text-brand',
    action:
     onNavigate && getTasksViewForRole(currentRole)
      ? () => onNavigate(getTasksViewForRole(currentRole) as string)
@@ -169,8 +169,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'My Orders',
    value: myOrders,
    icon: CheckCircle,
-   color: 'bg-emerald-500',
-   textColor: 'text-emerald-600',
+   color: 'bg-ok',
+   textColor: 'text-ok',
    action: onNavigate
     ? () =>
       onNavigate('pis', {
@@ -197,8 +197,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'Total PIS',
    value: totalPIS,
    icon: FileText,
-   color: 'bg-blue-500',
-   textColor: 'text-blue-600',
+   color: 'bg-brand',
+   textColor: 'text-brand',
    action: onNavigate
     ? () =>
       onNavigate('pis', {
@@ -221,8 +221,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'In Progress',
    value: inProgress,
    icon: Clock,
-   color: 'bg-yellow-500',
-   textColor: 'text-yellow-600',
+   color: 'bg-warn',
+   textColor: 'text-warn',
    action: onNavigate
     ? () =>
       onNavigate('pis', {
@@ -238,8 +238,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'Completed',
    value: completed,
    icon: CheckCircle,
-   color: 'bg-green-500',
-   textColor: 'text-green-600',
+   color: 'bg-ok',
+   textColor: 'text-ok',
    action: onNavigate
     ? () =>
       onNavigate('pis', {
@@ -255,8 +255,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'Rejected',
    value: rejected,
    icon: XCircle,
-   color: 'bg-red-500',
-   textColor: 'text-red-600',
+   color: 'bg-err',
+   textColor: 'text-err',
    action: onNavigate
     ? () =>
       onNavigate('pis', {
@@ -284,8 +284,8 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
    title: 'Pending',
    value: pending,
    icon: AlertCircle,
-   color: 'bg-orange-500',
-   textColor: 'text-slate-800',
+   color: 'bg-warn',
+   textColor: 'text-ink',
    action: onPendingClick ?? (onNavigate && getTasksViewForRole(currentRole)
     ? () => onNavigate(getTasksViewForRole(currentRole) as string)
     : undefined),
@@ -315,7 +315,7 @@ export function DashboardStats({ data, currentRole, onPendingClick, onNavigate }
      >
       <div className="flex items-center justify-between gap-2">
        <div className="min-w-0 flex-1">
-        <p className="text-xs sm:text-sm text-gray-600 mb-0.5 sm:mb-1 truncate">{stat.title}</p>
+        <p className="text-xs sm:text-sm text-ink-2 mb-0.5 sm:mb-1 truncate">{stat.title}</p>
         <p className={`text-xl sm:text-2xl md:text-3xl font-semibold ${stat.textColor}`}>{stat.value}</p>
        </div>
        <div className={`${stat.color} p-2 sm:p-2.5 md:p-3 rounded-lg shrink-0`}>

@@ -55,15 +55,15 @@ const OrderManagementQueue: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6 sm:p-8">
+    <div className="flex-1 overflow-y-auto bg-surface-2 p-6 sm:p-8">
       <div className="max-w-[90rem] mx-auto space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">
               Order Management / Quality
             </p>
-            <h1 className="text-2xl font-bold text-slate-900 mt-1">Quality Control</h1>
-            <p className="text-sm text-slate-600 mt-2">
+            <h1 className="text-2xl font-bold text-ink mt-1">Quality Control</h1>
+            <p className="text-sm text-ink-2 mt-2">
               GRNs sent from warehouse — assign inspectors and run QC from here.
             </p>
           </div>
@@ -71,7 +71,7 @@ const OrderManagementQueue: React.FC = () => {
             type="button"
             onClick={() => void loadQueue()}
             disabled={loading}
-            className="text-xs font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+            className="text-xs font-semibold text-ink-2 hover:text-ink disabled:opacity-50"
           >
             Refresh
           </button>

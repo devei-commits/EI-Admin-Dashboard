@@ -58,7 +58,7 @@ const QualityPage = (): JSX.Element => {
   };
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-surface">
       <QualitySidebar activeSection={activeSection} onSectionChange={handleSectionChange} />
       {renderContent()}
     </div>

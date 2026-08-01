@@ -109,10 +109,10 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
 
  const getNotificationIcon = (type: Notification['type']) => {
   switch (type) {
-   case 'pending': return <Clock className="h-4 w-4 text-slate-700" />;
-   case 'progress': return <FileText className="h-4 w-4 text-blue-500" />;
-   case 'completed': return <CheckCircle className="h-4 w-4 text-green-500" />;
-   case 'alert': return <AlertCircle className="h-4 w-4 text-red-500" />;
+   case 'pending': return <Clock className="h-4 w-4 text-ink-2" />;
+   case 'progress': return <FileText className="h-4 w-4 text-brand" />;
+   case 'completed': return <CheckCircle className="h-4 w-4 text-ok" />;
+   case 'alert': return <AlertCircle className="h-4 w-4 text-err" />;
   }
  };
 
@@ -121,16 +121,16 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
    case 'SUPER_ADMIN':
     return 'bg-purple-500';
    case 'ADMIN':
-    return 'bg-indigo-500';
+    return 'bg-brand';
    case 'BD_MANAGER':
    case 'BD_STAFF':
-    return 'bg-blue-500';
+    return 'bg-brand';
    case 'RND_LEAD':
    case 'RND_STAFF':
-    return 'bg-green-500';
+    return 'bg-ok';
    case 'QA_MANAGER':
    case 'QA_STAFF':
-    return 'bg-orange-500';
+    return 'bg-warn';
    case 'PKG_STAFF':
     return 'bg-pink-500';
    default:
@@ -141,19 +141,19 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
  const unreadCount = notifications.length;
 
  return (
-  <header className="bg-white/95 border-b border-gray-100 text-gray-800 px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-4 shadow-sm sticky top-0 z-50 backdrop-blur-sm\">
+  <header className="bg-surface/95 border-b border-hairline text-ink px-4 sm:px-6 md:px-8 py-4 flex items-center justify-between gap-4 shadow-sm sticky top-0 z-50 backdrop-blur-sm\">
    <div className="flex items-center gap-4">
     <AdminMainMenuButton />
     <Button
      variant="ghost"
      size="icon"
-     className="text-gray-600 hover:bg-gray-100 hover:text-gray-800 lg:hidden rounded-xl"
+     className="text-ink-2 hover:bg-surface-3 hover:text-ink lg:hidden rounded-xl"
      onClick={onMenuToggle}
     >
      <Menu className="h-5 w-5" />
     </Button>
     <div className="flex items-center gap-4">
-     <h1 className="text-lg sm:text-xl font-semibold font-archivo text-gray-800">
+     <h1 className="text-lg sm:text-xl font-semibold font-archivo text-ink">
       PIS Management System
      </h1>
     </div>
@@ -169,25 +169,25 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
     {/* Notifications Dropdown */}
     <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
      <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" className="text-gray-600 hover:bg-gray-100 relative rounded-xl">
+      <Button variant="ghost" size="icon" className="text-ink-2 hover:bg-surface-3 relative rounded-xl">
        <Bell className="h-5 w-5" />
        {unreadCount > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-medium shadow-sm">
+        <span className="absolute -top-0.5 -right-0.5 h-5 w-5 flex items-center justify-center rounded-full bg-err text-white text-[10px] font-medium shadow-sm">
          {unreadCount > 9 ? '9+' : unreadCount}
         </span>
        )}
       </Button>
      </DropdownMenuTrigger>
-     <DropdownMenuContent align="end" className="w-80 sm:w-96 rounded-xl shadow-xl border-gray-100 p-0 max-h-[70vh] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-       <h3 className="font-semibold text-gray-800">Notifications</h3>
-       <Badge className="bg-gray-100 text-slate-900 rounded-full text-xs">
+     <DropdownMenuContent align="end" className="w-80 sm:w-96 rounded-xl shadow-xl border-hairline p-0 max-h-[70vh] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-hairline bg-surface-2/50">
+       <h3 className="font-semibold text-ink">Notifications</h3>
+       <Badge className="bg-surface-3 text-ink rounded-full text-xs">
         {unreadCount} new
        </Badge>
       </div>
       <div className="overflow-y-auto max-h-[50vh]">
        {notifications.length === 0 ? (
-        <div className="px-4 py-8 text-center text-gray-500">
+        <div className="px-4 py-8 text-center text-ink-3">
          <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
          <p className="text-sm">No notifications</p>
         </div>
@@ -195,18 +195,18 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
         notifications.map((notif) => (
          <div
           key={notif.id}
-          className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-b-0 transition-colors"
+          className="px-4 py-3 hover:bg-surface-2 cursor-pointer border-b border-gray-50 last:border-b-0 transition-colors"
          >
           <div className="flex items-start gap-3">
-           <div className="mt-0.5 p-1.5 rounded-lg bg-gray-100">
+           <div className="mt-0.5 p-1.5 rounded-lg bg-surface-3">
             {getNotificationIcon(notif.type)}
            </div>
            <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-             <p className="text-sm font-medium text-gray-800 truncate">{notif.title}</p>
-             <span className="text-xs text-gray-400 whitespace-nowrap">{notif.time}</span>
+             <p className="text-sm font-medium text-ink truncate">{notif.title}</p>
+             <span className="text-xs text-ink-4 whitespace-nowrap">{notif.time}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notif.description}</p>
+            <p className="text-xs text-ink-3 mt-0.5 line-clamp-2">{notif.description}</p>
            </div>
           </div>
          </div>
@@ -214,8 +214,8 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
        )}
       </div>
       {notifications.length > 0 && (
-       <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-        <Button variant="ghost" className="w-full text-slate-800 hover:text-slate-900 hover:bg-gray-50 text-sm rounded-lg">
+       <div className="px-4 py-3 border-t border-hairline bg-surface-2/50">
+        <Button variant="ghost" className="w-full text-ink hover:text-ink hover:bg-surface-2 text-sm rounded-lg">
          View all notifications
         </Button>
        </div>
@@ -225,21 +225,21 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
 
     <DropdownMenu>
      <DropdownMenuTrigger asChild>
-      <Button variant="ghost" className="text-gray-600 hover:bg-gray-100 gap-2 rounded-xl px-2">
-       <div className="h-9 w-9 rounded-full bg-slate-800 flex items-center justify-center shadow-md">
+      <Button variant="ghost" className="text-ink-2 hover:bg-surface-3 gap-2 rounded-xl px-2">
+       <div className="h-9 w-9 rounded-full bg-ink flex items-center justify-center shadow-md">
         <User className="h-4 w-4 text-white" />
        </div>
        <div className="text-left hidden md:block">
-        <div className="text-sm font-medium text-gray-800">{currentUser?.name || 'User'}</div>
-        <div className="text-xs text-gray-500">{currentUser?.email || 'Online'}</div>
+        <div className="text-sm font-medium text-ink">{currentUser?.name || 'User'}</div>
+        <div className="text-xs text-ink-3">{currentUser?.email || 'Online'}</div>
        </div>
       </Button>
      </DropdownMenuTrigger>
-     <DropdownMenuContent align="end" className="w-64 rounded-xl shadow-xl border-gray-100 p-2">
+     <DropdownMenuContent align="end" className="w-64 rounded-xl shadow-xl border-hairline p-2">
       <DropdownMenuLabel className="px-3 py-3">
        <div className="flex flex-col">
-        <span className="font-semibold text-gray-800">{currentUser?.name || 'User'}</span>
-        <span className="text-xs text-gray-500 font-normal mt-0.5">{currentUser?.email}</span>
+        <span className="font-semibold text-ink">{currentUser?.name || 'User'}</span>
+        <span className="text-xs text-ink-3 font-normal mt-0.5">{currentUser?.email}</span>
         <Badge className={`${getRoleBadgeColor(currentRole)} text-white text-xs w-fit mt-3 rounded-full`}>
          {getRoleLabel(currentRole)}
         </Badge>
@@ -250,7 +250,7 @@ export function Header({ currentRole, onRoleChange: _onRoleChange, onMenuToggle 
       <DropdownMenuItem className="rounded-lg px-3 py-2.5 cursor-pointer">Notifications</DropdownMenuItem>
       <DropdownMenuItem className="rounded-lg px-3 py-2.5 cursor-pointer">Preferences</DropdownMenuItem>
       <DropdownMenuSeparator className="my-2" />
-      <DropdownMenuItem onClick={handleLogout} className="text-red-600 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-red-50">
+      <DropdownMenuItem onClick={handleLogout} className="text-err rounded-lg px-3 py-2.5 cursor-pointer hover:bg-err-soft">
        <LogOut className="mr-2 h-4 w-4" />
        Logout
       </DropdownMenuItem>

@@ -54,7 +54,7 @@ export function PISCodeSidebar({
 
   if (daysToDue < 0) {
    return (
-    <Badge className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-0">
+    <Badge className="text-[10px] px-1.5 py-0 bg-err-soft text-err border-0">
      Overdue
     </Badge>
    );
@@ -62,7 +62,7 @@ export function PISCodeSidebar({
 
   if (daysToDue <= 2) {
    return (
-    <Badge className="text-[10px] px-1.5 py-0 bg-gray-100 text-slate-900 border-0">
+    <Badge className="text-[10px] px-1.5 py-0 bg-surface-3 text-ink border-0">
      Due
     </Badge>
    );
@@ -94,32 +94,32 @@ export function PISCodeSidebar({
  const getStatusIcon = (status: string) => {
   switch (status) {
    case 'COMPLETED':
-    return <CheckCircle className="h-3.5 w-3.5 text-green-500" />;
+    return <CheckCircle className="h-3.5 w-3.5 text-ok" />;
    case 'IN_PROGRESS':
-    return <Clock className="h-3.5 w-3.5 text-blue-500" />;
+    return <Clock className="h-3.5 w-3.5 text-brand" />;
    case 'PENDING':
-    return <Clock className="h-3.5 w-3.5 text-yellow-500" />;
+    return <Clock className="h-3.5 w-3.5 text-warn" />;
    case 'REJECTED':
    case 'TERMINATED':
-    return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+    return <XCircle className="h-3.5 w-3.5 text-err" />;
    case 'ON_HOLD':
-    return <AlertCircle className="h-3.5 w-3.5 text-slate-700" />;
+    return <AlertCircle className="h-3.5 w-3.5 text-ink-2" />;
    default:
-    return <FileText className="h-3.5 w-3.5 text-gray-400" />;
+    return <FileText className="h-3.5 w-3.5 text-ink-4" />;
   }
  };
 
  const getStatusBadgeColor = (status: string) => {
   const colors: Record<string, string> = {
-   COMPLETED: 'bg-green-100 text-green-700',
-   IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
-   PENDING: 'bg-yellow-100 text-yellow-700',
-   APPROVED: 'bg-green-100 text-green-700',
-   REJECTED: 'bg-red-100 text-red-700',
-   TERMINATED: 'bg-red-100 text-red-700',
-   ON_HOLD: 'bg-gray-100 text-slate-900',
+   COMPLETED: 'bg-ok-soft text-ok',
+   IN_PROGRESS: 'bg-warn-soft text-warn',
+   PENDING: 'bg-warn-soft text-warn',
+   APPROVED: 'bg-ok-soft text-ok',
+   REJECTED: 'bg-err-soft text-err',
+   TERMINATED: 'bg-err-soft text-err',
+   ON_HOLD: 'bg-surface-3 text-ink',
   };
-  return colors[status] || 'bg-gray-100 text-gray-700';
+  return colors[status] || 'bg-surface-3 text-ink-2';
  };
 
  // Summary counts
@@ -133,7 +133,7 @@ export function PISCodeSidebar({
 
  if (isCollapsed) {
   return (
-   <div className="w-12 bg-white border-r flex flex-col items-center py-4 shadow-sm">
+   <div className="w-12 bg-surface border-r flex flex-col items-center py-4 shadow-sm">
     <Button
      variant="ghost"
      size="sm"
@@ -151,8 +151,8 @@ export function PISCodeSidebar({
        className={cn(
         'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all',
         pis.id === selectedPISId
-         ? 'bg-blue-600 text-white shadow-lg'
-         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+         ? 'bg-brand text-white shadow-lg'
+         : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
        )}
        title={pis.pisCode}
       >
@@ -160,7 +160,7 @@ export function PISCodeSidebar({
       </button>
      ))}
      {filteredRecords.length > 10 && (
-      <div className="text-xs text-gray-400 text-center">
+      <div className="text-xs text-ink-4 text-center">
        +{filteredRecords.length - 10}
       </div>
      )}
@@ -170,7 +170,7 @@ export function PISCodeSidebar({
  }
 
  return (
-  <div className="w-72 bg-white border-r flex flex-col h-full shadow-sm animate-in slide-in-from-left-2 fade-in-0 duration-300">
+  <div className="w-72 bg-surface border-r flex flex-col h-full shadow-sm animate-in slide-in-from-left-2 fade-in-0 duration-300">
    {/* Header */}
    <div className="p-3 border-b bg-[#2C3E50]">
     <div className="flex items-center justify-between mb-2">
@@ -184,7 +184,7 @@ export function PISCodeSidebar({
         variant="ghost"
         size="sm"
         onClick={onToggleCollapse}
-        className="h-7 w-7 p-0 text-white hover:bg-white/20"
+        className="h-7 w-7 p-0 text-white hover:bg-surface/20"
        >
         <ChevronLeft className="h-4 w-4" />
        </Button>
@@ -193,13 +193,13 @@ export function PISCodeSidebar({
        variant="ghost"
        size="sm"
        onClick={onClose}
-       className="h-7 w-7 p-0 text-white hover:bg-white/20"
+       className="h-7 w-7 p-0 text-white hover:bg-surface/20"
       >
        <XCircle className="h-4 w-4" />
       </Button>
      </div>
     </div>
-    <Badge variant="secondary" className="text-xs bg-white/20 text-white border-0">
+    <Badge variant="secondary" className="text-xs bg-surface/20 text-white border-0">
      {filteredRecords.length} records
     </Badge>
    </div>
@@ -207,7 +207,7 @@ export function PISCodeSidebar({
    {/* Search */}
    <div className="p-3 border-b">
     <div className="relative">
-     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-4" />
      <Input
       placeholder="Search PIS..."
       value={searchTerm}
@@ -218,7 +218,7 @@ export function PISCodeSidebar({
    </div>
 
    {/* Status Filter Tabs */}
-   <div className="flex flex-wrap gap-1 p-2 border-b bg-gray-50">
+   <div className="flex flex-wrap gap-1 p-2 border-b bg-surface-2">
     {['all', 'IN_PROGRESS', 'PENDING', 'COMPLETED'].map((status) => (
      <button
       key={status}
@@ -226,8 +226,8 @@ export function PISCodeSidebar({
       className={cn(
        'px-2 py-1 rounded text-xs font-medium transition-colors',
        statusFilter === status
-        ? 'bg-blue-600 text-white'
-        : 'bg-white text-gray-600 hover:bg-gray-100 border'
+        ? 'bg-brand text-white'
+        : 'bg-surface text-ink-2 hover:bg-surface-3 border'
       )}
      >
       {status === 'all' ? 'All' : status.replace('_', ' ')}
@@ -239,8 +239,8 @@ export function PISCodeSidebar({
    {/* PIS List */}
    <div className="flex-1 overflow-y-auto">
     {filteredRecords.length === 0 ? (
-     <div className="p-4 text-center text-gray-500">
-      <FileText className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+     <div className="p-4 text-center text-ink-3">
+      <FileText className="h-10 w-10 mx-auto mb-2 text-ink-4" />
       <p className="text-sm">No PIS records found</p>
      </div>
     ) : (
@@ -250,29 +250,29 @@ export function PISCodeSidebar({
         key={pis.id}
         onClick={() => onSelectPIS(pis.id)}
         className={cn(
-         'w-full text-left p-3 transition-all hover:bg-gray-50',
-         pis.id === selectedPISId && 'bg-blue-50 border-l-4 border-l-blue-600'
+         'w-full text-left p-3 transition-all hover:bg-surface-2',
+         pis.id === selectedPISId && 'bg-brand-soft border-l-4 border-l-blue-600'
         )}
        >
         <div className="flex items-start justify-between gap-2">
          <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-           <span className="text-xs text-gray-400 font-mono">
+           <span className="text-xs text-ink-4 font-mono">
             {index + 1}.
            </span>
            <span
             className={cn(
              'font-semibold text-sm truncate',
-             pis.id === selectedPISId ? 'text-blue-700' : 'text-gray-900'
+             pis.id === selectedPISId ? 'text-brand' : 'text-ink'
             )}
            >
             {pis.pisCode}
            </span>
           </div>
-          <p className="text-xs text-gray-500 truncate mt-0.5">
+          <p className="text-xs text-ink-3 truncate mt-0.5">
            {pis.customer}
           </p>
-          <p className="text-xs text-gray-400 truncate">
+          <p className="text-xs text-ink-4 truncate">
            {pis.formulation}
           </p>
          </div>
@@ -284,7 +284,7 @@ export function PISCodeSidebar({
           {getSlaBadge(pis)}
          </div>
         </div>
-        <div className="mt-1.5 flex items-center justify-between text-[10px] text-gray-400">
+        <div className="mt-1.5 flex items-center justify-between text-[10px] text-ink-4">
          <span>{getStageLabel(pis.stage)}</span>
          <span>{formatDate(pis.updatedAt)}</span>
         </div>
@@ -295,8 +295,8 @@ export function PISCodeSidebar({
    </div>
 
    {/* Footer */}
-   <div className="p-2 border-t bg-gray-50 text-center">
-    <p className="text-xs text-gray-500">
+   <div className="p-2 border-t bg-surface-2 text-center">
+    <p className="text-xs text-ink-3">
      Click on a PIS code to view details
     </p>
    </div>

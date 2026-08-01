@@ -133,7 +133,7 @@ export function NavSidebar({
                     {collapsed && (
                       <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 z-[70] hidden md:group-hover/nav:flex items-center gap-2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-surface shadow-[var(--e2)]">
                         {label}
-                        {count != null && <span className="rounded-full bg-white/15 px-1.5 tabular-nums">{count}</span>}
+                        {count != null && <span className="rounded-full bg-surface/15 px-1.5 tabular-nums">{count}</span>}
                       </span>
                     )}
                   </button>

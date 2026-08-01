@@ -8,7 +8,7 @@ import TaskApp from '../components/taskmanagementcomp/TaskApp';
 import { TableSkeleton } from '../components/ui/Skeleton';
 
 const LoadingFallback = () => (
- <div className="min-h-screen bg-slate-50 p-6">
+ <div className="min-h-screen bg-surface-2 p-6">
   <TableSkeleton rows={8} cols={5} />
  </div>
 );

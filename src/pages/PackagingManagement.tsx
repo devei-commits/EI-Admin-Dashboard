@@ -4,7 +4,7 @@ import { SearchInput, Pagination } from '../components/ui';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
-import { ProcThead } from '../components/procurement/ProcSection';
+import { ProcThead, procBtnPrimary, procBtnSecondary } from '../components/procurement/ProcSection';
 import { Package as PackageIcon } from '@phosphor-icons/react';
 import { useDebounce } from '../hooks/useDebounce';
 import { fetchPackagingList, createPackaging, updatePackaging, deletePackaging, type PackagingItem } from '../services/packaging.service';
@@ -191,7 +191,7 @@ const PackagingManagement = () => {
   switch (budget.toLowerCase()) {
    case 'high': return 'bg-purple-100 text-purple-700';
    case 'medium': return 'bg-surface-3 text-ink';
-   case 'low': return 'bg-green-100 text-green-700';
+   case 'low': return 'bg-ok-soft text-ok';
    default: return 'bg-surface-3 text-ink-2';
   }
  };
@@ -202,7 +202,7 @@ const PackagingManagement = () => {
    <div className="mb-4">
     <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-ink">Packaging Management</h1>
     <div className="flex items-center gap-2 mt-2 text-sm bg-surface-3 px-4 py-2 rounded-lg">
-     <Link to="/" className="text-ink hover:text-amber-800 hover:underline">Dashboard</Link>
+     <Link to="/" className="text-ink hover:text-warn hover:underline">Dashboard</Link>
      <span className="text-ink-4">/</span>
      <span className="text-ink-3">Packaging Management</span>
     </div>
@@ -220,7 +220,7 @@ const PackagingManagement = () => {
       className={`px-6 py-4 font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'list' ? 'bg-brand text-white' : 'text-ink-3 hover:bg-surface-3'}`}>
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
       Packaging List
-      <span className="ml-2 px-2 py-0.5 text-xs bg-white/20 rounded-full">{packagingItems.length}</span>
+      <span className="ml-2 px-2 py-0.5 text-xs bg-surface/20 rounded-full">{packagingItems.length}</span>
      </button>
     </div>
 
@@ -232,7 +232,7 @@ const PackagingManagement = () => {
       <button
        type="button"
        onClick={() => setFormData(emptyForm())}
-       className="px-4 py-2 bg-surface-3 text-ink-2 font-medium rounded-lg hover:bg-surface-3 transition-colors text-sm"
+       className={procBtnSecondary}
       >
        Reset Form
       </button>
@@ -578,7 +578,7 @@ const PackagingManagement = () => {
 
       {/* Submit */}
       <div className="mt-6 flex flex-wrap gap-4">
-       <button type="submit" className="px-6 py-2.5 bg-brand text-white font-medium rounded-lg hover:bg-brand-press transition-colors flex items-center gap-2">
+       <button type="submit" className={procBtnPrimary}>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
         Submit
        </button>
@@ -701,7 +701,7 @@ const PackagingManagement = () => {
 
    {/* View/Edit Modal */}
    {isViewModalOpen && selectedItem && (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
      <div className="bg-surface rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="packaging-view-modal-title">
       <div className="sticky top-0 bg-brand px-6 py-4 flex justify-between items-center">
        <div><h2 id="packaging-view-modal-title" className="text-xl font-bold text-white">{isEditMode ? 'Edit Package' : 'Package Details'}</h2><p className="text-gray-100 text-sm">{selectedItem.packageCode}</p></div>
@@ -748,11 +748,11 @@ const PackagingManagement = () => {
       </div>
       <div className="sticky bottom-0 bg-surface-3 px-6 py-4 border-t flex justify-end gap-3">
        {isEditMode ? (
-        <><button onClick={() => setIsEditMode(false)} className="px-4 py-2 text-ink-2 hover:bg-surface-3 rounded-lg transition-colors">Cancel</button>
-        <button onClick={handleUpdateItem} className="px-6 py-2 bg-brand text-white font-medium rounded-lg hover:bg-brand-press transition-colors">Save Changes</button></>
+        <><button onClick={() => setIsEditMode(false)} className={procBtnSecondary}>Cancel</button>
+        <button onClick={handleUpdateItem} className={procBtnPrimary}>Save Changes</button></>
        ) : (
-        <><button onClick={() => { setIsViewModalOpen(false); setSelectedItem(null); }} className="px-4 py-2 text-ink-2 hover:bg-surface-3 rounded-lg transition-colors">Close</button>
-        <button onClick={() => setIsEditMode(true)} className="px-6 py-2 bg-brand text-white font-medium rounded-lg hover:bg-brand-press transition-colors">Edit Package</button></>
+        <><button onClick={() => { setIsViewModalOpen(false); setSelectedItem(null); }} className={procBtnSecondary}>Close</button>
+        <button onClick={() => setIsEditMode(true)} className={procBtnPrimary}>Edit Package</button></>
        )}
       </div>
      </div>

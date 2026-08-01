@@ -51,15 +51,15 @@ export default function QuoteDashboard() {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={a.total} iconBgClass="bg-slate-100" iconColorClass="text-slate-700" />
-            <StatCard icon={<Trophy className="w-5 h-5" />} title="Win Rate" value={pct(a.win_rate)} iconBgClass="bg-emerald-100" iconColorClass="text-emerald-600" />
+            <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={a.total} iconBgClass="bg-surface-3" iconColorClass="text-ink-2" />
+            <StatCard icon={<Trophy className="w-5 h-5" />} title="Win Rate" value={pct(a.win_rate)} iconBgClass="bg-ok-soft" iconColorClass="text-ok" />
             <StatCard icon={<ShoppingCart className="w-5 h-5" />} title="Conversion Rate" value={pct(a.conversion_rate)} iconBgClass="bg-violet-100" iconColorClass="text-violet-600" />
-            <StatCard icon={<IndianRupee className="w-5 h-5" />} title="Avg Headline Price" value={money(a.avg_sell)} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
+            <StatCard icon={<IndianRupee className="w-5 h-5" />} title="Avg Headline Price" value={money(a.avg_sell)} iconBgClass="bg-warn-soft" iconColorClass="text-warn" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Status Distribution</h3>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-4">Status Distribution</h3>
               {statusData.length === 0 ? <Empty /> : (
                 <div className="flex items-center gap-4">
                   <ResponsiveContainer width="55%" height={200}>
@@ -74,8 +74,8 @@ export default function QuoteDashboard() {
                     {statusData.map((s) => (
                       <li key={s.key} className="flex items-center gap-2 text-sm">
                         <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: STATUS_COLOR[s.key] }} />
-                        <span className="text-gray-600 flex-1">{s.name}</span>
-                        <span className="font-semibold text-slate-900">{s.value}</span>
+                        <span className="text-ink-2 flex-1">{s.name}</span>
+                        <span className="font-semibold text-ink">{s.value}</span>
                       </li>
                     ))}
                   </ul>
@@ -83,8 +83,8 @@ export default function QuoteDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Quotes per Month</h3>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-4">Quotes per Month</h3>
               {monthData.length === 0 ? <Empty /> : (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={monthData}>
@@ -100,16 +100,16 @@ export default function QuoteDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Most-Quoted BOMs</h3>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-3">Most-Quoted BOMs</h3>
               {a.top_boms.length === 0 ? <Empty /> : (
                 <ul className="space-y-2">
                   {a.top_boms.map((b) => {
                     const max = a.top_boms[0].c || 1;
                     return (
                       <li key={b.bom_code} className="text-sm">
-                        <div className="flex justify-between mb-0.5"><span className="text-gray-700 truncate max-w-[16rem]" title={b.name}>{b.name}</span><span className="font-semibold text-slate-900">{b.c}</span></div>
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-slate-700 rounded-full" style={{ width: `${(b.c / max) * 100}%` }} /></div>
+                        <div className="flex justify-between mb-0.5"><span className="text-ink-2 truncate max-w-[16rem]" title={b.name}>{b.name}</span><span className="font-semibold text-ink">{b.c}</span></div>
+                        <div className="h-1.5 bg-surface-3 rounded-full overflow-hidden"><div className="h-full bg-slate-700 rounded-full" style={{ width: `${(b.c / max) * 100}%` }} /></div>
                       </li>
                     );
                   })}
@@ -117,16 +117,16 @@ export default function QuoteDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Recent Activity</h3>
-              <ul className="divide-y divide-gray-50">
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-3">Recent Activity</h3>
+              <ul className="divide-y divide-hairline">
                 {a.recent.map((q) => (
                   <li key={q.id}>
-                    <button onClick={() => navigate(`/quotations/${q.id}`)} className="w-full text-left py-2 flex items-center gap-3 hover:bg-slate-50/50 rounded-lg px-2 -mx-2">
-                      <span className="font-medium text-slate-900 text-sm">{q.quote_ref}</span>
-                      <span className="text-sm text-gray-600 flex-1 truncate">{q.quote_name}</span>
+                    <button onClick={() => navigate(`/quotations/${q.id}`)} className="w-full text-left py-2 flex items-center gap-3 hover:bg-surface-2/50 rounded-lg px-2 -mx-2">
+                      <span className="font-medium text-ink text-sm">{q.quote_ref}</span>
+                      <span className="text-sm text-ink-2 flex-1 truncate">{q.quote_name}</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
-                      <span className="text-sm text-gray-500 w-20 text-right">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</span>
+                      <span className="text-sm text-ink-3 w-20 text-right">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</span>
                     </button>
                   </li>
                 ))}
@@ -139,4 +139,4 @@ export default function QuoteDashboard() {
   );
 }
 
-function Empty() { return <p className="text-sm text-gray-400 py-8 text-center">No data yet.</p>; }
+function Empty() { return <p className="text-sm text-ink-4 py-8 text-center">No data yet.</p>; }

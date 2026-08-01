@@ -59,42 +59,42 @@ export default function OverheadManager() {
       <div className="flex items-center gap-1 flex-wrap">
         {CATEGORIES.map((c) => (
           <button key={c} onClick={() => setCategory(c)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${category === c ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${category === c ? 'bg-ink text-white' : 'bg-surface-3 text-ink-2 hover:bg-surface-3'}`}>
             {c}
           </button>
         ))}
       </div>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-ink-3">
         {category === 'all' ? "Baseline overhead applied to all products unless a category overrides a head." : `Overrides the 'all' baseline for ${category} products (per head).`}
       </p>
 
       {loading ? (
         <TableSkeleton rows={6} cols={8} />
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 [&_th]:bg-surface-2">
               <th scope="col" className="py-2.5 px-3">Head</th>
               {BAND_LABELS.map((b) => <th scope="col" key={b} className="py-2.5 px-2 text-right">{b}</th>)}
               <th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.length === 0 && <tr><td colSpan={9} className="py-6 text-center text-gray-400">No overhead heads for this category{category !== 'all' ? " (uses 'all' baseline)" : ''}.</td></tr>}
+            <tbody className="divide-y divide-hairline">
+              {rows.length === 0 && <tr><td colSpan={9} className="py-6 text-center text-ink-4">No overhead heads for this category{category !== 'all' ? " (uses 'all' baseline)" : ''}.</td></tr>}
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-1.5 px-3 text-gray-800 font-medium">{row.head_name}</td>
+                  <td className="py-1.5 px-3 text-ink font-medium">{row.head_name}</td>
                   {row.band_values.map((v, i) => (
                     <td key={i} className="py-1.5 px-1"><input aria-label={`${row.head_name} — ${BAND_LABELS[i]}`} className={`${inputClassName} py-1 px-2 w-16 text-right`} type="number" step="0.01" value={v} onChange={(e) => editBand(row.id, i, e.target.value)} /></td>
                   ))}
                   <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                    {dirty.has(row.id) && <button onClick={() => saveRow(row)} aria-label="Save" className="text-emerald-600 hover:text-emerald-700 p-1" title="Save"><Save className="w-4 h-4" /></button>}
-                    <button onClick={() => setToDelete(row)} aria-label="Delete" className="text-gray-400 hover:text-red-500 p-1" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                    {dirty.has(row.id) && <button onClick={() => saveRow(row)} aria-label="Save" className="text-ok hover:text-ok p-1" title="Save"><Save className="w-4 h-4" /></button>}
+                    <button onClick={() => setToDelete(row)} aria-label="Delete" className="text-ink-4 hover:text-err p-1" title="Delete"><Trash2 className="w-4 h-4" /></button>
                   </td>
                 </tr>
               ))}
-              <tr className="bg-gray-50 font-semibold">
-                <td className="py-2 px-3 text-gray-700">Total</td>
-                {totals.map((t, i) => <td key={i} className="py-2 px-2 text-right text-slate-900">{t.toFixed(2)}</td>)}
+              <tr className="bg-surface-2 font-semibold">
+                <td className="py-2 px-3 text-ink-2">Total</td>
+                {totals.map((t, i) => <td key={i} className="py-2 px-2 text-right text-ink">{t.toFixed(2)}</td>)}
                 <td></td>
               </tr>
             </tbody>
@@ -103,14 +103,14 @@ export default function OverheadManager() {
       )}
 
       {adding ? (
-        <div className="border border-gray-200 rounded-lg p-3 flex items-end gap-2 flex-wrap">
+        <div className="border border-border rounded-lg p-3 flex items-end gap-2 flex-wrap">
           <input className={`${inputClassName} w-48`} placeholder="Head name" aria-label="Head name" value={newName} onChange={(e) => setNewName(e.target.value)} />
           {newVals.map((v, i) => <input key={i} aria-label={`New head — ${BAND_LABELS[i]}`} className={`${inputClassName} w-16 text-right`} type="number" step="0.01" value={v} onChange={(e) => setNewVals((p) => p.map((x, j) => j === i ? e.target.value : x))} title={BAND_LABELS[i]} />)}
-          <button onClick={addHead} className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">Add</button>
-          <button onClick={() => setAdding(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">Cancel</button>
+          <button onClick={addHead} className="px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink">Add</button>
+          <button onClick={() => setAdding(false)} className="px-4 py-2 bg-surface-3 text-ink-2 rounded-lg text-sm">Cancel</button>
         </div>
       ) : (
-        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
+        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">
           <Plus className="w-4 h-4" /> Add Head
         </button>
       )}

@@ -1,14 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ReactNode, MouseEvent as ReactMouseEvent, FocusEvent as ReactFocusEvent } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Sun, Moon } from '@phosphor-icons/react';
 import { LogOut, ChevronDown, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import eilogofull from '../../assets/logo/eilogofull.svg';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { isSuperAdmin } from '../SuperAdminRoute';
 import { preloadRoute } from '../../lib/preloadRoutes';
-import { getStoredTheme, toggleTheme, type ThemeMode } from '../../lib/themeMode';
 
 /**
  * GlobalRail — the ONE persistent global navigation for every route.
@@ -91,7 +89,6 @@ const GlobalRail = ({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolea
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { hasModuleAccess, isAdmin } = usePermissions();
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredTheme());
 
   const can = useCallback((m: string) => isAdmin || hasModuleAccess(m), [isAdmin, hasModuleAccess]);
 
@@ -160,7 +157,6 @@ const GlobalRail = ({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolea
   const pathActive = (to: string) => (to === '/' ? location.pathname === '/' : location.pathname === to || location.pathname.startsWith(to + '/'));
   const groupActive = (it: Extract<NavItem, { kind: 'group' }>) => it.children.some((c) => pathActive(c.to));
 
-  const onThemeToggle = () => setThemeMode(toggleTheme());
   const onLogout = () => {
     logout();
     navigate('/login', { replace: true });
@@ -348,10 +344,6 @@ const GlobalRail = ({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolea
               </div>
             )}
             <div className="flex gap-2">
-              <button type="button" onClick={onThemeToggle} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-surface-3 hover:bg-surface text-ink-2 rounded-lg text-sm font-medium transition-colors">
-                {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                <span>{themeMode === 'dark' ? 'Light' : 'Dark'}</span>
-              </button>
               <button type="button" onClick={onLogout} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-surface-3 hover:bg-err-soft text-ink-2 hover:text-err rounded-lg text-sm font-medium transition-colors">
                 <LogOut className="w-4 h-4" />
                 <span>Logout</span>
@@ -364,9 +356,6 @@ const GlobalRail = ({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolea
           </div>
         ) : (
           <div className="w-full shrink-0 border-t border-hairline py-3 flex flex-col items-center gap-1">
-            <button type="button" onClick={onThemeToggle} className={railBtn(false)} title={themeMode === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-              {themeMode === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
             <button type="button" onClick={onLogout} className={`${railBtn(false)} hover:bg-err-soft hover:text-err`} title="Logout" aria-label="Logout">
               <LogOut className="w-5 h-5" />
             </button>
@@ -479,10 +468,6 @@ const GlobalRail = ({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolea
             </div>
           )}
           <div className="flex gap-2">
-            <button type="button" onClick={onThemeToggle} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-surface-3 hover:bg-surface text-ink-2 rounded-lg text-sm font-medium">
-              {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              <span>{themeMode === 'dark' ? 'Light' : 'Dark'}</span>
-            </button>
             <button type="button" onClick={onLogout} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-surface-3 hover:bg-err-soft text-ink-2 hover:text-err rounded-lg text-sm font-medium">
               <LogOut className="w-4 h-4" />
               <span>Logout</span>

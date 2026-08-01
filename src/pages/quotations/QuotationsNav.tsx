@@ -15,7 +15,7 @@ const NAV = [
 
 export default function QuotationsNav() {
   return (
-    <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-100 shadow-sm p-1.5 overflow-x-auto">
+    <div className="flex items-center gap-1 bg-surface rounded-xl border border-hairline shadow-sm p-1.5 overflow-x-auto">
       {NAV.map((n) => (
         <NavLink
           key={n.to}
@@ -23,7 +23,7 @@ export default function QuotationsNav() {
           end={n.end}
           className={({ isActive }) =>
             `inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              isActive ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-slate-900'
+              isActive ? 'bg-ink text-white shadow-sm' : 'text-ink-2 hover:bg-surface-3 hover:text-ink'
             }`
           }
         >

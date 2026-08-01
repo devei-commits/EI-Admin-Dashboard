@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination, inputClassName, selectClassName } from '../components/ui';
-import { ProcThead } from '../components/procurement/ProcSection';
+import { ProcThead, procBtnPrimary, procBtnSecondary } from '../components/procurement/ProcSection';
 
 type TabType = 'create' | 'list';
 
@@ -140,7 +140,7 @@ const ActiveIngredients = () => {
       className={`px-6 py-4 font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'list' ? 'bg-brand text-white' : 'text-ink-3 hover:bg-surface-3'}`}>
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
       Active Ingredients List
-      <span className="ml-2 px-2 py-0.5 text-xs bg-white/20 rounded-full">{ingredients.length}</span>
+      <span className="ml-2 px-2 py-0.5 text-xs bg-surface/20 rounded-full">{ingredients.length}</span>
      </button>
     </div>
 
@@ -178,12 +178,12 @@ const ActiveIngredients = () => {
        </div>
       </div>
       <div className="mt-6 flex gap-4">
-       <button type="submit" className="px-6 py-2.5 bg-brand text-white font-medium rounded-lg hover:bg-brand transition-colors flex items-center gap-2">
+       <button type="submit" className={procBtnPrimary}>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
         Create Active Ingredients
        </button>
        <button type="button" onClick={() => setFormData({ ingredientName: '', description: '', percentage: '', category: '' })}
-        className="px-6 py-2.5 bg-surface-3 text-ink-2 font-medium rounded-lg hover:bg-surface-3 transition-colors">Reset Form</button>
+        className={procBtnSecondary}>Reset Form</button>
       </div>
      </form>
     )}
@@ -195,7 +195,7 @@ const ActiveIngredients = () => {
         <span className="text-sm text-ink-3">Show</span>
         <select value={entriesPerPage} onChange={(e) => setEntriesPerPage(Number(e.target.value))}
          aria-label="Entries per page"
-         className="px-3 py-1.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800">
+         className="px-3 py-1.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border">
          <option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option>
         </select>
         <span className="text-sm text-ink-3">entries</span>
@@ -273,7 +273,7 @@ const ActiveIngredients = () => {
 
       {/* Edit Modal */}
       {isEditModalOpen && selectedIngredient && (
-       <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+       <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div role="dialog" aria-modal="true" aria-labelledby="edit-ingredient-title" className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
          <div className="sticky top-0 bg-brand px-6 py-4 flex justify-between items-center">
           <h2 id="edit-ingredient-title" className="text-xl font-bold text-white">Edit Active Ingredient</h2>
@@ -307,8 +307,8 @@ const ActiveIngredients = () => {
             </select></div>
           </div>
           <div className="mt-6 flex justify-end gap-3">
-           <button type="button" onClick={handleCloseModal} className="px-6 py-2 border border-border text-ink-2 font-medium rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
-           <button type="submit" className="px-6 py-2 bg-brand text-white font-medium rounded-lg hover:bg-brand transition-colors">Update Ingredient</button>
+           <button type="button" onClick={handleCloseModal} className={procBtnSecondary}>Cancel</button>
+           <button type="submit" className={procBtnPrimary}>Update Ingredient</button>
           </div>
          </form>
         </div>

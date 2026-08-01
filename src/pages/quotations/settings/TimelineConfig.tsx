@@ -23,7 +23,7 @@ export default function TimelineConfig() {
       <div className="flex items-center gap-1 flex-wrap">
         {SUBS.map((s) => (
           <button key={s.key} onClick={() => setSub(s.key)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${sub === s.key ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${sub === s.key ? 'bg-slate-700 text-white' : 'bg-surface-3 text-ink-2 hover:bg-surface-3'}`}>
             {s.label}
           </button>
         ))}
@@ -73,31 +73,31 @@ function MaterialLeadsTab() {
   const totalPages = Math.max(1, Math.ceil(total / LEADS_PAGE));
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500">Set exact procurement lead time per material. The engine prefers this over the vendor rate and the category rule.</p>
+      <p className="text-xs text-ink-3">Set exact procurement lead time per material. The engine prefers this over the vendor rate and the category rule.</p>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex gap-1">
           {(['RM', 'PM'] as const).map((t) => (
-            <button key={t} onClick={() => setType(t)} className={`px-3 py-1 rounded-md text-xs font-semibold ${type === t ? 'bg-slate-200 text-slate-900' : 'bg-gray-50 text-gray-500'}`}>{t}</button>
+            <button key={t} onClick={() => setType(t)} className={`px-3 py-1 rounded-md text-xs font-semibold ${type === t ? 'bg-surface-3 text-ink' : 'bg-surface-2 text-ink-3'}`}>{t}</button>
           ))}
         </div>
         <SearchInput value={search} onChange={setSearch} placeholder="Search code or name…" className="max-w-xs" />
-        <label className="flex items-center gap-1.5 text-sm text-gray-600"><input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Missing only</label>
-        {dirty && <button onClick={saveAll} disabled={saving} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save {Object.keys(edits).length}</button>}
+        <label className="flex items-center gap-1.5 text-sm text-ink-2"><input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} className="rounded border-border text-ink focus:ring-border" /> Missing only</label>
+        {dirty && <button onClick={saveAll} disabled={saving} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save {Object.keys(edits).length}</button>}
       </div>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap [&_th]:bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 whitespace-nowrap [&_th]:bg-surface-2">
               <th scope="col" className="py-2.5 px-3">Code</th><th scope="col" className="py-2.5 px-3">Name</th><th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Vendor lead</th><th scope="col" className="py-2.5 px-3 text-right">Master lead (d)</th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {items.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-gray-400">No materials match.</td></tr>}
+            <tbody className="divide-y divide-hairline">
+              {items.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-ink-4">No materials match.</td></tr>}
               {items.map((it) => (
-                <tr key={it.id} className={edits[it.id] !== undefined ? 'bg-amber-50/40' : ''}>
-                  <td className="py-1.5 px-3 font-medium text-slate-900">{it.code}</td>
-                  <td className="py-1.5 px-3 text-gray-600 truncate max-w-[18rem]" title={it.name}>{it.name}</td>
-                  <td className="py-1.5 px-3 text-gray-500">{it.klass || '—'}</td>
-                  <td className="py-1.5 px-3 text-right text-gray-400">{it.vendor_lead ?? '—'}</td>
+                <tr key={it.id} className={edits[it.id] !== undefined ? 'bg-warn-soft/40' : ''}>
+                  <td className="py-1.5 px-3 font-medium text-ink">{it.code}</td>
+                  <td className="py-1.5 px-3 text-ink-2 truncate max-w-[18rem]" title={it.name}>{it.name}</td>
+                  <td className="py-1.5 px-3 text-ink-3">{it.klass || '—'}</td>
+                  <td className="py-1.5 px-3 text-right text-ink-4">{it.vendor_lead ?? '—'}</td>
                   <td className="py-1.5 px-3 text-right">
                     <input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" placeholder={it.vendor_lead != null ? `${it.vendor_lead} (vendor)` : 'rule'}
                       value={edits[it.id] !== undefined ? edits[it.id] : (it.lead_time_days ?? '')}
@@ -111,10 +111,10 @@ function MaterialLeadsTab() {
       )}
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">{total} materials · page {page + 1}/{totalPages}</span>
+          <span className="text-ink-3">{total} materials · page {page + 1}/{totalPages}</span>
           <div className="flex gap-2">
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 bg-gray-100 rounded-lg text-gray-700 disabled:opacity-40">Prev</button>
-            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 bg-gray-100 rounded-lg text-gray-700 disabled:opacity-40">Next</button>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 bg-surface-3 rounded-lg text-ink-2 disabled:opacity-40">Prev</button>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 bg-surface-3 rounded-lg text-ink-2 disabled:opacity-40">Next</button>
           </div>
         </div>
       )}
@@ -153,25 +153,25 @@ function ProcurementTab() {
     <div className="space-y-3">
       <div className="flex gap-1">
         {(['RM', 'PM'] as const).map((t) => (
-          <button key={t} onClick={() => setType(t)} className={`px-3 py-1 rounded-md text-xs font-semibold ${type === t ? 'bg-slate-200 text-slate-900' : 'bg-gray-50 text-gray-500'}`}>{t}</button>
+          <button key={t} onClick={() => setType(t)} className={`px-3 py-1 rounded-md text-xs font-semibold ${type === t ? 'bg-surface-3 text-ink' : 'bg-surface-2 text-ink-3'}`}>{t}</button>
         ))}
       </div>
-      <p className="text-xs text-gray-500">'DEFAULT' is the fallback for unmatched {type === 'RM' ? 'categories' : 'materials'}. Procurement = max across all lines.</p>
+      <p className="text-xs text-ink-3">'DEFAULT' is the fallback for unmatched {type === 'RM' ? 'categories' : 'materials'}. Procurement = max across all lines.</p>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 [&_th]:bg-surface-2">
               <th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Individual (d)</th><th scope="col" className="py-2.5 px-3 text-right">Batch (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-1.5 px-3 text-gray-800">{row.category_or_material}</td>
+                  <td className="py-1.5 px-3 text-ink">{row.category_or_material}</td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={row.individual_lead_days} onChange={(e) => edit(row.id, 'individual_lead_days', e.target.value)} /></td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={row.batch_lead_days ?? ''} onChange={(e) => edit(row.id, 'batch_lead_days', e.target.value)} /></td>
                   <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                    {dirty.has(row.id) && <button onClick={() => save(row)} className="text-emerald-600 p-1"><Save className="w-4 h-4" /></button>}
-                    {row.category_or_material !== 'DEFAULT' && <button onClick={() => setToDelete(row)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>}
+                    {dirty.has(row.id) && <button onClick={() => save(row)} className="text-ok p-1"><Save className="w-4 h-4" /></button>}
+                    {row.category_or_material !== 'DEFAULT' && <button onClick={() => setToDelete(row)} className="text-ink-4 hover:text-err p-1"><Trash2 className="w-4 h-4" /></button>}
                   </td>
                 </tr>
               ))}
@@ -183,7 +183,7 @@ function ProcurementTab() {
         <input className={`${inputClassName} w-56`} placeholder={type === 'RM' ? 'Category name' : 'Material name'} value={newKey} onChange={(e) => setNewKey(e.target.value)} />
         <input className={`${inputClassName} w-24`} type="number" placeholder="Individual" value={newInd} onChange={(e) => setNewInd(e.target.value)} />
         <input className={`${inputClassName} w-24`} type="number" placeholder="Batch" value={newBatch} onChange={(e) => setNewBatch(e.target.value)} />
-        <button onClick={add} className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><Plus className="w-4 h-4" /> Add</button>
+        <button onClick={add} className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink"><Plus className="w-4 h-4" /> Add</button>
       </div>
       <ConfirmDialog isOpen={!!toDelete} onClose={() => setToDelete(null)} onConfirm={confirmDelete} title="Delete rule?" message={toDelete ? `Delete "${toDelete.category_or_material}"?` : ''} confirmText="Delete" variant="danger" />
     </div>
@@ -220,30 +220,30 @@ function ManufacturingTab() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500">Filter:</span>
+        <span className="text-xs text-ink-3">Filter:</span>
         <select className={`${selectClassName} py-1.5 w-40`} value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="">All types</option>
           {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <span className="text-xs text-gray-400">Empty subtype = base rule for that type. Band 0 = smallest MOQ.</span>
+        <span className="text-xs text-ink-4">Empty subtype = base rule for that type. Band 0 = smallest MOQ.</span>
       </div>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96">
+        <div className="border border-border rounded-lg overflow-x-auto max-h-96">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 [&_th]:bg-surface-2">
               <th scope="col" className="py-2.5 px-3">Type</th><th scope="col" className="py-2.5 px-3">Subtype</th><th scope="col" className="py-2.5 px-3 text-right">Band</th><th scope="col" className="py-2.5 px-3 text-right">Mfg (d)</th><th scope="col" className="py-2.5 px-3 text-right">Cycle (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-1.5 px-3 text-gray-800">{row.product_type}</td>
-                  <td className="py-1.5 px-3 text-gray-500">{row.product_subtype || '—'}</td>
-                  <td className="py-1.5 px-3 text-right text-gray-500">{row.band_index}</td>
+                  <td className="py-1.5 px-3 text-ink">{row.product_type}</td>
+                  <td className="py-1.5 px-3 text-ink-3">{row.product_subtype || '—'}</td>
+                  <td className="py-1.5 px-3 text-right text-ink-3">{row.band_index}</td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-16 text-right`} type="number" value={row.manufacturing_days} onChange={(e) => edit(row.id, 'manufacturing_days', e.target.value)} /></td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-16 text-right`} type="number" placeholder="=mfg" value={row.cycle_time_days ?? ''} onChange={(e) => edit(row.id, 'cycle_time_days', e.target.value)} /></td>
                   <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                    {dirty.has(row.id) && <button onClick={() => save(row)} className="text-emerald-600 p-1"><Save className="w-4 h-4" /></button>}
-                    <button onClick={() => setToDelete(row)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                    {dirty.has(row.id) && <button onClick={() => save(row)} className="text-ok p-1"><Save className="w-4 h-4" /></button>}
+                    <button onClick={() => setToDelete(row)} className="text-ink-4 hover:text-err p-1"><Trash2 className="w-4 h-4" /></button>
                   </td>
                 </tr>
               ))}
@@ -251,12 +251,12 @@ function ManufacturingTab() {
           </table>
         </div>
       )}
-      <div className="flex items-end gap-2 flex-wrap border-t border-gray-100 pt-3">
+      <div className="flex items-end gap-2 flex-wrap border-t border-hairline pt-3">
         <select className={`${selectClassName} w-32`} value={nType} onChange={(e) => setNType(e.target.value)}>{PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select>
         <input className={`${inputClassName} w-36`} placeholder="Subtype (optional)" value={nSub} onChange={(e) => setNSub(e.target.value)} />
         <select className={`${selectClassName} w-20`} value={nBand} onChange={(e) => setNBand(e.target.value)}>{[0, 1, 2, 3, 4, 5, 6].map((b) => <option key={b} value={b}>{b}</option>)}</select>
         <input className={`${inputClassName} w-20`} type="number" placeholder="Days" value={nDays} onChange={(e) => setNDays(e.target.value)} />
-        <button onClick={add} className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><Plus className="w-4 h-4" /> Add</button>
+        <button onClick={add} className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink"><Plus className="w-4 h-4" /> Add</button>
       </div>
       <ConfirmDialog isOpen={!!toDelete} onClose={() => setToDelete(null)} onConfirm={confirmDelete} title="Delete rule?" message={toDelete ? `Delete ${toDelete.product_type} band ${toDelete.band_index}?` : ''} confirmText="Delete" variant="danger" />
     </div>
@@ -274,17 +274,17 @@ function QcTab() {
   const save = async (row: QcRule) => { const r = await api.upsertQcRule({ grade_ref: row.grade_ref, qc_days: row.qc_days }); if (r.success) { toast.success('Saved'); setDirty((d) => { const n = new Set(d); n.delete(row.id); return n; }); } else toast.error(String(r.error)); };
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500">QC days per grade. 'default' is the fallback for custom grades without an explicit rule.</p>
+      <p className="text-xs text-ink-3">QC days per grade. 'default' is the fallback for custom grades without an explicit rule.</p>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
+        <div className="border border-border rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 [&_th]:bg-surface-2"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
+            <tbody className="divide-y divide-hairline">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-1.5 px-3 text-gray-800 font-medium">{row.grade_ref}</td>
+                  <td className="py-1.5 px-3 text-ink font-medium">{row.grade_ref}</td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={row.qc_days} onChange={(e) => edit(row.id, e.target.value)} /></td>
-                  <td className="py-1.5 px-3 text-right">{dirty.has(row.id) && <button onClick={() => save(row)} className="text-emerald-600 p-1"><Save className="w-4 h-4" /></button>}</td>
+                  <td className="py-1.5 px-3 text-right">{dirty.has(row.id) && <button onClick={() => save(row)} className="text-ok p-1"><Save className="w-4 h-4" /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -306,17 +306,17 @@ function DispatchTab() {
   const save = async (row: DispatchRule) => { const r = await api.upsertDispatchRule({ grade_ref: row.grade_ref, dispatch_days: row.dispatch_days }); if (r.success) { toast.success('Saved'); setDirty((d) => { const n = new Set(d); n.delete(row.id); return n; }); } else toast.error(String(r.error)); };
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500">Dispatch days. 'default' applies to all grades unless overridden.</p>
+      <p className="text-xs text-ink-3">Dispatch days. 'default' applies to all grades unless overridden.</p>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
+        <div className="border border-border rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2 [&_th]:bg-surface-2"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
+            <tbody className="divide-y divide-hairline">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-1.5 px-3 text-gray-800 font-medium">{row.grade_ref}</td>
+                  <td className="py-1.5 px-3 text-ink font-medium">{row.grade_ref}</td>
                   <td className="py-1.5 px-3 text-right"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={row.dispatch_days} onChange={(e) => edit(row.id, e.target.value)} /></td>
-                  <td className="py-1.5 px-3 text-right">{dirty.has(row.id) && <button onClick={() => save(row)} className="text-emerald-600 p-1"><Save className="w-4 h-4" /></button>}</td>
+                  <td className="py-1.5 px-3 text-right">{dirty.has(row.id) && <button onClick={() => save(row)} className="text-ok p-1"><Save className="w-4 h-4" /></button>}</td>
                 </tr>
               ))}
             </tbody>

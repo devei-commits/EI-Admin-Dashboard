@@ -43,8 +43,8 @@ export default function GradeManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">System grades are read-only. Create custom grades for bespoke pricing tiers.</p>
-        <button onClick={() => setEditing(blankGrade())} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold">
+        <p className="text-sm text-ink-3">System grades are read-only. Create custom grades for bespoke pricing tiers.</p>
+        <button onClick={() => setEditing(blankGrade())} className="inline-flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink text-sm font-semibold">
           <Plus className="w-4 h-4" /> New Grade
         </button>
       </div>
@@ -54,24 +54,24 @@ export default function GradeManager() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {grades.map((g) => (
-            <div key={g.id} className="border border-gray-200 rounded-lg p-4">
+            <div key={g.id} className="border border-border rounded-lg p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-slate-900">{g.name}</h4>
-                    {g.is_system && <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full"><Lock className="w-3 h-3" /> system</span>}
+                    <h4 className="font-semibold text-ink">{g.name}</h4>
+                    {g.is_system && <span className="inline-flex items-center gap-1 text-xs text-ink-3 bg-surface-3 px-2 py-0.5 rounded-full"><Lock className="w-3 h-3" /> system</span>}
                     {g.zero_pm && <span className="text-xs text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">no PM</span>}
                   </div>
-                  {g.description && <p className="text-xs text-gray-500 mt-0.5">{g.description}</p>}
+                  {g.description && <p className="text-xs text-ink-3 mt-0.5">{g.description}</p>}
                 </div>
                 {!g.is_system && (
                   <div className="flex gap-1">
-                    <button onClick={() => setEditing(g)} aria-label="Edit grade" className="text-gray-400 hover:text-slate-700 p-1"><Pencil className="w-4 h-4" /></button>
-                    <button onClick={() => setToDelete(g)} aria-label="Delete grade" className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => setEditing(g)} aria-label="Edit grade" className="text-ink-4 hover:text-ink-2 p-1"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => setToDelete(g)} aria-label="Delete grade" className="text-ink-4 hover:text-err p-1"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
               </div>
-              <div className="mt-2 text-xs text-gray-600">
+              <div className="mt-2 text-xs text-ink-2">
                 MOQ {g.moq_labels[0]}–{g.moq_labels[6]} · Markup {(g.markups[0] * 100).toFixed(0)}%→{(g.markups[6] * 100).toFixed(0)}% · QC {g.qc_days ?? '—'}d
               </div>
             </div>
@@ -114,11 +114,11 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
   };
 
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 id={headingId} className="text-lg font-bold text-slate-900">{isEdit ? 'Edit Grade' : 'New Grade'}</h2>
-          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-surface rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-border sticky top-0 bg-surface">
+          <h2 id={headingId} className="text-lg font-bold text-ink">{isEdit ? 'Edit Grade' : 'New Grade'}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-ink-4 hover:text-ink-2"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -126,21 +126,21 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
             <FormField label="QC Days"><input className={inputClassName} type="number" value={qcDays} onChange={(e) => setQcDays(e.target.value)} /></FormField>
           </div>
           <FormField label="Description"><input className={inputClassName} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional" /></FormField>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={zeroPm} onChange={(e) => setZeroPm(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" />
+          <label className="flex items-center gap-2 text-sm text-ink-2">
+            <input type="checkbox" checked={zeroPm} onChange={(e) => setZeroPm(e.target.checked)} className="rounded border-border text-ink focus:ring-border" />
             Customer supplies packaging (zero PM cost)
           </label>
 
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="border border-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
+              <thead><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2">
                 <th scope="col" className="py-2 px-3">Band</th><th scope="col" className="py-2 px-3">MOQ Label</th><th scope="col" className="py-2 px-3">MOQ Value</th>
                 <th scope="col" className="py-2 px-3">Markup %</th><th scope="col" className="py-2 px-3">Conv. Bracket</th><th scope="col" className="py-2 px-3">Factor</th>
               </tr></thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-hairline">
                 {Array.from({ length: 7 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="py-1.5 px-3 text-gray-400">{i}</td>
+                    <td className="py-1.5 px-3 text-ink-4">{i}</td>
                     <td className="py-1.5 px-3"><input aria-label={`MOQ Label band ${i}`} className={`${inputClassName} py-1.5`} value={labels[i] ?? ''} onChange={(e) => setAt(labels, i, e.target.value, setLabels)} /></td>
                     <td className="py-1.5 px-3"><input aria-label={`MOQ Value band ${i}`} className={`${inputClassName} py-1.5 w-24`} type="number" value={values[i] ?? 0} onChange={(e) => setAt(values, i, Number(e.target.value), setValues)} /></td>
                     <td className="py-1.5 px-3"><input aria-label={`Markup % band ${i}`} className={`${inputClassName} py-1.5 w-20`} type="number" value={Math.round((markups[i] ?? 0) * 10000) / 100} onChange={(e) => setAt(markups, i, Number(e.target.value) / 100, setMarkups)} /></td>
@@ -156,9 +156,9 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
             </table>
           </div>
         </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-2 sticky bottom-0 bg-white">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
-          <button onClick={submit} disabled={saving} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">
+        <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-surface">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={saving} className="inline-flex items-center gap-2 px-5 py-2 bg-ink text-white rounded-lg hover:bg-ink text-sm font-semibold disabled:opacity-50">
             {saving && <Loader2 className="w-4 h-4 animate-spin" />} {isEdit ? 'Update' : 'Create'}
           </button>
         </div>

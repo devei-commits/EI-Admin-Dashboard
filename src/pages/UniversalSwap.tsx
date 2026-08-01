@@ -265,9 +265,9 @@ const UniversalSwap: React.FC = () => {
   };
 
   const statCards = [
-    { label: 'RAW MATERIALS', value: stats.totalRMs, sub: 'Swappable ingredients', accent: 'border-l-indigo-500', num: 'text-indigo-600' },
-    { label: 'SWAP HISTORY', value: stats.swapHistoryCount, sub: 'Applied swaps', accent: 'border-l-emerald-500', num: 'text-emerald-600' },
-    { label: 'TOTAL INGREDIENTS', value: stats.totalIngredients, sub: 'From raw materials table', accent: 'border-l-amber-500', num: 'text-amber-600' },
+    { label: 'RAW MATERIALS', value: stats.totalRMs, sub: 'Swappable ingredients', accent: 'border-l-indigo-500', num: 'text-brand' },
+    { label: 'SWAP HISTORY', value: stats.swapHistoryCount, sub: 'Applied swaps', accent: 'border-l-emerald-500', num: 'text-ok' },
+    { label: 'TOTAL INGREDIENTS', value: stats.totalIngredients, sub: 'From raw materials table', accent: 'border-l-amber-500', num: 'text-warn' },
   ];
 
   return (
@@ -279,45 +279,45 @@ const UniversalSwap: React.FC = () => {
           <div className="relative">
             <div className="inline-flex items-center gap-2 mb-3">
               <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Ingredient Operations</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand">Ingredient Operations</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Universal Ingredient Swap</h1>
-            <p className="text-sm text-gray-600">Swap a raw material across selected item groups and PR BOMs. Apply-to lists item groups that contain the ingredient.</p>
+            <h1 className="text-3xl font-extrabold text-ink tracking-tight mb-2">Universal Ingredient Swap</h1>
+            <p className="text-sm text-ink-2">Swap a raw material across selected item groups and PR BOMs. Apply-to lists item groups that contain the ingredient.</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {statCards.map((card) => (
-            <div key={card.label} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+            <div key={card.label} className="group bg-surface rounded-2xl border border-hairline shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
               <div className={`h-1 bg-linear-to-r from-indigo-400 to-indigo-600 ${card.accent}`} />
               <div className="px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors">{card.label}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-4 group-hover:text-ink-2 transition-colors">{card.label}</p>
                 <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
-                <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors">{card.sub}</p>
+                <p className="text-[11px] text-ink-4 mt-2 group-hover:text-ink-3 transition-colors">{card.sub}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-          <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-indigo-50/50 to-transparent">
+        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <div className="px-6 py-5 border-b border-hairline bg-linear-to-r from-indigo-50/50 to-transparent">
             <div className="flex items-center gap-2">
               <span className="text-lg"></span>
-              <span className="text-sm font-semibold text-gray-800">New Swap</span>
+              <span className="text-sm font-semibold text-ink">New Swap</span>
             </div>
           </div>
 
           <div className="p-5 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label htmlFor="fromRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label htmlFor="fromRawMaterialId" className="block text-xs font-semibold text-ink-2 mb-1.5">
                   SWAP FROM — RAW MATERIAL TO REPLACE
                 </label>
                 <select
                   id="fromRawMaterialId"
                   value={fromRawMaterialId}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   disabled={loadingRms}
                 >
                   <option value="">— Select raw material —</option>
@@ -328,14 +328,14 @@ const UniversalSwap: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="toRawMaterialId" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label htmlFor="toRawMaterialId" className="block text-xs font-semibold text-ink-2 mb-1.5">
                   SWAP TO — REPLACEMENT RAW MATERIAL
                 </label>
                 <select
                   id="toRawMaterialId"
                   value={toRawMaterialId}
                   onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   disabled={loadingRms}
                 >
                   <option value="">— Select raw material —</option>
@@ -346,7 +346,7 @@ const UniversalSwap: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="swapRatio" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label htmlFor="swapRatio" className="block text-xs font-semibold text-ink-2 mb-1.5">
                   SWAP RATIO
                 </label>
                 <input
@@ -357,15 +357,15 @@ const UniversalSwap: React.FC = () => {
                   step="0.1"
                   min="0.1"
                   max="2.0"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-                <p className="text-[10px] text-gray-400 mt-1">e.g. 0.9 = 90% of original usage becomes replacement (in a product with 60% to 54% new, 6% original)</p>
+                <p className="text-[10px] text-ink-4 mt-1">e.g. 0.9 = 90% of original usage becomes replacement (in a product with 60% to 54% new, 6% original)</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="reason" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label htmlFor="reason" className="block text-xs font-semibold text-ink-2 mb-1.5">
                   REASON / JUSTIFICATION
                 </label>
                 <textarea
@@ -374,12 +374,12 @@ const UniversalSwap: React.FC = () => {
                   onChange={handleInputChange}
                   rows={3}
                   placeholder="e.g., Cost optimization, vendor change, regulatory compliance..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               </div>
 
               <div ref={approverContainerRef} className="relative">
-                <label htmlFor="approvedBy" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                <label htmlFor="approvedBy" className="block text-xs font-semibold text-ink-2 mb-1.5">
                   APPROVED BY
                 </label>
                 <div className="relative">
@@ -399,13 +399,13 @@ const UniversalSwap: React.FC = () => {
                       approverBlurRef.current = setTimeout(() => setApproverDropdownOpen(false), 150);
                     }}
                     placeholder="Type to search users..."
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full border border-border rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                   {formData.approvedBy && !approverDropdownOpen && (
                     <button
                       type="button"
                       onClick={clearApprover}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-4 hover:text-ink-2 p-1"
                       aria-label="Clear approver"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -413,11 +413,11 @@ const UniversalSwap: React.FC = () => {
                   )}
                 </div>
                 {approverDropdownOpen && (approverQuery.trim() || approverResults.length > 0) && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+                  <div className="absolute z-50 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg max-h-56 overflow-auto">
                     {approverSearching ? (
-                      <div className="px-3 py-4 text-sm text-gray-500">Searching…</div>
+                      <div className="px-3 py-4 text-sm text-ink-3">Searching…</div>
                     ) : approverResults.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-gray-500">
+                      <div className="px-3 py-4 text-sm text-ink-3">
                         {approverQuery.trim() ? 'No users found. Try another name or email.' : 'Type a name or email to search.'}
                       </div>
                     ) : (
@@ -425,11 +425,11 @@ const UniversalSwap: React.FC = () => {
                         <button
                           key={user.userid}
                           type="button"
-                          className="w-full text-left px-3 py-2 hover:bg-indigo-50 text-sm flex flex-col gap-0.5 border-b border-gray-50 last:border-0"
+                          className="w-full text-left px-3 py-2 hover:bg-brand-soft text-sm flex flex-col gap-0.5 border-b border-gray-50 last:border-0"
                           onMouseDown={(e) => { e.preventDefault(); selectApprover(user); }}
                         >
-                          <span className="font-medium text-gray-900">{user.display_name}</span>
-                          <span className="text-xs text-gray-500">{user.email}</span>
+                          <span className="font-medium text-ink">{user.display_name}</span>
+                          <span className="text-xs text-ink-3">{user.email}</span>
                         </button>
                       ))
                     )}
@@ -440,15 +440,15 @@ const UniversalSwap: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-          <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-blue-50/50 to-transparent">
+        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <div className="px-6 py-5 border-b border-hairline bg-linear-to-r from-blue-50/50 to-transparent">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-lg"></span>
-                <span className="text-sm font-semibold text-gray-900">Apply To / Exempt</span>
+                <span className="text-sm font-semibold text-ink">Apply To / Exempt</span>
               </div>
               {fromRawMaterialId && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-brand-soft text-brand border border-brand">
                   {loadingItems ? 'Loading…' : `${selectedGroups.length} group(s), ${selectedBoms.length} PR(s) selected`}
                 </span>
               )}
@@ -456,7 +456,7 @@ const UniversalSwap: React.FC = () => {
           </div>
 
           <div className="p-6">
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-ink-3 mb-3">
               Item groups and PR formulas (BOMs) that contain the &quot;From&quot; ingredient. Swap applies globally: selected groups + all listed PR formulas (ratio applied in each formula).
             </p>
 
@@ -465,12 +465,12 @@ const UniversalSwap: React.FC = () => {
             ) : itemGroups.length === 0 && boms.length === 0 && fromRawMaterialId ? (
               <EmptyState compact title="No item groups or PR formulas use this raw material." />
             ) : !fromRawMaterialId ? (
-              <p className="text-sm text-gray-500 py-4">Select a &quot;From&quot; raw material to see affected item groups and PR formulas.</p>
+              <p className="text-sm text-ink-3 py-4">Select a &quot;From&quot; raw material to see affected item groups and PR formulas.</p>
             ) : (
               <div className="space-y-4">
                 {itemGroups.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">Item Groups</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-ink-3 mb-2">Item Groups</p>
                     <div className="space-y-2">
                       {itemGroups.map((g) => {
                         const willBeAffected = g.selected;
@@ -478,18 +478,18 @@ const UniversalSwap: React.FC = () => {
                           <div
                             key={g.id}
                             className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                              willBeAffected ? 'border-violet-300 bg-violet-50/50' : 'border-gray-200 bg-gray-50/50'
+                              willBeAffected ? 'border-violet-300 bg-violet-50/50' : 'border-border bg-surface-2/50'
                             }`}
                           >
                             <input
                               type="checkbox"
                               checked={g.selected}
                               onChange={() => toggleGroup(g.id)}
-                              className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-2 focus:ring-violet-400"
+                              className="w-4 h-4 rounded border-border text-violet-600 focus:ring-2 focus:ring-violet-400"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold text-gray-800 text-sm">{g.name || g.code}</span>
+                                <span className="font-semibold text-ink text-sm">{g.name || g.code}</span>
                                 {willBeAffected && (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
                                     WILL SWAP
@@ -497,9 +497,9 @@ const UniversalSwap: React.FC = () => {
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs text-gray-500 font-mono">{g.code}</span>
-                                <span className="text-xs text-gray-400">·</span>
-                                <span className="text-xs text-gray-500">{g.member_ids?.length ?? 0} members</span>
+                                <span className="text-xs text-ink-3 font-mono">{g.code}</span>
+                                <span className="text-xs text-ink-4">·</span>
+                                <span className="text-xs text-ink-3">{g.member_ids?.length ?? 0} members</span>
                               </div>
                             </div>
                           </div>
@@ -510,7 +510,7 @@ const UniversalSwap: React.FC = () => {
                 )}
                 {boms.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-2">PR formulas (BOMs)</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-ink-3 mb-2">PR formulas (BOMs)</p>
                     <div className="space-y-2">
                       {boms.map((bom) => {
                         const willBeAffected = bom.selected;
@@ -518,33 +518,33 @@ const UniversalSwap: React.FC = () => {
                           <div
                             key={bom.id}
                             className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                              willBeAffected ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'
+                              willBeAffected ? 'border-warn bg-warn-soft/50' : 'border-border bg-surface-2/50'
                             }`}
                           >
                             <input
                               type="checkbox"
                               checked={bom.selected}
                               onChange={() => toggleBom(bom.id)}
-                              className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-2 focus:ring-amber-400"
+                              className="w-4 h-4 rounded border-border text-warn focus:ring-2 focus:ring-amber-400"
                             />
-                            <span className="text-amber-600 shrink-0" aria-hidden></span>
+                            <span className="text-warn shrink-0" aria-hidden></span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold text-gray-800 text-sm">
+                                <span className="font-semibold text-ink text-sm">
                                   {bom.product_name || bom.name || bom.bom_code}
                                 </span>
                                 {willBeAffected && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-warn-soft text-warn border border-warn">
                                     WILL SWAP
                                   </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs text-gray-500 font-mono">{bom.bom_code}</span>
+                                <span className="text-xs text-ink-3 font-mono">{bom.bom_code}</span>
                                 {bom.product_name && bom.name && bom.name !== bom.bom_code && (
                                   <>
-                                    <span className="text-xs text-gray-400">·</span>
-                                    <span className="text-xs text-gray-500">{bom.name}</span>
+                                    <span className="text-xs text-ink-4">·</span>
+                                    <span className="text-xs text-ink-3">{bom.name}</span>
                                   </>
                                 )}
                               </div>
@@ -558,23 +558,23 @@ const UniversalSwap: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-3 mt-5 pt-5 border-t border-gray-100">
+            <div className="flex items-center gap-3 mt-5 pt-5 border-t border-hairline">
               <button
                 onClick={handlePreview}
                 disabled={!fromRawMaterialId || !toRawMaterialId}
-                className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-5 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Preview
               </button>
               <button
                 onClick={handleApplySwap}
                 disabled={!showPreview || affectedCount === 0 || applying}
-                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                className="px-5 py-2 rounded-lg bg-brand hover:bg-brand text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
                 {applying ? 'Applying…' : 'Apply Swap'}
               </button>
               {showPreview && (
-                <span className="text-xs text-emerald-600 font-medium ml-2">
+                <span className="text-xs text-ok font-medium ml-2">
                   Preview ready — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) (ratio applied in formulas)
                 </span>
               )}
@@ -582,9 +582,9 @@ const UniversalSwap: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-          <div className="px-6 py-5 border-b border-gray-100 bg-linear-to-r from-emerald-50/50 to-transparent">
-            <span className="text-sm font-semibold text-gray-900">Swap History</span>
+        <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+          <div className="px-6 py-5 border-b border-hairline bg-linear-to-r from-emerald-50/50 to-transparent">
+            <span className="text-sm font-semibold text-ink">Swap History</span>
           </div>
 
           {loadingHistory ? (
@@ -595,40 +595,40 @@ const UniversalSwap: React.FC = () => {
             <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 z-20">
-                  <tr className="[&_th]:bg-surface-2 border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From / To</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Groups</th>
-                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">PRs Affected</th>
+                  <tr className="[&_th]:bg-surface-2 border-b border-hairline bg-linear-to-r from-slate-50/70 to-transparent">
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">Date</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">From / To</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">Ratio</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">Reason</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">Approved By</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">Affected Groups</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-2">PRs Affected</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-hairline">
                   {swapHistory.map((swap) => (
                     <tr key={swap.id} className="hover:bg-linear-to-r hover:from-emerald-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
-                      <td className="px-4 py-3.5 text-gray-700 whitespace-nowrap text-sm font-medium">{swap.date}</td>
+                      <td className="px-4 py-3.5 text-ink-2 whitespace-nowrap text-sm font-medium">{swap.date}</td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-red-600 group-hover:text-red-700">{swap.fromIngredient}</span>
-                          <span className="text-gray-400">/</span>
-                          <span className="font-semibold text-emerald-600 group-hover:text-emerald-700">{swap.toIngredient}</span>
+                          <span className="font-semibold text-err group-hover:text-err">{swap.fromIngredient}</span>
+                          <span className="text-ink-4">/</span>
+                          <span className="font-semibold text-ok group-hover:text-ok">{swap.toIngredient}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-700 font-mono">{Number(swap.swapRatio).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={swap.reason}>{swap.reason}</td>
-                      <td className="px-4 py-3 text-gray-600">{swap.approvedBy}</td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-ink-2 font-mono">{Number(swap.swapRatio).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-ink-2 max-w-xs truncate" title={swap.reason}>{swap.reason}</td>
+                      <td className="px-4 py-3 text-ink-2">{swap.approvedBy}</td>
+                      <td className="px-4 py-3 text-ink-2">
                         {(swap.affectedGroupIds?.length ?? 0) > 0
                           ? `${swap.affectedGroupIds!.length} group(s)`
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-ink-2">
                         <button
                           type="button"
                           onClick={() => openHistoryModal(swap)}
-                          className="inline-flex items-center px-2.5 py-1 rounded-full border border-emerald-200 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                          className="inline-flex items-center px-2.5 py-1 rounded-full border border-ok text-[11px] font-medium text-ok bg-ok-soft hover:bg-ok-soft hover:border-ok transition-colors"
                         >
                           View PRs
                         </button>
@@ -643,19 +643,19 @@ const UniversalSwap: React.FC = () => {
 
         {historyModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-4 border border-gray-100" role="dialog" aria-modal="true" aria-labelledby="swap-history-modal-title">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="bg-surface rounded-2xl shadow-xl max-w-3xl w-full mx-4 border border-hairline" role="dialog" aria-modal="true" aria-labelledby="swap-history-modal-title">
+              <div className="px-5 py-4 border-b border-hairline flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Swap History · PRs Affected</p>
-                  <p id="swap-history-modal-title" className="text-sm font-semibold text-gray-900 mt-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Swap History · PRs Affected</p>
+                  <p id="swap-history-modal-title" className="text-sm font-semibold text-ink mt-1">
                     {historyModal.swap.fromIngredient} → {historyModal.swap.toIngredient}{' '}
-                    <span className="text-xs text-gray-500 ml-1">(ratio {Number(historyModal.swap.swapRatio).toFixed(2)})</span>
+                    <span className="text-xs text-ink-3 ml-1">(ratio {Number(historyModal.swap.swapRatio).toFixed(2)})</span>
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setHistoryModal(null)}
-                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                  className="p-1.5 rounded-full hover:bg-surface-3 text-ink-3 hover:text-ink-2"
                   aria-label="Close"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -664,7 +664,7 @@ const UniversalSwap: React.FC = () => {
                 </button>
               </div>
 
-              <div className="px-5 py-4 border-b border-gray-100 text-xs text-gray-600 space-y-1">
+              <div className="px-5 py-4 border-b border-hairline text-xs text-ink-2 space-y-1">
                 <p>
                   <span className="font-semibold">Reason:</span> {historyModal.swap.reason || '—'}
                 </p>
@@ -688,14 +688,14 @@ const UniversalSwap: React.FC = () => {
                     {historyModal.boms.map((bom) => (
                       <div
                         key={bom.id}
-                        className="flex items-start gap-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50"
+                        className="flex items-start gap-3 p-3 rounded-lg border border-ok bg-ok-soft/50"
                       >
-                        <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                        <div className="mt-0.5 w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-ink">
                             {bom.product_name || bom.name || bom.bom_code}
                           </p>
-                          <p className="text-[11px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          <p className="text-[11px] text-ink-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                             <span className="font-mono">{bom.bom_code}</span>
                             {bom.name && bom.name !== bom.bom_code && (
                               <span>{bom.name}</span>
@@ -708,11 +708,11 @@ const UniversalSwap: React.FC = () => {
                 )}
               </div>
 
-              <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+              <div className="px-5 py-3 border-t border-hairline flex justify-end">
                 <button
                   type="button"
                   onClick={() => setHistoryModal(null)}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-ink-2 hover:bg-surface-2"
                 >
                   Close
                 </button>
