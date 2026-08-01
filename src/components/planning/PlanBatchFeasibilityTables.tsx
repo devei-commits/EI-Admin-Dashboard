@@ -44,9 +44,9 @@ export function PlanBatchFeasibilityTables({
         <h4 className="text-[11px] font-semibold text-ink-2 mb-2">
           RM lines · {rmRows.length} material{rmRows.length === 1 ? '' : 's'} · with actual lead-time from history
         </h4>
-        <div className="border border-border rounded-lg overflow-x-auto">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm min-w-[960px]">
-            <thead>
+            <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
               <tr className="bg-surface-2 border-b border-border text-[11px]">
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[140px]">Item</th>
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[120px]">Vendor</th>
@@ -101,9 +101,9 @@ export function PlanBatchFeasibilityTables({
         <h4 className="text-[11px] font-semibold text-ink-2 mb-2">
           PM lines · {pmRows.length} material{pmRows.length === 1 ? '' : 's'} · with actual lead-time from history
         </h4>
-        <div className="border border-border rounded-lg overflow-x-auto">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm min-w-[720px]">
-            <thead>
+            <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
               <tr className="bg-surface-2 border-b border-border text-[11px]">
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[140px]">Item</th>
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[120px]">Vendor</th>

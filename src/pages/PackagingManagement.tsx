@@ -197,10 +197,10 @@ const PackagingManagement = () => {
  };
 
  return (
-  <div className="p-4 md:p-8 bg-surface-2 min-h-screen">
+  <div className="p-4 md:p-6 bg-surface-2 min-h-screen">
    {/* Header */}
-   <div className="mb-6">
-    <h1 className="text-2xl md:text-3xl font-bold text-ink">Packaging Management</h1>
+   <div className="mb-4">
+    <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-ink">Packaging Management</h1>
     <div className="flex items-center gap-2 mt-2 text-sm bg-surface-3 px-4 py-2 rounded-lg">
      <Link to="/" className="text-ink hover:text-amber-800 hover:underline">Dashboard</Link>
      <span className="text-ink-4">/</span>
@@ -649,7 +649,7 @@ const PackagingManagement = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full">
         <ProcThead
          cols={['Package Code', 'Package Name', 'Cap Type', 'Volume', 'MOQ', 'Budget', 'Status', { label: 'Actions', align: 'center' }]}

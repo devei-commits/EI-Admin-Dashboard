@@ -7401,10 +7401,10 @@ const Planning = () => {
               </div>
             )}
             <div className="bg-surface rounded-lg border border-border overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-sm min-w-[1280px]">
-                  <thead>
-                    <tr className="bg-surface-2 border-b border-border">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <SortableTableTh
                         label="SO Date"
                         column="soDate"
@@ -7873,7 +7873,7 @@ const Planning = () => {
             </ProcFilterBar>
 
             {/* Items Table */}
-            <div className="bg-surface rounded-lg border border-border overflow-x-auto w-full">
+            <div className="bg-surface rounded-lg border border-border overflow-auto max-h-[70vh] w-full">
               {activeItemsInvolvedLoading && (
                 <div className="p-6">
                   <TableSkeleton rows={8} cols={6} />
@@ -7905,8 +7905,8 @@ const Planning = () => {
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length > 0 && (
                 <>
                 <table className="w-full text-xs border-collapse min-w-[1500px]">
-                  <thead>
-                    <tr className="bg-surface-2 border-b border-border">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <SortableTableTh
                         label="Item Code"
                         column="itemCode"

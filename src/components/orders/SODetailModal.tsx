@@ -330,7 +330,7 @@ function ItemWithBatches({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm border-collapse">
           <ProcThead
             cols={['Batch No', 'Planned', 'FG Output', 'FG Location', 'Picked', 'Invoice', 'AWB / Courier', 'Status', 'Actions']}

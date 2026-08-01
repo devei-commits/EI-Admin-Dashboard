@@ -185,7 +185,7 @@ const StockCheckRequests: React.FC = () => {
     <div className="flex-1 overflow-auto bg-surface p-6">
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Stock Check Requests</h1>
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight">Stock Check Requests</h1>
           <p className="text-sm text-ink-3 mt-1">
             Verify physical qty for procurement requests. Gaps are notified to Procurement only — inventory updates
             after Procurement approves the gap.
@@ -235,10 +235,10 @@ const StockCheckRequests: React.FC = () => {
               description="Raise one from Procurement → Requests → Stock Check."
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-[10px] tracking-wide text-ink-3 border-b border-border bg-surface-2">
+                <thead className="sticky top-0 z-20">
+                  <tr className="text-left text-[10px] tracking-wide text-ink-3 border-b border-border bg-surface-2 [&_th]:bg-surface-2">
                     <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Req Date</th>
                     <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Audit #</th>
                     <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">WH</th>

@@ -50,10 +50,10 @@ export default function QuoteCompare() {
       {loading ? <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4"><TableSkeleton rows={6} cols={4} /></div>
         : quotes.length < 2 ? <div className="bg-white rounded-lg shadow-sm border border-gray-100"><EmptyState icon={<GitCompare />} title="Select at least 2 quotes from the list to compare." /></div>
           : (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-x-auto">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
+                <thead className="sticky top-0 z-20">
+                  <tr className="border-b border-gray-100 [&_th]:bg-surface-2">
                     <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-40">Metric</th>
                     {quotes.map((q) => (
                       <th scope="col" key={q.id} className="py-3 px-4 text-left min-w-[12rem]">

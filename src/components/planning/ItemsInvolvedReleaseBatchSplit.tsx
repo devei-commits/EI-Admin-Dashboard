@@ -48,9 +48,9 @@ function ReleaseBatchSiblingItemsTable({
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-brand-soft/80 bg-surface overflow-x-auto">
+    <div className="mt-2 rounded-lg border border-brand-soft/80 bg-surface overflow-auto max-h-[70vh]">
       <table className="w-full min-w-[52rem] text-[11px] border-collapse">
-        <thead>
+        <thead className="sticky top-0 z-20 [&_th]:bg-brand-soft">
           <tr className="border-b border-brand-soft text-ink-2 bg-brand-soft/60">
             <th scope="col" className="text-left py-1.5 px-2 font-semibold">Code</th>
             <th scope="col" className="text-left py-1.5 px-2 font-semibold min-w-[10rem]">Item / Vendor</th>
@@ -243,9 +243,9 @@ export function ItemsInvolvedReleaseBatchSplit({
         </div>
       </div>
 
-      <div className="overflow-x-auto -mx-1 px-1">
+      <div className="overflow-auto max-h-[70vh] -mx-1 px-1">
         <table className="w-full min-w-[36rem] text-xs border-collapse">
-          <thead>
+          <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
             <tr className="border-b border-brand-soft text-ink-2">
               <th scope="col" className="w-8 py-2 pr-1" aria-label="Expand batch items" />
               <th scope="col" className="text-left py-2 pr-2 font-semibold">Batch</th>

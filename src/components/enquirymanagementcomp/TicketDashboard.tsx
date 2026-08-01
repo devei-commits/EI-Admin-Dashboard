@@ -174,10 +174,10 @@ interface StaffPerformanceTableProps {
 
 const StaffPerformanceTable: React.FC<StaffPerformanceTableProps> = ({ metrics, onStaffClick }) => {
  return (
-  <div className="overflow-x-auto">
+  <div className="overflow-auto max-h-[70vh]">
    <table className="w-full">
-    <thead>
-     <tr className="border-b border-gray-200">
+    <thead className="sticky top-0 z-20">
+     <tr className="[&_th]:bg-surface-2 border-b border-gray-200">
       <th scope="col" className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff</th>
       <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Active</th>
       <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolved Today</th>

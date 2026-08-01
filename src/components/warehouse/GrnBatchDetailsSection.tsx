@@ -81,10 +81,10 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
           Set "No. of batches received" in the previous step to generate batch rows.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
-              <tr>
+            <thead className="sticky top-0 z-20 bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
+              <tr className="[&_th]:bg-surface-2">
                 <th scope="col" className="px-3 py-2 text-left">#</th>
                 <th scope="col" className="px-3 py-2 text-left">Vendor Batch No.</th>
                 <th scope="col" className="px-3 py-2 text-left">MFG Date</th>

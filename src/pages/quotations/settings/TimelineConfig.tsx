@@ -85,9 +85,9 @@ function MaterialLeadsTab() {
         {dirty && <button onClick={saveAll} disabled={saving} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save {Object.keys(edits).length}</button>}
       </div>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-x-auto">
+        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap [&_th]:bg-gray-50">
               <th scope="col" className="py-2.5 px-3">Code</th><th scope="col" className="py-2.5 px-3">Name</th><th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Vendor lead</th><th scope="col" className="py-2.5 px-3 text-right">Master lead (d)</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
@@ -158,9 +158,9 @@ function ProcurementTab() {
       </div>
       <p className="text-xs text-gray-500">'DEFAULT' is the fallback for unmatched {type === 'RM' ? 'categories' : 'materials'}. Procurement = max across all lines.</p>
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-x-auto">
+        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
               <th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Individual (d)</th><th scope="col" className="py-2.5 px-3 text-right">Batch (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
@@ -230,7 +230,7 @@ function ManufacturingTab() {
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
               <th scope="col" className="py-2.5 px-3">Type</th><th scope="col" className="py-2.5 px-3">Subtype</th><th scope="col" className="py-2.5 px-3 text-right">Band</th><th scope="col" className="py-2.5 px-3 text-right">Mfg (d)</th><th scope="col" className="py-2.5 px-3 text-right">Cycle (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
@@ -278,7 +278,7 @@ function QcTab() {
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
                 <tr key={row.id}>
@@ -310,7 +310,7 @@ function DispatchTab() {
       {loading ? <div className="my-6"><TableSkeleton rows={5} cols={4} /></div> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
                 <tr key={row.id}>

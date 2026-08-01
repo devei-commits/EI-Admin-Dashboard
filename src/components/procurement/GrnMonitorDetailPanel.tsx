@@ -51,9 +51,9 @@ function motionlessSummaryRowImpl({ label, value }: { label: string; value: Reac
 function LineItemsTable({ lineItems }: { lineItems: NonNullable<GRNRecordFromApi['lineItems']> }) {
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full min-w-[32rem] text-[11px] text-ink">
-          <thead>
+          <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
             <tr className="bg-surface-3 border-b border-border text-[10px] tracking-wide uppercase text-ink-3">
               <th scope="col" className="px-3 py-2 text-left">Item</th>
               <th scope="col" className="px-3 py-2 text-left">Code</th>

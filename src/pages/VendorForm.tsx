@@ -1072,10 +1072,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
        
        {documents.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-          <thead className="bg-gray-50">
-           <tr>
+          <thead className="sticky top-0 z-20 bg-gray-50">
+           <tr className="[&_th]:bg-gray-50">
             <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
             <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
             <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
@@ -1167,10 +1167,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
 
        {pocs.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-          <thead className="bg-gray-50">
-           <tr>
+          <thead className="sticky top-0 z-20 bg-gray-50">
+           <tr className="[&_th]:bg-gray-50">
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
@@ -1270,10 +1270,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
 
        {banks.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-          <thead className="bg-gray-50">
-           <tr>
+          <thead className="sticky top-0 z-20 bg-gray-50">
+           <tr className="[&_th]:bg-gray-50">
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
             <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
@@ -1579,10 +1579,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        </div>
 
        {vendorItems.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-          <thead className="bg-gray-50">
-           <tr>
+          <thead className="sticky top-0 z-20 bg-gray-50">
+           <tr className="[&_th]:bg-gray-50">
             <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
             <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
             <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Item Code</th>

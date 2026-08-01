@@ -208,10 +208,10 @@ const ThirdPartyTestTracking: React.FC = () => {
               No released 3rd-party test POs yet. Release a PO from Quality → Order Management → QC checklist.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs min-w-[1100px]">
-                <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+                <thead className="sticky top-0 z-20">
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200 [&_th]:bg-slate-50">
                     <th scope="col" className="px-3 py-2">PO Date</th>
                     <th scope="col" className="px-3 py-2">PO #</th>
                     <th scope="col" className="px-3 py-2">Lab Vendor</th>

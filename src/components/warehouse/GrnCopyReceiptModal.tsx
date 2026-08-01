@@ -990,7 +990,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
 
           <section className="rounded-xl border border-border bg-surface-2/60 p-4">
             <h3 className="mb-3 text-sm font-semibold text-ink">📦 GRN header (auto from system)</h3>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
                 <tbody className="divide-y divide-hairline">
                   <tr>

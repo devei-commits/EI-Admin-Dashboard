@@ -90,8 +90,8 @@ export default function CategoryRateManager() {
 
       <div className="rounded-lg border border-gray-200 overflow-hidden">
         <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-gray-50 border-b border-gray-200 [&_th]:bg-gray-50">
               <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Category</th>
               <th scope="col" className="px-4 py-2 text-center font-medium text-gray-600">Wastage %</th>
               <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Notes</th>

@@ -25,10 +25,10 @@ const QualityGrnQueueTable: React.FC<QualityGrnQueueTableProps> = ({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-auto max-h-[70vh] rounded-xl border border-slate-200 bg-white shadow-sm">
       <table className="w-full text-sm">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-          <tr>
+        <thead className="sticky top-0 z-20 bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+          <tr className="[&_th]:bg-slate-50">
             <th scope="col" className="px-4 py-3 text-left">GRN #</th>
             <th scope="col" className="px-4 py-3 text-left">Item</th>
             <th scope="col" className="px-4 py-3 text-left">PO</th>

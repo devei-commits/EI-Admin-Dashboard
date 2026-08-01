@@ -254,8 +254,8 @@ const TransferPickModal = ({
                         Taking a whole pack means no leftover.
                       </p>
                       <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-ink-3">
+                        <thead className="sticky top-0 z-20">
+                          <tr className="text-left text-xs text-ink-3 [&_th]:bg-surface-2">
                             <th scope="col" className="py-1 font-medium">Pack size ({line.uom})</th>
                             <th scope="col" className="py-1 font-medium">Transfer qty ({line.uom})</th>
                             <th scope="col" className="py-1 font-medium">Stays in stock</th>

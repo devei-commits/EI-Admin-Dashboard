@@ -561,10 +561,10 @@ const Dashboard = () => {
           ) : lowThresholdRows.length === 0 ? (
             <EmptyState icon={<AlertCircle />} title="No items currently at or below reorder point." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
-                <thead className="bg-surface-3 border-b border-border">
-                  <tr>
+                <thead className="sticky top-0 z-20 bg-surface-3 border-b border-border">
+                  <tr className="[&_th]:bg-surface-3">
                     <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Code</th>
                     <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Name</th>
                     <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Type</th>

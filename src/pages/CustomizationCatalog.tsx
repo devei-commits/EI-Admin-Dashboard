@@ -250,10 +250,10 @@ const CustomizationCatalog = () => {
                 </div>
               ))}
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left border-b border-gray-200">
+                <thead className="sticky top-0 z-20">
+                  <tr className="[&_th]:bg-surface-2 text-left border-b border-gray-200">
                     <th scope="col" className="py-2 pr-3">ID</th>
                     <th scope="col" className="py-2 pr-3">Name</th>
                     <th scope="col" className="py-2 pr-3">Care</th>

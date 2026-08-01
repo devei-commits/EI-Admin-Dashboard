@@ -184,10 +184,10 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-xs min-w-[1100px]">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
+            <thead className="sticky top-0 z-20">
+              <tr className="border-b border-slate-200 bg-slate-50 [&_th]:bg-slate-50">
                 <SortableTableTh
                   label="Section"
                   column="section"

@@ -1528,50 +1528,23 @@ const WarehouseInventory = () => {
 
   return (
     <div className="flex-1 overflow-auto bg-canvas">
-      {/* Summary Cards */}
-      <div className="bg-linear-to-br from-surface-2 to-surface-3 border-b border-border p-6">
+      {/* Summary Cards — matches the Overview card style for a consistent warehouse look */}
+      <div className="border-b border-border p-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {/* Total SKUs */}
-          <div className="bg-surface rounded-lg p-4 border border-brand-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">Total SKUs</div>
-            <div className="text-3xl font-bold text-brand mb-1">{stats.total}</div>
-            <div className="text-xs text-ink-3">RM + PM + Finished Goods</div>
-          </div>
-
-          {/* In Stock */}
-          <div className="bg-surface rounded-lg p-4 border border-ok-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">In Stock</div>
-            <div className="text-3xl font-bold text-ok mb-1">{stats.inStock}</div>
-            <div className="text-xs text-ink-3">Items available</div>
-          </div>
-
-          {/* Low Stock */}
-          <div className="bg-surface rounded-lg p-4 border border-warn-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">Low Stock</div>
-            <div className="text-3xl font-bold text-warn mb-1">{stats.lowStock}</div>
-            <div className="text-xs text-ink-3">Below threshold</div>
-          </div>
-
-          {/* Critical / Out */}
-          <div className="bg-surface rounded-lg p-4 border border-err-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">Critical / Out</div>
-            <div className="text-3xl font-bold text-err mb-1">{stats.critical}</div>
-            <div className="text-xs text-ink-3">Needs attention</div>
-          </div>
-
-          {/* FG Under QC */}
-          <div className="bg-surface rounded-lg p-4 border border-brand-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">FG Under QC</div>
-            <div className="text-3xl font-bold text-brand mb-1">{stats.fgUnderQc}</div>
-            <div className="text-xs text-ink-3">batches pending release</div>
-          </div>
-
-          {/* In Transit */}
-          <div className="bg-surface rounded-lg p-4 border border-brand-soft shadow-sm">
-            <div className="text-ink-2 text-xs font-semibold uppercase tracking-wide mb-1">In Transit</div>
-            <div className="text-3xl font-bold text-brand mb-1">{stats.inTransit}</div>
-            <div className="text-xs text-ink-3">RM/PM orders</div>
-          </div>
+          {[
+            { label: 'Total SKUs', value: stats.total, sub: 'RM + PM + Finished Goods' },
+            { label: 'In Stock', value: stats.inStock, sub: 'Items available' },
+            { label: 'Low Stock', value: stats.lowStock, sub: 'Below threshold' },
+            { label: 'Critical / Out', value: stats.critical, sub: 'Needs attention' },
+            { label: 'FG Under QC', value: stats.fgUnderQc, sub: 'batches pending release' },
+            { label: 'In Transit', value: stats.inTransit, sub: 'RM/PM orders' },
+          ].map((c) => (
+            <div key={c.label} className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">{c.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">{c.value}</p>
+              <p className="text-xs text-ink-3 mt-1">{c.sub}</p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -1581,7 +1554,7 @@ const WarehouseInventory = () => {
           {/* View mode + filter tabs */}
           <div className="mb-4">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-              <h1 className="text-2xl font-bold text-ink">
+              <h1 className="text-2xl font-semibold text-ink">
                 {viewMode === 'current' ? 'Inventory' : viewMode === 'history' ? 'Inventory History' : 'Usage'}
               </h1>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -1826,9 +1799,9 @@ const WarehouseInventory = () => {
             ) : filteredHistoryRows.length === 0 ? (
               <EmptyState title="No internal movements recorded yet." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-surface-2 border-b border-border">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Item
@@ -1939,9 +1912,9 @@ const WarehouseInventory = () => {
             ) : usageRows.length === 0 ? (
               <EmptyState title="No usage data yet (from movement history)." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-surface-2 border-b border-border">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Code</th>
                       <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Name</th>
@@ -1976,9 +1949,9 @@ const WarehouseInventory = () => {
         ) : (
           <>
             <div className="bg-surface rounded-lg border border-border overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-surface-2 border-b border-border">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
                       <SortableInventoryTh label="Code" column="code" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
                       <SortableInventoryTh label="Item Name" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />

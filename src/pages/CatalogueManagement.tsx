@@ -175,10 +175,10 @@ const CatalogueManagement = () => {
  };
 
  return (
-  <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+  <div className="p-4 md:p-6 bg-gray-50/50 min-h-screen">
    {/* Header */}
-   <div className="mb-6">
-    <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Catalogue Management</h1>
+   <div className="mb-4">
+    <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-800">Catalogue Management</h1>
     <div className="flex items-center gap-2 mt-2 text-sm bg-gray-100 px-4 py-2 rounded-lg">
      <Link to="/" className="text-slate-800 hover:text-amber-800 hover:underline">Dashboard</Link>
      <span className="text-gray-400">/</span>
@@ -438,10 +438,10 @@ const CatalogueManagement = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-auto max-h-[70vh]">
        <table className="w-full">
-        <thead>
-         <tr className="bg-gray-50 border-b border-gray-200">
+        <thead className="sticky top-0 z-20">
+         <tr className="bg-gray-50 border-b border-gray-200 [&_th]:bg-gray-50">
           <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Product Code</th>
           <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Brand / Name</th>
           <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Category</th>

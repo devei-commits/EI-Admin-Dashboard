@@ -642,10 +642,10 @@ const UserManagement = () => {
    {/* Users Table */}
    {!loading && (
    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-    <div className="hidden md:block overflow-x-auto">
+    <div className="hidden md:block overflow-auto max-h-[70vh]">
      <table className="w-full table-fixed min-w-212.5">
-      <thead className="bg-slate-50 border-b border-gray-200">
-       <tr>
+      <thead className="bg-slate-50 border-b border-gray-200 sticky top-0 z-20">
+       <tr className="[&_th]:bg-slate-50">
         <SortableTableTh label="User" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Contact" column="email" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Masters" column="masters" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />

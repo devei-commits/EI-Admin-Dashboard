@@ -745,11 +745,11 @@ const FacilityManagement: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto">
+                      <div className="overflow-auto max-h-[70vh]">
                         {!selectedZone ? (
                           <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/80 border-b border-gray-100">
+                            <thead className="sticky top-0 z-20">
+                              <tr className="[&_th]:bg-surface-2 bg-gray-50/80 border-b border-gray-100">
                                 <th scope="col" className="px-4 py-3 font-medium w-10" />
                                 <SortableTableTh
                                   label="Code"
@@ -896,8 +896,8 @@ const FacilityManagement: React.FC = () => {
                           />
                         ) : (
                           <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 border-b border-gray-100">
+                            <thead className="sticky top-0 z-20">
+                              <tr className="[&_th]:bg-surface-2 bg-gray-50/50 border-b border-gray-100">
                                 <SortableTableTh
                                   label="Code"
                                   column="code"

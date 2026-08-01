@@ -117,9 +117,9 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white"><EmptyState icon={<Users />} title={rows.length === 0 ? 'No clients found.' : 'No clients match your filters.'} /></div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">
-            <thead>
+            <thead className="sticky top-0 z-20 [&_th]:bg-slate-50">
               <tr className="border-b border-slate-200 bg-slate-50">
                 {HEADERS.map((h) => (
                   <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>

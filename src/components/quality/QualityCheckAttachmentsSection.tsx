@@ -70,8 +70,8 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
 
       {rows.length > 0 ? (
         <table className="w-full text-xs mb-3">
-          <thead>
-            <tr className="text-left text-[10px] text-slate-500 border-b border-slate-200">
+          <thead className="sticky top-0 z-20">
+            <tr className="text-left text-[10px] text-slate-500 border-b border-slate-200 [&_th]:bg-surface-2">
               <th scope="col" className="py-2 pr-3">Attachment</th>
               <th scope="col" className="py-2 pr-3">Type</th>
               <th scope="col" className="py-2 pr-3">Uploaded</th>

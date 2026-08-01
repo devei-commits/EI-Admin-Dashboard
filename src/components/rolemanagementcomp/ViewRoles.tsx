@@ -396,10 +396,10 @@ const ViewRoles: React.FC = () => {
    </div>
 
    {/* Desktop Table View */}
-   <div className="hidden md:block overflow-x-auto">
+   <div className="hidden md:block overflow-auto max-h-[70vh]">
     <table className="w-full">
-     <thead>
-      <tr className="border-b-2 border-gray-200 bg-gray-50">
+     <thead className="sticky top-0 z-20">
+      <tr className="[&_th]:bg-gray-50 border-b-2 border-gray-200 bg-gray-50">
        <SortableTableTh label="Role Name" column="roleName" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Role Level" column="roleLevel" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Role Status" column="roleStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />

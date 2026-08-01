@@ -271,10 +271,10 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
           </button>
         </div>
         <p className="text-[11px] text-ink-3 mb-2">Enter a price for each MOQ band, exactly like the Masters price list (e.g. 1–99 @ ₹X, 100–499 @ ₹Y).</p>
-        <div className="overflow-x-auto rounded-md border border-border bg-surface">
+        <div className="overflow-auto max-h-[70vh] rounded-md border border-border bg-surface">
           <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-surface-3 text-left text-ink-3">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">MOQ min</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">MOQ max (optional)</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Price / unit (₹)</th>
@@ -315,10 +315,10 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
         <p className="text-[11px] text-ink-3 mb-2">
           Same three-way split as Items List and vendor masters (advance, pre-shipment, post-shipment, credit days). Auto-filled from the vendor; leave blank for “as per contract”.
         </p>
-        <div className="overflow-x-auto rounded-md border border-border bg-surface">
+        <div className="overflow-auto max-h-[70vh] rounded-md border border-border bg-surface">
           <table className="w-full max-w-xl text-xs border-collapse">
-            <thead>
-              <tr className="bg-surface-3 text-left text-ink-3">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Advance %</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Pre-ship %</th>
                 <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Post-ship %</th>

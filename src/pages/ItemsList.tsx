@@ -783,7 +783,7 @@ const ItemsList: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="px-6 md:px-10 py-8 max-w-6xl mx-auto space-y-6">
+      <div className="px-6 md:px-10 py-5 max-w-6xl mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h4 className="text-lg font-bold text-ink mb-1">Price Lists</h4>
@@ -829,24 +829,24 @@ const ItemsList: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-surface border border-border rounded-lg p-4 border-l-4 border-l-brand">
+          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
             <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">RM Price Lists</div>
-            <div className="text-2xl font-extrabold text-brand">{stats.rmWithTiers}</div>
+            <div className="text-lg font-bold text-brand">{stats.rmWithTiers}</div>
             <div className="text-[11px] text-ink-4 mt-1">Items with tiered pricing</div>
           </div>
-          <div className="bg-surface border border-border rounded-lg p-4 border-l-4 border-l-brand">
+          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
             <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PM Price Lists</div>
-            <div className="text-2xl font-extrabold text-brand">{stats.pmWithTiers}</div>
+            <div className="text-lg font-bold text-brand">{stats.pmWithTiers}</div>
             <div className="text-[11px] text-ink-4 mt-1">Items with MOQ tiers</div>
           </div>
-          <div className="bg-surface border border-border rounded-lg p-4 border-l-4 border-l-warn">
+          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-warn">
             <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PR client price lists</div>
-            <div className="text-2xl font-extrabold text-warn">{stats.prWithTiers}</div>
+            <div className="text-lg font-bold text-warn">{stats.prWithTiers}</div>
             <div className="text-[11px] text-ink-4 mt-1">Products with client tiers</div>
           </div>
-          <div className="bg-surface border border-border rounded-lg p-4 border-l-4 border-l-brand">
+          <div className="bg-surface border border-border rounded-lg px-3 py-2.5 border-l-4 border-l-brand">
             <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">MOQ Tiers</div>
-            <div className="text-2xl font-extrabold text-brand">{stats.totalTiers}</div>
+            <div className="text-lg font-bold text-brand">{stats.totalTiers}</div>
             <div className="text-[11px] text-ink-4 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
           </div>
         </div>
@@ -1117,8 +1117,8 @@ const ItemsList: React.FC = () => {
                           </div>
                         </div>
                         <table className="w-full text-sm border-collapse mt-2">
-                          <thead>
-                            <tr className="border-b border-hairline">
+                          <thead className="sticky top-0 z-20">
+                            <tr className="[&_th]:bg-surface-2 border-b border-hairline">
                               <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">
                                 MOQ {isRm ? '(KG)' : isPm ? '(pcs)' : '(units)'}
                               </th>
@@ -1374,8 +1374,8 @@ const ItemsList: React.FC = () => {
               <div>
                 <div className="text-[11px] font-bold text-ink-3 uppercase mb-2">Price Tiers</div>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-surface-3 border-b border-border">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-surface-3 bg-surface-3 border-b border-border">
                       <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">MOQ</th>
                       <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">Price</th>
                       <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">Valid Till</th>
@@ -1541,8 +1541,8 @@ const ItemsList: React.FC = () => {
                     <p className="text-[11px] text-ink-4">No tiers yet.</p>
                   ) : (
                     <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-[10px] text-ink-4 text-left">
+                      <thead className="sticky top-0 z-20">
+                        <tr className="[&_th]:bg-surface-2 text-[10px] text-ink-4 text-left">
                           <th scope="col" className="py-1 font-semibold">Tier</th>
                           <th scope="col" className="py-1 font-semibold">MOQ</th>
                           <th scope="col" className="py-1 font-semibold">Price</th>

@@ -535,7 +535,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                     <h3 className="font-bold text-gray-800 flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500" /> Action Required</h3>
                     <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{actionItems.length} items</span>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-gray-100">
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-gray-100">
                     <table className="w-full">
                       <ProcThead cols={['Type', 'Item', 'Due', 'Status', 'Days']} />
                       <tbody className="divide-y divide-gray-50">
@@ -618,7 +618,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   </div>
                 </div>
               )}
-              <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <div className="overflow-auto max-h-[70vh] rounded-xl border border-gray-100">
                 <table className="w-full">
                   <ProcThead cols={['ID', 'Query', 'Category', 'Due', 'Status', 'Note']} />
                   <tbody className="divide-y divide-gray-50">
@@ -682,7 +682,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   </div>
                 </div>
               )}
-              <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <div className="overflow-auto max-h-[70vh] rounded-xl border border-gray-100">
                 <table className="w-full">
                   <ProcThead cols={['PR Code', 'Product', 'Stage', 'Phase', 'Due', 'Status']} />
                   <tbody className="divide-y divide-gray-50">
@@ -743,7 +743,7 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   </div>
                 </div>
               )}
-              <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <div className="overflow-auto max-h-[70vh] rounded-xl border border-gray-100">
                 <table className="w-full">
                   <ProcThead cols={['Order ID', 'Product', 'Quantity', 'Batch No', 'Due', 'Status']} />
                   <tbody className="divide-y divide-gray-50">

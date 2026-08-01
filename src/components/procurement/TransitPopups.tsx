@@ -184,10 +184,10 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
             <b>All items in this PO are already dispatched.</b> Pending is 0 for every line — either goods are in transit or have been received. To ship additional quantity, raise a new PO or cancel the existing GRN if it was created in error.
           </div>
         )}
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface-3 text-ink-3">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
                 {['Ship?', 'Item', 'PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].map((h) => (
                   <th scope="col" key={h} className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide ${['PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].includes(h) ? 'text-center' : 'text-left'}`}>{h}</th>
                 ))}

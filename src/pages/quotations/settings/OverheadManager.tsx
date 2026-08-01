@@ -71,9 +71,9 @@ export default function OverheadManager() {
       {loading ? (
         <TableSkeleton rows={6} cols={8} />
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-x-auto">
+        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 [&_th]:bg-gray-50">
               <th scope="col" className="py-2.5 px-3">Head</th>
               {BAND_LABELS.map((b) => <th scope="col" key={b} className="py-2.5 px-2 text-right">{b}</th>)}
               <th scope="col" className="py-2.5 px-3"></th>

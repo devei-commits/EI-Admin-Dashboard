@@ -147,9 +147,9 @@ export const PickModal: React.FC<PickModalProps> = ({
             Items Ready for Picking
           </h3>
           {pickableSplits.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="overflow-auto max-h-[70vh] rounded-lg border">
               <table className="w-full text-sm">
-                <thead className="bg-surface-3">
+                <thead className="bg-surface-3 sticky top-0 z-20 [&_th]:bg-surface-3">
                   <tr>
                     <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">
                       Product

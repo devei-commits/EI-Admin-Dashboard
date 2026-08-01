@@ -421,8 +421,8 @@ export default function QualitySpecRulesAdmin() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mx-auto max-w-6xl">
         {/* Header — title + description only */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Spec Rules</h1>
+        <header className="mb-4">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-gray-900">Spec Rules</h1>
           <p className="mt-1 max-w-3xl text-sm text-gray-600">
             Category / sub-category templates for{' '}
             <span className="font-semibold text-emerald-700">Quality</span> and{' '}
@@ -592,10 +592,10 @@ export default function QualitySpecRulesAdmin() {
               }
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-gray-100 bg-gray-50/80">
-                  <tr className="text-[11px] uppercase tracking-wide text-gray-500">
+                <thead className="sticky top-0 z-20 border-b border-gray-100 bg-gray-50/80">
+                  <tr className="[&_th]:bg-surface-2 text-[11px] uppercase tracking-wide text-gray-500">
                     <th scope="col" className="px-4 py-2.5 font-semibold">Type</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Category</th>
                     <th scope="col" className="px-4 py-2.5 font-semibold">Sub-category</th>

@@ -395,9 +395,9 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                 <div className="border-b border-border bg-surface-2 px-4 py-3">
                   <h3 className="text-sm font-semibold text-ink">📦 Items requested</h3>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-surface text-left text-xs font-semibold uppercase tracking-wide text-ink-3">
+                    <thead className="bg-surface text-left text-xs font-semibold uppercase tracking-wide text-ink-3 sticky top-0 z-20 [&_th]:bg-surface">
                       <tr>
                         <th scope="col" className="px-4 py-3">Item</th>
                         <th scope="col" className="px-4 py-3 text-right">SIH @ Source</th>

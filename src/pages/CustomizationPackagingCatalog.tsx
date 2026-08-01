@@ -165,10 +165,10 @@ export default function CustomizationPackagingCatalog() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-gray-200 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
+              <thead className="sticky top-0 z-20 border-b border-gray-200 bg-gray-50">
+                <tr className="[&_th]:bg-gray-50">
                   <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Sort</th>
                   <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Option ID</th>
                   <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Title</th>

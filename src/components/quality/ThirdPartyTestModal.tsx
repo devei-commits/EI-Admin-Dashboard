@@ -268,10 +268,10 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
             No matching lab vendors in Masters. Add vendors under category Lab / Testing with NABL accreditation.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="overflow-auto max-h-[70vh] rounded-lg border border-slate-200">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+              <thead className="sticky top-0 z-20">
+                <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200 [&_th]:bg-slate-50">
                   <th scope="col" className="px-3 py-2 w-10">Pick</th>
                   <th scope="col" className="px-3 py-2">Lab Vendor</th>
                   <th scope="col" className="px-3 py-2">Tier</th>

@@ -300,7 +300,7 @@ export const BatchesDashboardView: React.FC = () => {
       ) : grouped.length === 0 ? (
         <EmptyState icon={<Package size={32} />} title="No batches found" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-border">
           <table className="w-full text-sm text-left border-collapse">
             <ProcThead
               cols={['SO #', 'Client', 'Product', { label: 'Order Qty', align: 'right' }, 'Due Date', 'Batch', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', '']}

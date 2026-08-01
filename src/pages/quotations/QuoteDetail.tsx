@@ -317,9 +317,9 @@ export default function QuoteDetail() {
       {/* Pricing */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3></div>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
               <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th>
               <th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th>
               <th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>
@@ -346,9 +346,9 @@ export default function QuoteDetail() {
       {/* Timeline */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
               <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th>
               <th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
             </tr></thead>
@@ -416,9 +416,9 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
           <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete</button>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-gray-50/40">
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-gray-50/40 [&_th]:bg-gray-50">
             <th scope="col" className="py-2.5 px-4">Component</th>
             <th scope="col" className="py-2.5 px-3 text-right">Estimated</th>
             <th scope="col" className="py-2.5 px-3 text-right">Actual</th>

@@ -41,9 +41,9 @@ export default function AuditLog() {
         </select>
       </div>
       {loading ? <div className="my-6"><TableSkeleton rows={6} cols={5} /></div> : (
-        <div className="border border-gray-200 rounded-lg overflow-x-auto">
+        <div className="border border-gray-200 rounded-lg overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
+            <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap [&_th]:bg-gray-50">
               <th scope="col" className="py-2.5 px-3">When</th><th scope="col" className="py-2.5 px-3">Action</th><th scope="col" className="py-2.5 px-3">Type</th><th scope="col" className="py-2.5 px-3">Summary</th><th scope="col" className="py-2.5 px-3">By</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">

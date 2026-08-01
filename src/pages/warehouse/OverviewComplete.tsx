@@ -1105,10 +1105,10 @@ const OutboundDashboard = ({
           ) : tab === 'invoice' ? (
             <WarehouseInvoiceTab search={searchQuery} />
           ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-surface-2">
+              <thead className="sticky top-0 z-20">
+                <tr className="border-b border-border bg-surface-2 [&_th]:bg-surface-2">
                   {(
                     [
                       { col: 'mrnNo' as const, label: 'Request ID (MRN)' },

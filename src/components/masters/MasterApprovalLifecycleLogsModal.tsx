@@ -212,9 +212,9 @@ export function MasterApprovalLifecycleLogsModal({
                 {entries.length === 0 ? (
                   <p className="text-sm text-ink-3">No status changes recorded yet.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border">
+                  <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
                     <table className="min-w-full text-xs">
-                      <thead>
+                      <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
                         <tr className="text-left text-[10px] uppercase tracking-wide text-ink-4 bg-surface-3 border-b border-hairline">
                           <th scope="col" className="py-2 px-3 font-semibold">When</th>
                           <th scope="col" className="py-2 px-3 font-semibold">From</th>

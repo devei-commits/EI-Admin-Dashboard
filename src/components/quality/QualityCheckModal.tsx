@@ -353,9 +353,9 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                       : 'No QC parameters loaded for this line.'}
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-xs">
-                      <thead>
+                      <thead className="sticky top-0 z-20 [&_th]:bg-slate-50">
                         <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
                           <th scope="col" className="px-3 py-2 w-8">#</th>
                           <th scope="col" className="px-3 py-2 min-w-[8rem]">Parameter</th>

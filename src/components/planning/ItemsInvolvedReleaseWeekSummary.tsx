@@ -50,9 +50,9 @@ export function ItemsInvolvedReleaseWeekSummary({
         </p>
       ) : (
         <>
-          <div className="overflow-x-auto -mx-1 px-1">
+          <div className="overflow-auto max-h-[70vh] -mx-1 px-1">
             <table className="w-full min-w-[20rem] text-sm border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
                 <tr className="border-b-2 border-brand-soft text-brand">
                   <th scope="col" className="text-left py-2 pr-3 font-bold">Week</th>
                   <th scope="col" className="text-left py-2 pr-3 font-bold whitespace-nowrap">Required by</th>

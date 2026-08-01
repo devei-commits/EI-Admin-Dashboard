@@ -249,9 +249,9 @@ export function TechnicalSpecRuleModal({
               No fields yet — add the first technical spec field below.
             </p>
           ) : (
-            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
+            <div className="mt-2 overflow-auto max-h-[70vh] rounded-lg border border-border">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-border bg-surface-3 text-xs text-ink-3">
+                <thead className="border-b border-border bg-surface-3 text-xs text-ink-3 sticky top-0 z-20 [&_th]:bg-surface-3">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-semibold">Label</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Type</th>

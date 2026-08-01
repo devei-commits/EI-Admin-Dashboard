@@ -41,7 +41,7 @@ export const GrnQuarantineQcSection: React.FC<GrnQuarantineQcSectionProps> = ({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
         <table className="w-full text-sm">
           <tbody className="divide-y divide-border">
             <tr>

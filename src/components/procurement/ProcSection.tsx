@@ -174,9 +174,37 @@ export const ProcSearch: React.FC<{
   </div>
 );
 
-/** Table card — bordered, scrollable, consistent chrome. */
-export const ProcTableCard: React.FC<{ children: ReactNode }> = ({ children }) => (
-  <div className="overflow-x-auto rounded-xl border border-border">
+/**
+ * Table card — bordered, scrollable, consistent chrome.
+ *
+ * `ProcThead` headers are always `sticky top-0` — they pin to the top of
+ * whichever ancestor scrolls. By default this card only scrolls horizontally
+ * (`overflow-x-auto`, unchanged/backward-compatible), so headers pin relative
+ * to the outer page/modal scroll box if one exists.
+ *
+ * Pass `sticky` to make the card its OWN vertical scroll box (`overflow-auto`
+ * + `max-h`, default `max-h-[70vh]`) so headers pin within the table itself —
+ * matching the proven Planning batches pattern. Override the cap via
+ * `maxHeight` (a Tailwind class, e.g. `max-h-[calc(100vh-300px)]`) or add more
+ * via `className`.
+ */
+export const ProcTableCard: React.FC<{
+  children: ReactNode;
+  /**
+   * Card is its own vertical scroll box (default true) so the sticky `ProcThead`
+   * pins WITHIN the card while the body scrolls. A wide table still scrolls
+   * horizontally in the same box. Set false only for tiny non-scrolling tables.
+   */
+  sticky?: boolean;
+  /** Tailwind max-height class used when `sticky` (default `max-h-[70vh]`). */
+  maxHeight?: string;
+  className?: string;
+}> = ({ children, sticky = true, maxHeight = 'max-h-[70vh]', className = '' }) => (
+  <div
+    className={`rounded-xl border border-border ${
+      sticky ? `overflow-auto ${maxHeight}` : 'overflow-x-auto'
+    } ${className}`}
+  >
     <table className="w-full text-sm text-left">{children}</table>
   </div>
 );
@@ -185,8 +213,8 @@ export const ProcTableCard: React.FC<{ children: ReactNode }> = ({ children }) =
 export const ProcThead: React.FC<{ cols: (string | { label: string; align?: 'left' | 'center' | 'right' })[] }> = ({
   cols,
 }) => (
-  <thead>
-    <tr className="bg-surface-2 border-b border-border">
+  <thead className="sticky top-0 z-20">
+    <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
       {cols.map((c, i) => {
         const label = typeof c === 'string' ? c : c.label;
         const align = typeof c === 'string' ? 'left' : c.align ?? 'left';

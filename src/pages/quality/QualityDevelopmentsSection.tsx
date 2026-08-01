@@ -113,10 +113,10 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
             </p>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
+              <thead className="sticky top-0 z-20 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr className="[&_th]:bg-slate-50">
                   <th scope="col" className="px-4 py-3">Reference</th>
                   <th scope="col" className="px-4 py-3">Item / PIS</th>
                   <th scope="col" className="px-4 py-3">Title</th>

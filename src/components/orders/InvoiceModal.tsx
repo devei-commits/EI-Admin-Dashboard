@@ -251,9 +251,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <div className="mt-6">
               <h3 className="text-lg font-medium text-ink mb-2">Items to be Invoiced</h3>
               {pickedSplits.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-auto max-h-[70vh] rounded-lg border">
                   <table className="w-full text-sm">
-                    <thead className="bg-surface-3">
+                    <thead className="bg-surface-3 sticky top-0 z-20 [&_th]:bg-surface-3">
                       <tr>
                         <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Product</th>
                         <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">BPR No</th>

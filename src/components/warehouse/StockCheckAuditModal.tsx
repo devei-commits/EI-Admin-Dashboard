@@ -524,10 +524,10 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
               <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-2">
                 📍 Current racking (system) — with pack breakdown + inventory batch
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <th scope="col" className="px-3 py-2 font-semibold">Rack Location</th>
                       <th scope="col" className="px-3 py-2 font-semibold">Pack Count × Pack Qty</th>
                       <th scope="col" className="px-3 py-2 font-semibold">Total Qty</th>
@@ -590,10 +590,10 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
               <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-2">
                 ✏ Audited qty + racking update
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <th scope="col" className="px-3 py-2 font-semibold">Rack Location</th>
                       <th scope="col" className="px-3 py-2 font-semibold">System Qty</th>
                       <th scope="col" className="px-3 py-2 font-semibold">Audited Qty (physical count)</th>

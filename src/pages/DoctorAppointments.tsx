@@ -201,11 +201,11 @@ const DoctorAppointments = () => {
     </div>
 
     {/* Table */}
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
      <div className="min-w-full">
       <table className="w-full table-auto">
-       <thead className="bg-gray-50">
-        <tr>
+       <thead className="sticky top-0 z-20 bg-gray-50">
+        <tr className="[&_th]:bg-gray-50">
          <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-15">
           <SortButton field="id">S No</SortButton>
          </th>

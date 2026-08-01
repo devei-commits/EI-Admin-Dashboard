@@ -1126,9 +1126,9 @@ export function GlobalTaskOverview() {
 
    {/* Task Table - Desktop */}
    <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
      <table className="w-full">
-      <thead className="bg-gray-50">
+      <thead className="bg-gray-50 sticky top-0 z-20 [&_th]:bg-gray-50">
        <tr>
         <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
          <button onClick={() => toggleSort('orderNo')} className="flex items-center gap-1 hover:text-slate-800">

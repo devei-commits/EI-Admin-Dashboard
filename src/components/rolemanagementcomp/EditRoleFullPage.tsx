@@ -701,10 +701,10 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
          </div>
          
          {/* Desktop Table View */}
-         <div className="hidden sm:block overflow-x-auto">
+         <div className="hidden sm:block overflow-auto max-h-[70vh]">
           <table className="w-full">
-           <thead>
-            <tr className="border-b border-gray-100">
+           <thead className="sticky top-0 z-20">
+            <tr className="[&_th]:bg-surface-2 border-b border-gray-100">
              <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">User</th>
              <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Email ID</th>
              <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</th>

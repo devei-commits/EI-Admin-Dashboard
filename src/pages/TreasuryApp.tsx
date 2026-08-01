@@ -110,10 +110,10 @@ const TreasuryApp = () => {
     rows: TreasuryPurchaseOrderRow[];
     onView: (po: TreasuryPurchaseOrderRow) => void;
   }) => (
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
       <table className="w-full text-sm min-w-[48rem]">
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
+        <thead className="sticky top-0 z-20">
+          <tr className="[&_th]:bg-gray-50 border-b border-gray-200 bg-gray-50">
             <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">PO</th>
             <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Vendor</th>
             <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Status</th>
@@ -603,10 +603,10 @@ const TreasuryApp = () => {
           {/* Treasury Screen */}
           {currentScreen === 'treasury' && (
             <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-x-auto hover:shadow-lg transition-all">
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 overflow-auto max-h-[70vh] hover:shadow-lg transition-all">
               <table className="w-full table-fixed min-w-175 text-sm">
-                <thead>
-                  <tr className="border-b border-gray-300 bg-gray-50">
+                <thead className="sticky top-0 z-20">
+                  <tr className="[&_th]:bg-gray-50 border-b border-gray-300 bg-gray-50">
                     <th scope="col" className="w-[20%] px-4 py-3 text-left font-bold text-gray-900">Account</th>
                     <th scope="col" className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Type</th>
                     <th scope="col" className="w-[20%] px-4 py-3 text-right font-bold text-gray-900">Balance</th>
@@ -794,10 +794,10 @@ const TreasuryApp = () => {
 
               <div className="mt-6">
                 <h3 className="text-sm font-semibold text-gray-800 mb-4">Recent Requests</h3>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200">
+                    <thead className="sticky top-0 z-20">
+                      <tr className="[&_th]:bg-surface-2 border-b border-gray-200">
                         <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Vendor</th>
                         <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Amount</th>
                         <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Due Date</th>
@@ -931,10 +931,10 @@ const TreasuryApp = () => {
           {/* Budgets Screen */}
           {currentScreen === 'budgets' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-surface-2 border-b border-gray-200">
                       <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Category</th>
                       <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Budget</th>
                       <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Committed</th>

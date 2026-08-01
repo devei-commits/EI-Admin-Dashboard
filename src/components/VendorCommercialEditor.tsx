@@ -390,8 +390,8 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
             </button>
           </div>
           <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-white border-b border-gray-200">
+            <thead className="sticky top-0 z-20">
+              <tr className="[&_th]:bg-white bg-white border-b border-gray-200">
                 <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">{uomHint}</th>
                 <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Price</th>
                 <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Valid till</th>
@@ -586,8 +586,8 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                   </button>
                 </div>
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-white">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-white border-b border-gray-100 bg-white">
                       <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">{uomHint}</th>
                       <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price</th>
                       <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid till</th>

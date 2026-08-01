@@ -124,8 +124,8 @@ const WarehouseLocations = () => {
     <div className="flex-1 overflow-auto p-6 bg-canvas">
       <div className="w-full space-y-4">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Warehouse Locations & Rack Management</h1>
-          <p className="mt-1 text-sm text-ink-2">
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight">Warehouse Locations & Rack Management</h1>
+          <p className="mt-1 text-sm text-ink-3">
             Grouped by facility → zone → rack. Click a facility to expand, or a rack for slot details.
           </p>
         </div>

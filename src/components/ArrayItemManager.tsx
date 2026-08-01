@@ -120,10 +120,10 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
 
    {/* Items List */}
    {items.length > 0 && (
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
      <table className="w-full text-sm">
-      <thead>
-       <tr className="bg-surface-3 border-b border-border">
+      <thead className="sticky top-0 z-20">
+       <tr className="[&_th]:bg-surface-3 bg-surface-3 border-b border-border">
         {displayColumns.map(col => (
          <th scope="col" key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-ink-2 capitalize">
           {col.label}

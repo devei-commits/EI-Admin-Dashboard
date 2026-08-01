@@ -92,9 +92,9 @@ export const QueriesView: React.FC<QueriesViewProps> = ({ clients, onDataChanged
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white"><EmptyState icon={<HelpCircle />} title={rows.length === 0 ? 'No queries yet.' : 'No queries match your filters.'} /></div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">
-            <thead><tr className="border-b border-slate-200 bg-slate-50">{HEADERS.map((h) => <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead>
+            <thead className="sticky top-0 z-20 [&_th]:bg-slate-50"><tr className="border-b border-slate-200 bg-slate-50">{HEADERS.map((h) => <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((r) => (
                 <tr key={r.id} className="cursor-pointer transition-colors hover:bg-blue-50/30" onClick={() => setActive(r)}>

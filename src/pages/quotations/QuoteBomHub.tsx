@@ -364,9 +364,9 @@ export default function QuoteBomHub() {
                       );
                     })()}
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-sm">
-                      <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                      <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
                         <th scope="col" className="py-2.5 px-4">Ref</th>
                         <th scope="col" className="py-2.5 px-3">Category</th>
                         <th scope="col" className="py-2.5 px-3">Type</th>

@@ -105,10 +105,10 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
           <p className="text-xs text-ink-3">Select warehouses once locations are loaded.</p>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-surface-3 text-ink-3">
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
                     {['Audit?', 'Warehouse', 'SIH', 'Existing requests for this date'].map((h) => (
                       <th scope="col" key={h} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                     ))}

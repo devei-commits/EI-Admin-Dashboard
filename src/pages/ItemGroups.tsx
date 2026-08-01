@@ -393,30 +393,26 @@ const ItemGroups: React.FC = () => {
     <div className="min-h-screen bg-canvas">
       <div className="flex min-h-screen">
         <main
-          className={`flex-1 min-w-0 px-6 md:px-10 py-8 space-y-6 ${
+          className={`flex-1 min-w-0 px-6 md:px-10 py-5 space-y-4 ${
             detailPanelOpen ? 'lg:max-w-none' : 'max-w-400 mx-auto w-full'
           }`}
         >
 
-        <div className="relative">
-          <div className="absolute inset-0 bg-brand-soft rounded-2xl blur-3xl" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">Item Configuration</span>
-            </div>
-            <h1 className="text-3xl font-extrabold text-ink tracking-tight mb-2">Item Groups</h1>
-            <p className="text-sm text-ink-3">Manage approved member items (RM/PM from DB) and proposed alternates for supply continuity.</p>
+        <div>
+          <div className="inline-flex items-center gap-2 mb-3">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">Item Configuration</span>
           </div>
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight mb-1">Item Groups</h1>
+          <p className="text-sm text-ink-3">Manage approved member items (RM/PM from DB) and proposed alternates for supply continuity.</p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {statCards.map(card => (
-            <div key={card.label} className="group bg-surface rounded-2xl border border-hairline shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+            <div key={card.label} className="group bg-surface rounded-xl border border-hairline shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
               <div className={`h-1 bg-brand ${card.accent}`} />
-              <div className="px-4 py-4">
+              <div className="px-3 py-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-4">{card.label}</p>
-                <p className={`text-3xl font-extrabold mt-2 ${card.num}`}>{card.value}</p>
+                <p className={`text-lg font-bold mt-2 ${card.num}`}>{card.value}</p>
                 <p className="text-[11px] text-ink-4 mt-2">{card.sub}</p>
               </div>
             </div>

@@ -103,10 +103,10 @@ export default function ConversionRateManager() {
             <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
               <span className="font-medium text-sm text-gray-800">{pkg}</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-gray-50 border-b border-gray-200 [&_th]:bg-gray-50">
                     <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">MOQ Band</th>
                     {vols.map(v => (
                       <th scope="col" key={v} className="px-4 py-2 text-center font-medium text-gray-600">{v} mL</th>

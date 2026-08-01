@@ -175,10 +175,10 @@ const TransferDispatchModal = ({
                 {allPicked ? 'Clear all' : 'Select all'}
               </button>
             </div>
-            <div className="border border-border rounded-lg overflow-x-auto">
+            <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
               <table className="min-w-full text-sm">
-                <thead className="bg-surface-2 text-ink-2">
-                  <tr className="text-left">
+                <thead className="sticky top-0 z-20 bg-surface-2 text-ink-2">
+                  <tr className="text-left [&_th]:bg-surface-2">
                     <th scope="col" className="px-3 py-2 font-semibold">Label</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Item</th>
                     <th scope="col" className="px-3 py-2 font-semibold">Qty</th>

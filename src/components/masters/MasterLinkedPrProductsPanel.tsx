@@ -116,7 +116,7 @@ function TableLinkedPrList({
 }): React.ReactElement {
   const styles = ACCENT_STYLES[accent];
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
       <table className="w-full min-w-[720px]">
         <thead className="sticky top-0 z-1 bg-surface-3 border-b border-border">
           <tr>

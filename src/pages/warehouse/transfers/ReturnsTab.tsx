@@ -66,10 +66,10 @@ const WarehouseReturnsTab = ({ search = '' }: { search?: string } = {}) => {
           <div className="mb-4 px-4 py-3 rounded-lg border border-err-soft bg-err-soft text-err text-sm">{error}</div>
         )}
 
-        <div className="border border-border rounded-lg overflow-x-auto">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="min-w-full text-sm">
-            <thead className="bg-surface-2 text-ink-2">
-              <tr className="text-left">
+            <thead className="sticky top-0 z-20 bg-surface-2 text-ink-2">
+              <tr className="text-left [&_th]:bg-surface-2">
                 <th scope="col" className="px-4 py-3 font-semibold">MRN No</th>
                 <th scope="col" className="px-4 py-3 font-semibold">Product</th>
                 <th scope="col" className="px-4 py-3 font-semibold">Batch</th>

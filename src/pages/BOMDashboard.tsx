@@ -1014,29 +1014,25 @@ const BOMDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="px-6 md:px-10 py-8 space-y-6 w-full">
+      <div className="px-6 md:px-10 py-5 space-y-4 w-full">
 
         {/* ── Page Header ── */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-brand-soft rounded-2xl blur-3xl" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">PR Masters</span>
-            </div>
-            <h1 className="text-3xl font-extrabold text-ink tracking-tight mb-2">Products (PR)</h1>
-            <p className="text-sm text-ink-3">Manage product registrations, formulations, packaging specifications and regulatory compliance.</p>
+        <div>
+          <div className="inline-flex items-center gap-2 mb-3">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">PR Masters</span>
           </div>
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight mb-1">Products (PR)</h1>
+          <p className="text-sm text-ink-3">Manage product registrations, formulations, packaging specifications and regulatory compliance.</p>
         </div>
 
         {/* ── Stat Cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {statCardData.map(card => (
-            <div key={card.label} className={`group bg-surface rounded-2xl border border-hairline shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden`}>
+            <div key={card.label} className={`group bg-surface rounded-xl border border-hairline shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden`}>
               <div className={`h-1 bg-brand ${card.accent}`} />
-              <div className="px-4 py-4">
+              <div className="px-3 py-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-4 group-hover:text-ink-3 transition-colors">{card.label}</p>
-                <p className={`text-3xl font-extrabold mt-2 ${card.num} group-hover:scale-110 transition-transform origin-left`}>{card.value}</p>
+                <p className={`text-lg font-bold mt-2 ${card.num} transition-transform origin-left`}>{card.value}</p>
                 <p className="text-[11px] text-ink-4 mt-2 group-hover:text-ink-3 transition-colors">{card.sub}</p>
               </div>
             </div>
@@ -1204,10 +1200,10 @@ const BOMDashboard: React.FC = () => {
             <TableSkeleton rows={8} cols={20} className="p-6" />
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                <thead className="bg-surface-3 border-b border-border">
-                  <tr>
+                <thead className="sticky top-0 z-20 bg-surface-3 border-b border-border">
+                  <tr className="[&_th]:bg-surface-3">
                     <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-3 uppercase tracking-wide">Sr No</th>
                     <SortableTableTh
                       label="Code"
@@ -1801,9 +1797,9 @@ const BOMDashboard: React.FC = () => {
                               </>
                             )}
                           </div>
-                          <div className="overflow-x-auto">
+                          <div className="overflow-auto max-h-[70vh]">
                             <table className="w-full text-sm">
-                              <thead><tr className="bg-surface-3"><th scope="col" className="text-left p-2 w-12">Sr No</th><th scope="col" className="text-left p-2 w-24">Type</th><th scope="col" className="text-left p-2">INCI / Group</th><th scope="col" className="text-left p-2">RM / Group Code</th><th scope="col" className="text-right p-2 w-16">% w/w</th><th scope="col" className="text-left p-2">UOM</th>{isEditMode && <th scope="col" className="w-8" />}</tr></thead>
+                              <thead className="sticky top-0 z-20"><tr className="[&_th]:bg-surface-3 bg-surface-3"><th scope="col" className="text-left p-2 w-12">Sr No</th><th scope="col" className="text-left p-2 w-24">Type</th><th scope="col" className="text-left p-2">INCI / Group</th><th scope="col" className="text-left p-2">RM / Group Code</th><th scope="col" className="text-right p-2 w-16">% w/w</th><th scope="col" className="text-left p-2">UOM</th>{isEditMode && <th scope="col" className="w-8" />}</tr></thead>
                               <tbody>
                                 {phase.ingredients.map((ing, i) => {
                                   const isGroupLine =
@@ -1977,10 +1973,10 @@ const BOMDashboard: React.FC = () => {
                           </div>
                         </div>
                       )}
-                      <div className="overflow-x-auto border border-border rounded-lg">
+                      <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
                         <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-surface-3">
+                          <thead className="sticky top-0 z-20">
+                            <tr className="[&_th]:bg-surface-3 bg-surface-3">
                               <th scope="col" className="text-left p-2 w-12">Sr No</th>
                               <th scope="col" className="text-left p-2">INCI / Name</th>
                               <th scope="col" className="text-left p-2">RM Code</th>
@@ -2035,9 +2031,9 @@ const BOMDashboard: React.FC = () => {
                           <Plus className="w-3.5 h-3.5" /> Add row
                         </button>
                       )}
-                      <div className="overflow-x-auto border border-border rounded-lg">
+                      <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-surface-3"><th scope="col" className="text-left p-2 w-12">Sr No</th><th scope="col" className="text-left p-2">PM Description</th><th scope="col" className="text-left p-2">PM Code</th><th scope="col" className="text-left p-2">Category</th><th scope="col" className="text-left p-2">Sub-category</th><th scope="col" className="text-left p-2">Sub-sub category</th><th scope="col" className="text-left p-2">Pack Type</th><th scope="col" className="text-right p-2">Qty/Unit</th><th scope="col" className="text-left p-2">UOM</th>{isEditMode && <th scope="col" className="w-8" />}</tr></thead>
+                          <thead className="sticky top-0 z-20"><tr className="[&_th]:bg-surface-3 bg-surface-3"><th scope="col" className="text-left p-2 w-12">Sr No</th><th scope="col" className="text-left p-2">PM Description</th><th scope="col" className="text-left p-2">PM Code</th><th scope="col" className="text-left p-2">Category</th><th scope="col" className="text-left p-2">Sub-category</th><th scope="col" className="text-left p-2">Sub-sub category</th><th scope="col" className="text-left p-2">Pack Type</th><th scope="col" className="text-right p-2">Qty/Unit</th><th scope="col" className="text-left p-2">UOM</th>{isEditMode && <th scope="col" className="w-8" />}</tr></thead>
                           <tbody>
                             {packList.map((row, i) => {
                               const subCategoryOpts = pmDetailSubCategoryOptionsForSkuCategory(row.pm_sku_category ?? '');

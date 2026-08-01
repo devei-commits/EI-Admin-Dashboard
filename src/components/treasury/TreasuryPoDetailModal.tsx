@@ -147,9 +147,9 @@ export function TreasuryPoDetailModal({
             {po.items.length === 0 ? (
               <p className="text-gray-400 text-sm">No line items on record.</p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-auto max-h-[70vh] rounded-lg border border-gray-200">
                 <table className="w-full text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-20 [&_th]:bg-gray-50">
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
                       <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Qty</th>

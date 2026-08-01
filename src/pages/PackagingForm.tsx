@@ -2535,19 +2535,15 @@ const BprDashboard: React.FC<{
 
   return (
     <div className="min-h-screen bg-canvas">
-      <div className="px-6 md:px-10 py-8 space-y-6 w-full">
+      <div className="px-6 md:px-10 py-5 space-y-4 w-full">
 
         {/* ── Page Header ── */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-brand-soft rounded-2xl blur-3xl" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl"></span>
+        <div>
+            <div className="inline-flex items-center gap-2 mb-2">
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">PM Masters</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-ink tracking-tight mb-2">Pack Materials</h1>
+            <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight mb-1">Pack Materials</h1>
             <p className="text-sm text-ink-3">Manage packaging masters — tubes, bottles, cartons, labels, closures and their vendor details.</p>
-          </div>
         </div>
 
         {/* ── Loading / Error ── */}
@@ -2594,7 +2590,7 @@ const BprDashboard: React.FC<{
                   </select>
                 </label>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-3">
                 {statCards.map((card) => {
                   const isActive = statFilter === card.id;
                   return (
@@ -2603,12 +2599,12 @@ const BprDashboard: React.FC<{
                       type="button"
                       onClick={() => toggleStatFilter(card.id)}
                       aria-pressed={isActive}
-                      className={`group text-left bg-surface rounded-2xl border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] ${
+                      className={`group text-left bg-surface rounded-xl border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] ${
                         isActive ? 'border-brand ring-2 ring-brand-soft' : 'border-hairline'
                       }`}
                     >
                       <div className={`h-1 bg-brand ${card.accent}`} />
-                      <div className="px-4 py-4">
+                      <div className="px-3 py-2.5">
                         {card.badge ? (
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold border mb-1.5 max-w-full truncate ${card.badge.bg} ${card.badge.text} ${card.badge.border}`}
@@ -2620,10 +2616,10 @@ const BprDashboard: React.FC<{
                             {card.label}
                           </p>
                         )}
-                        <p className={`text-3xl font-extrabold mt-1 ${card.num} group-hover:scale-105 transition-transform origin-left`}>
+                        <p className={`text-lg font-bold mt-1 ${card.num} transition-transform origin-left`}>
                           {card.value}
                         </p>
-                        <p className="text-[11px] text-ink-4 mt-2 group-hover:text-ink-3 transition-colors line-clamp-2">
+                        <p className="text-[11px] text-ink-4 mt-2 group-hover:text-ink-3 transition-colors truncate">
                           {card.sub}
                         </p>
                       </div>
@@ -2728,10 +2724,10 @@ const BprDashboard: React.FC<{
                 </div>
               )}
 
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-hairline bg-surface-3">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="border-b border-hairline bg-surface-3 [&_th]:bg-surface-3">
                       <th scope="col" className="px-4 py-4 text-left text-xs font-semibold text-ink-3 uppercase tracking-wide">Sr No</th>
                       <SortableTableTh
                         label="Code"

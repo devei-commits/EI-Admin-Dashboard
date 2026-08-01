@@ -83,9 +83,9 @@ export function QualitySpecTable({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
         <table className="min-w-[1100px] w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
             <tr className="bg-surface-3 border-b border-border text-xs font-bold uppercase tracking-wider text-ink-3">
               <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[12rem]">Parameter</th>
               <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[8.5rem]">Spec / Limit</th>

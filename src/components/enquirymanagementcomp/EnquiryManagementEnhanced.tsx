@@ -674,10 +674,10 @@ useEffect(() => {
     {customizationsLoading ? (
      <TableSkeleton rows={6} cols={9} />
     ) : customizations.length > 0 ? (
-     <div className="overflow-x-auto bg-white rounded-xl border border-gray-100">
+     <div className="overflow-auto max-h-[70vh] bg-white rounded-xl border border-gray-100">
       <table className="w-full text-sm">
-       <thead>
-        <tr className="bg-gray-50 border-b border-gray-200 text-left">
+       <thead className="sticky top-0 z-20">
+        <tr className="[&_th]:bg-gray-50 bg-gray-50 border-b border-gray-200 text-left">
          <th scope="col" className="px-4 py-3">ID</th>
          <th scope="col" className="px-4 py-3">Customer</th>
          <th scope="col" className="px-4 py-3">Product</th>

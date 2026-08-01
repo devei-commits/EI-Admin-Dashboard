@@ -592,10 +592,10 @@ const UniversalSwap: React.FC = () => {
           ) : swapHistory.length === 0 ? (
             <EmptyState compact title="No swap history yet." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
+                <thead className="sticky top-0 z-20">
+                  <tr className="[&_th]:bg-surface-2 border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
                     <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
                     <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From / To</th>
                     <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>

@@ -604,10 +604,10 @@ export function StageTemplatesForm({
      <Card className="p-4">
       <div className="text-sm font-medium mb-3">R&D Lead Review – Confirm / Update</div>
       <div className="text-xs text-muted-foreground mb-2">Active Composition – line item confirmation</div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
        <table className="w-full text-sm">
-        <thead>
-         <tr className="text-left text-xs text-muted-foreground">
+        <thead className="sticky top-0 z-20">
+         <tr className="[&_th]:bg-surface-2 text-left text-xs text-muted-foreground">
           <th scope="col" className="p-2">Active</th>
           <th scope="col" className="p-2">% / Range</th>
           <th scope="col" className="p-2">Confirm?</th>
@@ -1008,10 +1008,10 @@ export function StageTemplatesForm({
       </div>
 
       <div className="mt-4 text-xs text-muted-foreground">Catalogue Options</div>
-      <div className="overflow-x-auto mt-2">
+      <div className="overflow-auto max-h-[70vh] mt-2">
        <table className="w-full text-sm">
-        <thead>
-         <tr className="text-left text-xs text-muted-foreground">
+        <thead className="sticky top-0 z-20">
+         <tr className="[&_th]:bg-surface-2 text-left text-xs text-muted-foreground">
           <th scope="col" className="p-2">Option</th>
           <th scope="col" className="p-2">Pack</th>
           <th scope="col" className="p-2">MOQ</th>

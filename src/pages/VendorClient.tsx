@@ -492,10 +492,10 @@ const VendorClient: React.FC = () => {
   headers: string[],
   rows: Array<Array<unknown>>,
  ) => (
-  <div className="overflow-x-auto">
+  <div className="overflow-auto max-h-[70vh]">
    <table className="w-full border border-gray-200 rounded-lg overflow-hidden bg-white">
-    <thead className="bg-gray-100">
-     <tr>
+    <thead className="sticky top-0 z-20 bg-gray-100">
+     <tr className="[&_th]:bg-gray-100">
       {headers.map(h => (
        <th scope="col" key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-600">{h}</th>
       ))}
@@ -623,10 +623,10 @@ const VendorClient: React.FC = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
+      <div className="hidden md:block overflow-auto max-h-[70vh] bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
-         <tr>
+        <thead className="sticky top-0 z-20 bg-gray-50 border-b border-gray-200">
+         <tr className="[&_th]:bg-gray-50">
           <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
@@ -869,10 +869,10 @@ const VendorClient: React.FC = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
+      <div className="hidden md:block overflow-auto max-h-[70vh] bg-white border border-gray-200 rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
-         <tr>
+        <thead className="sticky top-0 z-20 bg-gray-50 border-b border-gray-200">
+         <tr className="[&_th]:bg-gray-50">
           <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
@@ -1028,7 +1028,7 @@ const VendorClient: React.FC = () => {
  };
 
  return (
-  <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
+  <div className="min-h-screen bg-gray-50/50 p-4 md:p-6">
    <div className="max-w-7xl mx-auto">
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
      {/* Master tabs: Vendor | Client */}

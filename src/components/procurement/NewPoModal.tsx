@@ -246,10 +246,10 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
       </ModalSection>
 
       <ModalSection title="Line items">
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-surface-3 text-ink-3">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
                 {['Item name', 'Code', 'Qty req', ''].map((h) => <th scope="col" key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>)}
               </tr>
             </thead>

@@ -396,10 +396,10 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
    })()}
 
    {/* Department × Action table */}
-   <div className="overflow-x-auto border border-gray-200 rounded-lg">
+   <div className="overflow-auto max-h-[70vh] border border-gray-200 rounded-lg">
     <table className="w-full text-sm">
-     <thead className="bg-gray-50">
-      <tr>
+     <thead className="sticky top-0 z-20 bg-gray-50">
+      <tr className="[&_th]:bg-gray-50">
        {showInclude && (
         <th scope="col" className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-12">Include</th>
        )}

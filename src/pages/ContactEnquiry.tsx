@@ -210,10 +210,10 @@ const ContactEnquiry = () => {
     </div>
 
     {/* Desktop Table */}
-    <div className="hidden md:block overflow-x-auto">
+    <div className="hidden md:block overflow-auto max-h-[70vh]">
      <table className="w-full border-collapse">
-      <thead>
-       <tr className="border-b-2 border-gray-200">
+      <thead className="sticky top-0 z-20">
+       <tr className="[&_th]:bg-surface-2 border-b-2 border-gray-200">
         <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('id')}

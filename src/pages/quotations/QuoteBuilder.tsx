@@ -525,9 +525,9 @@ export default function QuoteBuilder() {
                     </div>
                   )}
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                    <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
                       <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th><th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th><th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>{result && result.bands[0]?.target > 0 && <th scope="col" className="py-3 px-3 text-right">Gap</th>}
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
@@ -545,9 +545,9 @@ export default function QuoteBuilder() {
 
               <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                    <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">
                       <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th><th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
@@ -567,9 +567,9 @@ export default function QuoteBuilder() {
                     <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Target-Price Solver</h3>
                     <p className="text-xs text-gray-400 mt-0.5">Blended RM cost/kg (landed) needed to hit ₹{Number(targetPrice).toFixed(2)} — green = achievable at current RM price.</p>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-sm">
-                      <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                      <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap [&_th]:bg-surface-2">
                         <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Required RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Current RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Headroom</th><th scope="col" className="py-3 px-4">Feasible</th>
                       </tr></thead>
                       <tbody className="divide-y divide-gray-50">
@@ -599,9 +599,9 @@ export default function QuoteBuilder() {
                       </div>
                       {pricingSource === 'master' && <span className="px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-700 rounded-full">Active source</span>}
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="w-full text-sm">
-                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                        <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap [&_th]:bg-surface-2">
                           <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
                           <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
                           <th scope="col" className="py-2.5 px-3 text-right">Master ₹</th>
@@ -638,9 +638,9 @@ export default function QuoteBuilder() {
                       </div>
                       {pricingSource === 'vendor' && <span className="px-2 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-full">Active source</span>}
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="w-full text-sm">
-                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+                        <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap [&_th]:bg-surface-2">
                           <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
                           <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
                           <th scope="col" className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
@@ -698,9 +698,9 @@ function LineEditor({ title, cols, children }: { title: string; cols: string[]; 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto p-2">
+      <div className="overflow-auto max-h-[70vh] p-2">
         <table className="w-full text-sm min-w-[44rem]">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{cols.map((c) => <th scope="col" key={c} className="px-2 py-1">{c}</th>)}<th scope="col"></th></tr></thead>
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap [&_th]:bg-surface-2">{cols.map((c) => <th scope="col" key={c} className="px-2 py-1">{c}</th>)}<th scope="col"></th></tr></thead>
           <tbody>{children}</tbody>
         </table>
       </div>
@@ -719,9 +719,9 @@ function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap [&_th]:bg-surface-2">
             <th scope="col" className="py-2.5 px-4">Item</th><th scope="col" className="py-2.5 px-3 text-right">{qtyHeader}</th><th scope="col" className="py-2.5 px-3 text-right">Master ₹</th><th scope="col" className="py-2.5 px-3 text-right">Vendor ₹</th><th scope="col" className="py-2.5 px-3 text-right">Used ₹</th><th scope="col" className="py-2.5 px-4 text-right">{lastHeader}</th>
           </tr></thead>
           <tbody className="divide-y divide-gray-50">
@@ -746,9 +746,9 @@ function BreakdownCard({ title, headers, rows }: { title: string; headers: strin
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">{headers.map((h, i) => <th scope="col" key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 [&_th]:bg-surface-2">{headers.map((h, i) => <th scope="col" key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map((r, i) => {
               const missing = r[r.length - 1] === true;

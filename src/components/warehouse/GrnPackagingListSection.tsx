@@ -57,10 +57,10 @@ export const GrnPackagingListSection: React.FC<GrnPackagingListSectionProps> = (
             No packs yet — set "No. of packs" per batch in the previous step.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
-                <tr>
+              <thead className="sticky top-0 z-20 bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
+                <tr className="[&_th]:bg-surface-2">
                   <th scope="col" className="px-3 py-2 text-left">Packaging No.</th>
                   <th scope="col" className="px-3 py-2 text-left">Batch</th>
                   <th scope="col" className="px-3 py-2 text-left">Vendor Batch</th>
@@ -122,7 +122,7 @@ export const GrnPackagingListSection: React.FC<GrnPackagingListSectionProps> = (
       {/* Quantity roll-up */}
       <div className="rounded-xl border border-border p-4">
         <h3 className="mb-3 text-sm font-semibold text-ink">📊 Quantity roll-up (auto-calculated)</h3>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               <tr>

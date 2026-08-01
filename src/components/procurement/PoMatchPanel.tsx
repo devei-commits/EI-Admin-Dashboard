@@ -139,10 +139,10 @@ export const PoMatchPanel: React.FC<PoMatchPanelProps> = ({ poId, onToast, onCha
 
       <div className="px-4 py-3 space-y-3">
         {/* Reconciliation table */}
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="overflow-auto max-h-[70vh] rounded-md border border-border">
           <table className="w-full text-[11px]">
-            <thead>
-              <tr className="bg-surface-3 text-ink-3">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
                 {['Item', 'Ordered', 'Received', 'Billed', 'Rcvd value', 'Status'].map((h) => (
                   <th scope="col" key={h} className="px-2.5 py-1.5 text-left text-[10px] font-bold uppercase whitespace-nowrap">{h}</th>
                 ))}

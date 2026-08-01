@@ -30,8 +30,8 @@ function StagedPaymentTermsTable({
       <table
         className={`w-full max-w-md border-collapse border border-border rounded-md overflow-hidden bg-surface ${textSize}`}
       >
-        <thead>
-          <tr className="bg-surface-3 text-left text-ink-3">
+        <thead className="sticky top-0 z-20">
+          <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
             <th scope="col" className={`${cell} font-semibold border-b border-border`}>Advance %</th>
             <th scope="col" className={`${cell} font-semibold border-b border-border`}>Pre-ship %</th>
             <th scope="col" className={`${cell} font-semibold border-b border-border`}>Post-ship %</th>

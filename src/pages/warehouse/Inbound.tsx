@@ -1380,9 +1380,9 @@ const GRNDetailModal = ({
           {grn.lineItems && grn.lineItems.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-ink-2">Line items — qty</h3>
-              <div className="overflow-x-auto border border-border rounded-lg">
+              <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-surface-3 border-b border-border">
+                  <thead className="bg-surface-3 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-3">
                     <tr>
                       <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Item</th>
                       <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">PO QTY</th>
@@ -2260,35 +2260,35 @@ const WarehouseInbound = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Header */}
         <div className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-ink tracking-tight">Inbound</h1>
-          <p className="text-sm text-ink-2 mt-1">Goods receipt notes — receive, check, and complete GRNs</p>
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight">Inbound</h1>
+          <p className="text-sm text-ink-3 mt-1">Goods receipt notes — receive, check, and complete GRNs</p>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
-            <p className="text-xs font-semibold text-brand uppercase tracking-wider mb-1">Total GRNs</p>
-            <p className="text-2xl sm:text-3xl font-bold text-ink">{totalGRNs}</p>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <p className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-1">Total GRNs</p>
+            <p className="text-2xl font-semibold text-ink tabular-nums">{totalGRNs}</p>
           </div>
 
-          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
-            <p className="text-xs font-semibold text-warn uppercase tracking-wider mb-1">Under GRN</p>
-            <p className="text-2xl sm:text-3xl font-bold text-ink">{underGRN}</p>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <p className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-1">Under GRN</p>
+            <p className="text-2xl font-semibold text-ink tabular-nums">{underGRN}</p>
           </div>
 
-          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm hidden sm:block">
-            <p className="text-xs font-semibold text-warn uppercase tracking-wider mb-1">On Hold</p>
-            <p className="text-2xl sm:text-3xl font-bold text-ink">{onHold}</p>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm hidden sm:block">
+            <p className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-1">On Hold</p>
+            <p className="text-2xl font-semibold text-ink tabular-nums">{onHold}</p>
           </div>
 
-          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
-            <p className="text-xs font-semibold text-brand uppercase tracking-wider mb-1">In Transit</p>
-            <p className="text-2xl sm:text-3xl font-bold text-ink">{inTransit}</p>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <p className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-1">In Transit</p>
+            <p className="text-2xl font-semibold text-ink tabular-nums">{inTransit}</p>
           </div>
 
-          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
-            <p className="text-xs font-semibold text-ok uppercase tracking-wider mb-1">Completed</p>
-            <p className="text-2xl sm:text-3xl font-bold text-ink">{completed}</p>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <p className="text-xs font-medium text-ink-3 uppercase tracking-wide mb-1">Completed</p>
+            <p className="text-2xl font-semibold text-ink tabular-nums">{completed}</p>
           </div>
         </div>
 
@@ -2351,9 +2351,9 @@ const WarehouseInbound = () => {
 
         {/* Data Table */}
         <div className="bg-surface rounded-xl border border-border/80 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full min-w-[1280px]">
-              <thead>
+              <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
                 <tr className="bg-surface-2 border-b border-border">
                   <SortableTableTh
                     label="Shipment"

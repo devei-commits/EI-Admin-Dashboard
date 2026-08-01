@@ -30,6 +30,10 @@ interface DataTableProps<T> {
   className?: string;
   rowClassName?: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Card is its own vertical scroll box so the sticky header pins within it (default true). */
+  stickyHeader?: boolean;
+  /** Tailwind max-height class used when stickyHeader (default `max-h-[70vh]`). */
+  maxHeight?: string;
 }
 
 type SortDir = 'asc' | 'desc' | null;
@@ -47,6 +51,8 @@ export function DataTable<T extends Record<string, unknown>>({
   className = '',
   rowClassName,
   onRowClick,
+  stickyHeader = true,
+  maxHeight = 'max-h-[70vh]',
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
@@ -76,10 +82,10 @@ export function DataTable<T extends Record<string, unknown>>({
   };
 
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    <div className={`${stickyHeader ? `overflow-auto ${maxHeight}` : 'overflow-x-auto'} ${className}`}>
       <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-surface-3">
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border bg-surface-3 [&_th]:bg-surface-3">
             {columns.map((col) => (
               <th
                 key={String(col.key)}

@@ -391,10 +391,10 @@ const UniversalSwapPage = () => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full table-fixed min-w-200 divide-y divide-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
+              <thead className="sticky top-0 z-20 bg-gray-50">
+                <tr className="[&_th]:bg-gray-50">
                   <th scope="col" className="w-[22%] py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-900">Item</th>
                   <th scope="col" className="w-[8%] px-3 py-3 text-center text-xs font-semibold text-gray-900">Category</th>
                   <th scope="col" className="w-[10%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Req Qty</th>

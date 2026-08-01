@@ -3088,10 +3088,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </p>
               ) : null}
 
-              <div className="mb-4 overflow-x-auto [-webkit-overflow-scrolling:touch] border border-border rounded-lg">
+              <div className="mb-4 overflow-auto max-h-[70vh] [-webkit-overflow-scrolling:touch] border border-border rounded-lg">
                 <table className="w-full text-sm min-w-[560px]">
-                  <thead>
-                    <tr className="bg-surface-3 text-xs font-semibold text-ink-3 uppercase">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-surface-3 bg-surface-3 text-xs font-semibold text-ink-3 uppercase">
                       <th scope="col" className="text-left p-2 w-12">Sr No</th>
                       <th scope="col" className="text-left p-2">INCI / Raw Material</th>
                       <th scope="col" className="text-right p-2">Required / unit (kg)</th>

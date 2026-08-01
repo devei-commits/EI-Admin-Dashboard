@@ -2073,9 +2073,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         <div className="py-3 px-3 rounded-lg bg-surface-2 border border-border text-ink-2 text-xs">No {type.toUpperCase()} items for this batch. {type === 'rm' ? 'Ensure the product has a BOM with RM lines (same as RM & PM Availability tab).' : 'Ensure the product has a BOM with PM lines.'}</div>
       )}
       {items.length > 0 && (
-        <div className="tbl-wrap overflow-x-auto rounded-xl border border-hairline">
+        <div className="tbl-wrap overflow-auto max-h-[70vh] rounded-xl border border-hairline">
           <table className="w-full text-xs">
-            <thead><tr className="bg-surface-2/80 border-b border-hairline">
+            <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
               <th scope="col" className="px-3 py-2.5 w-10 text-left font-semibold text-ink-3"></th>
               <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">{type === 'rm' ? 'RM / INCI' : 'PM'}</th>
               <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">{type === 'rm' ? 'Required KG' : 'Required'}</th>
@@ -2717,8 +2717,8 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               <div>
                 <SectionLabel icon={<FlaskConical size={12} />} color="text-brand">Raw Materials</SectionLabel>
                 {batch.dispensingRM.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-hairline text-xs">
-                    <table className="w-full"><thead><tr className="bg-surface-2/80 border-b border-hairline"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
+                    <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-hairline">{batch.dispensingRM.map((r, i) => {
                         const sih = stockRM[r.code] ?? 0; const ok = !isQtyShort(sih, r.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, r.code, 'rm');
@@ -2731,8 +2731,8 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               <div>
                 <SectionLabel icon={<Package size={12} />} color="text-brand">Packaging Materials</SectionLabel>
                 {batch.dispensingPM.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-hairline text-xs">
-                    <table className="w-full"><thead><tr className="bg-surface-2/80 border-b border-hairline"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
+                    <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
                       <tbody className="divide-y divide-hairline">{batch.dispensingPM.map((p, i) => {
                         const sih = stockPM[p.code] ?? 0; const ok = !isQtyShort(sih, p.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, p.code, 'pm');
@@ -5218,9 +5218,9 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         <div className="py-3 px-3 rounded-lg bg-surface-2 border border-border text-ink-2 text-xs">No {type.toUpperCase()} items for this batch. Confirm BOM in Planning for this SO{type === 'rm' ? ', or reserve RM first' : ', or reserve PM first'}.</div>
       )}
       {localItems.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-hairline text-xs">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
           <table className="w-full">
-            <thead><tr className="bg-surface-2/80 border-b border-hairline">
+            <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
               <th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">Item</th>
               <th scope="col" className="px-2 py-1.5 text-left">Code</th>
               <th scope="col" className="px-2 py-1.5 text-right">Required</th>
@@ -6115,9 +6115,9 @@ function MRNDetailModal({
           {mrn.lineItems && mrn.lineItems.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-ink-2">Line items</h3>
-              <div className="overflow-x-auto border border-border rounded-lg">
+              <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-surface-3 border-b border-border">
+                  <thead className="sticky top-0 z-20 bg-surface-3 border-b border-border [&_th]:bg-surface-3">
                     <tr>
                       <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Item</th>
                       <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Code</th>
@@ -6501,10 +6501,10 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
         </div>
 
         <div className="bg-surface rounded-xl border border-border/80 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full min-w-[700px]">
-              <thead>
-                <tr className="bg-surface-2 border-b border-border">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">MRN No.</th>
                   <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-ink-2 uppercase">Status</th>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Source</th>
@@ -6822,7 +6822,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   ) : (
                     <div className="rounded-xl border border-hairline text-xs overflow-hidden">
                       <table className="w-full">
-                        <thead><tr className="bg-surface-2/80 border-b border-hairline"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
                         <tbody className="divide-y divide-hairline">
                           {(batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems).map((r, i) => {
                             const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, r.required);
@@ -6850,7 +6850,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   ) : (
                     <div className="rounded-xl border border-hairline text-xs overflow-hidden">
                       <table className="w-full">
-                        <thead><tr className="bg-surface-2/80 border-b border-hairline"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
                         <tbody className="divide-y divide-hairline">
                           {(batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems).map((p, i) => {
                             const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, p.required);
@@ -7043,10 +7043,10 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                 return 'bg-surface-3 text-ink-2';
               };
               return (
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wide text-ink-4 border-b border-border">
+                    <thead className="sticky top-0 z-20">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-ink-4 border-b border-border [&_th]:bg-surface-2">
                         <th scope="col" className="py-2 pr-3">MRN #</th>
                         <th scope="col" className="py-2 pr-3">Item</th>
                         <th scope="col" className="py-2 pr-3 text-right">Required Qty</th>
@@ -7748,9 +7748,9 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-ink-4"><Activity size={30} className="mb-2 opacity-20" /><p className="text-sm">No FG-ready batches found for yield reporting.</p></div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-hairline">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline">
             <table className="w-full text-xs bg-surface">
-              <thead className="bg-surface-2 border-b border-hairline">
+              <thead className="sticky top-0 z-20 bg-surface-2 border-b border-hairline [&_th]:bg-surface-2">
                 <tr>
                   <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Batch</th>
                   <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product / SO</th>
@@ -8881,10 +8881,10 @@ function MaterialReservationView({
             }
           />
         ) : (
-          <div className="tbl-wrap overflow-x-auto rounded-xl border border-hairline bg-surface">
+          <div className="tbl-wrap overflow-auto max-h-[70vh] rounded-xl border border-hairline bg-surface">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-surface-2/80 border-b border-hairline">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
                   <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Type</th>
                   <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Batch</th>
                   <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Product</th>

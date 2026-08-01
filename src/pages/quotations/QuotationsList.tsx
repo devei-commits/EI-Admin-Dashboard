@@ -153,10 +153,10 @@ export default function QuotationsList() {
             ) : undefined}
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/50">
+              <thead className="sticky top-0 z-20">
+                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/50 [&_th]:bg-gray-50">
                   <th scope="col" className="py-3 px-4 w-8"></th><th scope="col" className="py-3 px-4">Ref</th><th scope="col" className="py-3 px-4">Type</th><th scope="col" className="py-3 px-4">Name</th><th scope="col" className="py-3 px-4">Status</th><th scope="col" className="py-3 px-4">Customer</th>
                   <th scope="col" className="py-3 px-4">BOM</th><th scope="col" className="py-3 px-4 text-right">Headline ₹</th><th scope="col" className="py-3 px-4">MOQ</th>
                   <th scope="col" className="py-3 px-4">Created</th><th scope="col" className="py-3 px-4"></th>

@@ -11,9 +11,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import SessionExpiredNotifier from './components/SessionExpiredNotifier'
 import { ProtectedModuleRoute } from './components/ProtectedModuleRoute'
 import { SuperAdminRoute } from './components/SuperAdminRoute'
-import Sidebar from "./components/Sidebar"
-import StandaloneModuleLayout from "./components/StandaloneModuleLayout"
-import SwipeableModuleLayout from "./components/SwipeableModuleLayout"
+import AppShell from "./components/ui/AppShell"
 import { monitorConnection } from './lib/performanceOptimization'
 
 // Lazy loaded pages for better performance
@@ -162,7 +160,7 @@ const AppLayout = () => {
        // If it's a PIS route, render PIS standalone without admin sidebar
        if (isPISRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -172,14 +170,14 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        // If it's a Treasury route, render Treasury standalone without admin sidebar
        if (isTreasuryRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -189,13 +187,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isProcurementRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -209,13 +207,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isBdRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -229,13 +227,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isWarehouseRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -249,13 +247,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isQualityRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -269,13 +267,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isPlanningRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -301,13 +299,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isProductionRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -321,13 +319,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isFulfillmentRoute) {
               return (
-                     <SwipeableModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -341,13 +339,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </SwipeableModuleLayout>
+                     </AppShell>
               );
        }
 
        if (isClientHubRoute) {
               return (
-                     <StandaloneModuleLayout>
+                     <AppShell>
                             <main id="main-content" className="min-h-screen">
                                    <Suspense fallback={<PageLoader />}>
                                           <ErrorBoundary>
@@ -361,14 +359,13 @@ const AppLayout = () => {
                                           </ErrorBoundary>
                                    </Suspense>
                             </main>
-                     </StandaloneModuleLayout>
+                     </AppShell>
               );
        }
 
        // Otherwise render with admin sidebar
        return (
-              <div className="flex flex-row min-h-screen min-w-0 bg-canvas">
-                     <Sidebar />
+              <AppShell>
                      <main id="main-content" className="min-w-0 flex-1 pt-14 md:pt-0 overflow-x-auto overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
                             <Suspense fallback={<PageLoader />}>
                                    <ErrorBoundary>
@@ -555,7 +552,7 @@ const AppLayout = () => {
                                    </ErrorBoundary>
                             </Suspense>
                      </main>
-              </div>
+              </AppShell>
        );
 };
 
