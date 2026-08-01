@@ -41,6 +41,13 @@ export type { FilterChipProps } from './FilterChip';
 export { SortableTableTh } from './SortableTableTh';
 export type { SortDirection, SortableTableAccent } from './SortableTableTh';
 
+// P5 — visual states (skeleton loaders, empty & error states)
+export { Skeleton, SkeletonText, TableSkeleton, CardSkeleton } from './Skeleton';
+export { EmptyState } from './EmptyState';
+export type { EmptyStateProps } from './EmptyState';
+export { ErrorState } from './ErrorState';
+export type { ErrorStateProps } from './ErrorState';
+
 // UnifiedComponents that were not previously re-exported
 export {
  UnifiedModal,

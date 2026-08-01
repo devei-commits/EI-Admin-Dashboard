@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Search, AlertCircle, Clock, MessageSquare, RefreshCw,
-  Package, Loader2, AlertTriangle, CheckCircle,
+  Package, AlertTriangle, CheckCircle,
 } from 'lucide-react';
 import type { BatchDashboardRow, StageLogEntry } from '../../types/orderFulfillment';
 import { fetchBatchesDashboard } from '../../services/fulfillment.service';
 import { BATCH_STAGE_FILTER_OPTIONS } from '../../constants/orderFulfillment';
 import { CommentsPanel } from './CommentsPanel';
 import { ProcSectionHeader, ProcFilterBar, ProcThead } from '../procurement/ProcSection';
+import { TableSkeleton } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 
 /* ── Formatting helpers ───────────────────────────────────────────────────── */
 function fmtDate(d: string | null | undefined): string {
@@ -289,20 +292,13 @@ export const BatchesDashboardView: React.FC = () => {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={22} className="animate-spin text-brand mr-2" />
-          <span className="text-sm text-ink-3">Loading dashboard…</span>
+        <div className="rounded-xl border border-border p-5">
+          <TableSkeleton rows={8} cols={13} />
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center py-16">
-          <p className="text-err text-sm mb-3">{error}</p>
-          <button onClick={load} className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press">Retry</button>
-        </div>
+        <ErrorState message={error} onRetry={load} />
       ) : grouped.length === 0 ? (
-        <div className="flex flex-col items-center py-16 text-ink-4">
-          <Package size={32} className="mb-2 opacity-30" />
-          <p className="text-sm">No batches found</p>
-        </div>
+        <EmptyState icon={<Package size={32} />} title="No batches found" />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm text-left border-collapse">

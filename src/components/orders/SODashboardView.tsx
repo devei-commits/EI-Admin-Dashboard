@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, AlertCircle, MessageSquare, RefreshCw, ChevronDown, ChevronRight,
-  Package, Loader2, Plus, MoreVertical, Eye, Pencil, PackageCheck, FileText, Truck, MapPin,
+  Package, Plus, MoreVertical, Eye, Pencil, PackageCheck, FileText, Truck, MapPin,
   XCircle, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import type {
@@ -18,6 +18,9 @@ import { formatLakhs } from '../../utils/orderFulfillmentUtils';
 import { CommentsPanel } from './CommentsPanel';
 import { SoActionModals, type SoActionModalsHandle, type SoUpdatePayload } from './SoActionModals';
 import { ProcSectionHeader, ProcFilterBar, ProcThead, ProcTableCard } from '../procurement/ProcSection';
+import { TableSkeleton } from '../ui/Skeleton';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -549,20 +552,13 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={22} className="animate-spin text-brand mr-2" />
-          <span className="text-sm text-ink-3">Loading dashboard…</span>
-        </div>
+        <ProcTableCard>
+          <tbody><tr><td className="p-5"><TableSkeleton rows={8} cols={10} /></td></tr></tbody>
+        </ProcTableCard>
       ) : error ? (
-        <div className="flex flex-col items-center py-16">
-          <p className="text-err text-sm mb-3">{error}</p>
-          <button onClick={load} className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press">Retry</button>
-        </div>
+        <ErrorState message={error} onRetry={load} />
       ) : groups.length === 0 ? (
-        <div className="flex flex-col items-center py-16 text-ink-4">
-          <Package size={32} className="mb-2 opacity-30" />
-          <p className="text-sm">No orders found</p>
-        </div>
+        <EmptyState icon={<Package size={32} />} title="No orders found" />
       ) : (
         <ProcTableCard>
             <ProcThead

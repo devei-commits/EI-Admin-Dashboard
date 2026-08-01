@@ -30,7 +30,13 @@ Living source of truth for the re-skin per `DESIGN_OVERHAUL_PLAN_actual.md`. Not
   - Attribute/semantics + one token value, non-breaking. `tsc -b` **439 = baseline (0 net new errors)** · build green.
   - ⚠ **Incident (recovered):** ~250 files of uncommitted work were swept into a `git stash` during concurrent git churn (stash/reset/re-stash) and the tree reverted to `cff8e52`; fully restored from `stash@{1}` (tracked) + `stash@{0}` untracked-new-files, then committed. Going forward: **commit at each module boundary.**
 - [ ] **P4 follow-up** — in-browser contrast QA (both themes) to confirm the `ink-4` bump reads well; optional focus-trap for the handful of bespoke non-shell modals.
-- [ ] **P5 — Visual states** (skeleton loaders, empty, error — appearance only)
+- [~] **P5 — Visual states** — primitives built + wired into shared kit; broad adoption incremental:
+  - **New primitives** (`components/ui/`, barrel-exported): `Skeleton`/`SkeletonText`/`TableSkeleton`/`CardSkeleton` (token pulse blocks, `role="status"` + `sr-only` "Loading…"), `EmptyState` (icon + title + hint + action, `compact` variant), `ErrorState` (`role="alert"`, Warning icon + message + Retry). All token-driven / theme-aware / a11y.
+  - **Shared `DataTable`** gained opt-in `loading`/`skeletonRows`/`error`/`onRetry`/`emptyIcon` props → skeleton body while loading, `ErrorState` on failure, `EmptyState` when empty. Backward-compatible (existing consumers unchanged).
+  - **ProcSection kit** — `ProcError`/`ProcEmpty` now delegate to `ErrorState`/`EmptyState` → instant unified states across all Procurement dashboards. (`ProcLoading` keeps its spinner; `TableSkeleton` is the table-specific loader.)
+  - **Adopted** in Fulfillment `SODashboardView` + `BatchesDashboardView` (bare `Loader2`/text → `TableSkeleton` + `ErrorState` + `EmptyState`; dropped now-unused `Loader2` imports).
+  - tsc 439=baseline · build green.
+  - [ ] **Broad adoption** — ~30 remaining `Loading…` texts, ~125 empty messages, ~320 error messages across non-kit surfaces → swap to primitives (parallel-agent sweep, incremental).
 
 ---
 

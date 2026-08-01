@@ -1,5 +1,8 @@
 import React, { useState, useMemo, ReactNode } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { TableSkeleton } from './Skeleton';
+import { EmptyState } from './EmptyState';
+import { ErrorState } from './ErrorState';
 
 export interface TableColumn<T> {
   key: keyof T | string;
@@ -15,6 +18,15 @@ interface DataTableProps<T> {
   data: T[];
   keyField?: keyof T;
   emptyMessage?: string;
+  /** Optional icon element for the empty state. */
+  emptyIcon?: ReactNode;
+  /** Show a skeleton table body while data loads. */
+  loading?: boolean;
+  /** Rows to render in the loading skeleton. */
+  skeletonRows?: number;
+  /** Render an error state (with optional Retry) instead of rows. */
+  error?: ReactNode;
+  onRetry?: () => void;
   className?: string;
   rowClassName?: (row: T) => string;
   onRowClick?: (row: T) => void;
@@ -27,6 +39,11 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   keyField,
   emptyMessage = 'No data found.',
+  emptyIcon,
+  loading = false,
+  skeletonRows = 6,
+  error,
+  onRetry,
   className = '',
   rowClassName,
   onRowClick,
@@ -77,10 +94,22 @@ export function DataTable<T extends Record<string, unknown>>({
           </tr>
         </thead>
         <tbody className="divide-y divide-hairline">
-          {sorted.length === 0 ? (
+          {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-ink-4">
-                {emptyMessage}
+              <td colSpan={columns.length} className="px-4 py-6">
+                <TableSkeleton rows={skeletonRows} cols={columns.length} />
+              </td>
+            </tr>
+          ) : error ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4">
+                <ErrorState message={typeof error === 'string' ? error : undefined} onRetry={onRetry} compact />
+              </td>
+            </tr>
+          ) : sorted.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4">
+                <EmptyState icon={emptyIcon} title={emptyMessage} compact />
               </td>
             </tr>
           ) : (

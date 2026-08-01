@@ -8,6 +8,8 @@
  */
 import React, { ReactNode } from 'react';
 import { Search } from 'lucide-react';
+import { EmptyState } from '../ui/EmptyState';
+import { ErrorState } from '../ui/ErrorState';
 
 export type ProcTone = 'default' | 'brand' | 'ok' | 'warn' | 'err';
 
@@ -213,20 +215,14 @@ export const ProcLoading: React.FC<{ label?: string }> = ({ label = 'Loading…'
 );
 
 export const ProcError: React.FC<{ message: string; onRetry?: () => void }> = ({ message, onRetry }) => (
-  <div className="rounded-xl border border-border bg-surface py-12 text-center">
-    <p className="text-err text-sm mb-3">{message}</p>
-    {onRetry && (
-      <button onClick={onRetry} className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press">
-        Retry
-      </button>
-    )}
+  <div className="rounded-xl border border-border bg-surface">
+    <ErrorState message={message} onRetry={onRetry} />
   </div>
 );
 
 export const ProcEmpty: React.FC<{ icon?: ReactNode; children: ReactNode }> = ({ icon, children }) => (
-  <div className="rounded-xl border border-border bg-surface py-16 text-center text-ink-4 text-sm">
-    {icon && <div className="mx-auto mb-2 opacity-30 w-fit">{icon}</div>}
-    {children}
+  <div className="rounded-xl border border-border bg-surface">
+    <EmptyState icon={icon} title={children} />
   </div>
 );
 
