@@ -9,7 +9,14 @@ interface StatusBadgeProps {
   icon?: React.ReactNode;
   /** Override the displayed text (defaults to `status`). */
   label?: React.ReactNode;
+  /** Density: `md` (default) = text-xs px-2.5 py-1; `sm` = compact text-[10px] px-2 py-0.5. */
+  size?: 'sm' | 'md';
 }
+
+const SIZE_CLASSES: Record<'sm' | 'md', string> = {
+  md: 'px-2.5 py-1 text-xs',
+  sm: 'px-2 py-0.5 text-[10px]',
+};
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
   status,
@@ -17,11 +24,12 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   className = '',
   icon,
   label,
+  size = 'md',
 }) => {
   const map = colorMap ?? ALL_STATUS_COLORS;
   const colorClass = map[status] ?? 'bg-[color:var(--st-neutral-bg)] text-[color:var(--st-neutral-fg)]';
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${colorClass} ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full font-semibold ${SIZE_CLASSES[size]} ${colorClass} ${className}`}>
       {icon}
       {label ?? status}
     </span>

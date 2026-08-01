@@ -19,6 +19,7 @@ import {
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import {
   fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
   fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
@@ -1054,7 +1055,17 @@ function defaultState(): ProductionState {
 /* ──────────────── SHARED UI COMPONENTS ─────────────────────── */
 
 function Badge({ className, children }: { className: string; children: React.ReactNode }) {
-  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap leading-none inline-flex items-center gap-1 ${className}`}>{children}</span>;
+  // Thin wrapper over the shared ui StatusBadge (size="sm"). Color comes via className,
+  // so an empty colorMap suppresses the shared neutral fallback.
+  return (
+    <StatusBadge
+      status=""
+      colorMap={{ '': '' }}
+      label={children}
+      size="sm"
+      className={`whitespace-nowrap leading-none ${className}`}
+    />
+  );
 }
 
 function Modal({
