@@ -5,6 +5,7 @@ import { UserPlus, FileText, Eye, Plus } from 'lucide-react';
 import { usePIS } from '../context/PISContext';
 import { PISRecord } from '../types/pis';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -936,9 +937,12 @@ export function NewPISView() {
        <DialogTitle>Assign to BD Staff</DialogTitle>
       </DialogHeader>
       {bdStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active BD Staff users found. Please create or activate BD Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserPlus />}
+        title="No active BD Staff users"
+        description="Please create or activate BD Staff users first."
+       />
       ) : (
        <div className="space-y-4 mt-2">
         <div className="space-y-2">

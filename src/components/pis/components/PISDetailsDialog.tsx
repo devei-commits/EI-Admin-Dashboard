@@ -15,6 +15,8 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { SkeletonText } from '../../ui/Skeleton';
+import { EmptyState } from '../../ui/EmptyState';
 import {
  Calendar,
  User,
@@ -1466,9 +1468,9 @@ export function PISDetailsDialog({ pis, currentRole, isOpen, onClose, isEmbedded
       </div>
 
       {isAttachmentsLoading ? (
-       <div className="text-sm text-gray-500">Loading…</div>
+       <SkeletonText lines={3} />
       ) : attachments.length === 0 ? (
-       <div className="text-sm text-gray-500">No attachments available.</div>
+       <EmptyState compact title="No attachments available" />
       ) : (
        <div className="space-y-2">
         {attachments.map((a) => (

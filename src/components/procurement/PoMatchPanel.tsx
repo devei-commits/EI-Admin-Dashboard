@@ -22,6 +22,7 @@ import {
   type PoMatchVerdict,
   type PoMatchLineVerdict,
 } from '../../constants/procurement';
+import { ErrorState } from '../ui/ErrorState';
 
 export interface PoMatchPanelProps {
   poId: string;
@@ -100,12 +101,7 @@ export const PoMatchPanel: React.FC<PoMatchPanelProps> = ({ poId, onToast, onCha
     );
   }
   if (error && !state) {
-    return (
-      <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-4 py-3 text-sm text-err flex items-center justify-between gap-3">
-        <span>{error}</span>
-        <button type="button" onClick={() => void load()} className="text-err font-semibold underline shrink-0">Retry</button>
-      </div>
-    );
+    return <ErrorState message={error} onRetry={() => void load()} compact />;
   }
   if (!state) return null;
 

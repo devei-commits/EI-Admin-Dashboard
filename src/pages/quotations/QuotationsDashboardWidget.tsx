@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, ClipboardCheck, AlertCircle, TrendingUp, TrendingDown, Minus, ArrowRight } from 'lucide-react';
 import * as quotesApi from '../../services/quotations.service';
 import type { QuoteDashboardStats } from '../../services/quotations.service';
+import { CardSkeleton } from '../../components/ui/Skeleton';
 
 export default function QuotationsDashboardWidget() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function QuotationsDashboardWidget() {
     });
   }, []);
 
-  if (loading) return <div className="animate-pulse h-40 bg-gray-50 rounded-xl border border-gray-100" />;
+  if (loading) return <CardSkeleton className="h-40" />;
   if (!stats) return null;
 
   const accuracy = stats.avg_accuracy_pct;

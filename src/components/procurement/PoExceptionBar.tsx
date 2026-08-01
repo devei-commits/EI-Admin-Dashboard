@@ -13,6 +13,7 @@ import {
   amendPo,
   type PoExceptionState,
 } from '../../services/poException.service';
+import { ErrorState } from '../ui/ErrorState';
 
 export interface PoExceptionBarProps {
   poId: string;
@@ -84,12 +85,7 @@ export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, o
     );
   }
   if (error && !state) {
-    return (
-      <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-4 py-2.5 text-[12px] text-err flex items-center justify-between gap-3">
-        <span>{error}</span>
-        <button type="button" onClick={() => void load()} className="text-err font-semibold underline shrink-0">Retry</button>
-      </div>
-    );
+    return <ErrorState message={error} onRetry={() => void load()} compact />;
   }
   if (!state) return null;
 

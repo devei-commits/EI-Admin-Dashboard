@@ -4,6 +4,7 @@ import EditRoleFullPage from './EditRoleFullPage.tsx';
 import { UnifiedButton, UnifiedBadge, ConfirmDialog, getStatusBadgeColor, getRoleLevelBadgeColor } from '../ui';
 import { listRoles, deleteRole as deleteRoleApi } from '../../services/role.service';
 import { SortableTableTh, type SortDirection } from '../ui/SortableTableTh';
+import { TableSkeleton } from '../ui/Skeleton';
 
 type RoleSortColumn =
   | 'roleName'
@@ -349,7 +350,7 @@ const ViewRoles: React.FC = () => {
   return (
    <div className="w-full">
     <h2 className="text-2xl font-semibold text-gray-800 mb-6 tracking-tight">View Roles</h2>
-    <p className="text-gray-500">Loading roles...</p>
+    <TableSkeleton rows={8} cols={7} />
    </div>
   );
  }

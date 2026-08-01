@@ -19,6 +19,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { PISDetailsDialog } from './PISDetailsDialog';
 import { cn } from './ui/utils';
+import { EmptyState } from '../../ui/EmptyState';
 
 type TaskAction = {
  label: string;
@@ -1272,9 +1273,12 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
        <DialogTitle>Assign to BD Staff</DialogTitle>
       </DialogHeader>
       {bdStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active BD Staff users found. Please create or activate BD Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserIcon />}
+        title="No active BD Staff users"
+        description="Please create or activate BD Staff users first."
+       />
       ) : (
        <div className="space-y-3 mt-2">
         {bdStaffUsers.map((staff) => {
@@ -1329,9 +1333,12 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
        <DialogTitle>Assign to R&D Staff</DialogTitle>
       </DialogHeader>
       {rndStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active R&D Staff users found. Please create or activate R&D Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserIcon />}
+        title="No active R&D Staff users"
+        description="Please create or activate R&D Staff users first."
+       />
       ) : (
        <div className="space-y-3 mt-2">
         {rndStaffUsers.map((staff) => {

@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { X } from 'lucide-react';
 import { grnLineItemDisplayName, type GRNRecordFromApi } from '../../services/grn.service';
+import { EmptyState } from '../ui/EmptyState';
 
 interface Props {
   grn: GRNRecordFromApi;
@@ -191,9 +192,7 @@ const GrnMonitorDetailPanel: React.FC<Props> = ({ grn, loading, onClose }) => {
               Line items ({lineItems.length})
             </p>
             {lineItems.length === 0 ? (
-              <p className="text-xs text-ink-3 rounded-lg border border-border bg-surface-3 px-4 py-6 text-center">
-                No line items on this GRN.
-              </p>
+              <EmptyState compact title="No line items on this GRN." />
             ) : (
               <LineItemsTable lineItems={lineItems} />
             )}

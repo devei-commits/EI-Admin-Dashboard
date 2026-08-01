@@ -3,8 +3,8 @@
  * Shows 6-stage workflow with timestamps/actors and allows stage advancement.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { X } from '@phosphor-icons/react';
+import { SkeletonText } from '../ui/Skeleton';
 import {
   GRN_STAGE_CONFIG,
   GRN_STAGE_ORDER,
@@ -168,9 +168,7 @@ export const GrnStageTimelineModal: React.FC<GrnStageTimelineModalProps> = ({
 
         <div className="flex-1 overflow-auto px-5 py-4">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-ink-3 text-sm">
-              <Loader2 size={18} className="animate-spin mr-2" /> Loading timeline…
-            </div>
+            <SkeletonText />
           ) : (
             <ol className="space-y-0">
               {GRN_STAGE_ORDER.map((stage, idx) => {

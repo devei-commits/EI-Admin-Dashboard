@@ -7,6 +7,8 @@ import { Badge } from './ui/badge';
 import { usePIS } from '../context/PISContext';
 import { pisApi } from '../utils/api';
 import { toast } from 'sonner';
+import { SkeletonText } from '../../ui/Skeleton';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface PISMessage {
  id: string;
@@ -163,12 +165,14 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
    {/* Messages List */}
    <div className="border rounded-lg bg-gray-50 p-4 mb-4 max-h-96 overflow-y-auto space-y-3">
     {isLoading ? (
-     <div className="text-center text-gray-500 py-8">Loading messages...</div>
+     <SkeletonText lines={4} className="py-2" />
     ) : messages.length === 0 ? (
-     <div className="text-center text-gray-500 py-8">
-      <MessageCircle className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-      <p>No messages yet. Start the conversation!</p>
-     </div>
+     <EmptyState
+      compact
+      icon={<MessageCircle />}
+      title="No messages yet"
+      description="Start the conversation!"
+     />
     ) : (
      messages.map((message) => {
       const isOwnMessage = currentUser && (

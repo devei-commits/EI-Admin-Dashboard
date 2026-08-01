@@ -23,6 +23,7 @@ import {
  ChevronLeft,
  ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
+import { EmptyState } from '../../ui/EmptyState';
 
 // ==================== TYPES ====================
 interface ActivityLogEntry {
@@ -1183,12 +1184,8 @@ export function GlobalTaskOverview() {
       <tbody className="divide-y divide-gray-100">
        {paginatedTasks.length === 0 ? (
         <tr>
-         <td colSpan={8} className="px-4 py-12 text-center">
-          <div className="flex flex-col items-center text-gray-500">
-           <Package className="w-12 h-12 mb-3 text-gray-300" />
-           <p className="font-medium">No tasks found</p>
-           <p className="text-sm">Try adjusting your filters</p>
-          </div>
+         <td colSpan={8}>
+          <EmptyState icon={<Package />} title="No tasks found" description="Try adjusting your filters" />
          </td>
         </tr>
        ) : (
@@ -1333,10 +1330,8 @@ export function GlobalTaskOverview() {
    {/* Task Cards - Mobile */}
    <div className="md:hidden space-y-3">
     {paginatedTasks.length === 0 ? (
-     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-      <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-      <p className="font-medium text-gray-500">No tasks found</p>
-      <p className="text-sm text-gray-400">Try adjusting your filters</p>
+     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      <EmptyState icon={<Package />} title="No tasks found" description="Try adjusting your filters" />
      </div>
     ) : (
      paginatedTasks.map((task) => (
