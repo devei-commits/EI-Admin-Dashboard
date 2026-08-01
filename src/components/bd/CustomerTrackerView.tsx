@@ -76,7 +76,7 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
           <span><b className="text-slate-800">Customer Tracker</b> · {rows.length} clients · {openOrders} open orders
           {totalReceivable > 0 && <span className="ml-2 text-slate-500">· receivable {formatINRCompact(totalReceivable)}</span>}</span>
         </div>
-        <button onClick={onRefresh} title="Refresh" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100">
+        <button onClick={onRefresh} title="Refresh" aria-label="Refresh" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -88,15 +88,18 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
           <input
             value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Search client, code, POC, city…"
+            aria-label="Search client, code, POC, city"
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value as typeof tierFilter)}
+          aria-label="Filter by tier"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
           <option value="all">All Tiers</option>
           {TIER_ORDER.map((t) => <option key={t} value={t}>{TIER_CONFIG[t].label}</option>)}
         </select>
         <select value={lifeFilter} onChange={(e) => setLifeFilter(e.target.value as typeof lifeFilter)}
+          aria-label="Filter by status"
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
           <option value="all">All Statuses</option>
           {(Object.keys(LIFECYCLE_CONFIG) as ClientLifecycle[]).map((l) => <option key={l} value={l}>{LIFECYCLE_CONFIG[l].label}</option>)}
@@ -125,7 +128,7 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 {HEADERS.map((h) => (
-                  <th key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>
+                  <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -182,7 +185,7 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
                     </td>
                     {/* History */}
                     <td className="px-3 py-2.5">
-                      <button onClick={() => onOpenTimeline(r.code)} title="History & comments"
+                      <button onClick={() => onOpenTimeline(r.code)} title="History & comments" aria-label="History & comments"
                         className="rounded-md border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600">
                         <BookText size={14} />
                       </button>
@@ -190,11 +193,11 @@ export const CustomerTrackerView: React.FC<CustomerTrackerViewProps> = ({
                     {/* Actions */}
                     <td className="whitespace-nowrap px-3 py-2.5">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => onAction('meeting', r)} title="Add meeting"
+                        <button onClick={() => onAction('meeting', r)} title="Add meeting" aria-label="Add meeting"
                           className="rounded-md border border-blue-200 p-1.5 text-blue-600 hover:bg-blue-50"><CalendarPlus size={13} /></button>
-                        <button onClick={() => onAction('query', r)} title="Raise query"
+                        <button onClick={() => onAction('query', r)} title="Raise query" aria-label="Raise query"
                           className="rounded-md border border-amber-200 p-1.5 text-amber-600 hover:bg-amber-50"><HelpCircle size={13} /></button>
-                        <button onClick={() => onAction('grievance', r)} title="Log grievance"
+                        <button onClick={() => onAction('grievance', r)} title="Log grievance" aria-label="Log grievance"
                           className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50"><Flag size={13} /></button>
                       </div>
                     </td>

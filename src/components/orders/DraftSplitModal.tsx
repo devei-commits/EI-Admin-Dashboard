@@ -18,9 +18,9 @@ export default function DraftSplitModal({ draftId, onClose }: Props) {
   if (!draft) {
     return (
       <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-6">
-          <p className="text-red-600">Draft PO not found.</p>
-          <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded-lg">Close</button>
+        <div role="dialog" aria-modal="true" aria-label="Draft PO not found" className="bg-surface rounded-xl p-6">
+          <p className="text-err">Draft PO not found.</p>
+          <button onClick={onClose} className="mt-3 px-4 py-2 bg-surface-3 rounded-lg">Close</button>
         </div>
       </div>
     );
@@ -70,35 +70,35 @@ export default function DraftSplitModal({ draftId, onClose }: Props) {
       size="lg"
       footer={
         <>
-          <button onClick={onClose} className="px-5 py-2 bg-gray-200 rounded-lg text-sm hover:bg-gray-300">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 rounded-lg text-sm hover:bg-surface-3">
             Cancel
           </button>
           <button
             onClick={handleSplit}
             disabled={!canSplit}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Split into {lines.length} Drafts
           </button>
         </>
       }
     >
-      <p className="text-sm text-gray-500 -mt-4">{draft.id} · {draft.vendor} · {lines.length} line(s)</p>
+      <p className="text-sm text-ink-3 -mt-4">{draft.id} · {draft.vendor} · {lines.length} line(s)</p>
 
       {!canSplit ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800 text-sm">
+        <div className="bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg p-4 text-warn text-sm">
           Cannot split — this draft has only {lines.length} line. At least 2 lines are required.
         </div>
       ) : (
         <>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-3">
             This will split <b>{draft.id}</b> into <b>{lines.length}</b> separate draft POs (one per line item):
           </p>
           <div className="space-y-2 max-h-60 overflow-auto">
             {lines.map((line: any, idx: number) => (
-              <div key={idx} className="border rounded-lg p-3 bg-gray-50 text-sm">
+              <div key={idx} className="border rounded-lg p-3 bg-surface-3 text-sm">
                 <div className="font-medium">{line.itemName}</div>
-                <div className="text-xs text-gray-500 font-mono">{line.itemId} · {line.qty} {line.uom} · ₹{line.unit}/unit</div>
+                <div className="text-xs text-ink-3 font-mono">{line.itemId} · {line.qty} {line.uom} · ₹{line.unit}/unit</div>
               </div>
             ))}
           </div>

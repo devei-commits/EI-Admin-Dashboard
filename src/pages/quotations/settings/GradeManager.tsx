@@ -3,7 +3,7 @@
  * Each grade defines 7 MOQ bands: label, value, markup, and a conversion
  * bmap entry (bracket + factor), plus zero_pm and qc_days.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Plus, Pencil, Trash2, Lock, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormField, inputClassName, selectClassName, ConfirmDialog } from '../../../components/ui';
@@ -65,8 +65,8 @@ export default function GradeManager() {
                 </div>
                 {!g.is_system && (
                   <div className="flex gap-1">
-                    <button onClick={() => setEditing(g)} className="text-gray-400 hover:text-slate-700 p-1"><Pencil className="w-4 h-4" /></button>
-                    <button onClick={() => setToDelete(g)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => setEditing(g)} aria-label="Edit grade" className="text-gray-400 hover:text-slate-700 p-1"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => setToDelete(g)} aria-label="Delete grade" className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
               </div>
@@ -96,6 +96,7 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
   const [bmap, setBmap] = useState<BmapEntry[]>(grade.bmap ?? []);
   const [saving, setSaving] = useState(false);
   const isEdit = grade.id != null;
+  const headingId = useId();
 
   const setAt = <T,>(arr: T[], i: number, v: T, set: (a: T[]) => void) => { const c = [...arr]; c[i] = v; set(c); };
 
@@ -113,10 +114,10 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
 
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center p-5 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 className="text-lg font-bold text-slate-900">{isEdit ? 'Edit Grade' : 'New Grade'}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <h2 id={headingId} className="text-lg font-bold text-slate-900">{isEdit ? 'Edit Grade' : 'New Grade'}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -132,22 +133,22 @@ function GradeEditor({ grade, onClose, onSaved }: { grade: Partial<QuoteGrade>; 
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
-                <th className="py-2 px-3">Band</th><th className="py-2 px-3">MOQ Label</th><th className="py-2 px-3">MOQ Value</th>
-                <th className="py-2 px-3">Markup %</th><th className="py-2 px-3">Conv. Bracket</th><th className="py-2 px-3">Factor</th>
+                <th scope="col" className="py-2 px-3">Band</th><th scope="col" className="py-2 px-3">MOQ Label</th><th scope="col" className="py-2 px-3">MOQ Value</th>
+                <th scope="col" className="py-2 px-3">Markup %</th><th scope="col" className="py-2 px-3">Conv. Bracket</th><th scope="col" className="py-2 px-3">Factor</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
                 {Array.from({ length: 7 }).map((_, i) => (
                   <tr key={i}>
                     <td className="py-1.5 px-3 text-gray-400">{i}</td>
-                    <td className="py-1.5 px-3"><input className={`${inputClassName} py-1.5`} value={labels[i] ?? ''} onChange={(e) => setAt(labels, i, e.target.value, setLabels)} /></td>
-                    <td className="py-1.5 px-3"><input className={`${inputClassName} py-1.5 w-24`} type="number" value={values[i] ?? 0} onChange={(e) => setAt(values, i, Number(e.target.value), setValues)} /></td>
-                    <td className="py-1.5 px-3"><input className={`${inputClassName} py-1.5 w-20`} type="number" value={Math.round((markups[i] ?? 0) * 10000) / 100} onChange={(e) => setAt(markups, i, Number(e.target.value) / 100, setMarkups)} /></td>
+                    <td className="py-1.5 px-3"><input aria-label={`MOQ Label band ${i}`} className={`${inputClassName} py-1.5`} value={labels[i] ?? ''} onChange={(e) => setAt(labels, i, e.target.value, setLabels)} /></td>
+                    <td className="py-1.5 px-3"><input aria-label={`MOQ Value band ${i}`} className={`${inputClassName} py-1.5 w-24`} type="number" value={values[i] ?? 0} onChange={(e) => setAt(values, i, Number(e.target.value), setValues)} /></td>
+                    <td className="py-1.5 px-3"><input aria-label={`Markup % band ${i}`} className={`${inputClassName} py-1.5 w-20`} type="number" value={Math.round((markups[i] ?? 0) * 10000) / 100} onChange={(e) => setAt(markups, i, Number(e.target.value) / 100, setMarkups)} /></td>
                     <td className="py-1.5 px-3">
-                      <select className={`${selectClassName} py-1.5`} value={bmap[i]?.b ?? '1-1000'} onChange={(e) => setAt(bmap, i, { ...(bmap[i] ?? { f: 1 }), b: e.target.value }, setBmap)}>
+                      <select aria-label={`Conversion bracket band ${i}`} className={`${selectClassName} py-1.5`} value={bmap[i]?.b ?? '1-1000'} onChange={(e) => setAt(bmap, i, { ...(bmap[i] ?? { f: 1 }), b: e.target.value }, setBmap)}>
                         {BRACKETS.map((b) => <option key={b} value={b}>{b}</option>)}
                       </select>
                     </td>
-                    <td className="py-1.5 px-3"><input className={`${inputClassName} py-1.5 w-20`} type="number" step="0.01" value={bmap[i]?.f ?? 1} onChange={(e) => setAt(bmap, i, { ...(bmap[i] ?? { b: '1-1000' }), f: Number(e.target.value) }, setBmap)} /></td>
+                    <td className="py-1.5 px-3"><input aria-label={`Factor band ${i}`} className={`${inputClassName} py-1.5 w-20`} type="number" step="0.01" value={bmap[i]?.f ?? 1} onChange={(e) => setAt(bmap, i, { ...(bmap[i] ?? { b: '1-1000' }), f: Number(e.target.value) }, setBmap)} /></td>
                   </tr>
                 ))}
               </tbody>

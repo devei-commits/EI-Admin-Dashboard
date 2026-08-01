@@ -14,7 +14,7 @@ const TransfersTabBar = ({
   active: TransfersTab;
   onChange: (tab: TransfersTab) => void;
 }) => (
-  <div className="flex gap-1 border-b border-slate-200 my-3">
+  <div className="flex gap-1 border-b border-border my-3">
     {TABS.map((t) => (
       <button
         key={t.id}
@@ -22,8 +22,8 @@ const TransfersTabBar = ({
         onClick={() => onChange(t.id)}
         className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
           active === t.id
-            ? 'border-amber-500 text-amber-700'
-            : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+            ? 'border-brand text-brand'
+            : 'border-transparent text-ink-3 hover:text-ink hover:border-border'
         }`}
       >
         {t.label}

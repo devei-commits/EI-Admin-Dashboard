@@ -34,20 +34,20 @@ export const SearchInput: React.FC<SearchInputProps> = ({
 
  return (
   <div className={`relative ${widthClass}`}>
-   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4" />
    <input
     type="text"
     value={value}
     onChange={(e) => onChange(e.target.value)}
     placeholder={placeholder}
-    className={`w-full pl-10 ${showClear && value ? 'pr-8' : 'pr-4'} py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-700 transition-all ${className}`}
+    className={`w-full pl-10 ${showClear && value ? 'pr-8' : 'pr-4'} py-2.5 border border-border rounded-[var(--r-sm)] bg-surface text-sm text-ink placeholder:text-ink-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus:border-[color:var(--accent)] transition-all ${className}`}
     {...props}
    />
    {showClear && value && (
     <button
      type="button"
      onClick={handleClear}
-     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-4 hover:text-ink transition-colors"
      aria-label="Clear search"
     >
      <X className="w-4 h-4" />

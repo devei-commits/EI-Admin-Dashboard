@@ -2,18 +2,22 @@ import React from 'react';
 
 export type SortDirection = 'asc' | 'desc';
 
-export type SortableTableAccent = 'cyan' | 'teal' | 'violet';
+export type SortableTableAccent = 'cyan' | 'teal' | 'violet' | 'brand';
 
+// Design language: a single brand accent. All legacy accents collapse to brand so
+// sortable headers look identical across every module.
 const ACCENT_ACTIVE: Record<SortableTableAccent, string> = {
-  cyan: 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100',
-  teal: 'text-teal-700 bg-teal-50 hover:bg-teal-100',
-  violet: 'text-violet-700 bg-violet-50 hover:bg-violet-100',
+  cyan: 'text-brand bg-brand-soft hover:bg-brand-soft-2',
+  teal: 'text-brand bg-brand-soft hover:bg-brand-soft-2',
+  violet: 'text-brand bg-brand-soft hover:bg-brand-soft-2',
+  brand: 'text-brand bg-brand-soft hover:bg-brand-soft-2',
 };
 
 const ACCENT_ARROW: Record<SortableTableAccent, string> = {
-  cyan: 'text-cyan-600',
-  teal: 'text-teal-600',
-  violet: 'text-violet-600',
+  cyan: 'text-brand',
+  teal: 'text-brand',
+  violet: 'text-brand',
+  brand: 'text-brand',
 };
 
 interface SortableTableThProps<T extends string> {
@@ -41,14 +45,10 @@ export function SortableTableTh<T extends string>({
 }: SortableTableThProps<T>): JSX.Element {
   const active = sortColumn === column;
   const alignClass = align === 'right' ? 'text-right' : 'text-left';
-  const focusRing =
-    accent === 'teal'
-      ? 'focus-visible:ring-teal-500'
-      : accent === 'violet'
-        ? 'focus-visible:ring-violet-500'
-        : 'focus-visible:ring-cyan-500';
+  const focusRing = 'focus-visible:ring-[color:var(--ring)]';
   return (
-    <th
+    <th scope="col"
+      scope="col"
       className={`px-4 py-3 ${alignClass} text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${thClassName}`}
     >
       <button
@@ -59,13 +59,13 @@ export function SortableTableTh<T extends string>({
         className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 ${focusRing} ${
           align === 'right' ? 'ml-auto' : ''
         } ${
-          active ? ACCENT_ACTIVE[accent] : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+          active ? ACCENT_ACTIVE[accent] : 'text-ink-3 hover:text-ink hover:bg-surface-3'
         }`}
       >
         {label}
         <span
           className={`text-[10px] not-italic leading-none transition-opacity duration-150 ${
-            active ? `opacity-100 ${ACCENT_ARROW[accent]}` : 'opacity-0 group-hover:opacity-70 text-gray-500'
+            active ? `opacity-100 ${ACCENT_ARROW[accent]}` : 'opacity-0 group-hover:opacity-70 text-ink-4'
           }`}
           aria-hidden
         >

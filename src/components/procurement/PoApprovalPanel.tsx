@@ -86,7 +86,7 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 flex items-center gap-2 text-sm text-slate-500">
+      <div className="rounded-lg border border-border bg-surface-3 px-4 py-3 flex items-center gap-2 text-sm text-ink-3">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading approval status…
       </div>
     );
@@ -94,9 +94,9 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
 
   if (error && !state) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-3">
+      <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-4 py-3 text-sm text-err flex items-center justify-between gap-3">
         <span>{error}</span>
-        <button type="button" onClick={() => void load()} className="text-red-700 font-semibold underline shrink-0">Retry</button>
+        <button type="button" onClick={() => void load()} className="text-err font-semibold underline shrink-0">Retry</button>
       </div>
     );
   }
@@ -114,25 +114,25 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
     run(() => actOnPoApproval(poId, action, note.trim() || undefined), action, okMsg);
 
   return (
-    <div className={`rounded-lg border border-slate-200 bg-white ${locked ? 'opacity-60' : ''}`}>
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+    <div className={`rounded-xl border border-border bg-surface ${locked ? 'opacity-60' : ''}`}>
+      <div className="px-4 py-3 border-b border-hairline flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-[0.14em] text-slate-500 uppercase">Approval</span>
+          <span className="text-[10px] tracking-wide text-ink-3 uppercase">Approval</span>
           <span className={`text-[11px] px-2 py-0.5 rounded border font-semibold ${badge.bg} ${badge.text} ${badge.border}`}>{badge.label}</span>
           <span className={`text-[11px] px-2 py-0.5 rounded border font-semibold ${poTypeCfg.bg} ${poTypeCfg.text} ${poTypeCfg.border}`}>{poTypeCfg.label}</span>
         </div>
         {state?.approvalAmount != null && (
-          <span className="text-[11px] text-slate-500 tabular-nums">₹{Number(state.approvalAmount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+          <span className="text-[11px] text-ink-3 tabular-nums">₹{Number(state.approvalAmount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
         )}
       </div>
 
       <div className="px-4 py-3 space-y-3">
         {/* Route */}
         {route && (
-          <div className={`rounded-md border px-3 py-2 text-[11px] ${route.requiresCfo ? 'border-orange-200 bg-orange-50 text-orange-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}>
+          <div className={`rounded-md border px-3 py-2 text-[11px] ${route.requiresCfo ? 'border-[color:var(--st-amber-fg)]/30 bg-warn-soft text-warn' : 'border-brand-soft bg-brand-soft text-brand'}`}>
             <div className="font-bold flex items-center gap-1">
               Route: {twoStep && <>Procurement Head <ChevronRight className="h-3 w-3" /></>}{route.finalApproverLabel}
-              {route.deviationFlag && <span className="ml-1 text-orange-700">· deviation-flagged</span>}
+              {route.deviationFlag && <span className="ml-1 text-warn">· deviation-flagged</span>}
             </div>
             <div className="opacity-80 mt-0.5">{route.note}</div>
           </div>
@@ -140,18 +140,18 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
 
         {/* Approved summary */}
         {status === 'approved' && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800 flex items-center gap-2">
+          <div className="rounded-md border border-[color:var(--st-green-fg)]/30 bg-ok-soft px-3 py-2 text-[12px] text-ok flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             Approved{state?.approvedAt ? ` · ${fmtWhen(state.approvedAt)}` : ''}. Ready to send to vendor.
           </div>
         )}
         {status === 'rejected' && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 flex items-center gap-2">
+          <div className="rounded-md border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2 text-[12px] text-err flex items-center gap-2">
             <XCircle className="h-4 w-4 shrink-0" /> Rejected. Revise the draft and re-submit.
           </div>
         )}
         {status === 'changes_requested' && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 flex items-center gap-2">
+          <div className="rounded-md border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-[12px] text-warn flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" /> Changes requested. Edit the draft, then re-submit for review.
           </div>
         )}
@@ -162,7 +162,8 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Optional note (reason / comment)…"
-            className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-[12px]"
+            aria-label="Optional note (reason / comment)"
+            className="w-full rounded-md border border-border px-2.5 py-1.5 text-[12px]"
           />
         )}
 
@@ -173,7 +174,7 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
               type="button"
               disabled={actionsDisabled}
               onClick={() => run(() => submitPoForReview(poId, note.trim() || undefined), 'submit', 'Submitted for review.')}
-              className={`${btnBase} bg-violet-600 text-white hover:bg-violet-700`}
+              className={`${btnBase} bg-brand text-white hover:bg-brand-press`}
             >
               {busy === 'submit' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Submit for Review
@@ -181,14 +182,14 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
           )}
 
           {isUnderReview && twoStep && (
-            <button type="button" disabled={actionsDisabled} onClick={() => act('forward', 'Forwarded to approver.')} className={`${btnBase} bg-blue-600 text-white hover:bg-blue-700`}>
+            <button type="button" disabled={actionsDisabled} onClick={() => act('forward', 'Forwarded to approver.')} className={`${btnBase} bg-brand text-white hover:bg-brand-press`}>
               {busy === 'forward' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />}
               Forward to {route?.finalApproverLabel}
             </button>
           )}
 
           {(isUnderApproval || (isUnderReview && !twoStep)) && (
-            <button type="button" disabled={actionsDisabled} onClick={() => act('approve', 'PO approved.')} className={`${btnBase} bg-emerald-600 text-white hover:bg-emerald-700`}>
+            <button type="button" disabled={actionsDisabled} onClick={() => act('approve', 'PO approved.')} className={`${btnBase} bg-ok text-white hover:bg-ok`}>
               {busy === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
               Approve
             </button>
@@ -196,11 +197,11 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
 
           {(isUnderReview || isUnderApproval) && (
             <>
-              <button type="button" disabled={actionsDisabled} onClick={() => act('request_changes', 'Sent back for changes.')} className={`${btnBase} bg-amber-500 text-white hover:bg-amber-600`}>
+              <button type="button" disabled={actionsDisabled} onClick={() => act('request_changes', 'Sent back for changes.')} className={`${btnBase} bg-warn text-white hover:bg-warn`}>
                 {busy === 'request_changes' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
                 Request Changes
               </button>
-              <button type="button" disabled={actionsDisabled} onClick={() => act('reject', 'PO rejected.')} className={`${btnBase} bg-white text-red-600 border border-red-300 hover:bg-red-50`}>
+              <button type="button" disabled={actionsDisabled} onClick={() => act('reject', 'PO rejected.')} className={`${btnBase} bg-surface text-err border border-[color:var(--st-red-fg)]/30 hover:bg-err-soft`}>
                 {busy === 'reject' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
                 Reject
               </button>
@@ -211,13 +212,13 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
         {/* Trail */}
         {state?.trail && state.trail.length > 0 && (
           <div className="pt-1">
-            <p className="text-[10px] tracking-[0.14em] text-slate-400 uppercase mb-1">Audit trail</p>
+            <p className="text-[10px] tracking-wide text-ink-4 uppercase mb-1">Audit trail</p>
             <ul className="space-y-1">
               {state.trail.map((t) => (
-                <li key={t.id} className="text-[11px] text-slate-600 flex items-start gap-2">
-                  <span className="text-slate-400 tabular-nums shrink-0">{fmtWhen(t.at)}</span>
+                <li key={t.id} className="text-[11px] text-ink-3 flex items-start gap-2">
+                  <span className="text-ink-4 tabular-nums shrink-0">{fmtWhen(t.at)}</span>
                   <span>
-                    <span className="font-semibold text-slate-700">{t.action.replace(/_/g, ' ')}</span>
+                    <span className="font-semibold text-ink-2">{t.action.replace(/_/g, ' ')}</span>
                     {t.actorName ? ` · ${t.actorName}` : ''}
                     {t.note ? ` — ${t.note}` : ''}
                   </span>

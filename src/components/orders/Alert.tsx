@@ -28,45 +28,45 @@ export const Alert: React.FC<AlertProps> = ({
 }) => {
   const variants = {
     info: {
-      bg: 'bg-blue-500/5',
-      border: 'border-blue-500/20',
-      text: 'text-blue-600',
+      bg: 'bg-brand-soft',
+      border: 'border-brand-soft',
+      text: 'text-brand',
       icon: Info
     },
     success: {
-      bg: 'bg-emerald-500/5',
-      border: 'border-emerald-500/20',
-      text: 'text-emerald-600',
+      bg: 'bg-ok-soft',
+      border: 'border-[color:var(--st-green-fg)]/30',
+      text: 'text-ok',
       icon: CheckCircle
     },
     warning: {
-      bg: 'bg-amber-500/5',
-      border: 'border-amber-500/20',
-      text: 'text-amber-600',
+      bg: 'bg-warn-soft',
+      border: 'border-[color:var(--st-amber-fg)]/30',
+      text: 'text-warn',
       icon: AlertTriangle
     },
     error: {
-      bg: 'bg-red-500/5',
-      border: 'border-red-500/20',
-      text: 'text-red-600',
+      bg: 'bg-err-soft',
+      border: 'border-[color:var(--st-red-fg)]/30',
+      text: 'text-err',
       icon: XCircle
     },
     teal: {
-      bg: 'bg-teal-500/5',
-      border: 'border-teal-500/20',
-      text: 'text-teal-600',
+      bg: 'bg-brand-soft',
+      border: 'border-brand-soft',
+      text: 'text-brand',
       icon: Info
     },
     orange: {
-      bg: 'bg-orange-500/5',
-      border: 'border-orange-500/20',
-      text: 'text-orange-600',
+      bg: 'bg-brand-soft',
+      border: 'border-brand-soft',
+      text: 'text-brand',
       icon: AlertCircle
     },
     blue: {
-      bg: 'bg-blue-500/5',
-      border: 'border-blue-500/20',
-      text: 'text-blue-600',
+      bg: 'bg-brand-soft',
+      border: 'border-brand-soft',
+      text: 'text-brand',
       icon: Lightbulb
     }
   };

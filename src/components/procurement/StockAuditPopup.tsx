@@ -72,29 +72,29 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">Cancel</button>
-          <button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit || busy} className="px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-bold hover:bg-teal-800 disabled:opacity-60">{busy ? 'Submitting…' : 'Submit Audit Request'}</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface">Cancel</button>
+          <button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit || busy} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60">{busy ? 'Submitting…' : 'Submit Audit Request'}</button>
         </>
       }
     >
       <ModalSection title="SIH by Warehouse + Location">
         {warehousesLoading ? (
-          <p className="mb-2 text-[10.5px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5">
+          <p className="mb-2 text-[10.5px] text-ink-3 bg-surface-3 border border-border rounded px-2.5 py-1.5">
             Loading warehouse locations from master data…
           </p>
         ) : whs.length === 0 ? (
-          <p className="mb-2 text-[10.5px] text-red-700 bg-red-50 border border-red-200 rounded px-2.5 py-1.5">
+          <p className="mb-2 text-[10.5px] text-err bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded px-2.5 py-1.5">
             No warehouse locations found in the system. Add locations under Warehouse → Locations before raising an audit.
           </p>
         ) : null}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           {whs.map((w) => (
-            <div key={w.code} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
-              <h5 className="text-[10px] font-extrabold text-slate-700 uppercase">{w.name} · {w.code}</h5>
-              <div className={`font-mono text-lg font-extrabold ${(w.sih ?? 0) > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+            <div key={w.code} className="bg-surface-3 border border-border rounded-lg px-3 py-2.5">
+              <h5 className="text-[10px] font-extrabold text-ink-2 uppercase">{w.name} · {w.code}</h5>
+              <div className={`font-mono text-lg font-extrabold ${(w.sih ?? 0) > 0 ? 'text-brand' : 'text-ink-4'}`}>
                 {(w.sih ?? 0) > 0 ? `${w.sih}` : 'No stock'}
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Loc: {w.locations}</div>
+              <div className="text-[10px] text-ink-4 mt-0.5">Loc: {w.locations}</div>
             </div>
           ))}
         </div>
@@ -102,36 +102,36 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
 
       <ModalSection title="Audit Request — Warehouses & Target Date">
         {whs.length === 0 ? (
-          <p className="text-xs text-slate-500">Select warehouses once locations are loaded.</p>
+          <p className="text-xs text-ink-3">Select warehouses once locations are loaded.</p>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500">
+                  <tr className="bg-surface-3 text-ink-3">
                     {['Audit?', 'Warehouse', 'SIH', 'Existing requests for this date'].map((h) => (
-                      <th key={h} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
+                      <th scope="col" key={h} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-hairline">
                   {whs.map((w) => (
-                    <tr key={w.code} className={selected.has(w.code) ? 'bg-emerald-50' : ''}>
+                    <tr key={w.code} className={selected.has(w.code) ? 'bg-ok-soft' : ''}>
                       <td className="px-3 py-2 text-center">
-                        <input type="checkbox" checked={selected.has(w.code)} onChange={() => toggle(w.code)} className="w-4 h-4 accent-blue-600" />
+                        <input type="checkbox" checked={selected.has(w.code)} onChange={() => toggle(w.code)} aria-label={`Audit ${w.name} · ${w.code}`} className="w-4 h-4 accent-[color:var(--accent)]" />
                       </td>
                       <td className="px-3 py-2"><b>{w.name} · {w.code}</b></td>
                       <td className="px-3 py-2 font-mono">{(w.sih ?? 0) > 0 ? `${w.sih}` : '—'}</td>
-                      <td className="px-3 py-2 text-[10.5px] text-slate-400">load hint unavailable (needs audits/by-date)</td>
+                      <td className="px-3 py-2 text-[10.5px] text-ink-4">load hint unavailable (needs audits/by-date)</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <div className="mt-2.5 flex items-center gap-2">
-              <label className="text-[11px] font-semibold text-slate-600">Target date</label>
-              <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)}
-                className="bg-amber-50 border border-dashed border-amber-400 rounded px-2 py-1 font-mono text-xs text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              <label className="text-[11px] font-semibold text-ink-3">Target date</label>
+              <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} aria-label="Target date"
+                className="bg-warn-soft border border-dashed border-[color:var(--st-amber-fg)]/40 rounded px-2 py-1 font-mono text-xs text-warn focus:outline-none focus:ring-1 focus:ring-[color:var(--ring)]" />
             </div>
           </>
         )}
@@ -142,12 +142,13 @@ export const StockAuditPopup: React.FC<StockAuditPopupProps> = ({
           value={comments}
           onChange={(e) => setComments(e.target.value)}
           rows={3}
+          aria-label="Comments & urgency"
           placeholder="Why this audit is needed (e.g. system SIH doesn't match dispense log), urgency, deadline…"
-          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full border border-border rounded-lg px-3 py-2 text-xs bg-surface focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
         />
       </ModalSection>
 
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-[11px] text-emerald-800">
+      <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-ok-soft px-3.5 py-2 text-[11px] text-ok">
         <b>On Submit:</b> creates an audit request (status <b>REQUESTED</b>) in the Stock Audit tracker and sends a structured request to Warehouse Stock Check with real location codes.
       </div>
     </ProcModalShell>

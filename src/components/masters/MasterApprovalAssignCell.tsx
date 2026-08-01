@@ -62,12 +62,12 @@ export function MasterApprovalAssignCell({
   if (!canAssign) {
     if (kind === 'PR') {
       return (
-        <div className={`text-[10px] text-gray-600 ${compact ? 'max-w-36' : 'max-w-48'}`}>
+        <div className={`text-[10px] text-ink-3 ${compact ? 'max-w-36' : 'max-w-48'}`}>
           <p className="truncate" title={prTeamAssigneeSummary(assignees)}>
             {prTeamAssigneeSummary(assignees)}
           </p>
           {pending ? (
-            <p className="truncate text-amber-700 font-semibold" title={formatPrTeamPendingSummary(pending)}>
+            <p className="truncate text-warn font-semibold" title={formatPrTeamPendingSummary(pending)}>
               {formatPrTeamPendingSummary(pending)}
             </p>
           ) : null}
@@ -78,16 +78,16 @@ export function MasterApprovalAssignCell({
       .map((key) => assignees[key])
       .filter(Boolean);
     if (lines.length === 0) {
-      return <span className="text-[10px] text-gray-400">Open</span>;
+      return <span className="text-[10px] text-ink-4">Open</span>;
     }
     return (
-      <div className={`text-[10px] text-gray-600 ${compact ? 'max-w-28' : 'max-w-40'}`}>
+      <div className={`text-[10px] text-ink-3 ${compact ? 'max-w-28' : 'max-w-40'}`}>
         {lines.slice(0, 2).map((slot) => (
           <p key={slot!.user_id} className="truncate" title={formatStageAssigneeLabel(slot)}>
             {formatStageAssigneeLabel(slot)}
           </p>
         ))}
-        {lines.length > 2 ? <p className="text-gray-400">+{lines.length - 2} more</p> : null}
+        {lines.length > 2 ? <p className="text-ink-4">+{lines.length - 2} more</p> : null}
       </div>
     );
   }
@@ -100,11 +100,11 @@ export function MasterApprovalAssignCell({
           e.stopPropagation();
           setOpen(true);
         }}
-        className="text-left px-2 py-1 rounded-md border border-dashed border-teal-300 bg-teal-50/50 hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-400 max-w-full"
+        className="text-left px-2 py-1 rounded-md border border-dashed border-brand-soft bg-brand-soft hover:bg-brand-soft focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] max-w-full"
         title="Assign people to approval stages"
       >
-        <span className="block text-[10px] font-semibold text-teal-700">Assign</span>
-        <span className="block text-[10px] text-gray-600 truncate">{summary}</span>
+        <span className="block text-[10px] font-semibold text-brand">Assign</span>
+        <span className="block text-[10px] text-ink-3 truncate">{summary}</span>
       </button>
       <MasterApprovalAssignModal
         isOpen={open}

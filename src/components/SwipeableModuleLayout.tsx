@@ -24,7 +24,7 @@ function FixedMenuButton() {
   return (
     <button
       type="button"
-      className="fixed top-3 left-4 z-[200] p-2.5 rounded-lg border border-slate-300 bg-white shadow-md hover:bg-slate-50 transition-colors text-gray-800"
+      className="fixed top-3 left-4 z-[200] p-2.5 rounded-lg border border-border bg-surface shadow-[var(--e1)] hover:bg-surface-3 transition-colors text-ink"
       onClick={toggle}
       aria-label={open ? 'Close main menu' : 'Open main menu'}
       aria-expanded={open}

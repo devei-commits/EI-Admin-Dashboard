@@ -70,20 +70,20 @@ export const GrievancesView: React.FC<GrievancesViewProps> = ({ clients, onDataC
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-blue-700"><Plus size={14} /> Log grievance</button>
-          <button onClick={() => void load()} title="Refresh" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
+          <button onClick={() => void load()} title="Refresh" aria-label="Refresh" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
         <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search grievance, client, category…" className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search grievance, client, category…" aria-label="Search grievance, client, category" className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500" />
         </div>
-        <select value={sevFilter} onChange={(e) => setSevFilter(e.target.value as typeof sevFilter)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+        <select value={sevFilter} onChange={(e) => setSevFilter(e.target.value as typeof sevFilter)} aria-label="Filter by severity" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
           <option value="all">All severities</option>
           {(Object.keys(SEVERITY_CONFIG) as GrievanceSeverity[]).map((s) => <option key={s} value={s}>{SEVERITY_CONFIG[s].label}</option>)}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
           <option value="open">Open (active)</option>
           <option value="all">All statuses</option>
           {ALL_STATUSES.map((s) => <option key={s} value={s}>{GRIEVANCE_STATUS_CONFIG[s].label}</option>)}
@@ -99,7 +99,7 @@ export const GrievancesView: React.FC<GrievancesViewProps> = ({ clients, onDataC
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">
-            <thead><tr className="border-b border-slate-200 bg-slate-50">{HEADERS.map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead>
+            <thead><tr className="border-b border-slate-200 bg-slate-50">{HEADERS.map((h) => <th scope="col" key={h} className="whitespace-nowrap px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((r) => (
                 <tr key={r.id} className="cursor-pointer transition-colors hover:bg-blue-50/30" onClick={() => setActive(r)}>

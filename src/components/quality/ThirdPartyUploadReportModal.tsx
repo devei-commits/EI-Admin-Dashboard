@@ -53,6 +53,7 @@ const ThirdPartyUploadReportModal: React.FC<ThirdPartyUploadReportModalProps> = 
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="upload-report-title"
       >
         <div className="px-5 py-4 border-b border-slate-200">

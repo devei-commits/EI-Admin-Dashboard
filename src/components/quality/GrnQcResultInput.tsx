@@ -28,6 +28,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
         onChange={(e) => onChange(e.target.value)}
         className={inputCls}
         placeholder="Enter result…"
+        aria-label="Enter result"
       />
     );
   }
@@ -41,6 +42,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className={inputCls}
+        aria-label="Result date"
       />
     );
   }
@@ -64,6 +66,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
           className={`${inputCls} flex-1 min-w-0`}
           placeholder="Measured"
           step="any"
+          aria-label="Measured value"
         />
         {unit ? <span className="shrink-0 text-[10px] text-slate-500">{unit}</span> : null}
       </div>
@@ -72,7 +75,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
 
   if (outputType === 'boolean') {
     return (
-      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls} aria-label="Result">
         <option value="">Select…</option>
         <option value="Yes">Yes</option>
         <option value="No">No</option>
@@ -82,7 +85,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
 
   if (outputType === 'pass-fail') {
     return (
-      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls} aria-label="Result">
         <option value="">Select…</option>
         <option value="Pass">Pass</option>
         <option value="Fail">Fail</option>
@@ -99,7 +102,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
             .map((s) => s.trim())
             .filter(Boolean);
     return (
-      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls} aria-label="Result">
         <option value="">{options.length === 0 ? 'No options' : 'Select…'}</option>
         {options.map((opt) => (
           <option key={opt} value={opt}>
@@ -112,7 +115,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
 
   if (outputType === 'text-match') {
     return (
-      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+      <select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className={inputCls} aria-label="Result">
         <option value="">Select…</option>
         <option value="✓ Matches">✓ Matches</option>
         <option value="Mismatch">Mismatch</option>
@@ -130,6 +133,7 @@ export function GrnQcResultInput({ test, disabled = false, id, onChange }: GrnQc
       onChange={(e) => onChange(e.target.value)}
       className={inputCls}
       placeholder="Enter result…"
+      aria-label="Enter result"
     />
   );
 }

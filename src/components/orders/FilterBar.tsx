@@ -19,7 +19,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const chips = filterType === 'so' ? SO_FILTER_CHIPS : BATCH_FILTER_CHIPS;
 
   return (
-    <div className="flex items-center gap-2 flex-wrap bg-white/60 backdrop-blur-sm border border-gray-200/80 rounded-lg px-3 py-2.5 shadow-sm">
+    <div className="flex items-center gap-2 flex-wrap bg-white/60 backdrop-blur-sm border border-border rounded-lg px-3 py-2.5 shadow-sm">
       <div className="flex items-center gap-2">
         {chips.map(chip => {
           const Icon = chip.icon;
@@ -32,8 +32,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 px-3 py-1 rounded-full border text-xs font-semibold
                 transition-all duration-150 flex items-center gap-1.5
                 ${isActive
-                  ? 'text-orange-600 bg-orange-50 border-orange-300 shadow-sm'
-                  : 'text-gray-600 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                  ? 'text-brand bg-brand-soft border-brand-soft shadow-sm'
+                  : 'text-ink-3 bg-surface border-border hover:bg-surface-2 hover:border-border'
                 }
               `}
             >
@@ -44,20 +44,21 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         })}
       </div>
 
-      <div className="w-px h-5 bg-gray-200 mx-2" />
+      <div className="w-px h-5 bg-surface-3 mx-2" />
 
       <div className="relative flex-grow" style={{ minWidth: '250px' }}>
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-4" />
         <input
           type="text"
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
+          aria-label={filterType === 'so' ? 'Search SO no, customer, product...' : 'Search product, SO, BPR...'}
           placeholder={filterType === 'so' ? 'Search SO no, customer, product...' : 'Search product, SO, BPR...'}
           className="
-            w-full pl-9 pr-4 py-1.5 rounded-md border border-gray-300 bg-white 
-            text-gray-900 text-sm outline-none
-            focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors
-            placeholder:text-gray-400
+            w-full pl-9 pr-4 py-1.5 rounded-md border border-border bg-surface
+            text-ink text-sm outline-none
+            focus:border-[color:var(--accent)] focus:ring-1 focus:ring-[color:var(--ring)] transition-colors
+            placeholder:text-ink-4
           "
         />
       </div>
@@ -66,8 +67,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <button
           onClick={onClearFilters}
           className="
-            ml-auto px-3 py-1 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-full
-            hover:bg-gray-100 hover:text-gray-800 transition-all flex items-center gap-1.5
+            ml-auto px-3 py-1 text-xs font-semibold text-ink-3 bg-surface border border-border rounded-full
+            hover:bg-surface-3 hover:text-ink transition-all flex items-center gap-1.5
           "
         >
           <X size={14} />

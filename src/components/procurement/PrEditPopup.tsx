@@ -6,6 +6,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, FileQuestion } from 'lucide-react';
+import { Check } from '@phosphor-icons/react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import { fetchItemPriceList } from '../../services/procurement.service';
 import { StatCell } from './PrPopupShell';
@@ -93,7 +94,7 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
   };
 
   const sih = req.stockSummary?.stockInHand;
-  const inputCls = 'w-full bg-amber-50 border border-dashed border-amber-400 rounded px-2 py-1 font-mono text-xs text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500';
+  const inputCls = 'w-full bg-warn-soft border border-dashed border-[color:var(--st-amber-fg)]/40 rounded px-2 py-1 font-mono text-xs text-warn focus:outline-none focus:ring-1 focus:ring-[color:var(--ring)]';
 
   return (
     <ProcModalShell
@@ -104,8 +105,8 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
       width="max-w-4xl"
       footer={
         <>
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">Cancel</button>
-          <button type="button" onClick={() => void handleSave()} disabled={busy} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60">{busy ? 'Saving…' : 'Save Request'}</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface">Cancel</button>
+          <button type="button" onClick={() => void handleSave()} disabled={busy} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60">{busy ? 'Saving…' : 'Save Request'}</button>
         </>
       }
     >
@@ -126,43 +127,43 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
 
       {/* Editable PR fields */}
       <ModalSection title="PR Fields (editable)">
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-50 text-slate-500">
+              <tr className="bg-surface-3 text-ink-3">
                 {['PR #', 'Item', 'Vendor', 'Qty Req', 'Price / unit', 'Lead Time', 'Payment Terms'].map((h) => (
-                  <th key={h} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
+                  <th scope="col" key={h} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td className="px-3 py-2 font-mono"><b>{req.code}</b></td>
-                <td className="px-3 py-2"><b>{item?.itemName ?? '—'}</b><div className="text-[9.5px] text-slate-400 font-mono">{item?.itemCode}{isPlanning ? ' · locked from Planning' : ''}</div></td>
-                <td className="px-3 py-2"><input value={vendor} onChange={(e) => setVendor(e.target.value)} className={inputCls} placeholder="Vendor" /></td>
-                <td className="px-3 py-2"><input value={qty} onChange={(e) => setQty(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" /></td>
-                <td className="px-3 py-2"><input value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" /></td>
-                <td className="px-3 py-2"><input value={leadDays} onChange={(e) => setLeadDays(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" /><div className="text-[9px] text-slate-400 mt-0.5 text-center">actual avg</div></td>
-                <td className="px-3 py-2"><input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} /></td>
+                <td className="px-3 py-2"><b>{item?.itemName ?? '—'}</b><div className="text-[9.5px] text-ink-4 font-mono">{item?.itemCode}{isPlanning ? ' · locked from Planning' : ''}</div></td>
+                <td className="px-3 py-2"><input value={vendor} onChange={(e) => setVendor(e.target.value)} className={inputCls} placeholder="Vendor" aria-label="Vendor" /></td>
+                <td className="px-3 py-2"><input value={qty} onChange={(e) => setQty(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" aria-label="Qty Req" /></td>
+                <td className="px-3 py-2"><input value={price} onChange={(e) => setPrice(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" aria-label="Price / unit" /></td>
+                <td className="px-3 py-2"><input value={leadDays} onChange={(e) => setLeadDays(e.target.value)} className={`${inputCls} text-center`} inputMode="decimal" aria-label="Lead Time" /><div className="text-[9px] text-ink-4 mt-0.5 text-center">actual avg</div></td>
+                <td className="px-3 py-2"><input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={inputCls} aria-label="Payment Terms" /></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p className="mt-1.5 text-[10px] text-slate-400"><span className="inline-block w-3 h-3 align-middle bg-amber-50 border border-dashed border-amber-400 rounded" /> = editable. Picking a price-list tier below auto-fills Vendor / Price / Lead.</p>
+        <p className="mt-1.5 text-[10px] text-ink-4"><span className="inline-block w-3 h-3 align-middle bg-warn-soft border border-dashed border-[color:var(--st-amber-fg)]/40 rounded" /> = editable. Picking a price-list tier below auto-fills Vendor / Price / Lead.</p>
       </ModalSection>
 
       {moqError && (
-        <div className="mx-0 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 flex items-start gap-2.5">
-          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+        <div className="mx-0 rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3.5 py-2.5 flex items-start gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-warn mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-semibold text-amber-800 mb-0.5">Quantity below vendor MOQ — save blocked</p>
-            <p className="text-[11px] text-amber-700">{moqError}</p>
-            <p className="text-[11px] text-amber-600 mt-0.5">Adjust the qty to meet the minimum, or raise a Quote Request to ask the vendor for a special allowance.</p>
+            <p className="text-[11px] font-semibold text-warn mb-0.5">Quantity below vendor MOQ — save blocked</p>
+            <p className="text-[11px] text-warn">{moqError}</p>
+            <p className="text-[11px] text-warn mt-0.5">Adjust the qty to meet the minimum, or raise a Quote Request to ask the vendor for a special allowance.</p>
             {onRaiseQuoteRequest && moqPayload && (
               <button
                 type="button"
                 onClick={() => void onRaiseQuoteRequest(moqPayload)}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700"
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand text-white text-[11px] font-bold hover:bg-brand-press"
               >
                 <FileQuestion className="h-3.5 w-3.5" />
                 Raise Quote Request for {moqPayload.qty} {item?.unit ?? ''}
@@ -176,28 +177,28 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
       <ModalSection title="Price List + Purchase History">
         <div className="grid md:grid-cols-2 gap-3">
           {/* Price list */}
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-            <div className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Price List · vendor × MOQ tiers</div>
+          <div className="bg-surface-3 border border-border rounded-lg p-2.5">
+            <div className="text-[10px] font-bold text-ink-4 uppercase mb-1.5">Price List · vendor × MOQ tiers</div>
             {tiersLoading ? (
-              <p className="text-[11px] text-slate-400 py-3 text-center">Loading price list…</p>
+              <p className="text-[11px] text-ink-4 py-3 text-center">Loading price list…</p>
             ) : tiersError ? (
-              <p className="text-[11px] text-red-500 py-3 text-center">{tiersError}</p>
+              <p className="text-[11px] text-err py-3 text-center">{tiersError}</p>
             ) : tiers.length === 0 ? (
-              <p className="text-[11px] text-slate-400 py-3 text-center">No price-list tiers on record for this item.</p>
+              <p className="text-[11px] text-ink-4 py-3 text-center">No price-list tiers on record for this item.</p>
             ) : (
               <table className="w-full text-[11px]">
-                <thead><tr className="text-slate-400">{['Vendor', 'Tier', 'Price', 'Lead', ''].map((h) => <th key={h} className="px-2 py-1 text-left text-[9.5px] font-bold uppercase">{h}</th>)}</tr></thead>
-                <tbody className="divide-y divide-slate-100">
+                <thead><tr className="text-ink-4">{['Vendor', 'Tier', 'Price', 'Lead', ''].map((h) => <th scope="col" key={h} className="px-2 py-1 text-left text-[9.5px] font-bold uppercase">{h}</th>)}</tr></thead>
+                <tbody className="divide-y divide-hairline">
                   {tiers.map((t, i) => (
-                    <tr key={i} className={pickedTier === i ? 'bg-emerald-50' : ''}>
+                    <tr key={i} className={pickedTier === i ? 'bg-ok-soft' : ''}>
                       <td className="px-2 py-1">{t.vendor}</td>
                       <td className="px-2 py-1 text-center">{t.tier}</td>
                       <td className="px-2 py-1 text-center font-mono">₹{t.price}</td>
                       <td className="px-2 py-1 text-center font-mono">{t.lead}d</td>
                       <td className="px-2 py-1 text-center">
                         {pickedTier === i
-                          ? <span className="text-emerald-700 font-bold text-[10px]">✓ Picked</span>
-                          : <button onClick={() => pick(t, i)} className="text-blue-600 font-bold text-[10px] hover:underline">Pick</button>}
+                          ? <span className="inline-flex items-center gap-1 text-ok font-bold text-[10px]"><Check className="w-3 h-3" />Picked</span>
+                          : <button onClick={() => pick(t, i)} className="text-brand font-bold text-[10px] hover:underline">Pick</button>}
                       </td>
                     </tr>
                   ))}
@@ -206,14 +207,14 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
             )}
           </div>
           {/* Purchase history */}
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-            <div className="text-[10px] font-bold text-slate-400 uppercase mb-1.5">Purchase History · last 6 POs</div>
+          <div className="bg-surface-3 border border-border rounded-lg p-2.5">
+            <div className="text-[10px] font-bold text-ink-4 uppercase mb-1.5">Purchase History · last 6 POs</div>
             {purchaseHistory.length === 0 ? (
-              <p className="text-[11px] text-slate-400 py-3 text-center">No purchase history on record for this item.</p>
+              <p className="text-[11px] text-ink-4 py-3 text-center">No purchase history on record for this item.</p>
             ) : (
               <table className="w-full text-[11px]">
-                <thead><tr className="text-slate-400">{['Vendor', 'Qty', 'Price', 'Date'].map((h) => <th key={h} className="px-2 py-1 text-left text-[9.5px] font-bold uppercase">{h}</th>)}</tr></thead>
-                <tbody className="divide-y divide-slate-100">
+                <thead><tr className="text-ink-4">{['Vendor', 'Qty', 'Price', 'Date'].map((h) => <th scope="col" key={h} className="px-2 py-1 text-left text-[9.5px] font-bold uppercase">{h}</th>)}</tr></thead>
+                <tbody className="divide-y divide-hairline">
                   {purchaseHistory.slice(0, 6).map((h, i) => (
                     <tr key={i}>
                       <td className="px-2 py-1">{h.vendor}</td>
@@ -229,7 +230,7 @@ export const PrEditPopup: React.FC<PrEditPopupProps> = ({ req, priceList = [], p
         </div>
       </ModalSection>
 
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-[11px] text-blue-800">
+      <div className="rounded-lg border border-brand-soft bg-brand-soft px-3.5 py-2 text-[11px] text-brand">
         <b>On Save:</b> updates the PR row in the inbox. Does not push to PO — that's the Draft PO action.
       </div>
     </ProcModalShell>

@@ -210,6 +210,7 @@ export default function VendorClientNameTypeahead({
           aria-expanded={showList || showEmpty}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-label={placeholder}
           autoComplete="off"
           disabled={disabled || loading}
           placeholder={
@@ -223,13 +224,13 @@ export default function VendorClientNameTypeahead({
           onChange={(e) => onInputChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full min-w-[200px] rounded-lg border border-gray-300 px-3 py-1.5 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+          className="w-full min-w-[200px] rounded-lg border border-border px-3 py-1.5 pr-8 text-sm text-ink bg-surface focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
         />
         {allowClear && (selectedId || inputValue) ? (
           <button
             type="button"
             onClick={clearSelection}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-ink-4 hover:text-ink-2 hover:bg-surface-3"
             aria-label={partyKind === 'vendor' ? 'Clear vendor' : 'Clear client'}
           >
             <X className="w-3.5 h-3.5" />
@@ -240,7 +241,7 @@ export default function VendorClientNameTypeahead({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-40 mt-1 max-h-52 w-full min-w-[220px] overflow-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg"
+          className="absolute z-40 mt-1 max-h-52 w-full min-w-[220px] overflow-auto rounded-lg border border-border bg-surface py-1 text-sm shadow-lg"
         >
           {suggestions.map((row, idx) => {
             const code = String(
@@ -258,10 +259,10 @@ export default function VendorClientNameTypeahead({
                 aria-disabled={row.disabled}
                 className={`px-3 py-2 ${
                   row.disabled
-                    ? 'cursor-not-allowed text-gray-400'
+                    ? 'cursor-not-allowed text-ink-4'
                     : idx === activeIndex
-                      ? 'cursor-pointer bg-teal-50 text-teal-900'
-                      : 'cursor-pointer text-gray-800 hover:bg-gray-50'
+                      ? 'cursor-pointer bg-brand-soft text-brand'
+                      : 'cursor-pointer text-ink hover:bg-surface-3'
                 }`}
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -270,9 +271,9 @@ export default function VendorClientNameTypeahead({
                 onMouseEnter={() => setActiveIndex(idx)}
               >
                 <div className="font-medium">{row.party.name ?? row.party.id}</div>
-                {meta ? <div className="text-xs text-gray-500">{meta}</div> : null}
+                {meta ? <div className="text-xs text-ink-3">{meta}</div> : null}
                 {row.disabled ? (
-                  <span className="text-[10px] text-gray-400">(already has pricing)</span>
+                  <span className="text-[10px] text-ink-4">(already has pricing)</span>
                 ) : null}
               </li>
             );
@@ -280,7 +281,7 @@ export default function VendorClientNameTypeahead({
         </ul>
       ) : null}
       {showEmpty ? (
-        <p className="absolute z-40 mt-1 w-full min-w-[220px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 shadow-lg">
+        <p className="absolute z-40 mt-1 w-full min-w-[220px] rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink-3 shadow-lg">
           {partyKind === 'vendor'
             ? 'No matching vendors. Try another name or type a new vendor.'
             : 'No matching clients. Try another name or city.'}

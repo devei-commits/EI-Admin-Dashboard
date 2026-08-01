@@ -44,7 +44,7 @@ const WarehousePage = () => {
   };
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-canvas text-ink">
       <WarehouseSidebar activeSection={activeSection} onSectionChange={handleSectionChange} />
       {renderContent()}
     </div>

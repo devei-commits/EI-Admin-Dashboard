@@ -16,7 +16,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   
   if (!config) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono bg-gray-500/10 text-gray-600 border border-gray-500/20">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono bg-surface-3 text-ink-3 border border-border">
         {status}
       </span>
     );

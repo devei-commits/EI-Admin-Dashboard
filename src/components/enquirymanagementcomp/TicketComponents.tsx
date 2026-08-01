@@ -163,6 +163,7 @@ export const StaffAssignmentDropdown: React.FC<StaffAssignmentDropdownProps> = (
         onChange={(e) => setSearchTerm(e.target.value)}
         placeholder="Search staff..."
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+        aria-label="Search staff"
        />
       </div>
 
@@ -385,6 +386,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       value={filters.searchTerm || ''}
       onChange={(e) => onFiltersChange({ ...filters, searchTerm: e.target.value })}
       className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+      aria-label="Search by ticket #, customer name, email"
      />
     </div>
     <div className="flex gap-2">
@@ -427,9 +429,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.status?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
-        status: e.target.value ? [e.target.value as TicketStatus] : undefined 
+        status: e.target.value ? [e.target.value as TicketStatus] : undefined
        })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="Status"
       >
        <option value="">All Status</option>
        {statusOptions.map(status => (
@@ -445,9 +448,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.priority?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
-        priority: e.target.value ? [e.target.value as TicketPriority] : undefined 
+        priority: e.target.value ? [e.target.value as TicketPriority] : undefined
        })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="Priority"
       >
        <option value="">All Priorities</option>
        {priorityOptions.map(priority => (
@@ -463,9 +467,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.category?.[0] || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
-        category: e.target.value ? [e.target.value as TicketCategory] : undefined 
+        category: e.target.value ? [e.target.value as TicketCategory] : undefined
        })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="Category"
       >
        <option value="">All Categories</option>
        {categoryOptions.map(category => (
@@ -481,9 +486,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.assigneeId || ''}
        onChange={(e) => onFiltersChange({ 
         ...filters, 
-        assigneeId: e.target.value || undefined 
+        assigneeId: e.target.value || undefined
        })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="Assigned To"
       >
        <option value="">All Staff</option>
        <option value="unassigned">Unassigned</option>
@@ -501,6 +507,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.dateFrom || ''}
        onChange={(e) => onFiltersChange({ ...filters, dateFrom: e.target.value || undefined })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="From Date"
       />
      </div>
 
@@ -512,6 +519,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
        value={filters.dateTo || ''}
        onChange={(e) => onFiltersChange({ ...filters, dateTo: e.target.value || undefined })}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+       aria-label="To Date"
       />
      </div>
 

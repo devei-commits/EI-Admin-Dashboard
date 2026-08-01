@@ -746,7 +746,7 @@ const FacilityManagement: React.FC = () => {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="bg-gray-50/80 border-b border-gray-100">
-                                <th className="px-4 py-3 font-medium w-10" />
+                                <th scope="col" className="px-4 py-3 font-medium w-10" />
                                 <SortableTableTh
                                   label="Code"
                                   column="code"

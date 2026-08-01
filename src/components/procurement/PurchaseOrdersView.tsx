@@ -8,8 +8,10 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Package, Flag, Warning, Check } from '@phosphor-icons/react';
 import { Pagination } from '../ui';
+import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -104,10 +106,10 @@ function computeRollup(record: IssuedPOViewRecord, grnByPo: Map<string, GRNRecor
 }
 
 function QtyLink({ value, ordered, onClick }: { value: number; ordered: number; onClick?: () => void }) {
-  if (!value) return <span className="text-slate-300 text-xs">0</span>;
+  if (!value) return <span className="text-ink-4 text-xs">0</span>;
   const pct = ordered > 0 ? Math.round((value / ordered) * 100) : 0;
   return (
-    <button onClick={onClick} disabled={!onClick} className={`text-xs tabular-nums ${onClick ? 'text-blue-600 hover:underline decoration-dotted' : 'text-slate-700'}`} title={ordered > 0 ? `${pct}% of ${ordered.toLocaleString('en-IN')}` : undefined}>
+    <button onClick={onClick} disabled={!onClick} className={`text-xs tabular-nums ${onClick ? 'text-brand hover:underline decoration-dotted' : 'text-ink-2'}`} title={ordered > 0 ? `${pct}% of ${ordered.toLocaleString('en-IN')}` : undefined}>
       {value.toLocaleString('en-IN')}
     </button>
   );
@@ -123,6 +125,8 @@ export interface PurchaseOrdersViewProps {
   onShipmentCreated?: () => void;
   onOpenGrnForPo?: (poNumber: string) => void;
   onExport?: () => void;
+  /** Opens the manual "New PO" (Direct PO — no PR) modal. */
+  onNewPo?: () => void;
 }
 
 type PoTab = 'po-wise' | 'items';
@@ -160,19 +164,19 @@ function PoPaginationBar({
   onPageSizeChange: (size: number) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
-      <span className="text-xs text-slate-600">
-        Showing <b className="text-slate-800">{pageStart + 1}</b>–
-        <b className="text-slate-800">{Math.min(pageStart + pageSize, total)}</b> of{' '}
-        <b className="text-slate-800">{total}</b> {unit}
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5">
+      <span className="text-xs text-ink-3">
+        Showing <b className="text-ink">{pageStart + 1}</b>–
+        <b className="text-ink">{Math.min(pageStart + pageSize, total)}</b> of{' '}
+        <b className="text-ink">{total}</b> {unit}
       </span>
       <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor={id} className="text-xs text-slate-600">Rows per page</label>
+        <label htmlFor={id} className="text-xs text-ink-3">Rows per page</label>
         <select
           id={id}
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
-          className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-1.5 border border-border rounded-lg text-xs bg-surface focus:ring-2 focus:ring-[color:var(--ring)]"
         >
           {PO_PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -183,7 +187,7 @@ function PoPaginationBar({
 }
 
 export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
-  records, grnList, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport,
+  records, grnList, onOpenDetail, onEdit, onShipmentCreated, onOpenGrnForPo, onExport, onNewPo,
 }) => {
   const [tab, setTab] = useState<PoTab>('po-wise');
   const [search, setSearch] = useState('');
@@ -446,41 +450,52 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* Summary bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="text-xs text-slate-600">
-          📦 <b className="text-slate-800">Purchase Orders</b> · {records.length} POs · {inTransitCount} in-transit · <b>{fmtMoney(totalValue)}</b> value
-        </div>
-        <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
-          <Download size={14} /> Export
-        </button>
-      </div>
+      {/* Section header */}
+      <ProcSectionHeader
+        icon={<Package className="w-4 h-4 shrink-0" />}
+        title="Purchase Orders"
+        stats={[
+          { value: records.length, label: 'POs' },
+          { value: inTransitCount, label: 'in-transit', tone: 'brand' },
+          { value: fmtMoney(totalValue), label: 'value' },
+        ]}
+        actions={
+          <>
+            {onNewPo && (
+              <button onClick={onNewPo} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-press">
+                <Package size={14} /> New PO
+              </button>
+            )}
+            <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-ink-3 bg-surface hover:bg-surface-2">
+              <Download size={14} /> Export
+            </button>
+          </>
+        }
+      />
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b-2 border-slate-200">
-        {([['po-wise', 'PO-wise'], ['items', 'Items']] as [PoTab, string][]).map(([k, label]) => (
-          <button key={k} onClick={() => changeTab(k)}
-            className={`px-4 py-1.5 text-xs font-bold border-b-[3px] -mb-0.5 transition-colors ${tab === k ? 'text-blue-700 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-700'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <ProcTabs
+        tabs={[
+          { key: 'po-wise', label: 'PO-wise' },
+          { key: 'items', label: 'Items' },
+        ]}
+        value={tab}
+        onChange={changeTab}
+      />
 
       {/* ── Filters & sorting (shared across both tabs) ── */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+      <ProcFilterBar stack>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO #, item, vendor…"
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
-          </div>
+          <ProcSearch value={search} onChange={setSearch} placeholder="Search PO #, item, vendor…" className="flex-1 min-w-[220px]" />
           <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 max-w-[200px]">
+            aria-label="Filter by vendor"
+            className={`${procSelectClass} max-w-[200px]`}>
             <option value="all">All Vendors</option>
             {vendorList.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+            aria-label="Filter by status"
+            className={procSelectClass}>
             <option value="all">All Statuses</option>
             {(Object.keys(PO_STATUS_CONFIG) as PoStatus[]).map((s) => (
               <option key={s} value={s}>{PO_STATUS_CONFIG[s].label}</option>
@@ -488,76 +503,72 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">PO Date</span>
+          <span className="text-[11px] font-bold text-ink-3 uppercase">PO Date</span>
           <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)}
-            className="px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500" />
-          <span className="text-slate-400 text-xs">–</span>
+            aria-label="PO date from"
+            className="px-2.5 py-2 border border-border rounded-lg text-xs bg-surface focus:ring-2 focus:ring-[color:var(--ring)]" />
+          <span className="text-ink-4 text-xs">–</span>
           <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)}
-            className="px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-blue-500" />
+            aria-label="PO date to"
+            className="px-2.5 py-2 border border-border rounded-lg text-xs bg-surface focus:ring-2 focus:ring-[color:var(--ring)]" />
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase">Sort</span>
+            <span className="text-[11px] font-bold text-ink-3 uppercase">Sort</span>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+              aria-label="Sort by"
+              className={procSelectClass}>
               {sortOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
             <button onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
               title={sortDir === 'asc' ? 'Ascending — click for descending' : 'Descending — click for ascending'}
-              className="inline-flex items-center gap-1 px-2.5 py-2 border border-slate-200 rounded-lg text-xs font-semibold bg-white text-slate-600 hover:bg-slate-50">
+              className="inline-flex items-center gap-1 px-2.5 py-2 border border-border rounded-lg text-xs font-semibold bg-surface text-ink-3 hover:bg-surface-2">
               {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
               {sortDir === 'asc' ? 'Asc' : 'Desc'}
             </button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-ink-3">
             {tab === 'items'
               ? `${lineRows.length} line${lineRows.length !== 1 ? 's' : ''} match`
               : `${rows.length} of ${records.length} PO${records.length !== 1 ? 's' : ''} match`}
           </span>
           {tab === 'items' && itemFilter && (
-            <button onClick={() => setItemFilter(null)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+            <button onClick={() => setItemFilter(null)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">
               item {itemFilter} <X size={12} />
             </button>
           )}
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
+            <button onClick={clearFilters} className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border border-border text-ink-3 bg-surface hover:bg-surface-2">
               <X size={12} /> Clear filters
             </button>
           )}
         </div>
-      </div>
+      </ProcFilterBar>
 
       {tab === 'items' ? (
         <>
           {lineRows.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No PO lines match these filters.</div>
+            <ProcEmpty>No PO lines match these filters.</ProcEmpty>
           ) : (
             <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-sm text-left">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    {['PO Date', 'PO #', 'Item', 'PO Qty', 'GRN Qty (GRN# · qty)', 'GRN Status', 'Purchase Status', 'SLA', 'Other POs', 'Action'].map((h) => (
-                      <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h === 'PO Qty' ? 'text-center' : ''}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+            <ProcTableCard>
+                <ProcThead cols={['PO Date', 'PO #', 'Item', { label: 'PO Qty', align: 'center' }, 'GRN Qty (GRN# · qty)', 'GRN Status', 'Purchase Status', 'SLA', 'Other POs', 'Action']} />
                 <tbody>
                   {lineVendorGroups.map(({ vendor, vendorLineRows }) => (
                     <React.Fragment key={vendor}>
                       {/* Vendor header row */}
                       <tr
-                        className="bg-slate-100/80 border-y border-slate-200 hover:bg-slate-100 cursor-pointer select-none"
+                        className="bg-surface-3 border-y border-border hover:bg-surface-2 cursor-pointer select-none"
                         onClick={() => toggleVendor(`items:${vendor}`)}
                       >
                         <td colSpan={10} className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <ChevronDown
                               size={13}
-                              className={`text-slate-500 transition-transform ${collapsedVendors.has(`items:${vendor}`) ? '-rotate-90' : ''}`}
+                              className={`text-ink-3 transition-transform ${collapsedVendors.has(`items:${vendor}`) ? '-rotate-90' : ''}`}
                             />
-                            <span className="text-xs font-bold text-slate-800">{vendor}</span>
-                            <span className="text-[10px] text-slate-500 font-medium">
+                            <span className="text-xs font-bold text-ink">{vendor}</span>
+                            <span className="text-[10px] text-ink-3 font-medium">
                               {vendorLineRows.length} line{vendorLineRows.length !== 1 ? 's' : ''}
                             </span>
                           </div>
@@ -571,32 +582,32 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
                           : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
                           : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
-                        const slaText = fullyReceived ? '✓ received' : slaLevel === 'bad' ? `🚩 ${lr.daysOpen}d / ${lr.leadDays}d lead` : slaLevel === 'warn' ? `⚠ ${lr.daysOpen}d / ${lr.leadDays}d` : '✓ within lead';
-                        const slaCls = slaLevel === 'bad' ? 'text-red-600 font-bold' : slaLevel === 'warn' ? 'text-amber-600 font-semibold' : 'text-emerald-600';
+                        const slaText = fullyReceived ? <><Check className="inline w-3 h-3 align-[-1px]" /> received</> : slaLevel === 'bad' ? <><Flag weight="fill" className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d lead`}</> : slaLevel === 'warn' ? <><Warning className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d`}</> : <><Check className="inline w-3 h-3 align-[-1px]" /> within lead</>;
+                        const slaCls = slaLevel === 'bad' ? 'text-err font-bold' : slaLevel === 'warn' ? 'text-warn font-semibold' : 'text-ok';
                         return (
-                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} className="hover:bg-blue-50/30 transition-colors align-top border-b border-slate-100">
-                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(lr.record.createdDate)}</td>
+                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} className="hover:bg-brand-soft transition-colors align-top border-b border-hairline">
+                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(lr.record.createdDate)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-blue-600 hover:underline decoration-dotted">{lr.record.poNumber}</button>
+                              <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-brand hover:underline decoration-dotted">{lr.record.poNumber}</button>
                             </td>
                             <td className="px-3 py-2.5 max-w-[150px]">
-                              <p className="text-xs font-semibold text-slate-800 truncate" title={lr.item}>{lr.item}</p>
-                              <p className="text-[10px] text-slate-400 font-mono">{lr.itemCode}</p>
+                              <p className="text-xs font-semibold text-ink truncate" title={lr.item}>{lr.item}</p>
+                              <p className="text-[10px] text-ink-4 font-mono">{lr.itemCode}</p>
                             </td>
-                            <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-slate-700">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
+                            <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-ink-2">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
                             <td className="px-3 py-2.5 min-w-[130px]">
                               {lr.grnLines.length === 0 ? (
-                                <span className="text-[10.5px] text-slate-400">— no shipments yet</span>
+                                <span className="text-[10.5px] text-ink-4">— no shipments yet</span>
                               ) : (
                                 <div className="space-y-0.5 font-mono text-[10.5px]">
                                   {lr.grnLines.map((g, i) => (
-                                    <div key={i}><span className="text-blue-600">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
+                                    <div key={i}><span className="text-brand">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
                                   ))}
                                 </div>
                               )}
                             </td>
                             <td className="px-3 py-2.5">
-                              {lr.grnLines.length === 0 ? <span className="text-slate-300 text-xs">—</span> : (
+                              {lr.grnLines.length === 0 ? <span className="text-ink-4 text-xs">—</span> : (
                                 <div className="flex flex-col gap-0.5">
                                   {lr.grnLines.map((g, i) => {
                                     const c = GRN_STAGE_CONFIG[g.stage];
@@ -606,24 +617,25 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                               )}
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-slate-400">— draft</span>}
+                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-ink-4">— draft</span>}
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
                               {lr.otherPos > 0 ? (
-                                <button onClick={() => setItemFilter(lr.itemKey)} className="inline-flex items-center gap-0.5 text-[10.5px] text-blue-600 font-semibold hover:underline">
+                                <button onClick={() => setItemFilter(lr.itemKey)} className="inline-flex items-center gap-0.5 text-[10.5px] text-brand font-semibold hover:underline">
                                   <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
                                 </button>
-                              ) : <span className="text-slate-300 text-xs">—</span>}
+                              ) : <span className="text-ink-4 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(lr.record)} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
+                                <button onClick={() => onEdit(lr.record)} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
                                 <button
                                   onClick={() => canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })}
                                   disabled={!canTransit}
                                   title={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
-                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-md border ${canTransit ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' : 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'}`}
+                                  aria-label={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
+                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-md border ${canTransit ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}
                                 >
                                   <Truck size={12} />
                                 </button>
@@ -635,8 +647,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     </React.Fragment>
                   ))}
                 </tbody>
-              </table>
-            </div>
+            </ProcTableCard>
             <PoPaginationBar
               id="po-items-page-size"
               pageStart={itemsPageStart}
@@ -655,37 +666,30 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
         <>
           {/* Table */}
           {rows.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No purchase orders match these filters.</div>
+            <ProcEmpty>No purchase orders match these filters.</ProcEmpty>
           ) : (
             <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-sm text-left">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    {['PO Date', 'PO #', 'Item', 'PO Status', 'PO Value', 'In-Transit', 'Received', 'Billed', 'Return', 'Actions'].map((h) => (
-                      <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${['PO Value', 'In-Transit', 'Received', 'Billed', 'Return'].includes(h) ? 'text-center' : ''}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+            <ProcTableCard>
+                <ProcThead cols={['PO Date', 'PO #', 'Item', 'PO Status', { label: 'PO Value', align: 'center' }, { label: 'In-Transit', align: 'center' }, { label: 'Received', align: 'center' }, { label: 'Billed', align: 'center' }, { label: 'Return', align: 'center' }, 'Actions']} />
                 <tbody>
                   {vendorGroups.map(({ vendor, vendorRows, vendorTotal }) => (
                     <React.Fragment key={vendor}>
                       {/* Vendor header row */}
                       <tr
-                        className="bg-slate-100/80 border-y border-slate-200 hover:bg-slate-100 cursor-pointer select-none"
+                        className="bg-surface-3 border-y border-border hover:bg-surface-2 cursor-pointer select-none"
                         onClick={() => toggleVendor(`po:${vendor}`)}
                       >
                         <td colSpan={10} className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <ChevronDown
                               size={13}
-                              className={`text-slate-500 transition-transform ${collapsedVendors.has(`po:${vendor}`) ? '-rotate-90' : ''}`}
+                              className={`text-ink-3 transition-transform ${collapsedVendors.has(`po:${vendor}`) ? '-rotate-90' : ''}`}
                             />
-                            <span className="text-xs font-bold text-slate-800">{vendor}</span>
-                            <span className="text-[10px] text-slate-500 font-medium">
+                            <span className="text-xs font-bold text-ink">{vendor}</span>
+                            <span className="text-[10px] text-ink-3 font-medium">
                               {vendorRows.length} PO{vendorRows.length !== 1 ? 's' : ''}
                             </span>
-                            <span className="ml-auto text-xs font-mono font-bold text-slate-700">{fmtMoney(vendorTotal)}</span>
+                            <span className="ml-auto text-xs font-mono font-bold text-ink-2">{fmtMoney(vendorTotal)}</span>
                           </div>
                         </td>
                       </tr>
@@ -694,18 +698,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         const st = PO_STATUS_CONFIG[wf];
                         const shippable = isShippable(r);
                         return (
-                          <tr key={r.poNumber} className="hover:bg-blue-50/30 transition-colors border-b border-slate-100">
-                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.createdDate)}</td>
+                          <tr key={r.poNumber} className="hover:bg-brand-soft transition-colors border-b border-hairline">
+                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.createdDate)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline decoration-dotted">{r.poNumber}</button>
+                              <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.poNumber}</button>
                             </td>
                             <td className="px-3 py-2.5 max-w-[180px]">
                               {r.lineItems.length === 0 ? (
-                                <span className="text-xs text-slate-400">—</span>
+                                <span className="text-xs text-ink-4">—</span>
                               ) : (
                                 <>
-                                  <p className="text-xs font-semibold text-slate-800 truncate" title={r.lineItems.map((l) => l.item).join(', ')}>{r.lineItems[0].item}</p>
-                                  {r.lineItems.length > 1 && <p className="text-[10px] text-slate-400">+{r.lineItems.length - 1} more item{r.lineItems.length - 1 !== 1 ? 's' : ''}</p>}
+                                  <p className="text-xs font-semibold text-ink truncate" title={r.lineItems.map((l) => l.item).join(', ')}>{r.lineItems[0].item}</p>
+                                  {r.lineItems.length > 1 && <p className="text-[10px] text-ink-4">+{r.lineItems.length - 1} more item{r.lineItems.length - 1 !== 1 ? 's' : ''}</p>}
                                 </>
                               )}
                             </td>
@@ -713,21 +717,21 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.text} ${st.bg} ${st.border}`}>{st.label}</span>
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                              <div className="text-xs font-bold text-slate-800 tabular-nums">{fmtMoney(r.grandTotal)}</div>
-                              <div className="text-[9.5px] text-slate-400">{r.lineItems.length} item{r.lineItems.length !== 1 ? 's' : ''}</div>
+                              <div className="text-xs font-bold text-ink tabular-nums">{fmtMoney(r.grandTotal)}</div>
+                              <div className="text-[9.5px] text-ink-4">{r.lineItems.length} item{r.lineItems.length !== 1 ? 's' : ''}</div>
                             </td>
                             <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.inTransit} ordered={rollup.ordered} onClick={onOpenGrnForPo ? () => onOpenGrnForPo(r.poNumber) : undefined} /></td>
                             <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.received} ordered={rollup.ordered} /></td>
                             <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.billed} ordered={rollup.ordered} /></td>
-                            <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-red-600 tabular-nums">{rollup.returned}</span> : <span className="text-slate-300 text-xs">0</span>}</td>
+                            <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-err tabular-nums">{rollup.returned}</span> : <span className="text-ink-4 text-xs">0</span>}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(r)} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
+                                <button onClick={() => onEdit(r)} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
                                 <button
                                   onClick={() => shippable && openConsolidated(r)}
                                   disabled={!shippable}
                                   title={shippable ? 'Initiate Shipment' : 'Available once PO is Issued/Accepted'}
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' : 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'}`}>
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}>
                                   <Truck size={12} /> Initiate Shipment
                                 </button>
                               </div>
@@ -738,8 +742,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     </React.Fragment>
                   ))}
                 </tbody>
-              </table>
-            </div>
+            </ProcTableCard>
             <PoPaginationBar
               id="po-wise-page-size"
               pageStart={poPageStart}

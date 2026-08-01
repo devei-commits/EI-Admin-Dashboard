@@ -54,18 +54,18 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="bmr-print-title" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold">BMR Print Preview</h2>
+            <h2 id="bmr-print-title" className="text-xl font-bold">BMR Print Preview</h2>
             <p className="text-slate-300 text-sm">{bmr.docNo} · {bmr.batchNo}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
               Print
             </button>
-            <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
+            <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
           </div>
         </div>
 
@@ -91,11 +91,11 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Batch Size (Units)</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Bulk Qty (kg)</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Manufacturing Area</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Tank / Vessel</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Schedule Date</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Batch Size (Units)</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Bulk Qty (kg)</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Manufacturing Area</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Tank / Vessel</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Schedule Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -116,13 +116,13 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Item Code</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Material Name</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', textAlign: 'right' }}>Std Qty</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>UOM</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Actual Qty</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Dispensed By</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Checked By</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Item Code</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Material Name</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', textAlign: 'right' }}>Std Qty</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>UOM</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Actual Qty</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Dispensed By</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Checked By</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -147,12 +147,12 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', width: '30px' }}>Step</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Description</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Target</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Actual</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Time</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Operator</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', width: '30px' }}>Step</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Description</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Target</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Actual</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Time</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Operator</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -176,11 +176,11 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Parameter</th>
-                    {/* <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th> */}
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Result</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Pass/Fail</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Analyst</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Parameter</th>
+                    {/* <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Specification</th> */}
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Result</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Pass/Fail</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee', minWidth: '80px' }}>Analyst</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -203,9 +203,9 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Production Supervisor</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>QC Analyst</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>QA Manager</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>Production Supervisor</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>QC Analyst</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px', background: '#eee' }}>QA Manager</th>
                   </tr>
                   <tr style={{ height: '50px' }}>
                     <td style={{ border: '1px solid #333', padding: '5px 8px' }}></td>
@@ -213,9 +213,9 @@ export default function BMRPrintTemplate({ bmr, onClose }: Props) {
                     <td style={{ border: '1px solid #333', padding: '5px 8px' }}></td>
                   </tr>
                   <tr>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
-                    <th style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
+                    <th scope="col" style={{ border: '1px solid #333', padding: '5px 8px' }}>Name &amp; Signature</th>
                   </tr>
                   <tr>
                     <td style={{ border: '1px solid #333', padding: '5px 8px' }}>Date: ___________</td>

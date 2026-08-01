@@ -29,7 +29,7 @@ export function MasterApprovalLogsCell({
           e.stopPropagation();
           setOpen(true);
         }}
-        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 rounded whitespace-nowrap"
+        className="text-xs font-semibold text-brand hover:text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:ring-offset-1 rounded whitespace-nowrap"
       >
         View logs
       </button>

@@ -73,50 +73,50 @@ export default function LogisticsSchedule() {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-white relative p-6">
+    <div className="flex-1 overflow-auto bg-surface relative p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-slate-900">Logistics Schedule</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold text-ink">Logistics Schedule</h1>
+          <p className="text-sm text-ink-2">
             Create a vehicle schedule once, then use it while initiating multiple outbound transfers on the same vehicle.
           </p>
         </div>
 
-        <section className="bg-white border border-slate-200 rounded-xl p-4">
+        <section className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-sm font-semibold text-slate-800">Create schedule</h2>
-            <span className="text-[10px] px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+            <h2 className="text-sm font-semibold text-ink-2">Create schedule</h2>
+            <span className="text-[10px] px-2 py-1 rounded-full bg-warn-soft text-warn border border-warn/40 font-semibold">
               Status: Active
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Tracking / LR no.</label>
-              <input value={form.trackingNo} onChange={(e) => setForm((f) => ({ ...f, trackingNo: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-ink-2 mb-1">Tracking / LR no.</label>
+              <input aria-label="Tracking / LR no." value={form.trackingNo} onChange={(e) => setForm((f) => ({ ...f, trackingNo: e.target.value }))} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Transporter / courier</label>
-              <input value={form.transporter} onChange={(e) => setForm((f) => ({ ...f, transporter: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-ink-2 mb-1">Transporter / courier</label>
+              <input aria-label="Transporter / courier" value={form.transporter} onChange={(e) => setForm((f) => ({ ...f, transporter: e.target.value }))} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Dispatch date</label>
-              <input type="date" value={form.dispatchDate} onChange={(e) => setForm((f) => ({ ...f, dispatchDate: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-ink-2 mb-1">Dispatch date</label>
+              <input aria-label="Dispatch date" type="date" value={form.dispatchDate} onChange={(e) => setForm((f) => ({ ...f, dispatchDate: e.target.value }))} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">ETA</label>
-              <input type="date" value={form.etaDate} onChange={(e) => setForm((f) => ({ ...f, etaDate: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-ink-2 mb-1">ETA</label>
+              <input aria-label="ETA" type="date" value={form.etaDate} onChange={(e) => setForm((f) => ({ ...f, etaDate: e.target.value }))} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Vehicle no.</label>
-              <input value={form.vehicleNo} onChange={(e) => setForm((f) => ({ ...f, vehicleNo: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-ink-2 mb-1">Vehicle no.</label>
+              <input aria-label="Vehicle no." value={form.vehicleNo} onChange={(e) => setForm((f) => ({ ...f, vehicleNo: e.target.value }))} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 mt-4">
             <button
               onClick={() => setForm({ ...EMPTY_FORM })}
-              className="px-4 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-sm font-semibold"
+              className="px-4 py-2 rounded-lg border border-border bg-surface-2 text-ink-2 text-sm font-semibold"
               disabled={creating}
             >
               Reset
@@ -124,47 +124,47 @@ export default function LogisticsSchedule() {
             <button
               onClick={handleCreate}
               disabled={!canCreate || creating}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creating ? 'Creating…' : 'Create schedule'}
             </button>
           </div>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-xl p-4">
+        <section className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center justify-between gap-4 mb-3">
-            <h2 className="text-sm font-semibold text-slate-800">Active schedules</h2>
-            <span className="text-xs text-slate-600">{loading ? 'Loading…' : `${schedules.length} schedules`}</span>
+            <h2 className="text-sm font-semibold text-ink-2">Active schedules</h2>
+            <span className="text-xs text-ink-2">{loading ? 'Loading…' : `${schedules.length} schedules`}</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Tracking</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Transporter</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Vehicle</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Dispatch</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">ETA</th>
+                <tr className="bg-surface-2 border-b border-border">
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-3">Tracking</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-3">Transporter</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-3">Vehicle</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-3">Dispatch</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-3">ETA</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-hairline">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-slate-500">Loading…</td>
+                    <td colSpan={5} className="px-3 py-6 text-center text-ink-3">Loading…</td>
                   </tr>
                 ) : schedules.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-slate-500">No active schedules yet.</td>
+                    <td colSpan={5} className="px-3 py-6 text-center text-ink-3">No active schedules yet.</td>
                   </tr>
                 ) : (
                   schedules.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/60">
-                      <td className="px-3 py-2 font-medium text-slate-800">{s.trackingNo}</td>
-                      <td className="px-3 py-2 text-slate-700">{s.transporter}</td>
-                      <td className="px-3 py-2 text-slate-700">{s.vehicleNo}</td>
-                      <td className="px-3 py-2 text-slate-700">{s.dispatchDate}</td>
-                      <td className="px-3 py-2 text-slate-700">{s.etaDate}</td>
+                    <tr key={s.id} className="hover:bg-surface-2/60">
+                      <td className="px-3 py-2 font-medium text-ink-2">{s.trackingNo}</td>
+                      <td className="px-3 py-2 text-ink-2">{s.transporter}</td>
+                      <td className="px-3 py-2 text-ink-2">{s.vehicleNo}</td>
+                      <td className="px-3 py-2 text-ink-2">{s.dispatchDate}</td>
+                      <td className="px-3 py-2 text-ink-2">{s.etaDate}</td>
                     </tr>
                   ))
                 )}

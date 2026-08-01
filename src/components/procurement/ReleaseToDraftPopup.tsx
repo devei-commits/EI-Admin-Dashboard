@@ -5,6 +5,7 @@
  * hands the chosen po_date / expected_date back to the parent to create the PO.
  */
 import React, { useMemo, useState } from 'react';
+import { Truck, Warning, ClipboardText, Package } from '@phosphor-icons/react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import { PrPopupShell, StatCell, PopupSection } from './PrPopupShell';
 
@@ -90,7 +91,7 @@ export const ReleaseToDraftPopup: React.FC<ReleaseToDraftPopupProps> = ({ req, o
 
   return (
     <PrPopupShell
-      title={<span>🚚 Release to Draft PO — {req.code}</span>}
+      title={<span className="inline-flex items-center gap-2"><Truck className="w-4 h-4" /> Release to Draft PO — {req.code}</span>}
       code={item ? `${item.itemName} · ${item.itemCode}` : undefined}
       subtitle={item ? `Vendor: ${req.preferredVendor || '—'} · ${reqQty} ${unit} @ ₹${price} = ₹${totalValue.toLocaleString('en-IN')}` : undefined}
       primaryLabel="Push to Draft"
@@ -101,13 +102,14 @@ export const ReleaseToDraftPopup: React.FC<ReleaseToDraftPopupProps> = ({ req, o
       {/* Top stat grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <StatCell label="Vendor Lead (Actual)" value={`${leadDays}d`} />
-        <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-          <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide">PO Date</div>
+        <div className="bg-surface-3 border border-border rounded-lg px-3 py-2">
+          <div className="text-[9.5px] font-bold text-ink-4 uppercase tracking-wide">PO Date</div>
           <input
             type="date"
+            aria-label="PO Date"
             value={poDateStr}
             onChange={(e) => setPoDateStr(e.target.value)}
-            className="mt-0.5 w-full bg-amber-50 border border-dashed border-amber-400 rounded px-1.5 py-0.5 font-mono text-[12px] font-bold text-amber-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="mt-0.5 w-full bg-warn-soft border border-dashed border-[color:var(--st-amber-fg)]/40 rounded px-1.5 py-0.5 font-mono text-[12px] font-bold text-warn focus:outline-none focus:ring-1 focus:ring-[color:var(--ring)]"
           />
         </div>
         <StatCell label="Computed Expected" value={fmtDate(expected)} tone="info" />
@@ -116,47 +118,50 @@ export const ReleaseToDraftPopup: React.FC<ReleaseToDraftPopupProps> = ({ req, o
 
       {/* Warning if late */}
       {lateBy > 0 && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-800">
-          <b>⚠ Expected ({fmtDate(expected)}) is AFTER Need-By ({fmtDate(needBy)})</b> — {lateBy} day{lateBy !== 1 ? 's' : ''} late.
-          <ul className="mt-1.5 ml-4 list-disc space-y-0.5 text-red-700/90">
+        <div className="mt-3 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3.5 py-2.5 text-xs text-err flex items-start gap-1.5">
+          <Warning className="w-4 h-4 shrink-0" />
+          <div>
+          <b>Expected ({fmtDate(expected)}) is AFTER Need-By ({fmtDate(needBy)})</b> — {lateBy} day{lateBy !== 1 ? 's' : ''} late.
+          <ul className="mt-1.5 ml-4 list-disc space-y-0.5 text-err">
             <li>Negotiate faster delivery (committed lead drops)</li>
             <li>Switch to a closer vendor</li>
             <li>Push the batch need-by back (handled in Planning)</li>
           </ul>
+          </div>
         </div>
       )}
 
       {/* Live recompute table */}
-      <PopupSection title="📋 Live recompute — change PO Date to see Expected shift">
-        <table className="w-full text-xs border border-slate-200 rounded-lg overflow-hidden">
+      <PopupSection title={<><ClipboardText className="w-4 h-4" /> Live recompute — change PO Date to see Expected shift</>}>
+        <table className="w-full text-xs border border-border rounded-lg overflow-hidden">
           <thead>
-            <tr className="bg-slate-50 text-slate-500">
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">If PO Date =</th>
-              <th className="px-3 py-1.5 text-center text-[10px] font-bold uppercase">→ Expected Date</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">Result</th>
+            <tr className="bg-surface-3 text-ink-3">
+              <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">If PO Date =</th>
+              <th scope="col" className="px-3 py-1.5 text-center text-[10px] font-bold uppercase">→ Expected Date</th>
+              <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-bold uppercase">Result</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-hairline">
             {scenarios.map((s, i) => (
-              <tr key={i} className={i === 0 ? 'bg-blue-50/40' : ''}>
-                <td className="px-3 py-1.5 font-mono text-slate-700">{s.label}</td>
-                <td className="px-3 py-1.5 text-center font-bold text-slate-800">{fmtDate(s.expected)}</td>
+              <tr key={i} className={i === 0 ? 'bg-brand-soft' : ''}>
+                <td className="px-3 py-1.5 font-mono text-ink-2">{s.label}</td>
+                <td className="px-3 py-1.5 text-center font-bold text-ink">{fmtDate(s.expected)}</td>
                 <td className="px-3 py-1.5">
                   {s.late > 0
-                    ? <span className="inline-block px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">{s.late}d late</span>
-                    : <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">on time</span>}
+                    ? <span className="inline-block px-2 py-0.5 rounded-full bg-err-soft text-err text-[10px] font-bold">{s.late}d late</span>
+                    : <span className="inline-block px-2 py-0.5 rounded-full bg-ok-soft text-ok text-[10px] font-bold">on time</span>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="mt-1.5 text-[10px] text-slate-400">Live recompute is informational — only the chosen PO Date (top) is used when pushing to Draft.</p>
+        <p className="mt-1.5 text-[10px] text-ink-4">Live recompute is informational — only the chosen PO Date (top) is used when pushing to Draft.</p>
       </PopupSection>
 
       {/* PO summary */}
-      <PopupSection title="📦 PO summary at push time">
-        <table className="w-full text-xs border border-slate-200 rounded-lg overflow-hidden">
-          <tbody className="divide-y divide-slate-100">
+      <PopupSection title={<><Package className="w-4 h-4" /> PO summary at push time</>}>
+        <table className="w-full text-xs border border-border rounded-lg overflow-hidden">
+          <tbody className="divide-y divide-hairline">
             {[
               ['PO Number', '(auto-generated on push)'],
               ['Vendor', req.preferredVendor || '—'],
@@ -168,13 +173,13 @@ export const ReleaseToDraftPopup: React.FC<ReleaseToDraftPopupProps> = ({ req, o
               ['Expected Date', `${fmtDate(expected)} (PO Date + ${leadDays}d actual lead)`],
             ].map(([k, v]) => (
               <tr key={k}>
-                <th className="px-3 py-1.5 text-left bg-slate-50 text-[10px] font-bold uppercase text-slate-500 w-40">{k}</th>
-                <td className="px-3 py-1.5 font-mono text-slate-700">{v}</td>
+                <th scope="col" className="px-3 py-1.5 text-left bg-surface-3 text-[10px] font-bold uppercase text-ink-3 w-40">{k}</th>
+                <td className="px-3 py-1.5 font-mono text-ink-2">{v}</td>
               </tr>
             ))}
             <tr>
-              <th className="px-3 py-1.5 text-left bg-slate-50 text-[10px] font-bold uppercase text-slate-500">Status on push</th>
-              <td className="px-3 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold">DRAFT</span></td>
+              <th scope="col" className="px-3 py-1.5 text-left bg-surface-3 text-[10px] font-bold uppercase text-ink-3">Status on push</th>
+              <td className="px-3 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full bg-surface-3 text-ink-3 text-[10px] font-bold">DRAFT</span></td>
             </tr>
           </tbody>
         </table>

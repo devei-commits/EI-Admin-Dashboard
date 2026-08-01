@@ -65,32 +65,36 @@ export const Modal: React.FC<ModalProps> = ({
       className="fixed inset-0 bg-black/50 z-200 flex items-center justify-center p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
         className={`
-          bg-white border border-gray-300 rounded-[14px] w-full max-h-[94vh] 
+          bg-surface border border-border rounded-[14px] w-full max-h-[94vh]
           overflow-hidden flex flex-col shadow-2xl
           ${sizeClasses[size]}
         `}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-gray-200 flex items-center justify-between gap-2.5 shrink-0 bg-gray-50">
+        <div className="px-5 py-3.5 border-b border-border flex items-center justify-between gap-2.5 shrink-0 bg-surface-3">
           <div>
-            <h2 className="text-[15px] font-extrabold tracking-tight text-gray-900">
+            <h2 id="modal-title" className="text-[15px] font-extrabold tracking-tight text-ink">
               {title}
             </h2>
             {subtitle && (
-              <p className="text-[10.5px] text-gray-600 mt-0.5">
+              <p className="text-[10.5px] text-ink-3 mt-0.5">
                 {subtitle}
               </p>
             )}
           </div>
-          <button 
+          <button
             onClick={onClose}
+            aria-label="Close"
             className="
-              px-3 py-1.5 rounded-lg border border-gray-300 bg-white 
-              text-gray-700 text-[11.5px] font-semibold transition-all duration-150
-              hover:bg-gray-50 flex items-center gap-1.5
+              px-3 py-1.5 rounded-lg border border-border bg-surface
+              text-ink-2 text-[11.5px] font-semibold transition-all duration-150
+              hover:bg-surface-3 flex items-center gap-1.5
             "
           >
             <X size={14} />
@@ -104,7 +108,7 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Footer */}
         {footer && (
-          <div className="px-5 py-3 border-t border-gray-200 flex gap-2 justify-end shrink-0 flex-wrap bg-gray-50">
+          <div className="px-5 py-3 border-t border-border flex gap-2 justify-end shrink-0 flex-wrap bg-surface-3">
             {footer}
           </div>
         )}

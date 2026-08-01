@@ -893,13 +893,13 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Entity Type</label>
-         <select name="setupType" value={formData.setupType} onChange={handleInputChange} className={inputClass}>
+         <select name="setupType" aria-label="Entity Type" value={formData.setupType} onChange={handleInputChange} className={inputClass}>
           <option value="VENDOR">Vendor</option>
          </select>
         </div>
         <div>
          <label className={labelClass}>Category {req}</label>
-         <select name="setupCategory" value={formData.setupCategory} onChange={handleInputChange} className={fieldClass('setupCategory')}>
+         <select name="setupCategory" aria-label="Category" value={formData.setupCategory} onChange={handleInputChange} className={fieldClass('setupCategory')}>
           <option value="">Select</option>
           <option>RM Vendor</option>
           <option>PM Vendor</option>
@@ -921,24 +921,24 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Legal Name {req}</label>
-         <input type="text" name="legalName" id="legalName" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN" className={fieldClass('legalName')} />
+         <input type="text" name="legalName" id="legalName" aria-label="Legal Name" value={formData.legalName} onChange={handleInputChange} placeholder="As per GST / PAN" className={fieldClass('legalName')} />
          {errMsg('legalName')}
         </div>
         <div>
          <label className={labelClass}>Display / Trade Name {req}</label>
-         <input type="text" name="tradeName" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={fieldClass('tradeName')} />
+         <input type="text" name="tradeName" aria-label="Display / Trade Name" value={formData.tradeName} onChange={handleInputChange} placeholder="Short name for UI/Zoho" className={fieldClass('tradeName')} />
          {errMsg('tradeName')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Primary Email {req}</label>
-         <input type="email" name="primaryEmail" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={fieldClass('primaryEmail')} />
+         <input type="email" name="primaryEmail" aria-label="Primary Email" value={formData.primaryEmail} onChange={handleInputChange} placeholder="accounts@..." className={fieldClass('primaryEmail')} />
          {errMsg('primaryEmail')}
         </div>
         <div>
          <label className={labelClass}>Primary Phone {req}</label>
-         <input type="tel" name="primaryPhone" value={formData.primaryPhone} onChange={handleInputChange} placeholder="+91..." className={fieldClass('primaryPhone')} />
+         <input type="tel" name="primaryPhone" aria-label="Primary Phone" value={formData.primaryPhone} onChange={handleInputChange} placeholder="+91..." className={fieldClass('primaryPhone')} />
          {errMsg('primaryPhone')}
         </div>
        </div>
@@ -959,7 +959,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        ) : null}
        <div>
         <label className={labelClass}>Linked User Management ID</label>
-        <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
+        <input type="text" inputMode="numeric" name="linkedUserId" aria-label="Linked User Management ID" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
         <p className="text-xs text-slate-500 mt-1">Optional link to a user account. Clear to unlink.</p>
        </div>
       </div>
@@ -972,41 +972,41 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Billing Address {req}</label>
-         <textarea name="billingAddress" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={fieldClass('billingAddress')} rows={3} />
+         <textarea name="billingAddress" aria-label="Billing Address" value={formData.billingAddress} onChange={handleInputChange} placeholder="Street, city, state, pin" className={fieldClass('billingAddress')} rows={3} />
          {errMsg('billingAddress')}
         </div>
         <div>
          <label className={labelClass}>Shipping Address {req}</label>
-         <textarea name="shippingAddress" value={formData.shippingAddress} onChange={handleInputChange} placeholder="Leave blank to use billing address" className={fieldClass('shippingAddress')} rows={3} />
+         <textarea name="shippingAddress" aria-label="Shipping Address" value={formData.shippingAddress} onChange={handleInputChange} placeholder="Leave blank to use billing address" className={fieldClass('shippingAddress')} rows={3} />
          {errMsg('shippingAddress')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>State {req}</label>
-         <input type="text" name="state" value={formData.state} onChange={handleInputChange} className={fieldClass('state')} />
+         <input type="text" name="state" aria-label="State" value={formData.state} onChange={handleInputChange} className={fieldClass('state')} />
          {errMsg('state')}
         </div>
         <div>
          <label className={labelClass}>Country {req}</label>
-         <input type="text" name="country" value={formData.country} onChange={handleInputChange} className={fieldClass('country')} />
+         <input type="text" name="country" aria-label="Country" value={formData.country} onChange={handleInputChange} className={fieldClass('country')} />
          {errMsg('country')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Website</label>
-         <input type="url" name="website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={fieldClass('website')} />
+         <input type="url" name="website" aria-label="Website" value={formData.website} onChange={handleInputChange} placeholder="https://..." className={fieldClass('website')} />
          {errMsg('website')}
         </div>
         <div>
          <label className={labelClass}>Industry / Segment</label>
-         <input type="text" name="segment" value={formData.segment} onChange={handleInputChange} placeholder="Cosmetics, Pharma, Packaging, etc." className={inputClass} />
+         <input type="text" name="segment" aria-label="Industry / Segment" value={formData.segment} onChange={handleInputChange} placeholder="Cosmetics, Pharma, Packaging, etc." className={inputClass} />
         </div>
        </div>
        <div>
         <label className={labelClass}>Notes</label>
-        <textarea name="notes" value={formData.notes} onChange={handleInputChange} className={inputClass} rows={3} />
+        <textarea name="notes" aria-label="Notes" value={formData.notes} onChange={handleInputChange} className={inputClass} rows={3} />
        </div>
       </div>
      )}
@@ -1018,23 +1018,23 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>GSTIN</label>
-         <input type="text" name="gstin" value={formData.gstin} onChange={handleInputChange} className={fieldClass('gstin')} placeholder="15-character GSTIN if applicable" />
+         <input type="text" name="gstin" aria-label="GSTIN" value={formData.gstin} onChange={handleInputChange} className={fieldClass('gstin')} placeholder="15-character GSTIN if applicable" />
          {errMsg('gstin')}
         </div>
         <div>
          <label className={labelClass}>PAN</label>
-         <input type="text" name="pan" value={formData.pan} onChange={handleInputChange} className={fieldClass('pan')} placeholder="ABCDE1234F if applicable" />
+         <input type="text" name="pan" aria-label="PAN" value={formData.pan} onChange={handleInputChange} className={fieldClass('pan')} placeholder="ABCDE1234F if applicable" />
          {errMsg('pan')}
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>MSME (if any)</label>
-         <input type="text" name="msme" value={formData.msme} onChange={handleInputChange} className={inputClass} />
+         <input type="text" name="msme" aria-label="MSME" value={formData.msme} onChange={handleInputChange} className={inputClass} />
         </div>
         <div>
          <label className={labelClass}>IEC (if import/export)</label>
-         <input type="text" name="iec" value={formData.iec} onChange={handleInputChange} className={inputClass} />
+         <input type="text" name="iec" aria-label="IEC" value={formData.iec} onChange={handleInputChange} className={inputClass} />
         </div>
        </div>
 
@@ -1042,7 +1042,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
          <label className={labelClass}>Doc Type</label>
-         <select value={tempDoc.type} onChange={(e) => setTempDoc({...tempDoc, type: e.target.value})} className={inputClass}>
+         <select aria-label="Doc Type" value={tempDoc.type} onChange={(e) => setTempDoc({...tempDoc, type: e.target.value})} className={inputClass}>
           <option value="">Select</option>
           <option>GST Certificate</option>
           <option>PAN Card</option>
@@ -1056,7 +1056,7 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
         </div>
         <div>
          <label className={labelClass}>Doc Link</label>
-         <input type="text" value={tempDoc.link} onChange={(e) => setTempDoc({...tempDoc, link: e.target.value})} placeholder="Drive/Share link" className={inputClass} />
+         <input type="text" aria-label="Doc Link" value={tempDoc.link} onChange={(e) => setTempDoc({...tempDoc, link: e.target.value})} placeholder="Drive/Share link" className={inputClass} />
         </div>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1076,10 +1076,10 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
           <thead className="bg-gray-50">
            <tr>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
            </tr>
           </thead>
           <tbody>
@@ -1171,14 +1171,14 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
           <thead className="bg-gray-50">
            <tr>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Email</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Level</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Preferred</th>
-            <th className="px-3 py-3"></th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Email</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Level</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Preferred</th>
+            <th scope="col" className="px-3 py-3"></th>
            </tr>
           </thead>
           <tbody>
@@ -1274,14 +1274,14 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
           <thead className="bg-gray-50">
            <tr>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">A/c</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">IFSC</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-            <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Default</th>
-            <th className="px-3 py-3"></th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">A/c</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">IFSC</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Type</th>
+            <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Default</th>
+            <th scope="col" className="px-3 py-3"></th>
            </tr>
           </thead>
           <tbody>
@@ -1583,16 +1583,16 @@ const VendorForm: React.FC<VendorFormProps> = ({ editingId = null, onSaved }) =>
          <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
           <thead className="bg-gray-50">
            <tr>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Item Code</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Name</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">UoM</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">MOQ</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Price</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">LT</th>
-            <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Valid</th>
-            <th className="px-2 py-3"></th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Item Code</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Name</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">UoM</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">MOQ</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Price</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">LT</th>
+            <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Valid</th>
+            <th scope="col" className="px-2 py-3"></th>
            </tr>
           </thead>
           <tbody>

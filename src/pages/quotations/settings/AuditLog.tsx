@@ -35,7 +35,7 @@ export default function AuditLog() {
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-gray-500 flex-1">Every change to grades, overheads, and timeline configuration is logged here.</p>
-        <select className={`${selectClassName} w-auto`} value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <select aria-label="Filter by config type" className={`${selectClassName} w-auto`} value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option value="">All config</option>
           {Object.entries(ENTITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -44,7 +44,7 @@ export default function AuditLog() {
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
-              <th className="py-2.5 px-3">When</th><th className="py-2.5 px-3">Action</th><th className="py-2.5 px-3">Type</th><th className="py-2.5 px-3">Summary</th><th className="py-2.5 px-3">By</th>
+              <th scope="col" className="py-2.5 px-3">When</th><th scope="col" className="py-2.5 px-3">Action</th><th scope="col" className="py-2.5 px-3">Type</th><th scope="col" className="py-2.5 px-3">Summary</th><th scope="col" className="py-2.5 px-3">By</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {entries.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-gray-400">No audit entries.</td></tr>}

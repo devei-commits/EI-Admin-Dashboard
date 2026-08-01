@@ -13,13 +13,13 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   showLabel = true 
 }) => {
   const colorMap: Record<string, { bar: string; text: string }> = {
-    emerald: { bar: 'bg-emerald-600', text: 'text-emerald-600' },
-    amber: { bar: 'bg-amber-600', text: 'text-amber-600' },
-    orange: { bar: 'bg-orange-600', text: 'text-orange-600' },
-    red: { bar: 'bg-red-600', text: 'text-red-600' },
-    teal: { bar: 'bg-teal-600', text: 'text-teal-600' },
-    purple: { bar: 'bg-purple-600', text: 'text-purple-600' },
-    gray: { bar: 'bg-gray-600', text: 'text-gray-600' }
+    emerald: { bar: 'bg-ok', text: 'text-ok' },
+    amber: { bar: 'bg-warn', text: 'text-warn' },
+    orange: { bar: 'bg-brand', text: 'text-brand' },
+    red: { bar: 'bg-err', text: 'text-err' },
+    teal: { bar: 'bg-brand', text: 'text-brand' },
+    purple: { bar: 'bg-brand', text: 'text-brand' },
+    gray: { bar: 'bg-surface-3', text: 'text-ink-3' }
   };
 
   const colors = colorMap[color] || colorMap.emerald;
@@ -37,12 +37,12 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   return (
     <div className="text-right">
       {label && (
-        <div className="text-[9px] text-gray-600 uppercase tracking-wider mb-1">
+        <div className="text-[9px] text-ink-3 uppercase tracking-wider mb-1">
           {label}
         </div>
       )}
       <div className="flex items-center gap-1.5">
-        <div className="w-18 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+        <div className="w-18 h-1.5 rounded-full bg-surface-3 overflow-hidden">
           <div 
             className={`h-full rounded-full transition-all duration-400 ${appliedColors.bar}`}
             style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}

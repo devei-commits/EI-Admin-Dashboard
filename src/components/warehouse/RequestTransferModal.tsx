@@ -282,17 +282,17 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
       <div
-        className="relative my-4 w-full max-w-5xl rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative my-4 w-full max-w-5xl rounded-xl border border-border bg-surface shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="request-transfer-title"
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4 rounded-t-xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-surface px-6 py-4 rounded-t-xl">
           <div>
-            <h2 id="request-transfer-title" className="text-lg font-bold text-slate-900">
+            <h2 id="request-transfer-title" className="text-lg font-bold text-ink">
               Request Transfer
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-ink-2">
               Raise a request to move material between locations — no production batch required.
             </p>
           </div>
@@ -301,14 +301,14 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
               type="button"
               disabled={submitting || loading}
               onClick={() => void handleSubmit()}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? 'Submitting…' : 'Submit Request'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              className="rounded-lg p-2 text-ink-3 hover:bg-surface-3 hover:text-ink"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -318,18 +318,18 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
 
         <div className="space-y-6 px-6 py-5">
           {loading ? (
-            <p className="text-sm text-slate-500">Loading locations and inventory…</p>
+            <p className="text-sm text-ink-3">Loading locations and inventory…</p>
           ) : (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3">
                     Source Type
                   </span>
                   <select
                     value={sourceType}
                     onChange={(e) => setSourceType(e.target.value as TransferSourceType)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     {SOURCE_TYPES.map((type) => (
                       <option key={type} value={type}>
@@ -339,13 +339,13 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                   </select>
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3">
                     From Location
                   </span>
                   <select
                     value={fromZone}
                     onChange={(e) => setFromZone(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     {locationOptions.map((loc) => (
                       <option key={`from-${loc.code}`} value={loc.code}>
@@ -355,13 +355,13 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                   </select>
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3">
                     To Location
                   </span>
                   <select
                     value={toZone}
                     onChange={(e) => setToZone(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     {locationOptions.map((loc) => (
                       <option key={`to-${loc.code}`} value={loc.code}>
@@ -371,41 +371,41 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                   </select>
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3">
                     Supply Required By
                   </span>
                   <input
                     type="date"
                     value={requiredByDate}
                     onChange={(e) => setRequiredByDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   />
                 </label>
               </div>
 
-              <p className="text-xs text-slate-500">
-                Route: <span className="font-medium text-slate-700">{zoneLabel(fromZone)}</span>
+              <p className="text-xs text-ink-3">
+                Route: <span className="font-medium text-ink-2">{zoneLabel(fromZone)}</span>
                 {' → '}
-                <span className="font-medium text-slate-700">{zoneLabel(toZone)}</span>
+                <span className="font-medium text-ink-2">{zoneLabel(toZone)}</span>
               </p>
 
-              <section className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <h3 className="text-sm font-semibold text-slate-800">📦 Items requested</h3>
+              <section className="rounded-xl border border-border overflow-hidden">
+                <div className="border-b border-border bg-surface-2 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-ink">📦 Items requested</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-white text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <thead className="bg-surface text-left text-xs font-semibold uppercase tracking-wide text-ink-3">
                       <tr>
-                        <th className="px-4 py-3">Item</th>
-                        <th className="px-4 py-3 text-right">SIH @ Source</th>
-                        <th className="px-4 py-3 text-right">SIH @ Dest</th>
-                        <th className="px-4 py-3 text-right">Requested Qty</th>
-                        <th className="px-4 py-3">Notes</th>
-                        <th className="px-4 py-3 text-right"><span className="sr-only">Remove</span></th>
+                        <th scope="col" className="px-4 py-3">Item</th>
+                        <th scope="col" className="px-4 py-3 text-right">SIH @ Source</th>
+                        <th scope="col" className="px-4 py-3 text-right">SIH @ Dest</th>
+                        <th scope="col" className="px-4 py-3 text-right">Requested Qty</th>
+                        <th scope="col" className="px-4 py-3">Notes</th>
+                        <th scope="col" className="px-4 py-3 text-right"><span className="sr-only">Remove</span></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-hairline">
                       {linesWithStock.map((line) => (
                         <tr key={line.id}>
                           <td className="px-4 py-3 min-w-[16rem]">
@@ -420,10 +420,10 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                               placeholder="Search by name or code…"
                             />
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
+                          <td className="px-4 py-3 text-right tabular-nums text-ink-2 whitespace-nowrap">
                             {line.itemCode ? formatTransferQty(line.sihSource, line.unit) : '—'}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
+                          <td className="px-4 py-3 text-right tabular-nums text-ink-2 whitespace-nowrap">
                             {line.itemCode ? formatTransferQty(line.sihDest, line.unit) : '—'}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -438,7 +438,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                                     requestedQty: Math.max(0, Number(e.target.value) || 0),
                                   })
                                 }
-                                className="w-24 rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                                className="w-24 rounded border border-border px-2 py-1 text-right tabular-nums"
                               />
                             ) : (
                               '—'
@@ -451,7 +451,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                                 value={line.notes}
                                 onChange={(e) => updateLine(line.id, { notes: e.target.value })}
                                 placeholder="e.g. batch reference, shortage note"
-                                className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                                className="w-full rounded border border-border px-2 py-1 text-sm"
                               />
                             ) : (
                               '—'
@@ -463,7 +463,7 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                               onClick={() => removeLine(line.id)}
                               title="Remove item"
                               aria-label="Remove item"
-                              className="inline-flex items-center justify-center rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                              className="inline-flex items-center justify-center rounded p-1.5 text-ink-4 hover:bg-err-soft hover:text-err"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -473,11 +473,11 @@ const RequestTransferModal: React.FC<RequestTransferModalProps> = ({ onClose, on
                     </tbody>
                   </table>
                 </div>
-                <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="border-t border-border bg-surface-2 px-4 py-3">
                   <button
                     type="button"
                     onClick={addEmptyLine}
-                    className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+                    className="text-sm font-semibold text-ink-2 hover:text-ink"
                   >
                     + add item
                   </button>

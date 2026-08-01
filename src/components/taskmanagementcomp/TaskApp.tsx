@@ -64,7 +64,7 @@ function TaskAppContent() {
      {/* Right side - User menu */}
      <div className="flex items-center gap-3">
       {/* Notifications */}
-      <button className="relative p-2 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg transition-colors">
+      <button aria-label="Notifications" className="relative p-2 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg transition-colors">
        <Bell className="w-5 h-5" />
        <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
       </button>
@@ -129,6 +129,7 @@ function TaskAppContent() {
    {showScrollTop && (
     <button
      onClick={scrollToTop}
+     aria-label="Scroll to top"
      className="fixed bottom-6 right-6 p-3 bg-slate-800 text-white rounded-full shadow-lg hover:bg-slate-900 transition-all z-50"
     >
      <ArrowUp className="w-5 h-5" />

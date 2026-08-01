@@ -212,17 +212,17 @@ const ThirdPartyTestTracking: React.FC = () => {
               <table className="w-full text-xs min-w-[1100px]">
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                    <th className="px-3 py-2">PO Date</th>
-                    <th className="px-3 py-2">PO #</th>
-                    <th className="px-3 py-2">Lab Vendor</th>
-                    <th className="px-3 py-2 min-w-[10rem]">Item + Test</th>
-                    <th className="px-3 py-2">Linked QC</th>
-                    <th className="px-3 py-2 text-center">Sample Photo</th>
-                    <th className="px-3 py-2 text-center">Report</th>
-                    <th className="px-3 py-2">Result</th>
-                    <th className="px-3 py-2">PO Status</th>
-                    <th className="px-3 py-2">SLA</th>
-                    <th className="px-3 py-2">Action</th>
+                    <th scope="col" className="px-3 py-2">PO Date</th>
+                    <th scope="col" className="px-3 py-2">PO #</th>
+                    <th scope="col" className="px-3 py-2">Lab Vendor</th>
+                    <th scope="col" className="px-3 py-2 min-w-[10rem]">Item + Test</th>
+                    <th scope="col" className="px-3 py-2">Linked QC</th>
+                    <th scope="col" className="px-3 py-2 text-center">Sample Photo</th>
+                    <th scope="col" className="px-3 py-2 text-center">Report</th>
+                    <th scope="col" className="px-3 py-2">Result</th>
+                    <th scope="col" className="px-3 py-2">PO Status</th>
+                    <th scope="col" className="px-3 py-2">SLA</th>
+                    <th scope="col" className="px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -112,15 +112,15 @@ const TreasuryApp = () => {
       <table className="w-full text-sm min-w-[48rem]">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">PO</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Vendor</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Status</th>
-            <th className="px-3 py-2 text-right font-semibold text-gray-700">PO value</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Txn no.</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Mode</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Payment date</th>
-            <th className="px-3 py-2 text-left font-semibold text-gray-700">Released</th>
-            <th className="px-3 py-2 text-center font-semibold text-gray-700 w-16">View</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">PO</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Vendor</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Status</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">PO value</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Txn no.</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Mode</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Payment date</th>
+            <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Released</th>
+            <th scope="col" className="px-3 py-2 text-center font-semibold text-gray-700 w-16">View</th>
           </tr>
         </thead>
         <tbody>
@@ -601,11 +601,11 @@ const TreasuryApp = () => {
               <table className="w-full table-fixed min-w-175 text-sm">
                 <thead>
                   <tr className="border-b border-gray-300 bg-gray-50">
-                    <th className="w-[20%] px-4 py-3 text-left font-bold text-gray-900">Account</th>
-                    <th className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Type</th>
-                    <th className="w-[20%] px-4 py-3 text-right font-bold text-gray-900">Balance</th>
-                    <th className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Bank</th>
-                    <th className="w-[30%] px-4 py-3 text-left font-bold text-gray-900">Notes</th>
+                    <th scope="col" className="w-[20%] px-4 py-3 text-left font-bold text-gray-900">Account</th>
+                    <th scope="col" className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Type</th>
+                    <th scope="col" className="w-[20%] px-4 py-3 text-right font-bold text-gray-900">Balance</th>
+                    <th scope="col" className="w-[15%] px-4 py-3 text-left font-bold text-gray-900">Bank</th>
+                    <th scope="col" className="w-[30%] px-4 py-3 text-left font-bold text-gray-900">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -792,10 +792,10 @@ const TreasuryApp = () => {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Vendor</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Amount</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Due Date</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Vendor</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Amount</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Due Date</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -925,11 +925,11 @@ const TreasuryApp = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Category</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Budget</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Committed</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Actual</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Balance</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Category</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Budget</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Committed</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Actual</th>
+                      <th scope="col" className="px-4 py-3 text-left font-semibold text-gray-700">Balance</th>
                     </tr>
                   </thead>
                   <tbody>

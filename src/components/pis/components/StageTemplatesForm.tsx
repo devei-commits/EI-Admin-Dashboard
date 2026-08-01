@@ -608,10 +608,10 @@ export function StageTemplatesForm({
        <table className="w-full text-sm">
         <thead>
          <tr className="text-left text-xs text-muted-foreground">
-          <th className="p-2">Active</th>
-          <th className="p-2">% / Range</th>
-          <th className="p-2">Confirm?</th>
-          <th className="p-2">Update Needed</th>
+          <th scope="col" className="p-2">Active</th>
+          <th scope="col" className="p-2">% / Range</th>
+          <th scope="col" className="p-2">Confirm?</th>
+          <th scope="col" className="p-2">Update Needed</th>
          </tr>
         </thead>
         <tbody>
@@ -1012,12 +1012,12 @@ export function StageTemplatesForm({
        <table className="w-full text-sm">
         <thead>
          <tr className="text-left text-xs text-muted-foreground">
-          <th className="p-2">Option</th>
-          <th className="p-2">Pack</th>
-          <th className="p-2">MOQ</th>
-          <th className="p-2">Lead time</th>
-          <th className="p-2">Cost</th>
-          <th className="p-2">Status</th>
+          <th scope="col" className="p-2">Option</th>
+          <th scope="col" className="p-2">Pack</th>
+          <th scope="col" className="p-2">MOQ</th>
+          <th scope="col" className="p-2">Lead time</th>
+          <th scope="col" className="p-2">Cost</th>
+          <th scope="col" className="p-2">Status</th>
          </tr>
         </thead>
         <tbody>

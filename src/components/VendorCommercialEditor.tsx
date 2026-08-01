@@ -294,6 +294,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               value={tempFields.location || ''}
               onChange={(e) => onTempFieldChange('location', e.target.value)}
               className="w-full p-2 border border-gray-300 rounded text-sm"
+              aria-label="Location"
             />
           </div>
           <div>
@@ -302,6 +303,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               value={tempFields.currency || 'INR'}
               onChange={(e) => onTempFieldChange('currency', e.target.value)}
               className="w-full p-2 border border-gray-300 rounded text-sm"
+              aria-label="Currency"
             >
               <option value="INR">INR</option>
               <option value="USD">USD</option>
@@ -317,6 +319,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
               onChange={(e) => onTempFieldChange('leadTime', e.target.value)}
               className="w-full p-2 border border-gray-300 rounded text-sm"
               placeholder="0"
+              aria-label="Lead time (days)"
             />
           </div>
         </div>
@@ -335,6 +338,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 onChange={(e) => onTempFieldChange('advancePct', e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
                 placeholder="0"
+                aria-label="Advance %"
               />
             </div>
             <div>
@@ -347,6 +351,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 onChange={(e) => onTempFieldChange('preShipmentPct', e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
                 placeholder="0"
+                aria-label="Pre-shipment %"
               />
             </div>
             <div>
@@ -359,6 +364,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 onChange={(e) => onTempFieldChange('postShipmentPct', e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
                 placeholder="0"
+                aria-label="Post-shipment %"
               />
             </div>
             <div>
@@ -370,6 +376,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 onChange={(e) => onTempFieldChange('creditDays', e.target.value)}
                 className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
                 placeholder="0"
+                aria-label="Credit days"
               />
             </div>
           </div>
@@ -385,10 +392,10 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-white border-b border-gray-200">
-                <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">{uomHint}</th>
-                <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Price</th>
-                <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Valid till</th>
-                <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Note</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">{uomHint}</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Price</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Valid till</th>
+                <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-500">Note</th>
               </tr>
             </thead>
             <tbody>
@@ -402,6 +409,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                       onChange={(e) => onTempTierChange(idx, 'moq', e.target.value)}
                       className="w-full px-2 py-1 border rounded text-xs font-mono"
                       placeholder="MOQ"
+                      aria-label="MOQ"
                     />
                   </td>
                   <td className="p-1">
@@ -412,6 +420,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                       onChange={(e) => onTempTierChange(idx, 'price', e.target.value)}
                       className="w-full px-2 py-1 border rounded text-xs font-mono"
                       placeholder="Price"
+                      aria-label="Price"
                     />
                   </td>
                   <td className="p-1">
@@ -420,6 +429,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                       value={t.validTill}
                       onChange={(e) => onTempTierChange(idx, 'validTill', e.target.value)}
                       className="w-full px-2 py-1 border rounded text-xs"
+                      aria-label="Valid till"
                     />
                   </td>
                   <td className="p-1">
@@ -429,6 +439,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                       onChange={(e) => onTempTierChange(idx, 'note', e.target.value)}
                       className="w-full px-2 py-1 border rounded text-xs"
                       placeholder="Note"
+                      aria-label="Note"
                     />
                   </td>
                 </tr>
@@ -446,6 +457,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 value={tempFields.moq || ''}
                 onChange={(e) => onTempFieldChange('moq', e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded text-sm"
+                aria-label="MOQ (fallback)"
               />
             </div>
             <div>
@@ -456,6 +468,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 value={tempFields[priceKey] || ''}
                 onChange={(e) => onTempFieldChange(priceKey, e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded text-sm"
+                aria-label="Unit price"
               />
             </div>
             {variant === 'rm' ? (
@@ -467,6 +480,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.approved || ''}
                     onChange={(e) => onTempFieldChange('approved', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Approved"
                   />
                 </div>
                 <div>
@@ -476,6 +490,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.priceValidTill || ''}
                     onChange={(e) => onTempFieldChange('priceValidTill', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Price valid till"
                   />
                 </div>
               </>
@@ -488,6 +503,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.approved || ''}
                     onChange={(e) => onTempFieldChange('approved', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Approved"
                   />
                 </div>
                 <div>
@@ -497,6 +513,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.priceType || ''}
                     onChange={(e) => onTempFieldChange('priceType', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Price type"
                   />
                 </div>
                 <div>
@@ -506,6 +523,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.validTill || ''}
                     onChange={(e) => onTempFieldChange('validTill', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Valid till"
                   />
                 </div>
                 <div>
@@ -516,6 +534,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                     value={tempFields.sampleCost || ''}
                     onChange={(e) => onTempFieldChange('sampleCost', e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded text-sm"
+                    aria-label="Sample cost"
                   />
                 </div>
               </>
@@ -569,11 +588,11 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-white">
-                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">{uomHint}</th>
-                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price</th>
-                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid till</th>
-                      <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
-                      <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase w-16"> </th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">{uomHint}</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Price</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid till</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
+                      <th scope="col" className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase w-16"> </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -595,6 +614,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                             }
                             className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
                             placeholder="MOQ"
+                            aria-label="MOQ"
                           />
                         </td>
                         <td className="p-1">
@@ -613,6 +633,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                             }
                             className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono"
                             placeholder="Price"
+                            aria-label="Price"
                           />
                         </td>
                         <td className="p-1">
@@ -629,6 +650,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                               )
                             }
                             className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                            aria-label="Valid till"
                           />
                         </td>
                         <td className="p-1">
@@ -646,6 +668,7 @@ const VendorCommercialEditor: React.FC<VendorCommercialEditorProps> = ({
                             }
                             className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
                             placeholder="Note"
+                            aria-label="Note"
                           />
                         </td>
                         <td className="p-1 text-right">

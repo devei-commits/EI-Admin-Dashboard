@@ -13,7 +13,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   className = '',
 }) => {
   const map = colorMap ?? ALL_STATUS_COLORS;
-  const colorClass = map[status] ?? 'bg-gray-100 text-gray-600';
+  const colorClass = map[status] ?? 'bg-[color:var(--st-neutral-bg)] text-[color:var(--st-neutral-fg)]';
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${colorClass} ${className}`}>
       {status}

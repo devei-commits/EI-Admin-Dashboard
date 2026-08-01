@@ -202,7 +202,7 @@ export default function QuoteGuide() {
                 <div key={t.name} className="border border-gray-200 rounded-lg overflow-hidden">
                   <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-slate-800">{t.name}</div>
                   <table className="w-full text-xs">
-                    <thead><tr className="text-gray-400">{t.cols.map((c, i) => <th key={c} className={`py-1.5 px-2 ${i > 0 ? 'text-right' : 'text-left'}`}>{c}</th>)}</tr></thead>
+                    <thead><tr className="text-gray-400">{t.cols.map((c, i) => <th scope="col" key={c} className={`py-1.5 px-2 ${i > 0 ? 'text-right' : 'text-left'}`}>{c}</th>)}</tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {t.rows.map((r) => <tr key={r[0] as string}>{r.map((c, i) => <td key={i} className={`py-1 px-2 ${i > 0 ? 'text-right text-gray-600' : 'text-gray-700'}`}>{c}</td>)}</tr>)}
                     </tbody>
@@ -217,7 +217,7 @@ export default function QuoteGuide() {
             <div className="border border-gray-200 rounded-lg overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="text-gray-400 border-b border-gray-100 bg-gray-50">
-                  <th className="py-2 px-3 text-left">Head</th>{['500', '1K', '2.5K', '5K', '10K', '15K', '25K'].map((b) => <th key={b} className="py-2 px-2 text-right">{b}</th>)}
+                  <th scope="col" className="py-2 px-3 text-left">Head</th>{['500', '1K', '2.5K', '5K', '10K', '15K', '25K'].map((b) => <th scope="col" key={b} className="py-2 px-2 text-right">{b}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {overheads.map((r) => <tr key={r.id}><td className="py-1 px-3 text-gray-700">{r.head_name}</td>{r.band_values.map((v, i) => <td key={i} className="py-1 px-2 text-right text-gray-500">{Number(v).toFixed(2)}</td>)}</tr>)}
@@ -235,7 +235,7 @@ export default function QuoteGuide() {
               <div className="border border-gray-200 rounded-lg overflow-x-auto">
                 <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-slate-800">Manufacturing — days by band</div>
                 <table className="w-full text-xs">
-                  <thead><tr className="text-gray-400"><th className="py-1.5 px-2 text-left">Type</th>{[0, 1, 2, 3, 4, 5, 6].map((b) => <th key={b} className="py-1.5 px-2 text-right">B{b}</th>)}</tr></thead>
+                  <thead><tr className="text-gray-400"><th scope="col" className="py-1.5 px-2 text-left">Type</th>{[0, 1, 2, 3, 4, 5, 6].map((b) => <th scope="col" key={b} className="py-1.5 px-2 text-right">B{b}</th>)}</tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {mfgTypes.map((t) => <tr key={t}><td className="py-1 px-2 text-gray-700">{t}</td>{mfgGrid(t).map((d, i) => <td key={i} className="py-1 px-2 text-right text-gray-500">{d}</td>)}</tr>)}
                   </tbody>
@@ -278,7 +278,7 @@ function MiniTable({ title, cols, rows }: { title: string; cols: string[]; rows:
     <div className="border border-gray-200 rounded-lg overflow-x-auto">
       <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-slate-800">{title}</div>
       <table className="w-full text-xs">
-        <thead><tr className="text-gray-400">{cols.map((c, i) => <th key={c} className={`py-1.5 px-2 ${i > 0 ? 'text-right' : 'text-left'}`}>{c}</th>)}</tr></thead>
+        <thead><tr className="text-gray-400">{cols.map((c, i) => <th scope="col" key={c} className={`py-1.5 px-2 ${i > 0 ? 'text-right' : 'text-left'}`}>{c}</th>)}</tr></thead>
         <tbody className="divide-y divide-gray-50">
           {rows.map((r, ri) => <tr key={ri}>{r.map((c, i) => <td key={i} className={`py-1 px-2 ${i > 0 ? 'text-right text-gray-500' : 'text-gray-700'}`}>{c}</td>)}</tr>)}
         </tbody>

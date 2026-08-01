@@ -383,23 +383,24 @@ const ScanSimulator = ({ grnNo }: { grnNo: string }) => {
       <textarea
         value={pasteInput}
         onChange={(e) => setPasteInput(e.target.value)}
+        aria-label="Paste QR payload"
         placeholder='Paste QR payload e.g. {"grn_no":"GRN-001","box_index":1,...}'
         rows={2}
-        className="w-full text-xs font-mono border border-slate-300 rounded-lg px-3 py-2 bg-white"
+        className="w-full text-xs font-mono border border-border rounded-lg px-3 py-2 bg-surface"
       />
-      {parseError && <p className="text-xs text-red-600">{parseError}</p>}
+      {parseError && <p className="text-xs text-err">{parseError}</p>}
       {decoded && !parseError && (
-        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
-          <p className="text-xs font-semibold text-slate-700 uppercase">Decoded (all text)</p>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-800">
+        <div className="bg-surface rounded-lg border border-border p-4 space-y-2">
+          <p className="text-xs font-semibold text-ink-2 uppercase">Decoded (all text)</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink">
             {Object.entries(decoded).map(([k, v]) => (
               <span key={k} className="col-span-2 sm:col-span-1"><dt className="inline font-medium">{k}:</dt> <dd className="inline">{String(v ?? '—')}</dd></span>
             ))}
           </dl>
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-emerald-700">Action</p>
-            <p className="text-sm text-slate-900">View GRN {(decoded as { grn_no?: string }).grn_no || grnNo} in Warehouse → Inbound (open this GRN popup).</p>
-            <p className="text-[10px] text-slate-500 mt-1">When material moves to MU, a new QR set can be generated for MTR/location; scan then shows move-related action.</p>
+          <div className="pt-2 border-t border-border">
+            <p className="text-xs font-semibold text-ok">Action</p>
+            <p className="text-sm text-ink">View GRN {(decoded as { grn_no?: string }).grn_no || grnNo} in Warehouse → Inbound (open this GRN popup).</p>
+            <p className="text-[10px] text-ink-3 mt-1">When material moves to MU, a new QR set can be generated for MTR/location; scan then shows move-related action.</p>
           </div>
         </div>
       )}
@@ -1120,33 +1121,33 @@ const GRNDetailModal = ({
   };
 
   const getWorkflowStepColor = (step: WorkflowStep) => {
-    if (!currentWorkflowSteps.length) return 'bg-slate-100 text-slate-600 border-slate-300';
+    if (!currentWorkflowSteps.length) return 'bg-surface-3 text-ink-2 border-border';
 
     const stepIndex = WORKFLOW_STEPS_REQUIRED.indexOf(step);
     const completedUpTo = WORKFLOW_STEPS_REQUIRED.findIndex(s => !currentWorkflowSteps.includes(s));
 
     if (currentWorkflowSteps.includes(step)) {
-      return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+      return 'bg-ok-soft text-ok border-ok';
     } else if (completedUpTo === stepIndex) {
-      return 'bg-amber-100 text-amber-700 border-amber-300';
+      return 'bg-warn-soft text-warn border-warn';
     }
-    return 'bg-slate-100 text-slate-600 border-slate-300';
+    return 'bg-surface-3 text-ink-2 border-border';
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="grn-detail-modal-title">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
             {mode === 'assign-rack' ? (
               <>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 id="grn-detail-modal-title" className="text-lg font-bold text-ink">
                   📍 Assign Rack — {displayGrnNo(grn.grnNo)}{' '}
                   {assignRackLineItem?.item || '—'}
                   {assignRackLineItem?.itemCode ? ` · ${assignRackLineItem.itemCode}` : ''}
                 </h2>
-                <p className="text-xs text-slate-600 mt-1">
+                <p className="text-xs text-ink-2 mt-1">
                   {resolveInboundWarehouseCode(
                     {
                       grnNo: grn.grnNo,
@@ -1179,12 +1180,12 @@ const GRNDetailModal = ({
                 </p>
               </>
             ) : (
-              <h2 className="text-lg font-bold text-slate-900">GRN — {displayGrnNo(grn.grnNo)}</h2>
+              <h2 id="grn-detail-modal-title" className="text-lg font-bold text-ink">GRN — {displayGrnNo(grn.grnNo)}</h2>
             )}
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600"
+            className="p-2 hover:bg-surface-3 rounded-lg transition-colors text-ink-2"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -1195,18 +1196,18 @@ const GRNDetailModal = ({
           {/* Status, type, QC */}
           <div className="flex flex-wrap items-center gap-2">
             <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${currentWorkflowSteps.length === WORKFLOW_STEPS_REQUIRED.length
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
-                : 'bg-amber-100 text-amber-700 border-amber-300'
+                ? 'bg-ok-soft text-ok border-ok'
+                : 'bg-warn-soft text-warn border-warn'
               }`}>
               {grn.status}
             </span>
-            <span className="px-3 py-1 bg-blue-100 text-blue-700 border border-blue-300 rounded-full text-xs font-semibold">
+            <span className="px-3 py-1 bg-brand-soft text-brand border border-brand rounded-full text-xs font-semibold">
               {grn.type}
             </span>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${qcStatus === 'Passed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                qcStatus === 'Rejected' ? 'bg-rose-100 text-rose-700 border-rose-300' :
-                  qcStatus === 'Quality checked' ? 'bg-sky-100 text-sky-700 border-sky-300' :
-                    'bg-slate-100 text-slate-700 border-slate-300'
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${qcStatus === 'Passed' ? 'bg-ok-soft text-ok border-ok' :
+                qcStatus === 'Rejected' ? 'bg-err-soft text-err border-err' :
+                  qcStatus === 'Quality checked' ? 'bg-brand-soft text-brand border-brand' :
+                    'bg-surface-3 text-ink border-border'
               }`}>
               QC: {qcStatus}
               {qcBy && <span className="ml-1 opacity-90">({qcBy})</span>}
@@ -1215,9 +1216,9 @@ const GRNDetailModal = ({
 
           {/* QC section: master specs + QC by — read-only during assign rack */}
           {!isAssignRackMode ? (
-          <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-700">QC inspection &amp; QC by</h3>
-            <p className="text-xs text-slate-600">
+          <section className="bg-surface-2/80 rounded-xl p-5 border border-border/80 space-y-4">
+            <h3 className="text-sm font-semibold text-ink-2">QC inspection &amp; QC by</h3>
+            <p className="text-xs text-ink-2">
               Tests are loaded from the RM/PM master <strong>Quality Specifications</strong>. Rows marked <strong>Mand</strong> in the master must be tested (result + Pass). Optional tests may be left pending.
             </p>
             <GrnQcInspectionPanel
@@ -1227,29 +1228,29 @@ const GRNDetailModal = ({
               disabled={saving}
               onChange={setQcSpecs}
             />
-            <div className="flex flex-col sm:flex-row gap-4 pt-2 border-t border-slate-200">
+            <div className="flex flex-col sm:flex-row gap-4 pt-2 border-t border-border">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-2">
                   Overall QC status
                 </label>
                 <div
                   className={`w-full px-4 py-3 border rounded-lg text-sm font-semibold ${
                     qcStatus === 'Passed'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      ? 'bg-ok-soft border-ok text-ok'
                       : qcStatus === 'Rejected'
-                        ? 'bg-rose-50 border-rose-300 text-rose-800'
-                        : 'bg-slate-50 border-slate-300 text-slate-700'
+                        ? 'bg-err-soft border-err text-err'
+                        : 'bg-surface-2 border-border text-ink-2'
                   }`}
                 >
                   {qcStatus}
-                  <span className="block text-[10px] font-normal text-slate-500 mt-1">
+                  <span className="block text-[10px] font-normal text-ink-3 mt-1">
                     Derived from master quality tests (not manually set).
                   </span>
                 </div>
               </div>
               <div className="flex-1 relative">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  QC by <span className="text-red-500">*</span>
+                <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-2">
+                  QC by <span className="text-err">*</span>
                 </label>
                 <input
                   type="text"
@@ -1264,10 +1265,10 @@ const GRNDetailModal = ({
                   onFocus={() => setShowQcByDropdown(true)}
                   onBlur={() => setTimeout(() => setShowQcByDropdown(false), 200)}
                   placeholder="Type name to search registered users"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-4 py-3 border border-border rounded-lg bg-surface text-ink text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 {showQcByDropdown && (filteredQcByUsers.length > 0 || assignableUsers.length > 0) && (
-                  <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                  <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-surface border border-border rounded-lg shadow-lg py-1">
                     {(qcByInput.trim() ? filteredQcByUsers : assignableUsers).slice(0, 10).map((u) => (
                       <li
                         key={u.id}
@@ -1276,10 +1277,10 @@ const GRNDetailModal = ({
                           setQcByInput(u.displayName);
                           setShowQcByDropdown(false);
                         }}
-                        className="px-4 py-2 text-sm text-slate-800 hover:bg-amber-50 cursor-pointer"
+                        className="px-4 py-2 text-sm text-ink hover:bg-brand-soft cursor-pointer"
                       >
                         {u.displayName}
-                        {u.email && <span className="text-slate-500 text-xs block">{u.email}</span>}
+                        {u.email && <span className="text-ink-3 text-xs block">{u.email}</span>}
                       </li>
                     ))}
                   </ul>
@@ -1288,7 +1289,7 @@ const GRNDetailModal = ({
             </div>
           </section>
           ) : (
-            <section className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+            <section className="rounded-xl border border-ok bg-ok-soft/80 px-4 py-3 text-sm text-ok">
               <strong>QC passed.</strong> QR labels were created in <strong>GRN Copy</strong>. Use this step to assign put-away rack, upload post-racking photos, and complete the GRN.
             </section>
           )}
@@ -1303,7 +1304,7 @@ const GRNDetailModal = ({
                   {currentWorkflowSteps.includes(step) ? 'Done' : '-'} {step}
                 </div>
                 {idx < WORKFLOW_STEPS_REQUIRED.length - 1 && (
-                  <span className="text-slate-400 text-lg">&gt;</span>
+                  <span className="text-ink-4 text-lg">&gt;</span>
                 )}
               </div>
             ))}
@@ -1311,45 +1312,45 @@ const GRNDetailModal = ({
 
           {/* GRN Details Section */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">GRN & shipment</h3>
+            <h3 className="text-sm font-semibold text-ink-2">GRN & shipment</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">GRN NO.</p>
-                <p className="text-sm font-mono font-bold text-blue-600">{displayGrnNo(grn.grnNo)}</p>
+              <div className="bg-surface-2 rounded-lg p-4 border border-border">
+                <p className="text-xs text-ink-2 uppercase tracking-wider font-semibold mb-1">GRN NO.</p>
+                <p className="text-sm font-mono font-bold text-brand">{displayGrnNo(grn.grnNo)}</p>
               </div>
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Received Date</p>
-                <p className="text-sm font-medium text-slate-900">
+              <div className="bg-surface-2 rounded-lg p-4 border border-border">
+                <p className="text-xs text-ink-2 uppercase tracking-wider font-semibold mb-1">Received Date</p>
+                <p className="text-sm font-medium text-ink">
                   {grn.receivedDate ? new Date(grn.receivedDate).toLocaleDateString('en-IN') : '—'}
                 </p>
               </div>
               {grn.invoiceNo && (
-                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                  <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Invoice No.</p>
-                  <p className="text-sm font-mono font-medium text-slate-900">{grn.invoiceNo}</p>
+                <div className="bg-surface-2 rounded-lg p-4 border border-border">
+                  <p className="text-xs text-ink-2 uppercase tracking-wider font-semibold mb-1">Invoice No.</p>
+                  <p className="text-sm font-mono font-medium text-ink">{grn.invoiceNo}</p>
                 </div>
               )}
               {grn.invoiceAmount && (
-                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                  <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold mb-1">Invoice Amount</p>
-                  <p className="text-sm font-bold text-amber-700">₹{grn.invoiceAmount.toLocaleString('en-IN')}</p>
+                <div className="bg-surface-2 rounded-lg p-4 border border-border">
+                  <p className="text-xs text-ink-2 uppercase tracking-wider font-semibold mb-1">Invoice Amount</p>
+                  <p className="text-sm font-bold text-brand">₹{grn.invoiceAmount.toLocaleString('en-IN')}</p>
                 </div>
               )}
             </div>
           </section>
 
           {/* Assign GRN Team Section */}
-          <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-700">Assign & dates</h3>
+          <section className="bg-surface-2/80 rounded-xl p-5 border border-border/80 space-y-4">
+            <h3 className="text-sm font-semibold text-ink-2">Assign & dates</h3>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                  Assigned To <span className="text-red-500">*</span>
+                <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-2">
+                  Assigned To <span className="text-err">*</span>
                 </label>
                 <select
                   value={assignedTo}
                   onChange={(e) => setAssignedTo(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-border rounded-lg bg-surface text-ink text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
                 >
                   <option value="">Unassigned</option>
                   {assignableUsers.map((u) => (
@@ -1361,14 +1362,14 @@ const GRNDetailModal = ({
                 </select>
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-2">
                   GRN Date
                 </label>
                 <input
                   type="date"
                   value={grnDate}
                   onChange={(e) => setGrnDate(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-border rounded-lg bg-surface text-ink text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
                 />
               </div>
             </div>
@@ -1377,43 +1378,43 @@ const GRNDetailModal = ({
           {/* Line Items Table */}
           {grn.lineItems && grn.lineItems.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Line items — qty</h3>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <h3 className="text-sm font-semibold text-ink-2">Line items — qty</h3>
+              <div className="overflow-x-auto border border-border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-100 border-b border-slate-200">
+                  <thead className="bg-surface-3 border-b border-border">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">PO QTY</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">RCVD QTY</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Invoice QTY</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Unit Price</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Diff</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Item</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">PO QTY</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">RCVD QTY</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Invoice QTY</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Unit Price</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Diff</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-hairline">
                     {editedLineItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50">
+                      <tr key={item.id} className="hover:bg-surface-2">
                         <td className="px-3 py-2 text-left">
-                          <div className="font-medium text-slate-900">{item.item}</div>
-                          <div className="text-slate-500">{item.itemCode}</div>
+                          <div className="font-medium text-ink">{item.item}</div>
+                          <div className="text-ink-3">{item.itemCode}</div>
                         </td>
-                        <td className="px-3 py-2 text-center font-medium text-slate-900">{item.poQty}</td>
+                        <td className="px-3 py-2 text-center font-medium text-ink">{item.poQty}</td>
                         <td className="px-3 py-2 text-center">
                           <input
                             type="number"
                             value={item.rcvdQty}
                             onChange={(e) => handleLineItemChange(item.id, 'rcvdQty', e.target.value)}
-                            className="w-24 min-w-[6rem] px-2 py-2 border-2 border-blue-300 rounded-lg bg-white text-slate-900 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                            className="w-24 min-w-[6rem] px-2 py-2 border-2 border-brand rounded-lg bg-surface text-ink text-center font-bold focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all"
                             min="0"
                           />
                         </td>
-                        <td className="px-3 py-2 text-center font-medium text-slate-900">{item.invoiceQty}</td>
-                        <td className="px-3 py-2 text-center font-medium text-amber-600">₹{item.unitPrice}</td>
+                        <td className="px-3 py-2 text-center font-medium text-ink">{item.invoiceQty}</td>
+                        <td className="px-3 py-2 text-center font-medium text-brand">₹{item.unitPrice}</td>
                         <td className="px-3 py-2 text-center">
                           {(() => {
                             const calculatedDiff = item.rcvdQty - item.poQty; // positive = over-received, negative = shortfall
                             return (
-                              <span className={`font-bold ${calculatedDiff === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              <span className={`font-bold ${calculatedDiff === 0 ? 'text-ok' : 'text-err'}`}>
                                 {calculatedDiff === 0 ? '0' : calculatedDiff > 0 ? `+${calculatedDiff}` : calculatedDiff}
                               </span>
                             );
@@ -1429,40 +1430,40 @@ const GRNDetailModal = ({
 
           {/* Put-away / labels — QR generation only in GRN Copy; assign rack is put-away + photos */}
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">
+            <h3 className="text-sm font-semibold text-ink-2">
               {isAssignRackMode ? 'Put-away location' : 'Labels (QR per box)'}
             </h3>
             {isAssignRackMode ? (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-2">
                 QR labels were generated in <strong>GRN Copy</strong>. Select the physical rack for put-away below. Labels cannot be created or regenerated here.
               </p>
             ) : (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-2">
                 Generate QR labels from <strong>GRN Copy</strong> on the inbound list (documents, pack counts, and shipment photos). This screen shows saved labels for reference only.
               </p>
             )}
 
             {!isAssignRackMode && labelsGenerated && labels && labels.length > 0 && (
-              <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-ok bg-ok-soft border border-ok rounded-lg px-3 py-2">
                 {labels.length} QR label{labels.length === 1 ? '' : 's'} on file from GRN Copy. Open <strong>GRN Copy</strong> to regenerate after changing pack counts or documents.
               </p>
             )}
 
             {!isAssignRackMode && !labelsGenerated && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              <div className="rounded-lg bg-warn-soft border border-warn px-4 py-3 text-sm text-warn">
                 Use <strong>GRN Copy</strong> on the inbound table to upload receipt documents and generate QR labels before QC and assign rack.
               </div>
             )}
 
             {isAssignRackMode && labelsGenerated && labels && labels.length > 0 && (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-2">
                 <strong>{labels.length}</strong> box label{labels.length === 1 ? '' : 's'} from GRN Copy
                 {grn.noOfBoxes != null ? ` · ${grn.noOfBoxes} box(es) configured` : ''}.
               </p>
             )}
 
             {isAssignRackMode && !labelsGenerated && (
-              <div className="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">
+              <div className="rounded-lg bg-err-soft border border-err px-4 py-3 text-sm text-err">
                 No QR labels on this GRN yet. Complete <strong>GRN Copy</strong> first (documents + Generate Labels), then return to assign rack.
               </div>
             )}
@@ -1470,25 +1471,25 @@ const GRNDetailModal = ({
             {!isAssignRackMode && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label className="block text-xs font-medium text-ink-2 mb-1">
                   No of boxes
                 </label>
-                <input type="number" min={1} value={noOfBoxes} readOnly className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-600" />
+                <input type="number" min={1} value={noOfBoxes} readOnly className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface-2 text-ink-2" />
               </div>
               <div className="col-span-2 md:col-span-3">
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label className="block text-xs font-medium text-ink-2 mb-1">
                   Units/box by box
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {Array.from({ length: parsedNoOfBoxes }).map((_, i) => (
                     <div key={`box-units-${i}`}>
-                      <label className="block text-[10px] text-slate-500 mb-0.5">Box {i + 1}</label>
+                      <label className="block text-[10px] text-ink-3 mb-0.5">Box {i + 1}</label>
                       <input
                         type="number"
                         min={0}
                         value={unitsPerBoxListStr[i] ?? ''}
                         readOnly
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-600"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface-2 text-ink-2"
                       />
                     </div>
                   ))}
@@ -1497,14 +1498,14 @@ const GRNDetailModal = ({
             </div>
             )}
 
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+            <div className="space-y-3 rounded-lg border border-border bg-surface-2/90 p-3">
                 <div className="flex flex-wrap items-center gap-4">
-                  <span className="text-xs font-semibold text-slate-700">Put-away location <span className="text-red-500">*</span></span>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <span className="text-xs font-semibold text-ink-2">Put-away location <span className="text-err">*</span></span>
+                  <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
                     <input
                       type="radio"
                       name="grn-location-source"
-                      className="rounded-full border-slate-300"
+                      className="rounded-full border-border"
                       checked={locationSource === 'facility'}
                       onChange={() => {
                         setLocationSource('facility');
@@ -1518,27 +1519,27 @@ const GRNDetailModal = ({
                     />
                     Facility Management
                   </label>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-2 cursor-pointer">
                     <input
                       type="radio"
                       name="grn-location-source"
-                      className="rounded-full border-slate-300"
+                      className="rounded-full border-border"
                       checked={locationSource === 'custom'}
                       onChange={() => setLocationSource('custom')}
                     />
                     Custom (type zone / rack)
                   </label>
                 </div>
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[10px] text-ink-3">
                   Warehouse areas, zones, and racks are maintained under <strong>Facility Management</strong>. Choosing them here sets the zone label and rack code on QR labels and stock put-away.
                   Custom mode routes quantity to the <strong>default warehouse zone</strong> (not a separate custom facility).
                 </p>
 
                 {locationSource === 'facility' && facilityAreasLoading && (
-                  <p className="text-xs text-slate-500">Loading warehouse locations…</p>
+                  <p className="text-xs text-ink-3">Loading warehouse locations…</p>
                 )}
                 {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length === 0 && (
-                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                  <p className="text-xs text-warn bg-warn-soft border border-warn rounded-md px-2 py-1.5">
                     No warehouse areas found. Create a warehouse area, zones, and racks in Facility Management, or use Custom.
                   </p>
                 )}
@@ -1546,8 +1547,8 @@ const GRNDetailModal = ({
                 {locationSource === 'facility' && !facilityAreasLoading && facilityAreasData.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Warehouse area <span className="text-red-500">*</span>
+                      <label className="block text-xs font-medium text-ink-2 mb-1">
+                        Warehouse area <span className="text-err">*</span>
                       </label>
                       <select
                         value={selectedAreaId === '' ? '' : String(selectedAreaId)}
@@ -1557,7 +1558,7 @@ const GRNDetailModal = ({
                           setSelectedZoneId('');
                           setSelectedRackId('');
                         }}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface"
                       >
                         <option value="">— Select area —</option>
                         {facilityAreasData.map((a) => (
@@ -1568,8 +1569,8 @@ const GRNDetailModal = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Zone <span className="text-red-500">*</span>
+                      <label className="block text-xs font-medium text-ink-2 mb-1">
+                        Zone <span className="text-err">*</span>
                       </label>
                       <select
                         value={selectedZoneId === '' ? '' : String(selectedZoneId)}
@@ -1579,7 +1580,7 @@ const GRNDetailModal = ({
                           setSelectedRackId('');
                         }}
                         disabled={selectedAreaId === ''}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3 disabled:text-ink-4"
                       >
                         <option value="">— Select zone —</option>
                         {zoneOptions.map((z) => (
@@ -1590,8 +1591,8 @@ const GRNDetailModal = ({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">
-                        Rack (put-away code) <span className="text-red-500">*</span>
+                      <label className="block text-xs font-medium text-ink-2 mb-1">
+                        Rack (put-away code) <span className="text-err">*</span>
                       </label>
                       <select
                         value={selectedRackId === '' ? '' : String(selectedRackId)}
@@ -1600,7 +1601,7 @@ const GRNDetailModal = ({
                           setSelectedRackId(v ? parseInt(v, 10) : '');
                         }}
                         disabled={selectedZoneId === ''}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3 disabled:text-ink-4"
                       >
                         <option value="">— Select rack —</option>
                         {rackOptionsSorted.map((r) => (
@@ -1611,7 +1612,7 @@ const GRNDetailModal = ({
                         ))}
                       </select>
                       {selectedZoneId !== '' && rackOptionsSorted.length === 0 && (
-                        <p className="text-[10px] text-amber-700 mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
+                        <p className="text-[10px] text-warn mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
                       )}
                     </div>
                   </div>
@@ -1620,22 +1621,22 @@ const GRNDetailModal = ({
                 {locationSource === 'custom' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Storage zone <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-medium text-ink-2 mb-1">Storage zone <span className="text-err">*</span></label>
                       <input
                         type="text"
                         value={locationZone}
                         onChange={(e) => setLocationZone(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm"
                         placeholder="e.g. Zone A / RM bulk"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (rack code) <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-medium text-ink-2 mb-1">Location prefix (rack code) <span className="text-err">*</span></label>
                       <input
                         type="text"
                         value={locationPrefix}
                         onChange={(e) => setLocationPrefix(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm"
                         placeholder="e.g. A1-L2-S3"
                       />
                     </div>
@@ -1643,7 +1644,7 @@ const GRNDetailModal = ({
                 )}
 
                 {locationSource === 'facility' && !facilityAreasLoading && locationZone && locationPrefix && (
-                  <p className="text-[10px] text-slate-600">
+                  <p className="text-[10px] text-ink-2">
                     Saved on GRN / QR: <span className="font-mono font-medium">zone</span> = {locationZone} ·{' '}
                     <span className="font-mono font-medium">rack</span> = {locationPrefix}
                   </p>
@@ -1652,16 +1653,16 @@ const GRNDetailModal = ({
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">GRN batch mfg</label>
-                <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <label className="block text-xs font-medium text-ink-2 mb-1">GRN batch mfg</label>
+                <input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Expiry</label>
-                <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <label className="block text-xs font-medium text-ink-2 mb-1">Expiry</label>
+                <input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Mfg batch</label>
-                <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <label className="block text-xs font-medium text-ink-2 mb-1">Mfg batch</label>
+                <input type="text" value={mfgBatch} onChange={(e) => setMfgBatch(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm" />
               </div>
             </div>
 
@@ -1670,14 +1671,14 @@ const GRNDetailModal = ({
           {/* QR Label Preview — print only; generation happens in GRN Copy */}
           {labelsGenerated && labels && labels.length > 0 && activeLabel && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
+              <h3 className="text-sm font-semibold text-ink-2">Label preview (one QR per box)</h3>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[220px] flex-1">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Select generated label</label>
+                  <label className="block text-xs font-medium text-ink-2 mb-1">Select generated label</label>
                   <select
                     value={selectedLabelBoxIndex ?? activeLabel.boxIndex}
                     onChange={(e) => setSelectedLabelBoxIndex(parseInt(e.target.value, 10) || null)}
-                    className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white"
+                    className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface"
                   >
                     {labels.map((label) => {
                       let unitsSummary = '—';
@@ -1699,7 +1700,7 @@ const GRNDetailModal = ({
                   type="button"
                   onClick={handlePrintActiveLabel}
                   disabled={!activeLabel}
-                  className="px-4 py-2 bg-slate-700 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-ink text-white rounded-lg font-medium text-sm hover:bg-ink-2 transition-colors disabled:opacity-50"
                 >
                   Print selected QR
                 </button>
@@ -1707,12 +1708,12 @@ const GRNDetailModal = ({
                   type="button"
                   onClick={handlePrintAllLabels}
                   disabled={!labels || labels.length === 0}
-                  className="px-4 py-2 bg-indigo-700 text-white rounded-lg font-medium text-sm hover:bg-indigo-800 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-brand text-white rounded-lg font-medium text-sm hover:bg-brand-press transition-colors disabled:opacity-50"
                 >
                   Print all QR
                 </button>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-3">
                 Labels were generated in <strong>GRN Copy</strong>. Use print to reprint box QRs. To change pack counts or regenerate, open <strong>GRN Copy</strong> from the inbound list.
               </p>
               {(() => {
@@ -1741,14 +1742,14 @@ const GRNDetailModal = ({
                   payload = {};
                 }
                 return (
-                  <div className="bg-white border-2 border-slate-300 rounded-lg p-4 shadow-sm max-w-md">
+                  <div className="bg-surface border-2 border-border rounded-lg p-4 shadow-sm max-w-md">
                     <div className="text-center mb-2">
-                      <p className="text-xs font-mono font-bold text-slate-900">Box {label.boxIndex}</p>
+                      <p className="text-xs font-mono font-bold text-ink">Box {label.boxIndex}</p>
                     </div>
                     <div className="flex justify-center mb-3">
                       <img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-40 h-40 object-contain" />
                     </div>
-                    <div className="space-y-1 text-xs text-slate-600">
+                    <div className="space-y-1 text-xs text-ink-2">
                       {payload.product_name && (
                         <p>
                           <span className="font-semibold">Product:</span> {payload.product_name}
@@ -1770,7 +1771,7 @@ const GRNDetailModal = ({
                           <span className="font-semibold">Full carton size:</span> {payload.full_carton_units}
                         </p>
                       )}
-                      {payload.partial_last_box && <p className="text-amber-700 font-medium">Partial last carton</p>}
+                      {payload.partial_last_box && <p className="text-warn font-medium">Partial last carton</p>}
                       <p>
                         <span className="font-semibold">Rack:</span>{' '}
                         {payload.toRack || payload.rack || payload.location_prefix || '—'}
@@ -1788,15 +1789,15 @@ const GRNDetailModal = ({
                         <span className="font-semibold">Mfg batch:</span> {payload.mfg_batch || '—'}
                       </p>
                     </div>
-                    <p className="mt-2 text-[10px] text-slate-500">On scan: decoder shows all text above + action (e.g. View GRN).</p>
+                    <p className="mt-2 text-[10px] text-ink-3">On scan: decoder shows all text above + action (e.g. View GRN).</p>
                   </div>
                 );
               })()}
 
               {/* On scan: simulate paste payload → show all text + action */}
-              {/* <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
-                <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">On scan — show all text &amp; action</h4>
-                <p className="text-xs text-slate-600 mb-2">Paste the QR payload (JSON) below to simulate a scan. The decoder will show all decoded fields and the suggested action.</p>
+              {/* <div className="mt-4 rounded-xl border-2 border-dashed border-border bg-surface-2 p-4">
+                <h4 className="text-xs font-semibold text-ink-2 uppercase tracking-wider mb-2">On scan — show all text &amp; action</h4>
+                <p className="text-xs text-ink-2 mb-2">Paste the QR payload (JSON) below to simulate a scan. The decoder will show all decoded fields and the suggested action.</p>
                 <ScanSimulator grnNo={grn.grnNo} />
               </div> */}
             </section>
@@ -1804,7 +1805,7 @@ const GRNDetailModal = ({
 
           {/* Save error */}
           {saveError && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+            <div className="rounded-lg bg-err-soft border border-err px-4 py-2 text-sm text-err">
               {saveError}
             </div>
           )}
@@ -1820,25 +1821,25 @@ const GRNDetailModal = ({
           ) : null}
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+              className="px-4 py-2 border border-border rounded-lg text-ink font-medium text-sm hover:bg-surface-2 transition-colors disabled:opacity-50"
             >
               Close
             </button>
             <button
               onClick={handleSaveOnly}
               disabled={saving}
-              className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-ink-2 text-white rounded-lg font-medium text-sm hover:bg-ink transition-colors disabled:opacity-50"
             >
               {saving ? 'Saving…' : mode === 'assign-rack' ? 'Save draft' : 'Save changes'}
             </button>
             <button
               onClick={handleCompleteGRN}
               disabled={saving || !canMarkComplete}
-              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+              className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-ok hover:bg-ok-press' : 'bg-brand hover:bg-brand-press'
                 }`}
             >
               {mode === 'assign-rack'
@@ -1848,7 +1849,7 @@ const GRNDetailModal = ({
                   : 'Mark complete'}
             </button>
             {!canMarkComplete && (
-              <p className="w-full text-right text-xs text-amber-700">
+              <p className="w-full text-right text-xs text-warn">
                 Mark complete is disabled until: {completionBlockers.join(' ')}
               </p>
             )}
@@ -2206,30 +2207,30 @@ const WarehouseInbound = () => {
   const getQCStatusColor = (status: QCStatus) => {
     switch (status) {
       case 'Passed':
-        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        return 'bg-ok-soft text-ok border-ok';
       case 'In Progress':
-        return 'bg-amber-100 text-amber-700 border-amber-200';
+        return 'bg-warn-soft text-warn border-warn';
       case 'Pending':
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'bg-surface-3 text-ink-2 border-border';
       case 'Failed':
-        return 'bg-rose-100 text-rose-700 border-rose-200';
+        return 'bg-err-soft text-err border-err';
     }
   };
 
   const getStatusColor = (status: GRNStatus) => {
     switch (status) {
       case 'GRN Complete':
-        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        return 'bg-ok-soft text-ok border-ok';
       case 'Under GRN':
-        return 'bg-amber-100 text-amber-700 border-amber-200';
+        return 'bg-warn-soft text-warn border-warn';
       case 'In Transit':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
+        return 'bg-brand-soft text-brand border-brand';
       case 'On Hold':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
+        return 'bg-warn-soft text-warn border-warn';
       case 'Delayed':
-        return 'bg-rose-100 text-rose-700 border-rose-200';
+        return 'bg-err-soft text-err border-err';
       case 'Pending':
-        return 'bg-slate-100 text-slate-600 border-slate-200';
+        return 'bg-surface-3 text-ink-2 border-border';
     }
   };
 
@@ -2242,13 +2243,13 @@ const WarehouseInbound = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50/80 relative">
+    <div className="flex-1 overflow-auto bg-canvas relative">
       {toast && (
         <div className="fixed top-4 right-4 z-50">
           <div
             className={`px-3 py-2 rounded-lg border text-sm font-medium shadow-lg ${toast.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-rose-50 text-rose-800 border-rose-200'
+                ? 'bg-ok-soft text-ok border-ok'
+                : 'bg-err-soft text-err border-err'
               }`}
           >
             {toast.message}
@@ -2258,40 +2259,40 @@ const WarehouseInbound = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Header */}
         <div className="mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">Inbound</h1>
-          <p className="text-sm text-slate-600 mt-1">Goods receipt notes — receive, check, and complete GRNs</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink tracking-tight">Inbound</h1>
+          <p className="text-sm text-ink-2 mt-1">Goods receipt notes — receive, check, and complete GRNs</p>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
-            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">Total GRNs</p>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{totalGRNs}</p>
+          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
+            <p className="text-xs font-semibold text-brand uppercase tracking-wider mb-1">Total GRNs</p>
+            <p className="text-2xl sm:text-3xl font-bold text-ink">{totalGRNs}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
-            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1">Under GRN</p>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{underGRN}</p>
+          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
+            <p className="text-xs font-semibold text-warn uppercase tracking-wider mb-1">Under GRN</p>
+            <p className="text-2xl sm:text-3xl font-bold text-ink">{underGRN}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm hidden sm:block">
-            <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-1">On Hold</p>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{onHold}</p>
+          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm hidden sm:block">
+            <p className="text-xs font-semibold text-warn uppercase tracking-wider mb-1">On Hold</p>
+            <p className="text-2xl sm:text-3xl font-bold text-ink">{onHold}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
-            <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">In Transit</p>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{inTransit}</p>
+          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
+            <p className="text-xs font-semibold text-brand uppercase tracking-wider mb-1">In Transit</p>
+            <p className="text-2xl sm:text-3xl font-bold text-ink">{inTransit}</p>
           </div>
 
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
-            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">Completed</p>
-            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{completed}</p>
+          <div className="bg-surface rounded-xl p-4 sm:p-5 border border-border/80 shadow-sm">
+            <p className="text-xs font-semibold text-ok uppercase tracking-wider mb-1">Completed</p>
+            <p className="text-2xl sm:text-3xl font-bold text-ink">{completed}</p>
           </div>
         </div>
 
         {/* Filters and search */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4 sm:p-5 space-y-4">
+        <div className="bg-surface rounded-xl border border-border/80 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             {INBOUND_GRN_SOURCE_TABS.map((tab) => (
               <button
@@ -2300,18 +2301,18 @@ const WarehouseInbound = () => {
                 onClick={() => setActiveSourceTab(tab.key)}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                   activeSourceTab === tab.key
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                    ? 'bg-ink text-white shadow-sm'
+                    : 'text-ink-2 bg-surface-3 hover:bg-surface-3'
                 }`}
               >
                 {tab.label}
               </button>
             ))}
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-3">
             Source-doc set per tab: {inboundSourceDocRequirementLabel(activeSourceTab)}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-3">
             Row actions: ✓ Confirm Receipt (LANDED) · 📋 GRN Copy (once confirmed) · 🚦 Send to QC (QUARANTINED or VERIFIED) · 📍 Assign Rack (QC TESTED · PASS)
           </p>
 
@@ -2324,8 +2325,8 @@ const WarehouseInbound = () => {
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-slate-100'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'text-ink-2 hover:bg-surface-3'
                     }`}
                 >
                   {tab}
@@ -2335,24 +2336,24 @@ const WarehouseInbound = () => {
 
             {/* Search */}
             <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search GRN or item…"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                className="w-full pl-10 pr-4 py-2.5 bg-surface-2 border border-border rounded-lg text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
               />
             </div>
           </div>
         </div>
 
         {/* Data Table */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl border border-border/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1280px]">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
+                <tr className="bg-surface-2 border-b border-border">
                   <SortableTableTh
                     label="Shipment"
                     column="shipment"
@@ -2417,7 +2418,7 @@ const WarehouseInbound = () => {
                     label={
                       <span className="inline-flex flex-col items-start normal-case tracking-normal">
                         <span>Source-doc set</span>
-                        <span className="text-[10px] font-normal text-slate-500 lowercase first-letter:uppercase">
+                        <span className="text-[10px] font-normal text-ink-3 lowercase first-letter:uppercase">
                           {inboundSourceDocRequirementLabel(activeSourceTab)}
                         </span>
                       </span>
@@ -2449,19 +2450,19 @@ const WarehouseInbound = () => {
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
                   />
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wide">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-hairline">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">Loading GRNs…</td>
+                    <td colSpan={13} className="px-4 py-12 text-center text-ink-3">Loading GRNs…</td>
                   </tr>
                 ) : sortedItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={13} className="px-4 py-12 text-center text-ink-3">
                       {inboundGrnSourceEmptyMessage(activeSourceTab)}
                     </td>
                   </tr>
@@ -2474,51 +2475,51 @@ const WarehouseInbound = () => {
                     return (
                     <tr
                       key={rowId}
-                      className="hover:bg-amber-50/50 transition-colors align-top"
+                      className="hover:bg-brand-soft/50 transition-colors align-top"
                     >
-                      <td className="px-4 py-3.5 text-sm text-slate-800 tabular-nums whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-sm text-ink tabular-nums whitespace-nowrap">
                         {view.shipmentDate}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="text-sm font-mono font-semibold text-blue-600">{view.grnNo}</span>
+                        <span className="text-sm font-mono font-semibold text-brand">{view.grnNo}</span>
                       </td>
-                      <td className="px-4 py-3.5 text-sm font-bold text-slate-800 whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-sm font-bold text-ink whitespace-nowrap">
                         {view.warehouse}
                       </td>
                       <td className="px-4 py-4 min-w-[9rem]">
                         {lineItem ? (
                           <div>
-                            <div className="text-sm font-semibold text-slate-900 leading-snug">{lineItem.item}</div>
-                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">{lineItem.itemCode}</div>
+                            <div className="text-sm font-semibold text-ink leading-snug">{lineItem.item}</div>
+                            <div className="text-[11px] text-ink-3 font-mono mt-0.5">{lineItem.itemCode}</div>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-400">—</span>
+                          <span className="text-xs text-ink-4">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums text-sm text-slate-800 whitespace-nowrap">
+                      <td className="px-4 py-4 text-right tabular-nums text-sm text-ink whitespace-nowrap">
                         {lineItem ? formatInboundQty(lineItem.poQty, lineItem.unit) : '—'}
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums text-sm text-slate-800 whitespace-nowrap">
+                      <td className="px-4 py-4 text-right tabular-nums text-sm text-ink whitespace-nowrap">
                         {(() => {
                           const shipped = lineItem?.shippedQty ?? grn.shippedQty ?? null;
                           return shipped != null ? formatInboundQty(shipped, lineItem?.unit) : '—';
                         })()}
                       </td>
-                      <td className="px-4 py-4 text-right tabular-nums text-sm font-medium text-slate-800 whitespace-nowrap">
+                      <td className="px-4 py-4 text-right tabular-nums text-sm font-medium text-ink whitespace-nowrap">
                         {lineItem ? formatInboundQty(lineItem.rcvdQty, lineItem.unit) : '—'}
                       </td>
-                      <td className="px-4 py-4 text-sm text-slate-700 min-w-[12rem]">
+                      <td className="px-4 py-4 text-sm text-ink-2 min-w-[12rem]">
                         <p>{view.storagePrimary}</p>
                         {view.storageSecondary ? (
-                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">{view.storageSecondary}</p>
+                          <p className="text-[11px] text-ink-3 font-mono mt-0.5">{view.storageSecondary}</p>
                         ) : null}
                       </td>
                       <td className="px-4 py-4 text-sm whitespace-nowrap">
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                             view.sourceDocsComplete
-                              ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
-                              : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                              ? 'bg-ok-soft text-ok ring-1 ring-ok'
+                              : 'bg-surface-3 text-ink-2 ring-1 ring-border'
                           }`}
                           title={view.sourceDocsHint}
                         >
@@ -2530,22 +2531,22 @@ const WarehouseInbound = () => {
                           {view.statusLabel}
                         </p>
                         {view.statusSubLabel ? (
-                          <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">{view.statusSubLabel}</p>
+                          <p className="text-[11px] text-ink-3 mt-0.5 tabular-nums">{view.statusSubLabel}</p>
                         ) : null}
                       </td>
                       <td className={`px-4 py-4 text-xs whitespace-nowrap ${inboundGrnSlaClass(view.slaTone)}`}>
                         {view.slaIcon ? <span className="mr-1" aria-hidden="true">{view.slaIcon}</span> : null}
                         {view.slaLabel}
                       </td>
-                      <td className="px-4 py-4 text-sm text-slate-700 min-w-[7rem]">
-                        {view.relatedPrimary ? <p>{view.relatedPrimary}</p> : <p className="text-slate-400">—</p>}
+                      <td className="px-4 py-4 text-sm text-ink-2 min-w-[7rem]">
+                        {view.relatedPrimary ? <p>{view.relatedPrimary}</p> : <p className="text-ink-4">—</p>}
                         {view.relatedSecondary ? (
-                          <p className="text-[11px] text-slate-500 mt-0.5">{view.relatedSecondary}</p>
+                          <p className="text-[11px] text-ink-3 mt-0.5">{view.relatedSecondary}</p>
                         ) : null}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         {view.actionLabel === 'Awaiting QC' ? (
-                          <span className="text-xs font-semibold text-slate-500">
+                          <span className="text-xs font-semibold text-ink-3">
                             {view.actionPrefix ? `${view.actionPrefix} ` : ''}
                             {view.actionLabel}
                           </span>
@@ -2568,7 +2569,7 @@ const WarehouseInbound = () => {
                                 handleOpenQcCheck,
                               )
                             }
-                            className="text-xs font-semibold text-slate-800 hover:text-slate-950 hover:underline"
+                            className="text-xs font-semibold text-ink hover:text-ink hover:underline"
                           >
                             {view.actionPrefix ? `${view.actionPrefix} ` : ''}
                             {view.actionLabel}

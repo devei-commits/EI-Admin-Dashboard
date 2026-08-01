@@ -594,13 +594,13 @@ const UniversalSwap: React.FC = () => {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From / To</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Groups</th>
-                    <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">PRs Affected</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Date</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">From / To</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Ratio</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Reason</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Approved By</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Affected Groups</th>
+                    <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">PRs Affected</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -641,11 +641,11 @@ const UniversalSwap: React.FC = () => {
 
         {historyModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-4 border border-gray-100">
+            <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full mx-4 border border-gray-100" role="dialog" aria-modal="true" aria-labelledby="swap-history-modal-title">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Swap History · PRs Affected</p>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">
+                  <p id="swap-history-modal-title" className="text-sm font-semibold text-gray-900 mt-1">
                     {historyModal.swap.fromIngredient} → {historyModal.swap.toIngredient}{' '}
                     <span className="text-xs text-gray-500 ml-1">(ratio {Number(historyModal.swap.swapRatio).toFixed(2)})</span>
                   </p>

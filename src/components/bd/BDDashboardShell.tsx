@@ -47,6 +47,7 @@ const BDDashboardShell: React.FC<BDDashboardShellProps> = ({
                 <button
                   onClick={onRefresh}
                   title="Refresh"
+                  aria-label="Refresh"
                   className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
                 >
                   <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />

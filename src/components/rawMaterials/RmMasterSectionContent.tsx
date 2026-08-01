@@ -152,7 +152,7 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
         <div className="min-w-0">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Category, sub-category &amp; sub-sub category
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -216,7 +216,7 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
               />
             )}
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-ink-3 mt-2">
             Category drives the internal SKU prefix (<span className="font-mono">1</span> raw materials,{' '}
             <span className="font-mono">2</span> fragrance, <span className="font-mono">3</span> colours).
           </p>
@@ -224,11 +224,11 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
 
         {!isNewRm ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Material Code (SKU)</label>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
+            <label className="block text-sm font-medium text-ink-2 mb-1">Material Code (SKU)</label>
+            <div className="rounded-lg border border-border bg-surface-3 px-3 py-2.5 text-sm font-mono text-ink">
               {str(formData.rmSku) || '—'}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Assigned at creation — cannot be changed here.</p>
+            <p className="text-xs text-ink-3 mt-1">Assigned at creation — cannot be changed here.</p>
           </div>
         ) : null}
 
@@ -245,8 +245,8 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
           {...schemaRendererProps}
           primaryUomOptions={primaryUomOptions}
         />
-        <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Zoho integration</h3>
+        <div className="border border-border rounded-lg p-3 sm:p-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Zoho integration</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <MasterSelectWithOptions
               label="Returnable Item"
@@ -269,13 +269,13 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
               error={errors.rmTaxPreference}
             />
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-ink-3 mt-2">
             HSN / SAC and GST rate are in the fields above per master schema. Taxable preference controls Zoho sync
             validation.
           </p>
         </div>
-        <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Linked products</h3>
+        <div className="border border-border rounded-lg p-3 sm:p-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Linked products</h3>
           {rmLinkedProductCodes.length > 0 ? (
             <MasterLinkedPrProductsPanel codes={rmLinkedProductCodes} accent="teal" />
           ) : (
@@ -342,7 +342,7 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
             }
           />
         ) : (
-          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-ink-3 border border-dashed border-border rounded-lg px-4 py-3">
             Complete <strong>Primary info</strong> (sub-category) first to add quality specifications.
           </p>
         )}
@@ -354,15 +354,15 @@ const RmMasterSectionContent: React.FC<RmMasterSectionContentProps> = (props) =>
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Vendors &amp; commercial
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-ink-3 mb-3">
             Add vendors with MOQ, pricing, lead time, and payment terms. Pick a vendor from suggestions to
             auto-fill commercial details from the vendor master.
           </p>
           {errors.vendors ? (
-            <p className="text-xs text-red-600 mb-2" role="alert">
+            <p className="text-xs text-err mb-2" role="alert">
               {errors.vendors}
             </p>
           ) : null}

@@ -213,49 +213,49 @@ const ContactEnquiry = () => {
      <table className="w-full border-collapse">
       <thead>
        <tr className="border-b-2 border-gray-200">
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('id')}
         >
          S.No <SortIcon field="id" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('contactName')}
         >
          Contact Name <SortIcon field="contactName" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('mobile')}
         >
          Mobile <SortIcon field="mobile" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('email')}
         >
          Email <SortIcon field="email" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('date')}
         >
          Date <SortIcon field="date" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('subject')}
         >
          Subject <SortIcon field="subject" />
         </th>
-        <th 
+        <th scope="col" 
          className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
          onClick={() => handleSort('status')}
         >
          Status <SortIcon field="status" />
         </th>
-        <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
+        <th scope="col" className="text-center py-3 px-4 text-sm font-semibold text-gray-700">
          View
         </th>
        </tr>

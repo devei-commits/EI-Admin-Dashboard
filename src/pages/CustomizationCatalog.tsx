@@ -253,11 +253,11 @@ const CustomizationCatalog = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b border-gray-200">
-                    <th className="py-2 pr-3">ID</th>
-                    <th className="py-2 pr-3">Name</th>
-                    <th className="py-2 pr-3">Care</th>
-                    <th className="py-2 pr-3">Category</th>
-                    <th className="py-2 pr-3">Indications</th>
+                    <th scope="col" className="py-2 pr-3">ID</th>
+                    <th scope="col" className="py-2 pr-3">Name</th>
+                    <th scope="col" className="py-2 pr-3">Care</th>
+                    <th scope="col" className="py-2 pr-3">Category</th>
+                    <th scope="col" className="py-2 pr-3">Indications</th>
                   </tr>
                 </thead>
                 <tbody>

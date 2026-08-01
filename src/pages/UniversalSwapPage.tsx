@@ -289,20 +289,21 @@ const UniversalSwapPage = () => {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+              <select aria-label="Product" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                 <option>{effectiveSelected.productName}</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Batch</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+              <select aria-label="Batch" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                 <option>1-to-Setup Type Batch</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
+                aria-label="Qty"
                 value={displayPlanQty}
                 onChange={(e) => setPlanQty(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -322,9 +323,10 @@ const UniversalSwapPage = () => {
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="PLAN Qty"
+                  aria-label="PLAN Qty"
                   value={displayPlanQty}
                   onChange={(e) => setPlanQty(e.target.value)}
                   className="w-32 px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -448,7 +450,8 @@ const UniversalSwapPage = () => {
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-4">
-                <select 
+                <select
+                  aria-label="Item to swap from"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                   value={swapFromItem}
                   onChange={(e) => setSwapFromItem(e.target.value)}
@@ -458,7 +461,8 @@ const UniversalSwapPage = () => {
                       <option key={item.id} value={item.item}>{item.item}</option>
                     ))}
                 </select>
-                <select 
+                <select
+                  aria-label="Replacement item"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                   value={swapToItem}
                   onChange={(e) => setSwapToItem(e.target.value)}
@@ -480,7 +484,8 @@ const UniversalSwapPage = () => {
             <div className="border-t border-gray-200 pt-4">
               <p className="text-sm font-medium text-gray-700 mb-3">Add New Item</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mb-4">
-                  <select 
+                  <select
+                    aria-label="Item to add"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm col-span-2 bg-white"
                     value={addItemName}
                     onChange={(e) => setAddItemName(e.target.value)}
@@ -490,7 +495,8 @@ const UniversalSwapPage = () => {
                         <option key={item.id} value={item.name}>{item.name} ({item.category})</option>
                       ))}
                   </select>
-                  <select 
+                  <select
+                    aria-label="Item category"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                     value={addItemCategory}
                     onChange={(e) => setAddItemCategory(e.target.value)}
@@ -498,9 +504,10 @@ const UniversalSwapPage = () => {
                       <option value="RM">RM</option>
                       <option value="PM">PM</option>
                   </select>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. 0.002 (kg) / 1 (pcs)"
+                    aria-label="Quantity to add"
                     value={addItemQty}
                     onChange={(e) => setAddItemQty(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -531,9 +538,10 @@ const UniversalSwapPage = () => {
                 </label>
             </div>
             <div className="flex items-center gap-4">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="#SKU"
+                  aria-label="Filter by SKU"
                   value={globalFilterSKU}
                   onChange={(e) => setGlobalFilterSKU(e.target.value)}
                   className="grow px-3 py-2 border border-gray-300 rounded-md text-sm"

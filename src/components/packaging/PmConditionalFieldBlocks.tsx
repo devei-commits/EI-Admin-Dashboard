@@ -25,7 +25,7 @@ const CondInput: React.FC<{
   placeholder?: string;
 }> = ({ label, id, value, onChange, placeholder }) => (
   <div>
-    <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+    <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
       {label}
     </label>
     <input
@@ -34,7 +34,7 @@ const CondInput: React.FC<{
       value={value ?? ''}
       onChange={onChange}
       placeholder={placeholder}
-      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
     />
   </div>
 );
@@ -57,8 +57,8 @@ const PmConditionalFieldBlocks: React.FC<PmConditionalFieldBlocksProps> = ({
   return (
     <>
       {section === 'primary' && v.showPrimaryConditional ? (
-        <div className="border-t border-gray-200 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border-t border-border pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Primary packaging (PPM)
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -94,11 +94,11 @@ const PmConditionalFieldBlocks: React.FC<PmConditionalFieldBlocksProps> = ({
       ) : null}
 
       {section === 'technical' && v.showTechnicalConditional ? (
-        <div className="border-t border-gray-200 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border-t border-border pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Dimensions &amp; construction (by category)
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-ink-3 mb-3">
             Fields appear based on category and sub-category. Pick category and sub-category above to see
             relevant inputs.
           </p>
@@ -310,8 +310,8 @@ const PmConditionalFieldBlocks: React.FC<PmConditionalFieldBlocksProps> = ({
       ) : null}
 
       {section === 'aesthetics' && v.showAestheticsConditional ? (
-        <div className="border-t border-gray-200 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border-t border-border pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Component colours (by sub-category)
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -355,8 +355,8 @@ const PmConditionalFieldBlocks: React.FC<PmConditionalFieldBlocksProps> = ({
       ) : null}
 
       {section === 'compatibility' && v.showCompatibilityConditional ? (
-        <div className="border-t border-gray-200 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border-t border-border pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Label / carton compatibility (SPM)
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -389,8 +389,8 @@ const PmConditionalFieldBlocks: React.FC<PmConditionalFieldBlocksProps> = ({
       ) : null}
 
       {section === 'regulatory' && v.showRegulatoryConditional ? (
-        <div className="border-t border-gray-200 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border-t border-border pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Food / cosmetic contact (PPM)
           </h3>
           <CondInput

@@ -25,12 +25,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
  className = '',
 }) => {
  return (
-  <div className={`bg-slate-800 text-white p-4 sm:p-6 rounded-xl shadow-md ${className}`}>
+  <div className={`bg-[image:var(--brand-gradient)] text-white p-4 sm:p-6 rounded-[var(--r-lg)] shadow-[var(--e1)] ${className}`}>
    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
     <div className="flex items-center gap-3">
      {icon && <div className="text-white/90">{icon}</div>}
      <div>
-      <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{title}</h1>
+      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{title}</h1>
       {subtitle && (
        <p className="text-white/80 text-sm mt-0.5">{subtitle}</p>
       )}

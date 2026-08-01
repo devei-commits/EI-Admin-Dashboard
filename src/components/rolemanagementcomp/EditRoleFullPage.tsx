@@ -284,6 +284,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
        <button
         onClick={handleClose}
          className="p-1.5 sm:p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
+         aria-label="Back"
        >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -621,6 +622,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
             type="button"
             onClick={() => setShowNewPassword(!showNewPassword)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label={showNewPassword ? 'Hide password' : 'Show password'}
            >
             {showNewPassword ? (
              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -692,6 +694,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
              <button
               onClick={() => handleRemoveUser(user.id)}
               className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100"
+              aria-label={`Remove ${user.name}`}
              >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -708,11 +711,11 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
           <table className="w-full">
            <thead>
             <tr className="border-b border-gray-100">
-             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">User</th>
-             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Email ID</th>
-             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</th>
-             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Added On</th>
-             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
+             <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">User</th>
+             <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Email ID</th>
+             <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</th>
+             <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Added On</th>
+             <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
             </tr>
            </thead>
            <tbody className="divide-y divide-gray-50">
@@ -739,6 +742,7 @@ const EditRoleFullPage: React.FC<EditRoleFullPageProps> = ({ role, users, onClos
                  onClick={() => togglePasswordVisibility(user.id)}
                  className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                  title={showPasswords[user.id] ? 'Hide password' : 'Show password'}
+                 aria-label={showPasswords[user.id] ? 'Hide password' : 'Show password'}
                 >
                  {showPasswords[user.id] ? (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -6,13 +6,15 @@
  * (requested date + avg-actual-lead already resolved server-side).
  */
 import React, { useMemo, useState } from 'react';
-import { Search, Pencil, MessageSquare, PackageSearch, Truck, Plus, Download } from 'lucide-react';
+import { Pencil, MessageSquare, PackageSearch, Truck, Plus, Download } from 'lucide-react';
+import { ClipboardText, Flag } from '@phosphor-icons/react';
 import type { ProcurementRequest, ItemDetail } from '../../types/procurement.types';
 import {
   PR_SOURCE_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
   type PrSource, type SlaLevel,
 } from '../../constants/procurement';
 import { slaLevelFromDaysOpen, expectedVsNeedByLevel } from '../../lib/procurementSla';
+import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty, procChipClass } from './ProcSection';
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 function parseDate(d: string | null | undefined): Date | null {
@@ -115,7 +117,7 @@ function SourcePill({ source }: { source: PrSource }) {
   const cfg = PR_SOURCE_CONFIG[source];
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${cfg.text} ${cfg.bg} ${cfg.border}`}>
-      <span>{cfg.emoji}</span>{cfg.label}
+      {cfg.label}
     </span>
   );
 }
@@ -130,8 +132,8 @@ function ActionBtn({ icon: Icon, label, onClick, tone = 'default' }: {
       title={label}
       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold transition-colors ${
         tone === 'primary'
-          ? 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
-          : 'border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100'
+          ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2'
+          : 'border-border text-ink-3 bg-surface-3 hover:bg-surface-2'
       }`}
     >
       <Icon size={12} />{label}
@@ -210,117 +212,101 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
   const fromPlanning = allRows.filter((r) => r.source === 'planning').length;
   const fromProcurement = allRows.length - fromPlanning;
 
-  const chip = (active: boolean) =>
-    `px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors ${
-      active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-    }`;
-
   return (
     <div className="space-y-3">
-      {/* Summary bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="text-xs text-slate-600">
-          📋 <b className="text-slate-800">Procurement Requests</b> · {allRows.length} open
-          {breached > 0 && <span className="ml-2 text-red-600 font-semibold">🚩 {breached} SLA-breached</span>}
-          <span className="ml-2 text-slate-400">· {fromPlanning} from Planning · {fromProcurement} raised here</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {onNewPr && (
-            <button onClick={onNewPr} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
-              <Plus size={14} /> New PR
+      {/* Section header */}
+      <ProcSectionHeader
+        icon={<ClipboardText className="w-4 h-4 shrink-0" />}
+        title="Procurement Requests"
+        stats={[
+          { value: allRows.length, label: 'open' },
+          { value: breached, label: 'SLA-breached', tone: 'err', hidden: breached === 0 },
+          { value: fromPlanning, label: 'from Planning' },
+          { value: fromProcurement, label: 'raised here' },
+        ]}
+        actions={
+          <>
+            {onNewPr && (
+              <button onClick={onNewPr} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-press">
+                <Plus size={14} /> New PR
+              </button>
+            )}
+            <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-ink-3 bg-surface hover:bg-surface-2">
+              <Download size={14} /> Export
             </button>
-          )}
-          <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
-            <Download size={14} /> Export
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Active vs History tabs — History holds PRs already released to a Draft PO. */}
-      <div className="flex items-center gap-2">
-        <button onClick={() => setTab('active')} className={chip(tab === 'active')}>
-          Active <span className="ml-1 opacity-70">({activeCount})</span>
-        </button>
-        <button onClick={() => setTab('history')} className={chip(tab === 'history')}>
-          History <span className="ml-1 opacity-70">({historyCount})</span>
-        </button>
-        {tab === 'history' && (
-          <span className="text-[11px] text-slate-400">Released to Draft PO or later — read reference.</span>
-        )}
-      </div>
+      <ProcTabs
+        tabs={[
+          { key: 'active', label: 'Active', count: activeCount },
+          { key: 'history', label: 'History', count: historyCount },
+        ]}
+        value={tab}
+        onChange={setTab}
+        trailing={tab === 'history' ? <span className="text-[11px] text-ink-4">Released to Draft PO or later — read reference.</span> : undefined}
+      />
 
       {/* Filters */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+      <ProcFilterBar stack>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search PR #, item, vendor…"
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+          <ProcSearch value={search} onChange={setSearch} placeholder="Search PR #, item, vendor…" />
           <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+            aria-label="Filter by vendor"
+            className={procSelectClass}>
             <option value="all">All Vendors</option>
             {vendors.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Source</span>
+            <span className="text-[10px] font-bold text-ink-4 uppercase">Source</span>
             {(['all', 'planning', 'procurement'] as SourceFilter[]).map((s) => (
-              <button key={s} onClick={() => setSourceFilter(s)} className={chip(sourceFilter === s)}>
+              <button key={s} onClick={() => setSourceFilter(s)} className={procChipClass(sourceFilter === s)}>
                 {s === 'all' ? 'All' : PR_SOURCE_CONFIG[s].label}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">SLA</span>
+            <span className="text-[10px] font-bold text-ink-4 uppercase">SLA</span>
             {([['all', 'All'], ['ok', 'OK'], ['warn', 'Approaching'], ['bad', 'Breached']] as [SlaFilter, string][]).map(([k, label]) => (
-              <button key={k} onClick={() => setSlaFilter(k)} className={chip(slaFilter === k)}>{label}</button>
+              <button key={k} onClick={() => setSlaFilter(k)} className={procChipClass(slaFilter === k)}>{label}</button>
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Type</span>
+            <span className="text-[10px] font-bold text-ink-4 uppercase">Type</span>
             {(['all', 'RM', 'PM'] as TypeFilter[]).map((t) => (
-              <button key={t} onClick={() => setTypeFilter(t)} className={chip(typeFilter === t)}>{t === 'all' ? 'All' : t}</button>
+              <button key={t} onClick={() => setTypeFilter(t)} className={procChipClass(typeFilter === t)}>{t === 'all' ? 'All' : t}</button>
             ))}
           </div>
           <button
             onClick={() => { setSearch(''); setSourceFilter('all'); setSlaFilter('all'); setTypeFilter('all'); setVendorFilter('all'); }}
-            className="ml-auto text-xs text-slate-500 hover:text-slate-800 underline"
+            className="ml-auto text-xs text-ink-3 hover:text-ink underline"
           >
             Clear
           </button>
         </div>
-      </div>
+      </ProcFilterBar>
 
       {/* Table */}
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">No procurement requests match these filters.</div>
+        <ProcEmpty>No procurement requests match these filters.</ProcEmpty>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                {['Req Date', 'PR #', 'Item', 'Vendor', 'Req Qty', 'MOQ', 'ROP', 'Expected Connecting', 'SLA', 'Actions'].map((h) => (
-                  <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${['Req Qty', 'MOQ', 'ROP'].includes(h) ? 'text-center' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+        <ProcTableCard>
+            <ProcThead cols={['Req Date', 'PR #', 'Item', 'Vendor', { label: 'Req Qty', align: 'center' }, { label: 'MOQ', align: 'center' }, { label: 'ROP', align: 'center' }, 'Expected Connecting', 'SLA', 'Actions']} />
+            <tbody className="divide-y divide-hairline">
               {rows.map((r) => {
                 const expLevel = expectedVsNeedByLevel(r.expectedConnecting, r.needBy);
                 return (
-                  <tr key={r.req.id} className={`hover:bg-blue-50/30 transition-colors ${r.slaLevel === 'bad' ? 'bg-red-50/40' : ''}`}>
+                  <tr key={r.req.id} className={`hover:bg-brand-soft transition-colors ${r.slaLevel === 'bad' ? 'bg-err-soft' : ''}`}>
                     {/* Req Date */}
-                    <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-slate-700">{fmtDate(r.requestedDate)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-ink-2">{fmtDate(r.requestedDate)}</td>
 
                     {/* PR # + source */}
                     <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                      <button onClick={() => onEdit(r.req)} className="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline decoration-dotted">{r.prNumber}</button>
+                      <button onClick={() => onEdit(r.req)} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.prNumber}</button>
                       <div className="mt-1"><SourcePill source={r.source} /></div>
                     </td>
 
@@ -328,34 +314,34 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                     <td className="px-3 py-2.5 align-top max-w-[180px]">
                       {r.primary ? (
                         <>
-                          <p className="text-xs font-semibold text-slate-800 truncate" title={r.primary.itemName}>{r.primary.itemName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{r.primary.itemCode}{r.extraItems > 0 ? ` +${r.extraItems} more` : ''}</p>
+                          <p className="text-xs font-semibold text-ink truncate" title={r.primary.itemName}>{r.primary.itemName}</p>
+                          <p className="text-[10px] text-ink-4 font-mono">{r.primary.itemCode}{r.extraItems > 0 ? ` +${r.extraItems} more` : ''}</p>
                         </>
-                      ) : <span className="text-[10px] text-slate-400">—</span>}
+                      ) : <span className="text-[10px] text-ink-4">—</span>}
                     </td>
 
                     {/* Vendor */}
                     <td className="px-3 py-2.5 align-top max-w-[140px]">
-                      <p className="text-xs text-slate-700 truncate" title={r.vendorName}>{r.vendorName}</p>
+                      <p className="text-xs text-ink-2 truncate" title={r.vendorName}>{r.vendorName}</p>
                     </td>
 
                     {/* Req Qty */}
                     <td className="px-3 py-2.5 whitespace-nowrap text-center align-top">
-                      <span className="text-xs tabular-nums text-slate-800">{r.reqQty != null ? r.reqQty.toLocaleString('en-IN') : '—'}{r.unit ? ` ${r.unit}` : ''}</span>
+                      <span className="text-xs tabular-nums text-ink">{r.reqQty != null ? r.reqQty.toLocaleString('en-IN') : '—'}{r.unit ? ` ${r.unit}` : ''}</span>
                     </td>
 
                     {/* MOQ */}
                     <td className="px-3 py-2.5 whitespace-nowrap text-center align-top">
                       {r.moq != null ? (
-                        <span className={`text-xs tabular-nums ${r.belowMoq ? 'inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold' : 'text-slate-600'}`}>
+                        <span className={`text-xs tabular-nums ${r.belowMoq ? 'inline-flex items-center px-1.5 py-0.5 rounded-full bg-warn-soft text-warn border border-[color:var(--st-amber-fg)]/30 font-semibold' : 'text-ink-3'}`}>
                           {r.moq.toLocaleString('en-IN')}{r.unit ? ` ${r.unit}` : ''}
                         </span>
-                      ) : <span className="text-[10px] text-slate-400">—</span>}
+                      ) : <span className="text-[10px] text-ink-4">—</span>}
                     </td>
 
                     {/* ROP */}
                     <td className="px-3 py-2.5 whitespace-nowrap text-center align-top">
-                      <span className="text-xs tabular-nums text-slate-600" title={r.sih != null ? `current SIH ${r.sih} / ROP ${r.rop ?? '—'}` : undefined}>
+                      <span className="text-xs tabular-nums text-ink-3" title={r.sih != null ? `current SIH ${r.sih} / ROP ${r.rop ?? '—'}` : undefined}>
                         {r.rop != null ? r.rop.toLocaleString('en-IN') : '—'}
                       </span>
                     </td>
@@ -363,9 +349,9 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                     {/* Expected Connecting */}
                     <td className="px-3 py-2.5 whitespace-nowrap align-top">
                       <p className={`text-xs font-mono ${SLA_LEVEL_CLASSES[expLevel]}`}>
-                        {expLevel === 'bad' && '🚩 '}{fmtDate(r.expectedConnecting)}
+                        {expLevel === 'bad' && <Flag weight="fill" className="inline w-3 h-3 align-[-1px] mr-1" />}{fmtDate(r.expectedConnecting)}
                       </p>
-                      <p className="text-[9.5px] text-slate-400">
+                      <p className="text-[9.5px] text-ink-4">
                         {r.leadDays != null ? `${r.leadDays}d lead` : 'no lead'}
                         {r.needBy ? ` · need-by ${fmtDate(r.needBy)}` : ''}
                       </p>
@@ -376,7 +362,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                       <span className={`text-xs font-mono ${SLA_LEVEL_CLASSES[r.slaLevel]}`}>
                         {SLA_LEVEL_PREFIX[r.slaLevel]} {r.daysOpen}d open
                       </span>
-                      <p className="text-[9.5px] text-slate-400">committed {SLA_DEFAULTS.procurementDays}d</p>
+                      <p className="text-[9.5px] text-ink-4">committed {SLA_DEFAULTS.procurementDays}d</p>
                     </td>
 
                     {/* Actions */}
@@ -392,8 +378,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                 );
               })}
             </tbody>
-          </table>
-        </div>
+        </ProcTableCard>
       )}
     </div>
   );

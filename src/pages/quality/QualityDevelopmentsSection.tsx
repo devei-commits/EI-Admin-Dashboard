@@ -117,15 +117,15 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Reference</th>
-                  <th className="px-4 py-3">Item / PIS</th>
-                  <th className="px-4 py-3">Title</th>
-                  <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Assignee</th>
-                  <th className="px-4 py-3">Requested</th>
-                  <th className="px-4 py-3">Target</th>
-                  <th className="px-4 py-3">Notes</th>
+                  <th scope="col" className="px-4 py-3">Reference</th>
+                  <th scope="col" className="px-4 py-3">Item / PIS</th>
+                  <th scope="col" className="px-4 py-3">Title</th>
+                  <th scope="col" className="px-4 py-3">Category</th>
+                  <th scope="col" className="px-4 py-3">Status</th>
+                  <th scope="col" className="px-4 py-3">Assignee</th>
+                  <th scope="col" className="px-4 py-3">Requested</th>
+                  <th scope="col" className="px-4 py-3">Target</th>
+                  <th scope="col" className="px-4 py-3">Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

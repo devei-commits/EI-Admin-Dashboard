@@ -92,7 +92,7 @@ export function MasterPrTeamAssignModal({
             type="button"
             disabled={busy}
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 disabled:opacity-60"
           >
             Cancel
           </button>
@@ -100,16 +100,16 @@ export function MasterPrTeamAssignModal({
             type="button"
             disabled={busy}
             onClick={() => void save()}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand text-white hover:bg-brand-press disabled:opacity-60"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
         </>
       }
     >
-      <p className="text-sm text-gray-600 mb-4">
+      <p className="text-sm text-ink-3 mb-4">
         This person will sign off on behalf of the {stageMeta.label.toLowerCase()} before PR approval status can
-        advance. Leave <span className="font-semibold text-gray-800">Open</span> if anyone with PR approve access may
+        advance. Leave <span className="font-semibold text-ink">Open</span> if anyone with PR approve access may
         act for this team.
       </p>
       <PrTeamAssignPicker

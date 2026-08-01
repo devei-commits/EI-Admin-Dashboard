@@ -91,8 +91,8 @@ export const PickModal: React.FC<PickModalProps> = ({
       size="lg"
     >
       <div className="p-6">
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-700">
+        <div className="mb-6 p-4 bg-brand-soft border border-brand-soft rounded-lg">
+          <p className="text-sm text-brand">
             Confirm the quantities to be picked from the warehouse for each
             batch. A pick list will be generated for the warehouse team.
           </p>
@@ -127,12 +127,12 @@ export const PickModal: React.FC<PickModalProps> = ({
           </div>
 
           {/* Right Column: Ship To */}
-          <div className="p-4 border rounded-lg bg-gray-50 h-fit">
-            <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-gray-500" /> Shipping Address
+          <div className="p-4 border rounded-lg bg-surface-3 h-fit">
+            <h3 className="font-semibold text-ink mb-2 flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-ink-3" /> Shipping Address
             </h3>
-            <address className="not-italic text-gray-600">
-              <strong className="font-semibold text-gray-800">
+            <address className="not-italic text-ink-3">
+              <strong className="font-semibold text-ink">
                 {saleOrder.customer}
               </strong>
               <br />
@@ -143,27 +143,27 @@ export const PickModal: React.FC<PickModalProps> = ({
 
         {/* Pickable Items Table */}
         <div className="mt-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <h3 className="text-lg font-medium text-ink mb-2">
             Items Ready for Picking
           </h3>
           {pickableSplits.length > 0 ? (
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-surface-3">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">
                       Product
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">
                       BPR No
                     </th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">
                       Location
                     </th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
+                    <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">
                       Available
                     </th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-600">
+                    <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">
                       Pick Qty
                     </th>
                   </tr>
@@ -172,25 +172,25 @@ export const PickModal: React.FC<PickModalProps> = ({
                   {pickableSplits.map(({ item, split }, idx) => (
                     <tr key={idx}>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800">
+                        <p className="font-medium text-ink">
                           {item.productName}
                         </p>
-                        <p className="text-xs text-gray-500">{item.pack}</p>
+                        <p className="text-xs text-ink-3">{item.pack}</p>
                       </td>
-                      <td className="px-4 py-3 font-mono text-purple-600">
+                      <td className="px-4 py-3 font-mono text-brand">
                         {split.bprNo}
                       </td>
                       <td className="px-4 py-3">
                         {split.fgLocation ? (
-                          <span className="inline-flex items-center gap-1.5 bg-teal-100 text-teal-800 px-2 py-1 rounded-full text-xs font-medium">
+                          <span className="inline-flex items-center gap-1.5 bg-brand-soft text-brand px-2 py-1 rounded-full text-xs font-medium">
                             <MapPin size={12} />
                             {split.fgLocation}
                           </span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-ink-4">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-green-600">
+                      <td className="px-4 py-3 text-right font-medium text-ok">
                         {formatNumber(split.fgQty)}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -213,15 +213,15 @@ export const PickModal: React.FC<PickModalProps> = ({
               </table>
             </div>
           ) : (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-700">
+            <div className="p-4 bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg">
+              <p className="text-sm text-warn">
                 No items are currently in 'FG Ready' status for this order.
               </p>
             </div>
           )}
         </div>
       </div>
-      <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
+      <div className="flex justify-end gap-2 p-4 bg-surface-3 border-t">
         <Button variant="ghost" onClick={handleClose}>
           Cancel
         </Button>

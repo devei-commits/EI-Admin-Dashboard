@@ -161,6 +161,7 @@ const ClonePermissionsFromUser: React.FC<ClonePermissionsFromUserProps> = ({
       }}
       disabled={disabled || loadingUsers}
       placeholder="Type name, email, or role to search…"
+      aria-label="Type name, email, or role to search"
       className={`${inputClassName} pl-9 ${selectedUserId ? 'pr-9' : ''}`}
       autoComplete="off"
      />

@@ -165,7 +165,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white';
+    'w-full border border-border rounded-md px-2.5 py-1.5 text-sm text-ink focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)] bg-surface';
 
   return (
     <ProcModalShell
@@ -174,7 +174,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
       subtitle={
         <>
           {itemName}{' '}
-          <span className="font-mono text-xs text-slate-500">{itemCode}</span>
+          <span className="font-mono text-xs text-ink-3">{itemCode}</span>
         </>
       }
       width="max-w-xl"
@@ -183,7 +183,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
         <>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white"
+            className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3"
           >
             {saved ? 'Close' : 'Cancel'}
           </button>
@@ -191,7 +191,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
+              className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save to Price List'}
             </button>
@@ -200,62 +200,62 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
       }
     >
       {/* ── Item header ────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 mb-4 flex items-center justify-between gap-4">
+      <div className="rounded-lg border border-border bg-surface-3 p-3 mb-4 flex items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Item</p>
-          <p className="text-sm font-semibold text-slate-800">{itemName}</p>
-          <p className="font-mono text-[11px] text-slate-500">
+          <p className="text-[10px] font-bold text-ink-4 uppercase">Item</p>
+          <p className="text-sm font-semibold text-ink">{itemName}</p>
+          <p className="font-mono text-[11px] text-ink-3">
             {itemCode} &middot; {itemType}
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Price List</p>
+          <p className="text-[10px] font-bold text-ink-4 uppercase">Price List</p>
           {fetching ? (
-            <span className="flex items-center gap-1 text-xs text-slate-400">
+            <span className="flex items-center gap-1 text-xs text-ink-4">
               <Loader2 size={11} className="animate-spin" /> checking…
             </span>
           ) : priceListItem?.itemsListId != null ? (
-            <span className="text-xs font-semibold text-emerald-600">In Price List ✓</span>
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-ok">In Price List <CheckCircle2 size={12} /></span>
           ) : (
-            <span className="text-xs font-semibold text-amber-600">Not yet in Price List</span>
+            <span className="text-xs font-semibold text-warn">Not yet in Price List</span>
           )}
         </div>
       </div>
 
       {fetchError && (
-        <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 flex gap-2 items-center">
+        <div className="mb-3 rounded-md bg-err-soft border border-[color:var(--st-red-fg)]/30 px-3 py-2 text-xs text-err flex gap-2 items-center">
           <AlertCircle size={13} /> {fetchError}
         </div>
       )}
 
       {/* ── Existing tiers for selected vendor ─────────────────────── */}
       {existingRate && existingRate.tiers.length > 0 && (
-        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">
+        <div className="mb-4 rounded-lg border border-border bg-surface p-3">
+          <p className="text-[10px] font-bold text-ink-4 uppercase mb-2">
             Existing Tiers — {existingRate.vendor_name ?? selectedVendor?.name}
           </p>
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-[10px] text-slate-500 uppercase border-b border-slate-100">
-                <th className="text-left pb-1.5">MOQ Min</th>
-                <th className="text-left pb-1.5">MOQ Max</th>
-                <th className="text-left pb-1.5">₹ / Unit</th>
-                <th className="text-left pb-1.5">Valid Till</th>
-                <th className="text-left pb-1.5">Note</th>
+              <tr className="text-[10px] text-ink-3 uppercase border-b border-hairline">
+                <th scope="col" className="text-left pb-1.5">MOQ Min</th>
+                <th scope="col" className="text-left pb-1.5">MOQ Max</th>
+                <th scope="col" className="text-left pb-1.5">₹ / Unit</th>
+                <th scope="col" className="text-left pb-1.5">Valid Till</th>
+                <th scope="col" className="text-left pb-1.5">Note</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-hairline">
               {existingRate.tiers.map((t) => (
                 <tr key={t.id}>
                   <td className="py-1.5 tabular-nums">{t.moq_min.toLocaleString('en-IN')}</td>
-                  <td className="py-1.5 tabular-nums text-slate-500">
+                  <td className="py-1.5 tabular-nums text-ink-3">
                     {t.moq_max != null ? t.moq_max.toLocaleString('en-IN') : '—'}
                   </td>
-                  <td className="py-1.5 tabular-nums font-semibold text-slate-800">
+                  <td className="py-1.5 tabular-nums font-semibold text-ink">
                     ₹{t.price_per_unit.toLocaleString('en-IN')}
                   </td>
-                  <td className="py-1.5 text-slate-500">{fmtDate(t.valid_till)}</td>
-                  <td className="py-1.5 text-slate-400 truncate max-w-[90px]">{t.note ?? '—'}</td>
+                  <td className="py-1.5 text-ink-3">{fmtDate(t.valid_till)}</td>
+                  <td className="py-1.5 text-ink-4 truncate max-w-[90px]">{t.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -265,14 +265,14 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
 
       {/* ── New tier form ───────────────────────────────────────────── */}
       <div className="space-y-3">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+        <p className="text-[10px] font-bold text-ink-4 uppercase tracking-wide">
           {existingRate ? 'Add Another Tier' : 'New Price Tier'}
         </p>
 
         {/* Vendor */}
         <div>
-          <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-            Vendor <span className="text-red-500">*</span>
+          <label className="block text-[10px] font-semibold text-ink-3 mb-1">
+            Vendor <span className="text-err">*</span>
           </label>
           <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className={inputCls}>
             <option value="">— Select vendor —</option>
@@ -285,15 +285,15 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
         </div>
 
         {selectedVendor && (
-          <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 grid grid-cols-3 gap-2 text-[11px]">
+          <div className="rounded-md border border-hairline bg-surface-3 px-3 py-2 grid grid-cols-3 gap-2 text-[11px]">
             {selectedVendor.city && (
-              <span><span className="text-slate-400">City </span><span className="text-slate-700">{selectedVendor.city}</span></span>
+              <span><span className="text-ink-4">City </span><span className="text-ink-2">{selectedVendor.city}</span></span>
             )}
             {selectedVendor.paymentTerms && (
-              <span><span className="text-slate-400">Terms </span><span className="text-slate-700">{selectedVendor.paymentTerms}</span></span>
+              <span><span className="text-ink-4">Terms </span><span className="text-ink-2">{selectedVendor.paymentTerms}</span></span>
             )}
             {selectedVendor.avgLeadTime > 0 && (
-              <span><span className="text-slate-400">Avg Lead </span><span className="text-slate-700">{selectedVendor.avgLeadTime}d</span></span>
+              <span><span className="text-ink-4">Avg Lead </span><span className="text-ink-2">{selectedVendor.avgLeadTime}d</span></span>
             )}
           </div>
         )}
@@ -301,8 +301,8 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
         {/* Tier fields */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-              Price per Unit (₹) <span className="text-red-500">*</span>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">
+              Price per Unit (₹) <span className="text-err">*</span>
             </label>
             <input
               type="number" min="0" step="0.01"
@@ -311,8 +311,8 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">
-              MOQ Min <span className="text-red-500">*</span>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">
+              MOQ Min <span className="text-err">*</span>
             </label>
             <input
               type="number" min="0"
@@ -321,7 +321,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">MOQ Max</label>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">MOQ Max</label>
             <input
               type="number" min="0"
               value={moqMax} onChange={(e) => setMoqMax(e.target.value)}
@@ -329,7 +329,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Lead Time (days)</label>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">Lead Time (days)</label>
             <input
               type="number" min="0"
               value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value)}
@@ -337,7 +337,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Valid Till</label>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">Valid Till</label>
             <input
               type="date"
               value={validTill} onChange={(e) => setValidTill(e.target.value)}
@@ -345,7 +345,7 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Note</label>
+            <label className="block text-[10px] font-semibold text-ink-3 mb-1">Note</label>
             <input
               value={notes} onChange={(e) => setNotes(e.target.value)}
               className={inputCls} placeholder="Optional"
@@ -356,12 +356,12 @@ export const UpdatePriceListPopup: React.FC<UpdatePriceListPopupProps> = ({
 
       {/* Feedback */}
       {saveError && (
-        <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-600 flex gap-2 items-center">
+        <div className="mt-3 rounded-md bg-err-soft border border-[color:var(--st-red-fg)]/30 px-3 py-2 text-xs text-err flex gap-2 items-center">
           <AlertCircle size={13} /> {saveError}
         </div>
       )}
       {saved && (
-        <div className="mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 flex gap-2 items-center">
+        <div className="mt-3 rounded-md bg-ok-soft border border-[color:var(--st-green-fg)]/30 px-3 py-2 text-xs text-ok flex gap-2 items-center">
           <CheckCircle2 size={13} /> Price tier saved to the Price List successfully.
         </div>
       )}

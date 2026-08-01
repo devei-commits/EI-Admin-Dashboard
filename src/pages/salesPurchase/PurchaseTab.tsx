@@ -129,19 +129,19 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({
             <table className="w-full table-fixed min-w-275 text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">PO ID</th>
-                  <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Type</th>
-                  <th className="w-[12%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Vendor</th>
-                  <th className="w-[8%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Date</th>
-                  <th className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Status</th>
-                  <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Order Status</th>
-                  <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Invoiced</th>
-                  <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Payment</th>
-                  <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Packed</th>
-                  <th className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Shipped</th>
-                  <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Delivery</th>
-                  <th className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Items</th>
-                  <th className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Action</th>
+                  <th scope="col" className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">PO ID</th>
+                  <th scope="col" className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Type</th>
+                  <th scope="col" className="w-[12%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Vendor</th>
+                  <th scope="col" className="w-[8%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Date</th>
+                  <th scope="col" className="w-[9%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Status</th>
+                  <th scope="col" className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Order Status</th>
+                  <th scope="col" className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Invoiced</th>
+                  <th scope="col" className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Payment</th>
+                  <th scope="col" className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Packed</th>
+                  <th scope="col" className="w-[7%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Shipped</th>
+                  <th scope="col" className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Delivery</th>
+                  <th scope="col" className="w-[5%] text-left py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Items</th>
+                  <th scope="col" className="w-[8%] text-center py-3 px-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody>

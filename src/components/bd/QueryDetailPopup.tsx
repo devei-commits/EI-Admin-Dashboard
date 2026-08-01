@@ -98,7 +98,7 @@ export const QueryDetailPopup: React.FC<QueryDetailPopupProps> = ({ query, onClo
       {mode === 'respond' ? (
         <div>
           <p className={labelCls}>Response to customer</p>
-          <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Type the response…" className={inputCls} />
+          <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Type the response…" aria-label="Response to customer" className={inputCls} />
           <p className="mt-1 text-[11px] text-slate-400">Stored on the query and logged to the timeline. External send (email/WhatsApp) is not wired — share the text manually.</p>
         </div>
       ) : mode === 'escalate' ? (

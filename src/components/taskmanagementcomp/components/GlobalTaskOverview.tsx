@@ -1036,6 +1036,7 @@ export function GlobalTaskOverview() {
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
       <input
        type="text"
+       aria-label="Search by Order No, Item, SKU, POC, or Assignee"
        placeholder="Search by Order No, Item, SKU, POC, or Assignee..."
        value={searchTerm}
        onChange={(e) => {
@@ -1149,34 +1150,34 @@ export function GlobalTaskOverview() {
      <table className="w-full">
       <thead className="bg-gray-50">
        <tr>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
          <button onClick={() => toggleSort('orderNo')} className="flex items-center gap-1 hover:text-slate-800">
           Order No
           {sortBy === 'orderNo' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Item / Task</th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Item / Task</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
          <button onClick={() => toggleSort('stage')} className="flex items-center gap-1 hover:text-slate-800">
           Stage
           {sortBy === 'stage' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
          <button onClick={() => toggleSort('priority')} className="flex items-center gap-1 hover:text-slate-800">
           Priority
           {sortBy === 'priority' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigned To</th>
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigned To</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
          <button onClick={() => toggleSort('estDelDate')} className="flex items-center gap-1 hover:text-slate-800">
           Due Date
           {sortBy === 'estDelDate' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
          </button>
         </th>
-        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+        <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
        </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
@@ -1245,6 +1246,7 @@ export function GlobalTaskOverview() {
              onClick={() => handleViewTask(task)}
              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
              title="View Details"
+             aria-label="View Details"
             >
              <Eye className="w-4 h-4" />
             </button>
@@ -1252,6 +1254,7 @@ export function GlobalTaskOverview() {
              onClick={() => handleEditTask(task)}
              className="p-1.5 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg transition-colors"
              title="Edit Task"
+             aria-label="Edit Task"
             >
              <Edit3 className="w-4 h-4" />
             </button>
@@ -1260,6 +1263,7 @@ export function GlobalTaskOverview() {
               onClick={() => handlePushTask(task)}
               className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
               title="Push to Next Stage"
+              aria-label="Push to Next Stage"
              >
               <ArrowRight className="w-4 h-4" />
              </button>
@@ -1283,6 +1287,7 @@ export function GlobalTaskOverview() {
        <button
         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
         disabled={currentPage === 1}
+        aria-label="Previous page"
         className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
        >
         <ChevronLeft className="w-4 h-4" />
@@ -1315,6 +1320,7 @@ export function GlobalTaskOverview() {
        <button
         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         disabled={currentPage === totalPages}
+        aria-label="Next page"
         className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
        >
         <ChevronRightIcon className="w-4 h-4" />
@@ -1349,12 +1355,14 @@ export function GlobalTaskOverview() {
         <div className="flex items-center gap-1 ml-2">
          <button
           onClick={() => handleViewTask(task)}
+          aria-label="View Details"
           className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
          >
           <Eye className="w-4 h-4" />
          </button>
          <button
           onClick={() => handleEditTask(task)}
+          aria-label="Edit Task"
           className="p-2 text-gray-500 hover:text-slate-800 hover:bg-gray-50 rounded-lg"
          >
           <Edit3 className="w-4 h-4" />
@@ -1426,15 +1434,16 @@ export function GlobalTaskOverview() {
    {/* View Task Modal */}
    {showTaskModal && selectedTask && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+     <div role="dialog" aria-modal="true" aria-labelledby="view-task-modal-title" className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
       <div className="sticky top-0 bg-slate-800 p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <div>
-         <h2 className="text-xl font-bold text-white">{selectedTask.orderNo}</h2>
+         <h2 id="view-task-modal-title" className="text-xl font-bold text-white">{selectedTask.orderNo}</h2>
          <p className="text-gray-100 text-sm mt-1">{selectedTask.itemName}</p>
         </div>
         <button
          onClick={() => setShowTaskModal(false)}
+         aria-label="Close"
          className="p-2 hover:bg-white/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
@@ -1574,12 +1583,13 @@ export function GlobalTaskOverview() {
    {/* Edit Task Modal */}
    {showEditModal && selectedTask && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+     <div role="dialog" aria-modal="true" aria-labelledby="edit-task-modal-title" className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
       <div className="bg-slate-800 p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Edit Task</h2>
+        <h2 id="edit-task-modal-title" className="text-lg font-bold text-white">Edit Task</h2>
         <button
          onClick={() => setShowEditModal(false)}
+         aria-label="Close"
          className="p-2 hover:bg-white/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
@@ -1668,12 +1678,13 @@ export function GlobalTaskOverview() {
    {/* Push Task Modal */}
    {showPushModal && selectedTask && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+     <div role="dialog" aria-modal="true" aria-labelledby="push-task-modal-title" className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
       <div className="bg-green-500 p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">Push Task to Next Stage</h2>
+        <h2 id="push-task-modal-title" className="text-lg font-bold text-white">Push Task to Next Stage</h2>
         <button
          onClick={() => setShowPushModal(false)}
+         aria-label="Close"
          className="p-2 hover:bg-white/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />
@@ -1734,12 +1745,13 @@ export function GlobalTaskOverview() {
    {/* Add Task Modal */}
    {showAddTaskModal && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto">
-     <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl my-8">
+     <div role="dialog" aria-modal="true" aria-labelledby="add-task-modal-title" className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl my-8">
       <div className="bg-slate-800 p-5 rounded-t-2xl">
        <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">New Task</h2>
+        <h2 id="add-task-modal-title" className="text-lg font-bold text-white">New Task</h2>
         <button
          onClick={() => setShowAddTaskModal(false)}
+         aria-label="Close"
          className="p-2 hover:bg-white/20 rounded-lg transition-colors"
         >
          <X className="w-5 h-5 text-white" />

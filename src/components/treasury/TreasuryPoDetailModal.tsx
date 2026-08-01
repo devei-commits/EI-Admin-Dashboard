@@ -151,10 +151,10 @@ export function TreasuryPoDetailModal({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Qty</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Rate</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Amount</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
+                      <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Qty</th>
+                      <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Rate</th>
+                      <th scope="col" className="px-3 py-2 text-right font-semibold text-gray-700">Amount</th>
                     </tr>
                   </thead>
                   <tbody>

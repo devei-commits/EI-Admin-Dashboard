@@ -445,19 +445,19 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
     >
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
       <div
-        className="relative w-full max-w-5xl max-h-[92vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-5xl max-h-[92vh] bg-surface rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="stock-check-audit-title"
       >
-        <div className="shrink-0 border-b border-slate-200 px-5 py-4 bg-white">
+        <div className="shrink-0 border-b border-border px-5 py-4 bg-surface">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="stock-check-audit-title" className="text-lg font-semibold text-slate-900">
+              <h2 id="stock-check-audit-title" className="text-lg font-semibold text-ink">
                 🔍 Audit — {row.itemName} {row.itemCode}
               </h2>
-              <p className="text-xs text-slate-600 mt-1">
+              <p className="text-xs text-ink-2 mt-1">
                 {row.auditRef} · {row.warehouse} · {warehouseName} · Requested by {sourceDept} · Linked{' '}
                 {linkedPr}
               </p>
@@ -468,7 +468,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                   type="button"
                   onClick={() => void handleCompleteAudit()}
                   disabled={saving || loading || claimingAssignee}
-                  className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-950 disabled:opacity-60"
+                  className="px-4 py-2 rounded-lg bg-ink text-white text-sm font-semibold hover:bg-ink-2 disabled:opacity-60"
                 >
                   {saving ? 'Saving…' : 'Complete Audit'}
                 </button>
@@ -476,7 +476,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-700 text-xl leading-none px-1"
+                className="text-ink-4 hover:text-ink-2 text-xl leading-none px-1"
                 aria-label="Close"
               >
                 ×
@@ -486,70 +486,70 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
         </div>
 
         {loading || claimingAssignee ? (
-          <div className="px-6 py-12 text-sm text-slate-500 text-center">
+          <div className="px-6 py-12 text-sm text-ink-3 text-center">
             {claimingAssignee ? 'Claiming stock check…' : 'Loading audit details…'}
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             {readOnly && !row.isCompleted ? (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-warn bg-warn-soft border border-warn rounded-lg px-3 py-2">
                 {stockCheckLockedMessage(row.assignedTo || assignedTo)}
               </p>
             ) : null}
             {readOnly && row.isCompleted ? (
-              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-ok bg-ok-soft border border-ok rounded-lg px-3 py-2">
                 Audit completed — read-only view.
               </p>
             ) : null}
 
-            <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 mb-3">📦 Item information</h3>
+            <section className="rounded-lg border border-border bg-surface-2/60 p-4">
+              <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-3">📦 Item information</h3>
               <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <dt className="text-slate-500">Item Code</dt>
-                  <dd className="font-mono font-semibold text-slate-900 mt-0.5">{row.itemCode}</dd>
+                  <dt className="text-ink-3">Item Code</dt>
+                  <dd className="font-mono font-semibold text-ink mt-0.5">{row.itemCode}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Item Name</dt>
-                  <dd className="font-semibold text-slate-900 mt-0.5">{row.itemName}</dd>
+                  <dt className="text-ink-3">Item Name</dt>
+                  <dd className="font-semibold text-ink mt-0.5">{row.itemName}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Category</dt>
-                  <dd className="text-slate-800 mt-0.5">{category}</dd>
+                  <dt className="text-ink-3">Category</dt>
+                  <dd className="text-ink mt-0.5">{category}</dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">UoM</dt>
-                  <dd className="text-slate-800 mt-0.5">{unit}</dd>
+                  <dt className="text-ink-3">UoM</dt>
+                  <dd className="text-ink mt-0.5">{unit}</dd>
                 </div>
               </dl>
             </section>
 
             <section>
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 mb-2">
+              <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-2">
                 📍 Current racking (system) — with pack breakdown + inventory batch
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-[10px] tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                      <th className="px-3 py-2 font-semibold">Rack Location</th>
-                      <th className="px-3 py-2 font-semibold">Pack Count × Pack Qty</th>
-                      <th className="px-3 py-2 font-semibold">Total Qty</th>
-                      <th className="px-3 py-2 font-semibold">GRN Batch</th>
-                      <th className="px-3 py-2 font-semibold">Last Updated</th>
+                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border">
+                      <th scope="col" className="px-3 py-2 font-semibold">Rack Location</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">Pack Count × Pack Qty</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">Total Qty</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">GRN Batch</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">Last Updated</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rackDrafts.filter((r) => !r.isNew).map((rack) => (
-                      <tr key={`sys-${rack.key}`} className="border-b border-slate-100">
-                        <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">{rack.rackLabel}</td>
-                        <td className="px-3 py-2 text-slate-700">{rack.packBreakdown}</td>
-                        <td className="px-3 py-2 text-slate-800 tabular-nums">{formatQtyWithUnit(rack.systemQty, unit)}</td>
-                        <td className="px-3 py-2 font-mono text-[11px] text-slate-700">{rack.grnBatch}</td>
-                        <td className="px-3 py-2 text-slate-700 whitespace-nowrap">
+                      <tr key={`sys-${rack.key}`} className="border-b border-hairline">
+                        <td className="px-3 py-2 font-medium text-ink whitespace-nowrap">{rack.rackLabel}</td>
+                        <td className="px-3 py-2 text-ink-2">{rack.packBreakdown}</td>
+                        <td className="px-3 py-2 text-ink tabular-nums">{formatQtyWithUnit(rack.systemQty, unit)}</td>
+                        <td className="px-3 py-2 font-mono text-[11px] text-ink-2">{rack.grnBatch}</td>
+                        <td className="px-3 py-2 text-ink-2 whitespace-nowrap">
                           {rack.lastUpdatedDisplay}
                           {rack.isStale ? (
-                            <span className="ml-1 text-amber-600" title="Stale stock position">
+                            <span className="ml-1 text-warn" title="Stale stock position">
                               ⚠ stale
                             </span>
                           ) : null}
@@ -559,7 +559,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px] text-slate-500 mt-2">
+              <p className="text-[11px] text-ink-3 mt-2">
                 Total system SIH: {formatQtyWithUnit(systemTotal, unit)} across{' '}
                 {rackDrafts.filter((r) => !r.isNew).length} rack position
                 {rackDrafts.filter((r) => !r.isNew).length === 1 ? '' : 's'} ·{' '}
@@ -569,58 +569,59 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
             </section>
 
             <section>
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 mb-3">🔄 Audit progress</h3>
+              <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-3">🔄 Audit progress</h3>
               <ol className="flex flex-col sm:flex-row gap-3 sm:gap-6">
                 {progressSteps.map((step) => (
                   <li key={step.key} className="flex-1 min-w-0">
                     <p
                       className={`text-[10px] font-bold tracking-wide ${
                         step.status === 'done'
-                          ? 'text-emerald-700'
+                          ? 'text-ok'
                           : step.status === 'current'
-                            ? 'text-sky-700'
-                            : 'text-slate-400'
+                            ? 'text-brand'
+                            : 'text-ink-4'
                       }`}
                     >
                       {step.label}
                     </p>
-                    <p className="text-xs text-slate-700 mt-0.5">{step.detail}</p>
+                    <p className="text-xs text-ink-2 mt-0.5">{step.detail}</p>
                   </li>
                 ))}
               </ol>
             </section>
 
             <section>
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 mb-2">
+              <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-2">
                 ✏ Audited qty + racking update
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-[10px] tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                      <th className="px-3 py-2 font-semibold">Rack Location</th>
-                      <th className="px-3 py-2 font-semibold">System Qty</th>
-                      <th className="px-3 py-2 font-semibold">Audited Qty (physical count)</th>
-                      <th className="px-3 py-2 font-semibold">Variance</th>
-                      <th className="px-3 py-2 font-semibold min-w-[10rem]">Notes</th>
-                      {!readOnly ? <th className="px-3 py-2 font-semibold w-16" /> : null}
+                    <tr className="text-left text-[10px] tracking-wide text-ink-3 bg-surface-2 border-b border-border">
+                      <th scope="col" className="px-3 py-2 font-semibold">Rack Location</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">System Qty</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">Audited Qty (physical count)</th>
+                      <th scope="col" className="px-3 py-2 font-semibold">Variance</th>
+                      <th scope="col" className="px-3 py-2 font-semibold min-w-[10rem]">Notes</th>
+                      {!readOnly ? <th scope="col" className="px-3 py-2 font-semibold w-16" /> : null}
                     </tr>
                   </thead>
                   <tbody>
                     {rackDrafts.map((rack) => (
-                      <tr key={`audit-${rack.key}`} className="border-b border-slate-100 align-top">
-                        <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">
+                      <tr key={`audit-${rack.key}`} className="border-b border-hairline align-top">
+                        <td className="px-3 py-2 font-medium text-ink whitespace-nowrap">
                           {rack.isNew && !readOnly ? (
                             <input
                               value={rack.rackLabel}
                               onChange={(e) => updateRackDraft(rack.key, { rackLabel: e.target.value })}
-                              className="w-full min-w-[10rem] rounded border border-slate-300 px-2 py-1 text-xs font-medium"
+                              aria-label="Rack location label"
+                              className="w-full min-w-[10rem] rounded border border-border px-2 py-1 text-xs font-medium"
                             />
                           ) : (
                             rack.rackLabel
                           )}
                         </td>
-                        <td className="px-3 py-2 text-slate-700 tabular-nums">
+                        <td className="px-3 py-2 text-ink-2 tabular-nums">
                           {formatQtyWithUnit(rack.systemQty, unit)}
                         </td>
                         <td className="px-3 py-2">
@@ -633,17 +634,18 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                             onChange={(e) =>
                               updateRackDraft(rack.key, { auditedQty: parseNumber(e.target.value) })
                             }
-                            className="w-24 rounded border border-slate-300 px-2 py-1 text-xs tabular-nums disabled:bg-slate-100"
+                            aria-label={`Audited qty for ${rack.rackLabel}`}
+                            className="w-24 rounded border border-border px-2 py-1 text-xs tabular-nums disabled:bg-surface-3"
                           />
-                          <span className="ml-1 text-slate-500">{unit}</span>
+                          <span className="ml-1 text-ink-3">{unit}</span>
                         </td>
                         <td
                           className={`px-3 py-2 tabular-nums font-semibold ${
                             rack.auditedQty - rack.systemQty > 0
-                              ? 'text-amber-700'
+                              ? 'text-warn'
                               : rack.auditedQty - rack.systemQty < 0
-                                ? 'text-rose-700'
-                                : 'text-slate-600'
+                                ? 'text-err'
+                                : 'text-ink-2'
                           }`}
                         >
                           {formatRackVariance(rack.systemQty, rack.auditedQty)}
@@ -654,7 +656,8 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                             disabled={readOnly}
                             onChange={(e) => updateRackDraft(rack.key, { notes: e.target.value })}
                             placeholder="—"
-                            className="w-full min-w-[8rem] rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100"
+                            aria-label={`Notes for ${rack.rackLabel}`}
+                            className="w-full min-w-[8rem] rounded border border-border px-2 py-1 text-xs disabled:bg-surface-3"
                           />
                         </td>
                         {!readOnly ? (
@@ -663,34 +666,35 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => removeRackDraft(rack.key)}
-                                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline whitespace-nowrap"
+                                className="text-[11px] font-semibold text-err hover:text-err hover:underline whitespace-nowrap"
                                 aria-label={`Remove rack row ${rack.rackLabel}`}
                               >
                                 Remove
                               </button>
                             ) : (
-                              <span className="text-slate-300 text-[11px]">—</span>
+                              <span className="text-ink-4 text-[11px]">—</span>
                             )}
                           </td>
                         ) : null}
                       </tr>
                     ))}
                     {!readOnly ? (
-                      <tr className="border-b border-slate-100 bg-slate-50/50">
+                      <tr className="border-b border-hairline bg-surface-2/50">
                         <td className="px-3 py-2" colSpan={6}>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-slate-600 font-medium">{row.warehouse} · + add new rack ▾</span>
+                            <span className="text-ink-2 font-medium">{row.warehouse} · + add new rack ▾</span>
                             <input
                               value={newRackLabel}
                               onChange={(e) => setNewRackLabel(e.target.value)}
                               placeholder="Rack label e.g. MW · Rack-A12-D2"
-                              className="flex-1 min-w-[12rem] rounded border border-slate-300 px-2 py-1 text-xs"
+                              aria-label="New rack label"
+                              className="flex-1 min-w-[12rem] rounded border border-border px-2 py-1 text-xs"
                             />
                             <button
                               type="button"
                               onClick={addNewRackRow}
                               disabled={!newRackLabel.trim()}
-                              className="px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-50"
+                              className="px-2 py-1 rounded border border-border text-xs font-semibold text-ink-2 hover:bg-surface disabled:opacity-50"
                             >
                               Add row
                             </button>
@@ -701,13 +705,13 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs font-medium text-slate-800 mt-2">
+              <p className="text-xs font-medium text-ink mt-2">
                 Audit result: {buildAuditResultSummary(systemTotal, auditedTotal, unit)}
               </p>
             </section>
 
             <section>
-              <h3 className="text-xs font-bold tracking-wide text-slate-500 mb-2">📷 Evidence photos (post-audit)</h3>
+              <h3 className="text-xs font-bold tracking-wide text-ink-3 mb-2">📷 Evidence photos (post-audit)</h3>
               <StockCheckEvidenceCapture
                 readOnly={readOnly}
                 savedPhotoCount={savedEvidencePhotoCount}
@@ -717,27 +721,27 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
             </section>
 
             {!readOnly ? (
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-ink-2">
                 Assigned to{' '}
-                <span className="font-semibold text-slate-900">
+                <span className="font-semibold text-ink">
                   {formatAssigneeShortName(assignedTo || currentActorName)}
                 </span>
               </p>
             ) : null}
 
             {formError ? (
-              <p className="text-xs text-red-600" role="alert">
+              <p className="text-xs text-err" role="alert">
                 {formError}
               </p>
             ) : null}
           </div>
         )}
 
-        <div className="shrink-0 border-t border-slate-200 px-5 py-3 flex justify-end gap-2 bg-white">
+        <div className="shrink-0 border-t border-border px-5 py-3 flex justify-end gap-2 bg-surface">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+            className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-2"
           >
             Close
           </button>
@@ -746,7 +750,7 @@ const StockCheckAuditModal: React.FC<StockCheckAuditModalProps> = ({
               type="button"
               onClick={() => void handleCompleteAudit()}
               disabled={saving}
-              className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-950 disabled:opacity-60"
+              className="px-4 py-2 rounded-lg bg-ink text-white text-sm font-semibold hover:bg-ink-2 disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Complete Audit'}
             </button>

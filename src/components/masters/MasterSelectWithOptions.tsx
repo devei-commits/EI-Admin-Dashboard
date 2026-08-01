@@ -20,7 +20,7 @@ export type MasterSelectWithOptionsProps = {
 };
 
 const inputClass =
-  'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  'w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]';
 
 function normalizeOptions(options: readonly SelectOption[]): { value: string; label: string }[] {
   return options.map((opt) =>
@@ -82,9 +82,9 @@ export function MasterSelectWithOptions({
 
   return (
     <div className={className}>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
         {label}
-        {requiredMark ? <span className="text-red-600 ml-0.5">*</span> : null}
+        {requiredMark ? <span className="text-err ml-0.5">*</span> : null}
       </label>
       <div className="flex gap-1.5 items-start">
         <select
@@ -92,7 +92,7 @@ export function MasterSelectWithOptions({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          className={`${inputClass} flex-1 min-w-0 ${disabled ? 'bg-slate-100' : ''}`}
+          className={`${inputClass} flex-1 min-w-0 ${disabled ? 'bg-surface-3' : ''}`}
         >
           <option value="">{emptyLabel}</option>
           {selectOptions.map((opt) => (
@@ -107,11 +107,12 @@ export function MasterSelectWithOptions({
             <button
               type="button"
               title="Add option"
+              aria-label="Add option"
               onClick={() => {
                 setAddOpen((o) => !o);
                 setAddError('');
               }}
-              className="shrink-0 px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              className="shrink-0 px-2.5 py-2 border border-border rounded-lg text-sm font-semibold text-ink-2 hover:bg-surface-3"
             >
               +
             </button>
@@ -119,7 +120,7 @@ export function MasterSelectWithOptions({
               type="button"
               title="Manage options"
               onClick={() => setManageOpen(true)}
-              className="shrink-0 px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              className="shrink-0 px-2.5 py-2 border border-border rounded-lg text-sm text-ink-2 hover:bg-surface-3"
               aria-label={`Manage options for ${fieldLabel}`}
             >
               ⚙
@@ -131,6 +132,7 @@ export function MasterSelectWithOptions({
         <div className="mt-2 flex gap-2">
           <input
             type="text"
+            aria-label={`New option for ${fieldLabel}`}
             value={addValue}
             onChange={(e) => {
               setAddValue(e.target.value);
@@ -143,24 +145,24 @@ export function MasterSelectWithOptions({
               }
             }}
             placeholder={`New option for ${fieldLabel}`}
-            className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           />
           <button
             type="button"
             onClick={handleQuickAdd}
-            className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+            className="px-3 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press"
           >
             Add
           </button>
         </div>
       ) : null}
       {addError ? (
-        <p className="mt-1 text-xs text-red-600" role="alert">
+        <p className="mt-1 text-xs text-err" role="alert">
           {addError}
         </p>
       ) : null}
       {error ? (
-        <p className="mt-1 text-xs text-red-600" role="alert">
+        <p className="mt-1 text-xs text-err" role="alert">
           {error}
         </p>
       ) : null}

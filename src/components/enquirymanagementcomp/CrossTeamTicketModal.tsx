@@ -215,10 +215,10 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
    <div className="absolute inset-0 bg-black/45" onClick={() => !submitting && onClose()} />
-   <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
+   <div role="dialog" aria-modal="true" aria-labelledby="cross-team-ticket-title" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
      <div>
-      <h2 className="text-lg font-semibold text-gray-900">Cross-team ticket</h2>
+      <h2 id="cross-team-ticket-title" className="text-lg font-semibold text-gray-900">Cross-team ticket</h2>
       <p className="text-sm text-gray-500 mt-0.5">
        Raise an internal issue, tag teams and colleagues, and flag PIS or other areas.
       </p>
@@ -250,6 +250,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
        placeholder="Short summary for other teams"
        maxLength={500}
+       aria-label="Subject"
       />
      </div>
 
@@ -261,6 +262,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        rows={4}
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
        placeholder="Context, links, SKU/PIS codes, what you need from which team…"
+       aria-label="Description"
       />
      </div>
 
@@ -271,6 +273,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        onChange={(e) => setPrimaryAssigneeId(e.target.value)}
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
        required
+       aria-label="Assign to"
       >
        <option value="">Select primary assignee…</option>
        {staffOptions.map((u) => (
@@ -291,6 +294,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
         value={category}
         onChange={(e) => setCategory(e.target.value as TicketCategory)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        aria-label="Category"
        >
         {INTERNAL_CATEGORIES.map((c) => (
          <option key={c.value} value={c.value}>
@@ -305,6 +309,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
         value={priority}
         onChange={(e) => setPriority(e.target.value as TicketPriority)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        aria-label="Priority"
        >
         {INTERNAL_PRIORITIES.map((p) => (
          <option key={p} value={p}>
@@ -374,6 +379,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        onChange={(e) => setMemberSearch(e.target.value)}
        placeholder="Search by name or email…"
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2"
+       aria-label="Tag people"
       />
       {memberSearch.trim().length >= 1 && filteredStaff.length > 0 && (
        <div className="max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">

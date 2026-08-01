@@ -52,9 +52,9 @@ export default function QuoteCompare() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="py-3 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-40">Metric</th>
+                    <th scope="col" className="py-3 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-40">Metric</th>
                     {quotes.map((q) => (
-                      <th key={q.id} className="py-3 px-4 text-left min-w-[12rem]">
+                      <th scope="col" key={q.id} className="py-3 px-4 text-left min-w-[12rem]">
                         <button onClick={() => navigate(`/quotations/${q.id}`)} className="font-semibold text-slate-900 hover:underline">{q.quote_ref}</button>
                         <div className="text-xs text-gray-500 font-normal truncate max-w-[12rem]" title={q.quote_name}>{q.quote_name}</div>
                         <div className="mt-1 flex items-center gap-1.5">

@@ -53,11 +53,11 @@ interface EditSOModalProps {
 const DEFAULT_STAGED = { advance_pct: 0, pre_shipment_pct: 100, post_shipment_pct: 0, credit_days: 30 };
 const MAX_PRODUCT_SUGGESTIONS = 100;
 const SUGGEST_LIST_BOX_CLASS =
-  'fixed z-[10050] overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5';
+  'fixed z-[10050] overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-[var(--e2)] ring-1 ring-black/5';
 const SUGGEST_ITEM_CLASS =
-  'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-slate-100 focus:bg-slate-100 focus:outline-none border-b border-gray-50 last:border-0';
-const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-gray-900';
-const SUGGEST_ITEM_META_CLASS = 'text-xs text-gray-500';
+  'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-3 focus:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] border-b border-hairline last:border-0';
+const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-ink';
+const SUGGEST_ITEM_META_CLASS = 'text-xs text-ink-3';
 
 function parseProductIdFromOption(product: ProductOption): number | null {
   const m = /^PR-(\d+)$/i.exec(String(product.id || '').trim());
@@ -501,7 +501,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50"
+              className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-ink-2 bg-surface hover:bg-surface-2"
             >
               Cancel
             </button>
@@ -509,7 +509,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={!canEdit || isSaving}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand text-white hover:bg-brand-press disabled:opacity-60"
             >
               {isSaving ? 'Saving...' : 'Save changes'}
             </button>
@@ -518,14 +518,14 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
       >
         <div className="space-y-4">
         {!canEdit && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-sm text-warn">
             {lockReason || 'Editing is locked for this sale order.'}
           </div>
         )}
 
         {errors.length > 0 && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-            <ul className="list-disc list-inside text-sm text-red-700">
+          <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2">
+            <ul className="list-disc list-inside text-sm text-err">
               {errors.map((error) => (
                 <li key={error}>{error}</li>
               ))}
@@ -535,84 +535,85 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Customer</label>
-            <input value={customer} onChange={(e) => setCustomer(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Customer</label>
+            <input value={customer} onChange={(e) => setCustomer(e.target.value)} disabled={!canEdit} aria-label="Customer" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Customer city</label>
-            <input value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Customer city</label>
+            <input value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} disabled={!canEdit} aria-label="Customer city" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Priority</label>
-            <select value={priority} onChange={(e) => setPriority(e.target.value as 'normal' | 'high')} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100">
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Priority</label>
+            <select value={priority} onChange={(e) => setPriority(e.target.value as 'normal' | 'high')} disabled={!canEdit} aria-label="Priority" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3">
               <option value="normal">Normal</option>
               <option value="high">High</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">SO status</label>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">SO status</label>
             <select
               value={salesOrderStatus}
               onChange={(e) => setSalesOrderStatus(e.target.value as SalesOrderStatus)}
               disabled={!canEdit}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+              aria-label="SO status"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3"
             >
               {SALES_ORDER_STATUS_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-gray-500">Draft or Cancelled orders are hidden from Planning → PIS Extracted.</p>
+            <p className="mt-1 text-[11px] text-ink-3">Draft or Cancelled orders are hidden from Planning → PIS Extracted.</p>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Order date</label>
-            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Order date</label>
+            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} disabled={!canEdit} aria-label="Order date" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Due date</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Due date</label>
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={!canEdit} aria-label="Due date" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" />
           </div>
           <div className="md:col-span-3">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Shipping address</label>
-            <textarea value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} disabled={!canEdit} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 resize-none" />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Shipping address</label>
+            <textarea value={shipAddress} onChange={(e) => setShipAddress(e.target.value)} disabled={!canEdit} rows={3} aria-label="Shipping address" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3 resize-none" />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Payment terms (staged)</label>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Payment terms (staged)</label>
             <div className="grid grid-cols-2 gap-2">
-              <input type="number" min={0} max={100} step="0.01" value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" placeholder="Advance %" />
-              <input type="number" min={0} max={100} step="0.01" value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" placeholder="Pre-shipment %" />
-              <input type="number" min={0} max={100} step="0.01" value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" placeholder="Post-shipment %" />
-              <input type="number" min={0} step={1} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" placeholder="Credit days" />
+              <input type="number" min={0} max={100} step="0.01" value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} disabled={!canEdit} aria-label="Advance %" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" placeholder="Advance %" />
+              <input type="number" min={0} max={100} step="0.01" value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} disabled={!canEdit} aria-label="Pre-shipment %" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" placeholder="Pre-shipment %" />
+              <input type="number" min={0} max={100} step="0.01" value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} disabled={!canEdit} aria-label="Post-shipment %" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" placeholder="Post-shipment %" />
+              <input type="number" min={0} step={1} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} disabled={!canEdit} aria-label="Credit days" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" placeholder="Credit days" />
             </div>
           </div>
           <div className="md:col-span-1">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Total value</label>
-            <div className="h-[38px] border border-gray-200 rounded-lg px-3 flex items-center text-sm font-semibold text-gray-700 bg-gray-50">
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Total value</label>
+            <div className="h-[38px] border border-border rounded-lg px-3 flex items-center text-sm font-semibold text-ink-2 bg-surface-3">
               {totalValue.toLocaleString('en-IN')}
             </div>
           </div>
           <div className="md:col-span-3">
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canEdit} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100" rows={2} />
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canEdit} aria-label="Notes" className="w-full border border-border rounded-lg px-3 py-2 text-sm disabled:bg-surface-3" rows={2} />
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200">
-          <div className="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-800">Order items</p>
-            <button type="button" onClick={addItem} disabled={!canEdit} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-300 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-60">
+        <div className="rounded-lg border border-border">
+          <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+            <p className="text-sm font-semibold text-ink">Order items</p>
+            <button type="button" onClick={addItem} disabled={!canEdit} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs font-semibold text-ink-2 bg-surface hover:bg-surface-2 disabled:opacity-60">
               <Plus size={14} />
               Add item
             </button>
           </div>
           <div className="p-3 space-y-2">
             {/* Column headings */}
-            <div className="grid grid-cols-12 gap-2 pb-1 border-b border-gray-100">
-              <div className="col-span-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Product</div>
-              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">SKU</div>
-              <div className="col-span-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pack</div>
-              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Qty (units)</div>
-              <div className="col-span-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Unit Price (₹)</div>
-              <div className="col-span-1 text-[10px] font-semibold text-amber-600 uppercase tracking-wide">MRP (₹)</div>
+            <div className="grid grid-cols-12 gap-2 pb-1 border-b border-hairline">
+              <div className="col-span-3 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Product</div>
+              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">SKU</div>
+              <div className="col-span-1 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Pack</div>
+              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Qty (units)</div>
+              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Unit Price (₹)</div>
+              <div className="col-span-1 text-[10px] font-semibold text-warn uppercase tracking-wide">MRP (₹)</div>
               <div className="col-span-1" />
             </div>
             {items.map((item, index) => (
@@ -621,8 +622,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   ref={(el) => {
                     productInputRefs.current[index] = el;
                   }}
-                  className="col-span-3 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+                  className="col-span-3 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
                   placeholder="Search by product name or SKU…"
+                  aria-label="Product (search by name or SKU)"
                   value={item.productName}
                   disabled={!canEdit}
                   autoComplete="off"
@@ -633,16 +635,18 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   }}
                 />
                 <input
-                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-gray-50"
+                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-surface-3"
                   placeholder="Auto-filled"
+                  aria-label="SKU is filled automatically when a product is selected"
                   value={item.sku}
                   disabled
                   readOnly
                   title="SKU is filled automatically when a product is selected"
                 />
                 <input
-                  className="col-span-1 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-gray-50"
+                  className="col-span-1 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-surface-3"
                   placeholder="—"
+                  aria-label="Pack size is filled automatically when a product is selected"
                   value={item.pack}
                   disabled
                   readOnly
@@ -651,8 +655,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                 <input
                   type="number"
                   min={1}
-                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
                   placeholder="0"
+                  aria-label="Quantity (units)"
                   value={item.orderedQty || ''}
                   disabled={!canEdit}
                   onChange={(e) => updateItem(index, { orderedQty: Number(e.target.value || 0) })}
@@ -661,8 +666,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   type="number"
                   min={0.01}
                   step="0.01"
-                  className="col-span-2 border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
                   placeholder="0.00"
+                  aria-label="Unit price (₹)"
                   value={item.unitPrice || ''}
                   disabled={!canEdit}
                   onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })}
@@ -671,8 +677,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   type="number"
                   min={0}
                   step="0.01"
-                  className="col-span-1 border border-amber-200 rounded px-2 py-1.5 text-sm disabled:bg-gray-100 bg-amber-50 text-amber-900"
+                  className="col-span-1 border border-[color:var(--st-amber-fg)]/30 rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-warn-soft text-warn"
                   placeholder="0.00"
+                  aria-label="MRP from product master — editable per SO"
                   value={item.mrp ?? ''}
                   disabled={!canEdit}
                   title="MRP from product master — editable per SO"
@@ -682,12 +689,13 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   type="button"
                   onClick={() => removeItem(index)}
                   disabled={!canEdit || items.length === 1}
-                  className="col-span-1 inline-flex items-center justify-center gap-1 border border-red-200 rounded px-2 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                  aria-label="Remove item"
+                  className="col-span-1 inline-flex items-center justify-center gap-1 border border-[color:var(--st-red-fg)]/30 rounded px-2 py-1.5 text-xs font-semibold text-err bg-err-soft hover:bg-err-soft disabled:opacity-60"
                 >
                   <Trash2 size={13} />
                 </button>
                 {priceHints[index] ? (
-                  <div className="col-span-12 text-[11px] text-blue-600 flex items-center gap-1">
+                  <div className="col-span-12 text-[11px] text-brand flex items-center gap-1">
                     <span>💡</span>{priceHints[index]}
                   </div>
                 ) : null}

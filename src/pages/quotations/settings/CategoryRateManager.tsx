@@ -91,10 +91,10 @@ export default function CategoryRateManager() {
         <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Category</th>
-              <th className="px-4 py-2 text-center font-medium text-gray-600">Wastage %</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Notes</th>
-              <th className="px-4 py-2"></th>
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Category</th>
+              <th scope="col" className="px-4 py-2 text-center font-medium text-gray-600">Wastage %</th>
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">Notes</th>
+              <th scope="col" className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -104,6 +104,7 @@ export default function CategoryRateManager() {
                   {row.isNew ? (
                     <input
                       type="text"
+                      aria-label="Category"
                       className="border border-gray-300 rounded px-2 py-1 text-sm w-40 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       value={row.category}
                       onChange={e => update(i, 'category', e.target.value)}
@@ -121,6 +122,7 @@ export default function CategoryRateManager() {
                       step="0.1"
                       min="0"
                       max="100"
+                      aria-label="Wastage %"
                       className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       value={row.wastage_pct}
                       onChange={e => update(i, 'wastage_pct', e.target.value)}
@@ -132,6 +134,7 @@ export default function CategoryRateManager() {
                 <td className="px-4 py-2">
                   <input
                     type="text"
+                    aria-label="Optional note"
                     className="border border-gray-300 rounded px-2 py-1 text-sm w-48 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     value={row.notes}
                     onChange={e => update(i, 'notes', e.target.value)}
@@ -154,6 +157,7 @@ export default function CategoryRateManager() {
                       disabled={deleting === row.id}
                       className="p-1 text-red-500 hover:text-red-700 disabled:opacity-40"
                       title="Delete"
+                      aria-label="Delete"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

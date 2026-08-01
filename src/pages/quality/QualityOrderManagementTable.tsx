@@ -278,7 +278,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   accent="teal"
                   thClassName="px-4 py-2.5 text-[10px] tracking-wide normal-case"
                 />
-                <th className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-wide text-slate-500 whitespace-nowrap">
+                <th scope="col" className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-wide text-slate-500 whitespace-nowrap">
                   Action
                 </th>
               </tr>

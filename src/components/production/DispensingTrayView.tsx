@@ -109,19 +109,19 @@ function TrayLineCard({
     <div
       className={`rounded-lg border px-2.5 py-2 min-w-0 h-full ${
         isDone
-          ? 'border-emerald-200 bg-emerald-50/50'
+          ? 'border-ok-soft bg-ok-soft/50'
           : isPartial
-            ? 'border-amber-200 bg-amber-50/40'
-            : 'border-gray-200 bg-white'
+            ? 'border-warn-soft bg-warn-soft/40'
+            : 'border-border bg-surface'
       }`}
     >
-      <div className="text-xs font-semibold text-gray-900 truncate leading-tight" title={line.label}>
+      <div className="text-xs font-semibold text-ink truncate leading-tight" title={line.label}>
         {line.label}
       </div>
-      <div className="mt-1 font-mono text-xs font-bold text-gray-800 tabular-nums">
+      <div className="mt-1 font-mono text-xs font-bold text-ink tabular-nums">
         {formatQtyExact(line.dispensed, qtyKind)} / {formatQtyExact(line.required, qtyKind)} {line.unit}
       </div>
-      <div className="mt-1.5 space-y-0.5 text-[10px] text-gray-500 leading-snug border-t border-gray-100 pt-1.5">
+      <div className="mt-1.5 space-y-0.5 text-[10px] text-ink-3 leading-snug border-t border-hairline pt-1.5">
         <div className="truncate" title={line.trayLabel}>
           {line.trayLabel}
         </div>
@@ -131,7 +131,7 @@ function TrayLineCard({
           </span>
           <span
             className={`shrink-0 ${
-              isDone ? 'text-emerald-700 font-semibold' : isPartial ? 'text-amber-700 font-semibold' : 'text-gray-400'
+              isDone ? 'text-ok font-semibold' : isPartial ? 'text-warn font-semibold' : 'text-ink-4'
             }`}
           >
             {line.statusText}
@@ -160,15 +160,15 @@ function TraySection({
   emptyLabel: string;
 }): React.ReactElement {
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-3">
+    <div className="rounded-xl border border-hairline bg-surface-2/40 p-3">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-sm" aria-hidden>{icon}</span>
-        <div className="text-xs font-bold text-gray-800">
-          {title} · <span className="text-orange-600">{dispensedCount}/{totalCount} dispensed</span>
+        <div className="text-xs font-bold text-ink">
+          {title} · <span className="text-brand">{dispensedCount}/{totalCount} dispensed</span>
         </div>
       </div>
       {lines.length === 0 ? (
-        <p className="text-xs text-gray-400 italic">{emptyLabel}</p>
+        <p className="text-xs text-ink-4 italic">{emptyLabel}</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
           {lines.map((line) => (
@@ -200,35 +200,35 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
   const canPm = summary.pm.total > 0 || ['pm_connected', 'pm_dispensing', 'filling'].includes(batch.bprStatus);
 
   return (
-    <article className="rounded-xl border border-orange-100 bg-white shadow-sm overflow-hidden">
-      <header className="px-4 py-2.5 border-b border-orange-50 bg-gradient-to-r from-orange-50/80 to-amber-50/40">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-gray-900">
-          <Sun size={14} className="text-amber-500 shrink-0" aria-hidden />
+    <article className="rounded-xl border border-brand-soft bg-surface shadow-sm overflow-hidden">
+      <header className="px-4 py-2.5 border-b border-brand-soft bg-brand-soft/40">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-ink">
+          <Sun size={14} className="text-warn shrink-0" aria-hidden />
           <span>{formatUnifiedBatchLabel(batch)}</span>
-          <span className="text-gray-400 font-normal">·</span>
+          <span className="text-ink-4 font-normal">·</span>
           <span className="font-semibold truncate max-w-xs">{batch.productName}</span>
-          <span className="text-gray-400 font-normal">·</span>
+          <span className="text-ink-4 font-normal">·</span>
           <span className="font-normal">{batch.batchSize} KG</span>
           {muSiteLabel ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 rounded-md px-1.5 py-0.5 ml-auto">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded-md px-1.5 py-0.5 ml-auto">
               <MapPin size={10} aria-hidden />
               {muSiteLabel}
             </span>
           ) : null}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-gray-600">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-ink-2">
           <span>
-            <span className="text-gray-400">SO </span>
+            <span className="text-ink-4">SO </span>
             <span className="font-semibold">{batch.soNo}</span>
           </span>
           {customerName ? (
             <>
-              <span className="text-gray-300">·</span>
+              <span className="text-ink-4">·</span>
               <span className="truncate max-w-48">{customerName}</span>
             </>
           ) : null}
-          <span className="text-gray-300">·</span>
-          <span className="font-bold uppercase tracking-wide text-purple-700">{stageLabel}</span>
+          <span className="text-ink-4">·</span>
+          <span className="font-bold uppercase tracking-wide text-brand">{stageLabel}</span>
         </div>
       </header>
 
@@ -253,11 +253,11 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
         />
       </div>
 
-      <footer className="px-4 pb-3 flex flex-wrap gap-2 border-t border-gray-50 pt-2">
+      <footer className="px-4 pb-3 flex flex-wrap gap-2 border-t border-hairline pt-2">
         <button
           type="button"
           onClick={() => onAction('detail', batch)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-ink-2 bg-surface-2 border border-border rounded-lg hover:bg-surface-3 transition-colors"
         >
           <Eye size={11} /> Batch detail
         </button>
@@ -265,7 +265,7 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
           <button
             type="button"
             onClick={() => onAction('dispenseRM', batch)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors"
           >
             <Scale size={11} />
             {summary.rm.status === 'complete' ? 'View RM dispensing' : 'RM dispensing'}
@@ -275,14 +275,14 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
           <button
             type="button"
             onClick={() => onAction('dispensePM', batch)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-purple-800 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors"
           >
             <Scale size={11} />
             {summary.pm.status === 'complete' ? 'View PM dispensing' : 'PM dispensing'}
           </button>
         )}
         {summary.rm.total === 0 && summary.pm.total === 0 && (
-          <p className="w-full text-xs text-amber-700 flex items-start gap-1.5 mt-1" role="status">
+          <p className="w-full text-xs text-warn flex items-start gap-1.5 mt-1" role="status">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             Open RM or PM dispensing to load BOM lines onto the tray.
           </p>
@@ -366,27 +366,27 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-dispensing-tray">
-      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-hairline bg-surface shrink-0">
         <div>
-          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Dispensing &amp; Tray</div>
-          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">
+          <div className="sec-title text-lg font-bold text-ink tracking-tight">Dispensing &amp; Tray</div>
+          <div className="sec-sub text-[11px] text-ink-4 mt-0.5">
             Batch-wise RM &amp; PM tray — material, quantity, container slot, and dispense timestamp
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px]">
-          <span className="px-2 py-1 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 font-semibold">{kpis.total} batches</span>
-          <span className="px-2 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-semibold">{kpis.rmActive} RM active</span>
-          <span className="px-2 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 font-semibold">{kpis.pmActive} PM active</span>
+          <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.total} batches</span>
+          <span className="px-2 py-1 rounded-lg bg-warn-soft text-warn border border-warn-soft font-semibold">{kpis.rmActive} RM active</span>
+          <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.pmActive} PM active</span>
         </div>
       </div>
 
-      <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-gray-100 bg-white shrink-0">
-        <label className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider shrink-0" htmlFor="dispensing-batch-filter">
+      <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-hairline bg-surface shrink-0">
+        <label className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider shrink-0" htmlFor="dispensing-batch-filter">
           Batch:
         </label>
         <select
           id="dispensing-batch-filter"
-          className="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 min-w-48 max-w-xs focus:ring-1 focus:ring-purple-300 outline-none"
+          className="text-[11px] px-2.5 py-1.5 rounded-lg border border-border bg-surface text-ink min-w-48 max-w-xs focus:ring-1 focus:ring-brand outline-none"
           value={batchFilter}
           onChange={(e) => setBatchFilter(e.target.value)}
         >
@@ -398,14 +398,14 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
           ))}
         </select>
 
-        <span className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider ml-2 shrink-0">Status:</span>
+        <span className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider ml-2 shrink-0">Status:</span>
         {FILTER_OPTIONS.map((opt) => (
           <button
             key={opt.id}
             type="button"
             onClick={() => setFilter(opt.id)}
             className={`chip text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${
-              filter === opt.id ? 'active bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              filter === opt.id ? 'active bg-brand text-white border-brand-soft' : 'bg-surface text-ink-2 border-border hover:bg-surface-2'
             }`}
           >
             {opt.label}
@@ -413,21 +413,22 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
         ))}
 
         <div className="relative flex-1 min-w-36 max-w-56 ml-auto">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-4" />
           <input
             type="text"
-            className="w-full text-[11px] pl-8 pr-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-purple-300"
+            className="w-full text-[11px] pl-8 pr-2.5 py-1.5 rounded-lg border border-border bg-surface text-ink placeholder-gray-400 outline-none focus:ring-1 focus:ring-brand"
+            aria-label="Search code, product"
             placeholder="Search code, product…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <span className="text-[10px] font-semibold text-gray-500">{rows.length} shown</span>
+        <span className="text-[10px] font-semibold text-ink-3">{rows.length} shown</span>
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-3">
         {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400">
+          <div className="flex flex-col items-center justify-center h-48 text-ink-4">
             <Scale size={32} className="mb-2 opacity-20" />
             <p className="text-sm text-center max-w-md">
               No batches match this filter. Choose another batch or status filter.

@@ -92,6 +92,7 @@ const StatusSelect: React.FC<{
  return (
   <select
    value={current}
+   aria-label="Status"
    onClick={(e) => e.stopPropagation()}
    onChange={(e) => onChange(e.target.value as VendorClientType['status'])}
    className={`px-2 py-1 rounded-lg border text-xs font-semibold capitalize cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${STATUS_BADGE_CLASS[current]}`}
@@ -495,7 +496,7 @@ const VendorClient: React.FC = () => {
     <thead className="bg-gray-100">
      <tr>
       {headers.map(h => (
-       <th key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-600">{h}</th>
+       <th scope="col" key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-600">{h}</th>
       ))}
      </tr>
     </thead>
@@ -592,10 +593,12 @@ const VendorClient: React.FC = () => {
          value={vendorSearch}
          onChange={(e) => setVendorSearch(e.target.value)}
          placeholder="Search by code, name, email..."
+         aria-label="Search vendors by code, name, email"
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         />
         <select
          value={vendorStatus}
+         aria-label="Filter by status"
          onChange={(e) => setVendorStatus(e.target.value as any)}
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         >
@@ -606,6 +609,7 @@ const VendorClient: React.FC = () => {
         </select>
         <select
          value={vendorCategory}
+         aria-label="Filter by category"
          onChange={(e) => setVendorCategory(e.target.value)}
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         >
@@ -622,7 +626,7 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
@@ -632,7 +636,7 @@ const VendorClient: React.FC = () => {
           <SortableTableTh label="State" column="state" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Status" column="status" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Updated" column="updated" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -742,6 +746,7 @@ const VendorClient: React.FC = () => {
        <div className="flex flex-wrap items-center gap-2">
         <select
          value={vendorPageSize}
+         aria-label="Rows per page"
          onChange={(e) => {
           setVendorPageSize(parseInt(e.target.value, 10));
           setVendorPage(1);
@@ -834,10 +839,12 @@ const VendorClient: React.FC = () => {
          value={clientSearch}
          onChange={(e) => setClientSearch(e.target.value)}
          placeholder="Search by code, name, email..."
+         aria-label="Search clients by code, name, email"
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         />
         <select
          value={clientStatus}
+         aria-label="Filter by status"
          onChange={(e) => setClientStatus(e.target.value as any)}
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         >
@@ -848,6 +855,7 @@ const VendorClient: React.FC = () => {
         </select>
         <select
          value={clientCategory}
+         aria-label="Filter by category"
          onChange={(e) => setClientCategory(e.target.value)}
          className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
         >
@@ -864,7 +872,7 @@ const VendorClient: React.FC = () => {
        <table className="w-full">
         <thead className="bg-gray-50 border-b border-gray-200">
          <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
@@ -874,7 +882,7 @@ const VendorClient: React.FC = () => {
           <SortableTableTh label="State" column="state" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Status" column="status" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Updated" column="updated" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
          </tr>
         </thead>
         <tbody>
@@ -984,6 +992,7 @@ const VendorClient: React.FC = () => {
        <div className="flex flex-wrap items-center gap-2">
         <select
          value={clientPageSize}
+         aria-label="Rows per page"
          onChange={(e) => {
           setClientPageSize(parseInt(e.target.value, 10));
           setClientPage(1);
@@ -1055,11 +1064,12 @@ const VendorClient: React.FC = () => {
     className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="vendor-client-view-title"
    >
     <div className="w-full max-w-5xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
        <div>
-        <h3 className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
+        <h3 id="vendor-client-view-title" className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
         <p className="text-sm text-gray-500 font-mono">{String(viewing.data?.entityCode || viewing.id)}</p>
        </div>
        <button
@@ -1333,11 +1343,12 @@ const VendorClient: React.FC = () => {
     className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="vendor-client-edit-title"
    >
     <div className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
      <div>
-      <h3 className="text-lg font-bold text-gray-800">Edit {editing.type === 'vendor' ? 'Vendor' : 'Client'}</h3>
+      <h3 id="vendor-client-edit-title" className="text-lg font-bold text-gray-800">Edit {editing.type === 'vendor' ? 'Vendor' : 'Client'}</h3>
       <p className="text-sm text-gray-500">Update record details without leaving the dashboard.</p>
      </div>
      <button

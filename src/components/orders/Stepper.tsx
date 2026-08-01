@@ -22,7 +22,7 @@ export const Stepper: React.FC<StepperProps> = ({ steps }) => {
           <div key={index} className="flex gap-3 pb-3.5 relative">
             {/* Connecting line */}
             {!isLast && (
-              <div className="absolute left-3.75 top-7.75 w-0.5 bottom-0 bg-gray-200" />
+              <div className="absolute left-3.75 top-7.75 w-0.5 bottom-0 bg-surface-3" />
             )}
 
             {/* Step dot */}
@@ -30,11 +30,11 @@ export const Stepper: React.FC<StepperProps> = ({ steps }) => {
               className={`
                 w-7.5 h-7.5 rounded-full flex items-center justify-center
                 text-xs shrink-0 border-2 transition-all
-                ${isDone 
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600' 
-                  : isActive 
-                    ? 'bg-orange-500/15 border-orange-500/50 text-orange-600 animate-pulse' 
-                    : 'bg-gray-100 border-gray-300 text-gray-500'
+                ${isDone
+                  ? 'bg-ok-soft border-[color:var(--st-green-fg)]/30 text-ok'
+                  : isActive
+                    ? 'bg-brand-soft border-brand text-brand animate-pulse'
+                    : 'bg-surface-3 border-border text-ink-3'
                 }
               `}
             >
@@ -46,17 +46,17 @@ export const Stepper: React.FC<StepperProps> = ({ steps }) => {
               <div 
                 className={`
                   font-bold text-[12.5px] mb-0.5
-                  ${isDone 
-                    ? 'text-emerald-600' 
-                    : isActive 
-                      ? 'text-orange-600' 
-                      : 'text-gray-500'
+                  ${isDone
+                    ? 'text-ok'
+                    : isActive
+                      ? 'text-brand'
+                      : 'text-ink-3'
                   }
                 `}
               >
                 {step.label}
               </div>
-              <div className="text-[10.5px] text-gray-600">
+              <div className="text-[10.5px] text-ink-3">
                 {step.timestamp || step.details || ''}
               </div>
             </div>

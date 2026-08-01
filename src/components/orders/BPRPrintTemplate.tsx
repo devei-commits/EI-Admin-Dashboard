@@ -61,18 +61,18 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="bpr-print-title" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-slate-800 text-white px-6 py-4 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold">BPR Print Preview</h2>
+            <h2 id="bpr-print-title" className="text-xl font-bold">BPR Print Preview</h2>
             <p className="text-slate-300 text-sm">{bpr.docNo} · {bpr.batchNo}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
               Print
             </button>
-            <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
+            <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
           </div>
         </div>
 
@@ -98,10 +98,10 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Units to Pack</th>
-                    <th style={thStyle}>Bulk Source BMR</th>
-                    <th style={thStyle}>Filling Line</th>
-                    <th style={thStyle}>Schedule Date</th>
+                    <th scope="col" style={thStyle}>Units to Pack</th>
+                    <th scope="col" style={thStyle}>Bulk Source BMR</th>
+                    <th scope="col" style={thStyle}>Filling Line</th>
+                    <th scope="col" style={thStyle}>Schedule Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -121,12 +121,12 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Item Code</th>
-                    <th style={thStyle}>Material Name</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Std Qty</th>
-                    <th style={thStyle}>UOM</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Actual Issued</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Issued By</th>
+                    <th scope="col" style={thStyle}>Item Code</th>
+                    <th scope="col" style={thStyle}>Material Name</th>
+                    <th scope="col" style={{ ...thStyle, textAlign: 'right' }}>Std Qty</th>
+                    <th scope="col" style={thStyle}>UOM</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Actual Issued</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Issued By</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -150,12 +150,12 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle, width: '30px' }}>Step</th>
-                    <th style={thStyle}>Activity</th>
-                    <th style={thStyle}>Check Point</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Done</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Time</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Operator</th>
+                    <th scope="col" style={{ ...thStyle, width: '30px' }}>Step</th>
+                    <th scope="col" style={thStyle}>Activity</th>
+                    <th scope="col" style={thStyle}>Check Point</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Done</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Time</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Operator</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,11 +179,11 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Check</th>
-                    {/* <th style={thStyle}>Specification</th> */}
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Result</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>Pass/Fail</th>
-                    <th style={{ ...thStyle, minWidth: '80px' }}>QC Sign</th>
+                    <th scope="col" style={thStyle}>Check</th>
+                    {/* <th scope="col" style={thStyle}>Specification</th> */}
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Result</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>Pass/Fail</th>
+                    <th scope="col" style={{ ...thStyle, minWidth: '80px' }}>QC Sign</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -206,9 +206,9 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <th style={thStyle}>Packing Supervisor</th>
-                    <th style={thStyle}>QC Analyst</th>
-                    <th style={thStyle}>QA Manager</th>
+                    <th scope="col" style={thStyle}>Packing Supervisor</th>
+                    <th scope="col" style={thStyle}>QC Analyst</th>
+                    <th scope="col" style={thStyle}>QA Manager</th>
                   </tr>
                   <tr style={{ height: '50px' }}>
                     <td style={cellStyle}></td>
@@ -216,9 +216,9 @@ export default function BPRPrintTemplate({ bpr, onClose }: Props) {
                     <td style={cellStyle}></td>
                   </tr>
                   <tr>
-                    <th style={cellStyle}>Name &amp; Signature</th>
-                    <th style={cellStyle}>Name &amp; Signature</th>
-                    <th style={cellStyle}>Name &amp; Signature</th>
+                    <th scope="col" style={cellStyle}>Name &amp; Signature</th>
+                    <th scope="col" style={cellStyle}>Name &amp; Signature</th>
+                    <th scope="col" style={cellStyle}>Name &amp; Signature</th>
                   </tr>
                   <tr>
                     <td style={cellStyle}>Date: ___________</td>

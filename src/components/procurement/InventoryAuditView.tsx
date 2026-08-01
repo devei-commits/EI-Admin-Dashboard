@@ -3,6 +3,7 @@ import { buildInventoryAuditLines, type InventoryAuditLine } from '../../lib/inv
 import type { ProcurementRequest } from '../../types/procurement.types';
 import { formatDateWithIsoWeek } from '../../pages/procurement/procurementDataMappers';
 import { InventoryAuditDetailModal } from './InventoryAuditDetailModal';
+import { ProcSection, ProcSectionHeader, ProcFilterBar, ProcSearch, procChipClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
 
 type StatusFilter = 'All' | 'Pending' | 'In Progress' | 'Completed';
 
@@ -21,9 +22,9 @@ function matchesStatusFilter(stockCheckStatus: string, filter: StatusFilter): bo
 
 function stockCheckStatusClass(status: string): string {
   const s = normalizeStockCheckStatus(status);
-  if (s === 'completed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (s === 'in progress') return 'bg-sky-50 text-sky-700 border-sky-200';
-  return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (s === 'completed') return 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30';
+  if (s === 'in progress') return 'bg-brand-soft text-brand border-brand-soft';
+  return 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30';
 }
 
 export type InventoryAuditViewProps = {
@@ -86,75 +87,43 @@ export function InventoryAuditView({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Inventory audit</h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Stock-check item lines from warehouse. Click a row for audit details; approve positive gaps to add qty
-                to the procurement request and draft PO.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(['All', 'Pending', 'In Progress', 'Completed'] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-2 py-1 rounded border text-xs ${
-                    statusFilter === status
-                      ? 'bg-teal-100 text-teal-900 border-teal-300'
-                      : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search audit ref, item, request…"
-                className="w-64 min-w-[12rem] px-3 py-2 rounded-lg bg-white border border-slate-300 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
-              />
-            </div>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-2 tabular-nums">
-            {lines.length} line{lines.length === 1 ? '' : 's'} · {requestCount} stock-check request
-            {requestCount === 1 ? '' : 's'}
-          </p>
-        </div>
+      <ProcSection>
+        <ProcSectionHeader
+          title="Inventory audit"
+          subtitle="Stock-check item lines from warehouse. Click a row for audit details; approve positive gaps to add qty to the procurement request and draft PO."
+          stats={[
+            { value: lines.length, label: `line${lines.length === 1 ? '' : 's'}` },
+            { value: requestCount, label: `stock-check request${requestCount === 1 ? '' : 's'}` },
+          ]}
+        />
+        <ProcFilterBar>
+          {(['All', 'Pending', 'In Progress', 'Completed'] as const).map((status) => (
+            <button key={status} type="button" onClick={() => setStatusFilter(status)} className={procChipClass(statusFilter === status)}>
+              {status}
+            </button>
+          ))}
+          <ProcSearch value={searchQuery} onChange={setSearchQuery} placeholder="Search audit ref, item, request…" className="ml-auto w-64 min-w-[12rem]" />
+        </ProcFilterBar>
 
         {lines.length === 0 ? (
-          <div className="p-10 text-center">
-            <p className="text-slate-700 font-medium">No stock-check item lines yet</p>
-            <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
+          <ProcEmpty>
+            <p className="text-ink-2 font-medium">No stock-check item lines yet</p>
+            <p className="text-sm text-ink-3 mt-1 max-w-md mx-auto">
               Use <span className="font-semibold">Stock Check</span> on a procurement request to send lines to warehouse.
               They will appear here for audit.
             </p>
-          </div>
+          </ProcEmpty>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[10px] tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2 font-semibold">Audit</th>
-                  <th className="px-4 py-2 font-semibold">Request</th>
-                  <th className="px-4 py-2 font-semibold">Item</th>
-                  <th className="px-4 py-2 font-semibold text-right">Gap</th>
-                  <th className="px-4 py-2 font-semibold">Status</th>
-                  <th className="px-4 py-2 font-semibold">Due</th>
-                  <th className="px-4 py-2 font-semibold">Context</th>
-                </tr>
-              </thead>
-              <tbody>
+          <ProcTableCard>
+              <ProcThead cols={['Audit', 'Request', 'Item', { label: 'Gap', align: 'right' }, 'Status', 'Due', 'Context']} />
+              <tbody className="divide-y divide-hairline">
                 {lines.map((line) => (
                   <tr
                     key={line.lineKey}
-                    className="border-b border-slate-100 hover:bg-teal-50/50 cursor-pointer"
+                    className="border-b border-hairline hover:bg-brand-soft cursor-pointer"
                     onClick={() => setSelectedLine(line)}
                   >
-                    <td className="px-4 py-2 align-top whitespace-nowrap font-mono text-[11px] font-bold text-teal-800">
+                    <td className="px-4 py-2 align-top whitespace-nowrap font-mono text-[11px] font-bold text-brand">
                       {line.auditRef}
                     </td>
                     <td className="px-4 py-2 align-top whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -162,46 +131,46 @@ export function InventoryAuditView({
                         <button
                           type="button"
                           onClick={() => onOpenRequest(line.requestId)}
-                          className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 hover:bg-slate-200"
+                          className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-surface-3 text-ink hover:bg-surface-3"
                         >
                           {line.requestCode}
                         </button>
                       ) : (
-                        <span className="font-mono text-[11px] font-bold text-slate-700">{line.requestCode}</span>
+                        <span className="font-mono text-[11px] font-bold text-ink-2">{line.requestCode}</span>
                       )}
                     </td>
                     <td className="px-4 py-2 align-top min-w-[10rem]">
                       <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                         <span
                           className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${
-                            requestTypeClass[line.type] ?? 'bg-slate-100 text-slate-700 border-slate-200'
+                            requestTypeClass[line.type] ?? 'bg-surface-3 text-ink-2 border-border'
                           }`}
                         >
                           {line.type}
                         </span>
-                        <span className="font-semibold text-slate-900">{line.itemName}</span>
+                        <span className="font-semibold text-ink">{line.itemName}</span>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-mono">{line.itemCode}</p>
+                      <p className="text-[10px] text-ink-3 font-mono">{line.itemCode}</p>
                     </td>
                     <td className="px-4 py-2 text-right font-semibold tabular-nums align-top whitespace-nowrap">
                       {line.gapQty > 0 ? (
-                        <span className="text-amber-700">+{line.gapQty.toLocaleString('en-IN')}</span>
+                        <span className="text-warn">+{line.gapQty.toLocaleString('en-IN')}</span>
                       ) : (
-                        <span className="text-slate-400">—</span>
+                        <span className="text-ink-4">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2 align-top">
-                      <span className="text-[10px] px-2 py-0.5 rounded font-semibold border bg-slate-50 text-slate-700 border-slate-200">
+                      <span className="text-[10px] px-2 py-0.5 rounded font-semibold border bg-surface-2 text-ink-2 border-border">
                         {line.uiStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-slate-700 align-top whitespace-nowrap">
+                    <td className="px-4 py-2 text-ink-2 align-top whitespace-nowrap">
                       {formatDateWithIsoWeek(line.stockCheckDueDate)}
                     </td>
-                    <td className="px-4 py-2 text-slate-600 align-top text-[10px] max-w-[8rem]">
+                    <td className="px-4 py-2 text-ink-3 align-top text-[10px] max-w-[8rem]">
                       {line.planningSoNumber ? (
                         <p>
-                          <span className="font-semibold text-slate-700">SO</span> {line.planningSoNumber}
+                          <span className="font-semibold text-ink-2">SO</span> {line.planningSoNumber}
                         </p>
                       ) : null}
                       {line.planningProductName ? (
@@ -213,10 +182,9 @@ export function InventoryAuditView({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </ProcTableCard>
         )}
-      </div>
+      </ProcSection>
 
       {selectedLine ? (
         <InventoryAuditDetailModal

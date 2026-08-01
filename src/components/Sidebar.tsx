@@ -8,6 +8,8 @@ import { usePermissions } from "../hooks/usePermissions";
 import { isSuperAdmin } from "./SuperAdminRoute";
 import { useSidebarViewport } from "../hooks/useSidebarViewport";
 import { preloadRoute } from "../lib/preloadRoutes";
+import { Sun, Moon } from "@phosphor-icons/react";
+import { getStoredTheme, toggleTheme, type ThemeMode } from "../lib/themeMode";
 
 /** NavLink that preloads the lazy route chunk on hover (no API prefetch). */
 const PreloadNavLink = ({
@@ -55,6 +57,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
   };
   const isIconOnly = !isDrawer && viewportMode === "medium" && !mediumExpanded;
   const isMediumExpanded = !isDrawer && viewportMode === "medium" && mediumExpanded;
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredTheme());
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
@@ -243,27 +246,29 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `sidebar-nav-link flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 ${isActive
-      ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
-      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
+      ? "bg-brand-soft text-brand font-semibold border-l-4 border-brand shadow-[var(--e1)]"
+      : "text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent"
     }`;
 
   const submenuLinkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-      ? "text-slate-900 font-medium bg-slate-100/50"
-      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+      ? "text-brand font-medium bg-brand-soft"
+      : "text-ink-3 hover:text-ink hover:bg-surface-3"
     }`;
 
   return (
     <>
       {/* Mobile Header Bar — main dashboard layout only */}
       {!isDrawer && (
-      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-background border-b border-gray-200 z-50 flex items-center px-4 shadow-sm">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-hairline z-50 flex items-center px-4 shadow-[var(--e1)]">
         <button
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-lg hover:bg-surface-3 transition-colors"
           onClick={() => setIsOpen(!isOpen)}
+          aria-label={isOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={isOpen}
         >
           <svg
-            className="w-6 h-6 text-gray-700"
+            className="w-6 h-6 text-ink-2"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -297,7 +302,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
               ? "fixed inset-0 bg-black/40 backdrop-blur-sm z-[85]"
               : isMediumExpanded
                 ? "hidden md:block lg:hidden fixed inset-0 bg-black/20 z-30"
-                : "md:hidden fixed inset-0 bg-white/60 backdrop-blur-md z-30 mt-14"
+                : "md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-30 mt-14"
           }
           onClick={() => {
             if (isMediumExpanded) setMediumExpanded(false);
@@ -310,7 +315,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
       {/* Sidebar */}
       <div
         style={isDrawer && dragPx != null ? { transform: `translateX(${dragPx}px)` } : undefined}
-        className={`fixed flex flex-col bg-background border-r border-gray-200 ${isDrawer && dragPx != null ? "transition-none" : "transition-all duration-300 ease-in-out"} shadow-sm
+        className={`fixed flex flex-col bg-surface border-r border-hairline ${isDrawer && dragPx != null ? "transition-none" : "transition-all duration-300 ease-in-out"} shadow-[var(--e1)]
           ${isIconOnly ? "is-sidebar-icon-only md:w-16" : "w-64"}
           ${isDrawer
             ? `top-0 left-0 h-screen z-[90] w-64 ${dragPx != null ? "" : (isOpen ? "translate-x-0" : "-translate-x-full")}`
@@ -318,7 +323,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
           }`}
       >
         {/* Logo Section — website EI mark when collapsed; full wordmark when expanded */}
-        <div className={`sidebar-logo-section ${isDrawer ? "flex" : "hidden md:flex"} p-5 items-center justify-center border-b border-gray-100 bg-transparent shrink-0 overflow-hidden`}>
+        <div className={`sidebar-logo-section ${isDrawer ? "flex" : "hidden md:flex"} p-5 items-center justify-center border-b border-hairline bg-transparent shrink-0 overflow-hidden`}>
           {isIconOnly ? (
             <Logo
               className="sidebar-logo-collapsed shrink-0"
@@ -337,7 +342,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
 
         {/* Navigation Links */}
         <nav className="flex-1 p-5 overflow-y-auto overflow-x-hidden">
-          <p className="sidebar-section-label text-xs font-semibold text-gray-400 uppercase tracking-wider px-5 mb-4">Menu</p>
+          <p className="sidebar-section-label text-xs font-semibold text-ink-4 uppercase tracking-wider px-5 mb-4">Menu</p>
           <ul className="space-y-2">
             {showDashboard && (
               <li>
@@ -360,7 +365,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                     const userRole = localStorage.getItem('adminUserRole') || 'SUPER_ADMIN';
                     window.open(`/pis?role=${userRole}`, '_blank');
                   }}
-                  className="flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm w-full text-left"
+                  className="flex items-center px-5 py-3.5 rounded-xl transition-all duration-200 text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent w-full text-left"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5 mr-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 5.378 3h13.243a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z" />
@@ -418,8 +423,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
             {showOrderSection && (
               <li>
                 <div className={`rounded-xl transition-all duration-200 ${isOrderActive || orderOpen
-                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
+                  ? "bg-brand-soft text-brand font-semibold border-l-4 border-brand shadow-[var(--e1)]"
+                  : "text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent"
                   }`}>
                   <div className="flex items-center justify-between">
                     <button
@@ -436,7 +441,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                     <button
                       type="button"
                       onClick={() => handleSubmenuToggle(setOrderOpen, orderOpen)}
-                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-surface-3 transition-colors shrink-0"
                       aria-label={orderOpen ? "Collapse Order Management menu" : "Expand Order Management menu"}
                     >
                       <svg
@@ -455,7 +460,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                   className={`sidebar-submenu overflow-hidden transition-all duration-300 ease-in-out ${orderOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
+                  <ul className="ml-7 border-l-2 border-hairline pl-4 py-2.5 my-2 space-y-2">
                     <li>
                       <PreloadNavLink to="/procurement" className={submenuLinkClass} onClick={(e) => handleNavClick(e)}>
                         <svg className="w-4 h-4 mr-2 opacity-70 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -527,8 +532,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
             {showProductSection && (
               <li>
                 <div className={`rounded-xl transition-all duration-200 ${isProductActive || productOpen
-                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
+                  ? "bg-brand-soft text-brand font-semibold border-l-4 border-brand shadow-[var(--e1)]"
+                  : "text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent"
                   }`}>
                   <div className="flex items-center">
                     <PreloadNavLink
@@ -545,7 +550,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                     <button
                       type="button"
                       onClick={() => handleSubmenuToggle(setProductOpen, productOpen)}
-                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-surface-3 transition-colors"
                       aria-label={productOpen ? "Collapse Product Management menu" : "Expand Product Management menu"}
                     >
                       <svg
@@ -564,14 +569,14 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                   className={`sidebar-submenu overflow-hidden transition-all duration-300 ease-in-out ${productOpen ? "max-h-96" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
+                  <ul className="ml-7 border-l-2 border-hairline pl-4 py-2.5 my-2 space-y-2">
                     {showCatalogueManagement && (
                       <li>
                         <PreloadNavLink
                           to="/catalogue-management"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -587,8 +592,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/packaging-management"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -604,8 +609,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/customization-packaging-catalog"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -621,8 +626,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/active-ingredients"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -638,8 +643,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/customization-catalog"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -657,8 +662,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
             {showMastersSection && (
               <li>
                 <div className={`rounded-xl transition-all duration-200 ${isMastersActive || mastersOpen
-                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
+                  ? "bg-brand-soft text-brand font-semibold border-l-4 border-brand shadow-[var(--e1)]"
+                  : "text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent"
                   }`}>
                   <div className="flex items-center justify-between">
                     <button
@@ -675,7 +680,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                     <button
                       type="button"
                       onClick={() => handleSubmenuToggle(setMastersOpen, mastersOpen)}
-                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-surface-3 transition-colors shrink-0"
                       aria-label={mastersOpen ? "Collapse Masters menu" : "Expand Masters menu"}
                     >
                       <svg
@@ -694,14 +699,14 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                   className={`sidebar-submenu overflow-hidden transition-all duration-300 ease-in-out ${mastersOpen ? "max-h-screen" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
+                  <ul className="ml-7 border-l-2 border-hairline pl-4 py-2.5 my-2 space-y-2">
                     {showInventory && (
                       <li>
                         <PreloadNavLink
                           to="/raw-material"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -717,8 +722,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/packaging"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -734,8 +739,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/bom"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -751,8 +756,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/item-groups"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -768,8 +773,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/quality-spec-rules"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -785,8 +790,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/universal-swap"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -802,8 +807,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/vendor-client"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -819,8 +824,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/items-list"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -836,8 +841,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/quotations"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -866,8 +871,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
             {showEnquirySection && (
               <li>
                 <div className={`rounded-xl transition-all duration-200 ${isEnquiryActive || enquiryOpen
-                  ? "bg-linear-to-r from-gray-50 to-gray-100/50 text-slate-900 font-semibold border-l-4 border-slate-800 shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-4 border-transparent hover:shadow-sm"
+                  ? "bg-brand-soft text-brand font-semibold border-l-4 border-brand shadow-[var(--e1)]"
+                  : "text-ink-2 hover:bg-surface-3 hover:text-ink border-l-4 border-transparent"
                   }`}>
                   <div className="flex items-center">
                     <PreloadNavLink
@@ -884,7 +889,7 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                     <button
                       type="button"
                       onClick={() => handleSubmenuToggle(setEnquiryOpen, enquiryOpen)}
-                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="sidebar-chevron p-2.5 mr-2 rounded-lg hover:bg-surface-3 transition-colors"
                       aria-label={enquiryOpen ? "Collapse Enquiry Management menu" : "Expand Enquiry Management menu"}
                     >
                       <svg
@@ -903,14 +908,14 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                   className={`sidebar-submenu overflow-hidden transition-all duration-300 ease-in-out ${enquiryOpen ? "max-h-96" : "max-h-0"
                     }`}
                 >
-                  <ul className="ml-7 border-l-2 border-slate-100 pl-4 py-2.5 my-2 space-y-2">
+                  <ul className="ml-7 border-l-2 border-hairline pl-4 py-2.5 my-2 space-y-2">
                     {showDoctorAppointments && (
                       <li>
                         <PreloadNavLink
                           to="/doctor-appointments"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -926,8 +931,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/contact-enquiry"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -943,8 +948,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/new-developments"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -960,8 +965,8 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
                         <PreloadNavLink
                           to="/product-samples"
                           className={({ isActive }) => `flex items-center px-4 py-2.5 rounded-lg transition-all duration-200 text-sm group ${isActive
-                            ? "text-slate-900 font-medium bg-slate-100/50"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50/80"
+                            ? "text-brand font-medium bg-brand-soft"
+                            : "text-ink-3 hover:text-ink hover:bg-surface-3"
                             }`}
                           onClick={(e) => handleNavClick(e)}
                         >
@@ -980,19 +985,33 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
         </nav>
 
         {/* Footer Section with User Info */}
-        <div className="sidebar-footer p-5 border-t border-gray-100 bg-gray-50/50 space-y-3 shrink-0">
+        <div className="sidebar-footer p-5 border-t border-hairline bg-surface-2 space-y-3 shrink-0">
           {/* User Info */}
           {user && (
             <div className="sidebar-user-row flex items-center gap-3 px-2">
-              <div className="w-11 h-11 bg-slate-800 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-md shrink-0">
+              <div className="w-11 h-11 bg-brand rounded-full flex items-center justify-center text-brand-ink font-semibold text-sm shadow-[var(--e1)] shrink-0">
                 {(user.name ?? user.email ?? 'U').split(' ').map(n => n[0]).filter(Boolean).join('').substring(0, 2) || 'U'}
               </div>
               <div className="sidebar-user-text flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{user.name ?? user.email ?? 'User'}</p>
-                <p className="text-xs text-gray-500 truncate">{user.roleName ?? '—'}</p>
+                <p className="text-sm font-medium text-ink truncate">{user.name ?? user.email ?? 'User'}</p>
+                <p className="text-xs text-ink-3 truncate">{user.roleName ?? '—'}</p>
               </div>
             </div>
           )}
+
+          {/* Theme toggle (light / dark) */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = toggleTheme();
+              setThemeMode(next);
+            }}
+            title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-surface-3 hover:bg-surface text-ink-2 rounded-xl transition-all duration-200 text-sm font-medium"
+          >
+            {themeMode === 'dark' ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+            <span className="sidebar-label">{themeMode === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          </button>
 
           {/* Logout Button */}
           <button
@@ -1005,16 +1024,16 @@ const Sidebar = ({ variant = "layout", open: controlledOpen, onOpenChange, dragP
               handleLogout();
             }}
             title="Logout"
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 rounded-xl transition-all duration-200 text-sm font-medium group shadow-sm hover:shadow"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-surface-3 hover:bg-err-soft text-ink-2 hover:text-err rounded-xl transition-all duration-200 text-sm font-medium group"
           >
-            <svg className="w-4 h-4 group-hover:text-red-500 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 group-hover:text-err transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             <span className="sidebar-logout-text">Logout</span>
           </button>
 
           {/* Copyright */}
-          <p className="sidebar-copyright text-xs text-gray-400 text-center pt-2">© 2025 Esthetic Insights</p>
+          <p className="sidebar-copyright text-xs text-ink-4 text-center pt-2">© 2025 Esthetic Insights</p>
         </div>
       </div>
     </>

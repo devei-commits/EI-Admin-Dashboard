@@ -534,8 +534,8 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
                   <div className="overflow-x-auto rounded-xl border border-gray-100">
                     <table className="w-full">
                       <thead><tr>
-                        <th className={thCls}>Type</th><th className={thCls}>Item</th>
-                        <th className={thCls}>Due</th><th className={thCls}>Status</th><th className={thCls}>Days</th>
+                        <th scope="col" className={thCls}>Type</th><th scope="col" className={thCls}>Item</th>
+                        <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th><th scope="col" className={thCls}>Days</th>
                       </tr></thead>
                       <tbody className="divide-y divide-gray-50">
                         {actionItems.map(i => {
@@ -620,9 +620,9 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
                   <thead><tr>
-                    <th className={thCls}>ID</th><th className={thCls}>Query</th>
-                    <th className={thCls}>Category</th><th className={thCls}>Due</th>
-                    <th className={thCls}>Status</th><th className={thCls}>Note</th>
+                    <th scope="col" className={thCls}>ID</th><th scope="col" className={thCls}>Query</th>
+                    <th scope="col" className={thCls}>Category</th><th scope="col" className={thCls}>Due</th>
+                    <th scope="col" className={thCls}>Status</th><th scope="col" className={thCls}>Note</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {client.queries.map(q => (
@@ -688,9 +688,9 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
                   <thead><tr>
-                    <th className={thCls}>PR Code</th><th className={thCls}>Product</th>
-                    <th className={thCls}>Stage</th><th className={thCls}>Phase</th>
-                    <th className={thCls}>Due</th><th className={thCls}>Status</th>
+                    <th scope="col" className={thCls}>PR Code</th><th scope="col" className={thCls}>Product</th>
+                    <th scope="col" className={thCls}>Stage</th><th scope="col" className={thCls}>Phase</th>
+                    <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {client.devs.map(d => {
@@ -753,9 +753,9 @@ function ClientModal({ client, initialTab = 'overview', onClose, onToast, onUpda
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full">
                   <thead><tr>
-                    <th className={thCls}>Order ID</th><th className={thCls}>Product</th>
-                    <th className={thCls}>Quantity</th><th className={thCls}>Batch No</th>
-                    <th className={thCls}>Due</th><th className={thCls}>Status</th>
+                    <th scope="col" className={thCls}>Order ID</th><th scope="col" className={thCls}>Product</th>
+                    <th scope="col" className={thCls}>Quantity</th><th scope="col" className={thCls}>Batch No</th>
+                    <th scope="col" className={thCls}>Due</th><th scope="col" className={thCls}>Status</th>
                   </tr></thead>
                   <tbody className="divide-y divide-gray-50">
                     {client.orders.map(o => {

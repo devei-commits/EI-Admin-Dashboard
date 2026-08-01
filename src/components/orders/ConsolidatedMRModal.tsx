@@ -112,9 +112,9 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
   if (!bmrs.length) {
     return (
       <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-6">
-          <p className="text-red-600">No BMRs found.</p>
-          <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded-lg">
+        <div className="bg-surface rounded-xl p-6" role="dialog" aria-modal="true" aria-label="No BMRs found">
+          <p className="text-err">No BMRs found.</p>
+          <button onClick={onClose} className="mt-3 px-4 py-2 bg-surface-3 rounded-lg">
             Close
           </button>
         </div>
@@ -132,31 +132,32 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
         <>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-gray-200 rounded-lg text-sm hover:bg-gray-300"
+            className="px-5 py-2 bg-surface-3 rounded-lg text-sm hover:bg-surface-3"
           >
             Cancel
           </button>
           <button
             onClick={submitRequest}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 font-medium"
+            className="px-5 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press font-medium"
           >
             Submit Request to Warehouse
           </button>
         </>
       }
     >
-      <p className="text-sm text-gray-500 -mt-4">{bmrs.map((b: any) => b.docNo).join(', ')}</p>
+      <p className="text-sm text-ink-3 -mt-4">{bmrs.map((b: any) => b.docNo).join(', ')}</p>
 
       <div className="flex items-center gap-4 text-sm">
-        <span className="text-gray-500">
-          Factory: <b className="text-gray-800">{factory}</b>
+        <span className="text-ink-3">
+          Factory: <b className="text-ink">{factory}</b>
         </span>
-        <span className="text-gray-500">
+        <span className="text-ink-3">
           Required by:{' '}
           <input
             type="date"
             value={requiredBy}
             onChange={(e) => setRequiredBy(e.target.value)}
+            aria-label="Required by date"
             className="border rounded px-2 py-1 text-sm"
           />
         </span>
@@ -165,13 +166,13 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b">
-              <th className="text-left p-3">Item</th>
-              <th className="text-right p-3">Total Required</th>
-              <th className="text-right p-3">At Factory</th>
-              <th className="text-right p-3">Free at WH</th>
-              <th className="text-right p-3">To Transfer</th>
-              <th className="text-right p-3">WH Stock</th>
+            <tr className="bg-surface-3 border-b">
+              <th scope="col" className="text-left p-3">Item</th>
+              <th scope="col" className="text-right p-3">Total Required</th>
+              <th scope="col" className="text-right p-3">At Factory</th>
+              <th scope="col" className="text-right p-3">Free at WH</th>
+              <th scope="col" className="text-right p-3">To Transfer</th>
+              <th scope="col" className="text-right p-3">WH Stock</th>
             </tr>
           </thead>
           <tbody>
@@ -179,7 +180,7 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
               <tr key={l.itemId} className="border-b">
                 <td className="p-3">
                   <b>{l.name}</b>
-                  <div className="text-xs text-gray-400 font-mono">{l.itemId}</div>
+                  <div className="text-xs text-ink-4 font-mono">{l.itemId}</div>
                 </td>
                 <td className="p-3 text-right font-mono">
                   {fmtNum(l.required)} {l.uom}
@@ -188,12 +189,12 @@ export default function ConsolidatedMRModal({ bmrIds, onClose }: Props) {
                   {fmtNum(l.atFactory)} {l.uom}
                 </td>
                 <td className="p-3 text-right font-mono">
-                  <span className={l.free > 0 ? 'text-green-600' : 'text-red-500'}>
+                  <span className={l.free > 0 ? 'text-ok' : 'text-err'}>
                     {fmtNum(l.free)}
                   </span>
                 </td>
                 <td className="p-3 text-right font-mono">
-                  <b className={l.toTransfer > 0 ? 'text-red-500' : 'text-green-600'}>
+                  <b className={l.toTransfer > 0 ? 'text-err' : 'text-ok'}>
                     {fmtNum(l.toTransfer)}
                   </b>
                 </td>

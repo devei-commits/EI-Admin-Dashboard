@@ -416,24 +416,24 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
      <thead className="bg-gray-50">
       <tr>
        {showInclude && (
-        <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-12">Include</th>
+        <th scope="col" className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-12">Include</th>
        )}
        {showDepartmentColumn && (
-        <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Department</th>
+        <th scope="col" className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Department</th>
        )}
        {ACTION_KEYS.map((a) => (
-        <th
+        <th scope="col"
          key={a}
          className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-20"
         >
          {ACTION_LABELS[a]}
         </th>
        ))}
-       <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-28">
+       <th scope="col" className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-28">
         Full (this module)
        </th>
        {!readOnly && (
-        <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-32">
+        <th scope="col" className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-32">
          Full (all modules)
         </th>
        )}

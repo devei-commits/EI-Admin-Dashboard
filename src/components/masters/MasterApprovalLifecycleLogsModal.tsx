@@ -91,20 +91,20 @@ export function MasterApprovalLifecycleLogsModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl my-6 bg-white rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-3xl my-6 bg-surface rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border bg-surface-3">
           <div className="min-w-0">
-            <h2 id="master-approval-logs-title" className="text-base font-bold text-gray-900">
+            <h2 id="master-approval-logs-title" className="text-base font-bold text-ink">
               Approval lifecycle logs
             </h2>
-            <p className="text-sm text-gray-600 mt-0.5 truncate">
-              <span className="font-mono font-semibold text-gray-800">{itemCode}</span>
-              {itemLabel ? <span className="text-gray-500"> · {itemLabel}</span> : null}
+            <p className="text-sm text-ink-3 mt-0.5 truncate">
+              <span className="font-mono font-semibold text-ink">{itemCode}</span>
+              {itemLabel ? <span className="text-ink-3"> · {itemLabel}</span> : null}
             </p>
             <p className="mt-2">
-              <span className="text-xs text-gray-500 mr-2">Current status</span>
+              <span className="text-xs text-ink-3 mr-2">Current status</span>
               <span
                 className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${masterApprovalStatusBadgeClass(statusLabel)}`}
               >
@@ -116,7 +116,7 @@ export function MasterApprovalLifecycleLogsModal({
             type="button"
             onClick={onClose}
             aria-label="Close logs"
-            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-white text-xs font-medium"
+            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface text-xs font-medium"
           >
             ✕ Close
           </button>
@@ -124,23 +124,23 @@ export function MasterApprovalLifecycleLogsModal({
 
         <div className="px-5 py-4 space-y-6 max-h-[75vh] overflow-y-auto">
           {error ? (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-err" role="alert">
               {error}
             </p>
           ) : null}
 
           {loading ? (
-            <p className="text-sm text-gray-500">Loading lifecycle logs…</p>
+            <p className="text-sm text-ink-3">Loading lifecycle logs…</p>
           ) : null}
 
           {!loading && !error ? (
             <>
               <section aria-label="Time in each approval stage">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-3 mb-3">
                   Time in each stage
                 </h3>
                 {stages.length === 0 ? (
-                  <p className="text-sm text-gray-500">No lifecycle data yet.</p>
+                  <p className="text-sm text-ink-3">No lifecycle data yet.</p>
                 ) : (
                   <ol className="space-y-3">
                     {stages.map((stage, idx) => (
@@ -148,8 +148,8 @@ export function MasterApprovalLifecycleLogsModal({
                         key={`${stage.status}-${idx}`}
                         className={`rounded-xl border px-4 py-3 ${
                           stage.isCurrent
-                            ? 'border-indigo-200 bg-indigo-50/40'
-                            : 'border-gray-200 bg-white'
+                            ? 'border-brand-soft bg-brand-soft'
+                            : 'border-border bg-surface'
                         }`}
                       >
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -159,13 +159,13 @@ export function MasterApprovalLifecycleLogsModal({
                             {stage.status}
                           </span>
                           {stage.isCurrent ? (
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-brand">
                               Current
                             </span>
                           ) : null}
-                          <span className="text-sm font-bold text-gray-900">{stage.durationLabel}</span>
+                          <span className="text-sm font-bold text-ink">{stage.durationLabel}</span>
                         </div>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-ink-3">
                           {stage.startedAt ? (
                             <>
                               From <span className="font-medium">{formatWhen(stage.startedAt)}</span>
@@ -181,22 +181,22 @@ export function MasterApprovalLifecycleLogsModal({
                           ) : stage.endedAt ? (
                             <>
                               Until <span className="font-medium">{formatWhen(stage.endedAt)}</span>
-                              <span className="text-gray-400"> (start not recorded)</span>
+                              <span className="text-ink-4"> (start not recorded)</span>
                             </>
                           ) : (
                             <>In stage since {formatWhen(stage.startedAt)}</>
                           )}
                         </p>
                         {stage.isCurrent ? (
-                          <p className="text-xs text-gray-700 mt-1">
+                          <p className="text-xs text-ink-2 mt-1">
                             {exitActionVerb('current')} · total time {stage.durationLabel}
                           </p>
                         ) : stage.exitedBy ? (
-                          <p className="text-xs text-gray-700 mt-1">
+                          <p className="text-xs text-ink-2 mt-1">
                             {exitActionVerb(stage.exitAction)}{' '}
                             <span className="font-semibold">{stage.exitedBy}</span>
                             {stage.exitNote ? (
-                              <span className="text-gray-500"> — “{stage.exitNote}”</span>
+                              <span className="text-ink-3"> — “{stage.exitNote}”</span>
                             ) : null}
                           </p>
                         ) : null}
@@ -208,36 +208,36 @@ export function MasterApprovalLifecycleLogsModal({
 
               <section aria-label="All status change events">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-ink-3">
                     All events
                   </h3>
                   <button
                     type="button"
                     onClick={() => void load()}
                     disabled={loading}
-                    className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                    className="text-[10px] font-semibold text-brand hover:text-brand disabled:opacity-50"
                   >
                     Refresh
                   </button>
                 </div>
                 {entries.length === 0 ? (
-                  <p className="text-sm text-gray-500">No status changes recorded yet.</p>
+                  <p className="text-sm text-ink-3">No status changes recorded yet.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="min-w-full text-xs">
                       <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 border-b border-gray-100">
-                          <th className="py-2 px-3 font-semibold">When</th>
-                          <th className="py-2 px-3 font-semibold">From</th>
-                          <th className="py-2 px-3 font-semibold">To</th>
-                          <th className="py-2 px-3 font-semibold">By</th>
-                          <th className="py-2 px-3 font-semibold">Comment</th>
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-ink-4 bg-surface-3 border-b border-hairline">
+                          <th scope="col" className="py-2 px-3 font-semibold">When</th>
+                          <th scope="col" className="py-2 px-3 font-semibold">From</th>
+                          <th scope="col" className="py-2 px-3 font-semibold">To</th>
+                          <th scope="col" className="py-2 px-3 font-semibold">By</th>
+                          <th scope="col" className="py-2 px-3 font-semibold">Comment</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-hairline">
                         {entries.map((entry) => (
                           <tr key={entry.id}>
-                            <td className="py-2 px-3 text-gray-500 whitespace-nowrap">
+                            <td className="py-2 px-3 text-ink-3 whitespace-nowrap">
                               {formatWhen(entry.createdAt)}
                             </td>
                             <td className="py-2 px-3">
@@ -248,7 +248,7 @@ export function MasterApprovalLifecycleLogsModal({
                                   {entry.fromStatus}
                                 </span>
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span className="text-ink-4">—</span>
                               )}
                             </td>
                             <td className="py-2 px-3">
@@ -258,15 +258,15 @@ export function MasterApprovalLifecycleLogsModal({
                                 {entry.toStatus}
                               </span>
                             </td>
-                            <td className="py-2 px-3 text-gray-700">
+                            <td className="py-2 px-3 text-ink-2">
                               {entry.changedByDisplayName?.trim() || '—'}
                               {entry.source === 'pr_rm_team_signoff' ? (
-                                <span className="block text-[10px] text-amber-700 font-semibold">RM team sign-off</span>
+                                <span className="block text-[10px] text-warn font-semibold">RM team sign-off</span>
                               ) : entry.source === 'pr_pack_team_signoff' ? (
-                                <span className="block text-[10px] text-violet-700 font-semibold">Pack team sign-off</span>
+                                <span className="block text-[10px] text-brand font-semibold">Pack team sign-off</span>
                               ) : null}
                             </td>
-                            <td className="py-2 px-3 text-gray-600 max-w-xs whitespace-pre-wrap break-words">
+                            <td className="py-2 px-3 text-ink-3 max-w-xs whitespace-pre-wrap break-words">
                               {entry.note?.trim() || '—'}
                             </td>
                           </tr>

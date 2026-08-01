@@ -1716,7 +1716,7 @@ const RawMaterialRefactored: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+    <div className="min-h-screen bg-canvas">
       {dashboardNode}
       {pageTab === 'form' && (
         <div
@@ -1724,25 +1724,28 @@ const RawMaterialRefactored: React.FC = () => {
           onClick={closeFormPopup}
         >
           <div
-            className="w-full max-w-6xl my-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
+            className="w-full max-w-6xl my-4 bg-surface rounded-2xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rm-form-popup-title"
           >
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-surface">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-800">
+                <div id="rm-form-popup-title" className="text-sm font-semibold text-ink">
                   {isEditing ? 'Edit Raw Material' : 'New Raw Material'}
                 </div>
                 {isEditing && !isEditLoading ? (
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                    <span className="font-mono font-semibold text-teal-700">
+                    <span className="font-mono font-semibold text-brand">
                       {formData.rmSku?.trim() || '—'}
                     </span>
                     {(formData.tradeCommercialName?.trim() || formData.inciName?.trim()) ? (
                       <>
-                        <span className="text-gray-300" aria-hidden>
+                        <span className="text-ink-4" aria-hidden>
                           ·
                         </span>
-                        <span className="truncate font-medium text-gray-900">
+                        <span className="truncate font-medium text-ink">
                           {formData.tradeCommercialName?.trim() || formData.inciName?.trim()}
                         </span>
                       </>
@@ -1754,7 +1757,7 @@ const RawMaterialRefactored: React.FC = () => {
                 type="button"
                 onClick={closeFormPopup}
                 aria-label="Close raw material popup"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 hover:text-ink text-xs font-medium"
               >
                 <span aria-hidden>✕</span>
                 <span>Close</span>
@@ -1763,8 +1766,8 @@ const RawMaterialRefactored: React.FC = () => {
 
             <div className="max-h-[88vh] overflow-y-auto">
               {isEditLoading ? (
-                <div className="min-h-[60vh] bg-[#f9fafb] flex items-center justify-center">
-                  <p className="text-gray-500">Loading raw material…</p>
+                <div className="min-h-[60vh] bg-canvas flex items-center justify-center">
+                  <p className="text-ink-3">Loading raw material…</p>
                 </div>
               ) : (
                 <MasterDropdownOptionsProvider entity="RM">
@@ -1877,7 +1880,7 @@ type RawMaterialDashboardProps = {
 const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
  { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200' },
  { bg: 'bg-green-50',    text: 'text-green-700',    border: 'border-green-200' },
- { bg: 'bg-slate-100',   text: 'text-slate-600',    border: 'border-slate-200' },
+ { bg: 'bg-surface-3',   text: 'text-ink-3',    border: 'border-border' },
  { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200' },
  { bg: 'bg-red-50',      text: 'text-red-700',      border: 'border-red-200' },
  { bg: 'bg-yellow-50',   text: 'text-yellow-700',   border: 'border-yellow-200' },
@@ -1885,11 +1888,11 @@ const CATEGORY_STYLE_PALETTE: { bg: string; text: string; border: string }[] = [
  { bg: 'bg-pink-50',     text: 'text-pink-700',     border: 'border-pink-200' },
  { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200' },
  { bg: 'bg-blue-50',     text: 'text-blue-700',     border: 'border-blue-200' },
- { bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200' },
+ { bg: 'bg-brand-soft',   text: 'text-brand',   border: 'border-brand-soft' },
  { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200' },
  { bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200' },
  { bg: 'bg-sky-50',      text: 'text-sky-700',     border: 'border-sky-200' },
- { bg: 'bg-gray-100',    text: 'text-gray-600',     border: 'border-gray-200' },
+ { bg: 'bg-surface-3',    text: 'text-ink-3',     border: 'border-border' },
 ];
 
 function getCategoryStyle(category: string): { bg: string; text: string; border: string } {
@@ -2133,7 +2136,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         value: allRows.length,
         sub: 'All raw materials',
         accent: 'border-l-teal-500',
-        num: 'text-teal-600',
+        num: 'text-brand',
       },
     ];
     const dynamic: RmStatCard[] = categoryBuckets.map((b) => {
@@ -2144,7 +2147,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         value: b.count,
         sub: b.count === 1 ? '1 material in category' : `${b.count} materials`,
         accent: 'border-l-teal-400',
-        num: 'text-slate-800',
+        num: 'text-ink',
         badge: style,
       };
     });
@@ -2152,32 +2155,32 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
   }, [allRows.length, categoryBuckets]);
 
  return (
-  <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+  <div className="min-h-screen bg-canvas">
    <div className="px-6 md:px-10 py-8 space-y-6 w-full">
 
     {/* ── Page Header ── */}
     <div className="relative">
-     <div className="absolute inset-0 bg-linear-to-r from-teal-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
+     <div className="absolute inset-0 bg-brand-soft rounded-2xl blur-3xl" />
      <div className="relative">
       <div className="inline-flex items-center gap-2 mb-3">
        <span className="text-3xl"></span>
-       <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">RM Masters</span>
+       <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">RM Masters</span>
       </div>
-      <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Raw Materials</h1>
-      <p className="text-sm text-gray-600">Manage raw material masters, INCI details, pricing and item group assignments.</p>
+      <h1 className="text-3xl font-extrabold text-ink tracking-tight mb-2">Raw Materials</h1>
+      <p className="text-sm text-ink-3">Manage raw material masters, INCI details, pricing and item group assignments.</p>
      </div>
     </div>
 
     {/* ── Loading / Error ── */}
     {isLoading && (
-     <div className="flex items-center justify-center py-12 text-gray-500">
+     <div className="flex items-center justify-center py-12 text-ink-3">
       <span className="animate-pulse">Loading raw materials…</span>
      </div>
     )}
     {!isLoading && error && (
      <div className="py-8 text-center">
      <p className="text-red-600 mb-2">{error instanceof Error ? error.message : 'Failed to load raw materials'}</p>
-     <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Retry</button>
+     <button type="button" onClick={() => refetch()} className="px-4 py-2 bg-brand text-brand-ink rounded-lg hover:bg-brand-press">Retry</button>
      </div>
     )}
 
@@ -2186,24 +2189,24 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     {/* ── Stat Cards (dynamic categories — click to filter table) ── */}
     <div className="space-y-2">
      <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-[11px] text-gray-500">
+      <p className="text-[11px] text-ink-3">
        Click a card to filter the list
        {statFilter != null ? (
         <button
          type="button"
          onClick={() => toggleStatFilter(null)}
-         className="ml-2 text-teal-700 font-semibold hover:underline"
+         className="ml-2 text-brand font-semibold hover:underline"
         >
          Clear filter
         </button>
        ) : null}
       </p>
-      <label className="flex items-center gap-2 text-[11px] text-gray-600">
-       <span className="font-semibold uppercase tracking-wide text-gray-500">Sort cards</span>
+      <label className="flex items-center gap-2 text-[11px] text-ink-3">
+       <span className="font-semibold uppercase tracking-wide text-ink-3">Sort cards</span>
        <select
         value={statCardSort}
         onChange={(e) => setStatCardSort(e.target.value as MasterStatCardSort)}
-        className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+        className="text-xs px-2 py-1 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
        >
         <option value="count-desc">Count (high → low)</option>
         <option value="count-asc">Count (low → high)</option>
@@ -2221,11 +2224,11 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          type="button"
          onClick={() => toggleStatFilter(card.id)}
          aria-pressed={isActive}
-         className={`group text-left bg-white rounded-2xl border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
-          isActive ? 'border-teal-400 ring-2 ring-teal-200' : 'border-gray-100'
+         className={`group text-left bg-surface rounded-2xl border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] ${
+          isActive ? 'border-brand ring-2 ring-brand-soft' : 'border-hairline'
          }`}
         >
-         <div className={`h-1 bg-linear-to-r from-teal-400 to-teal-600 ${card.accent}`} />
+         <div className={`h-1 bg-brand ${card.accent}`} />
          <div className="px-4 py-4">
           {card.badge ? (
            <span
@@ -2234,14 +2237,14 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             {card.label}
            </span>
           ) : (
-           <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-600 transition-colors truncate">
+           <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-4 group-hover:text-ink-3 transition-colors truncate">
             {card.label}
            </p>
           )}
           <p className={`text-3xl font-extrabold mt-1 ${card.num} group-hover:scale-105 transition-transform origin-left`}>
            {card.value}
           </p>
-          <p className="text-[11px] text-gray-400 mt-2 group-hover:text-gray-500 transition-colors line-clamp-2">
+          <p className="text-[11px] text-ink-4 mt-2 group-hover:text-ink-3 transition-colors line-clamp-2">
            {card.sub}
           </p>
          </div>
@@ -2262,13 +2265,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
     />
 
     {/* ── Table Card ── */}
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
+    <div className="bg-surface rounded-2xl border border-hairline shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
 
      {/* toolbar */}
-     <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
+     <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
       <div className="flex items-center gap-2 min-w-0">
-       <span className="text-sm font-semibold text-gray-900">Raw Material Masters</span>
-       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200/50">{rows.length} / {totalFiltered}</span>
+       <span className="text-sm font-semibold text-ink">Raw Material Masters</span>
+       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-brand-soft text-brand border border-brand-soft">{rows.length} / {totalFiltered}</span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
        <input
@@ -2283,7 +2286,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         onClick={() => { void onResetAllMasters(); }}
         disabled={bulkUploadRunning || resetAllRunning || isLoading}
         title="Deletes all raw material master rows and scrubs linked warehouse, BOM, planning, and procurement data."
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-white text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-surface text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
        >
         {resetAllRunning ? 'Resetting…' : 'Reset all masters'}
        </button>
@@ -2292,20 +2295,21 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
         onClick={onPickItemReferenceExcel}
         disabled={bulkUploadRunning}
         title="Multi-tab RM workbook: tabs Raw Materials, Fragrances, Colors & Pigments — row 4 headers (A–M), data from row 5. Legacy: sheet Item Reference (cols A–C, row 2+)."
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-teal-200 bg-white text-teal-700 text-xs font-semibold hover:bg-teal-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
        >
         {bulkUploadRunning ? 'Uploading…' : 'Item Reference Excel'}
        </button>
        {/* search */}
        <div className="relative group">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-teal-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4 group-focus-within:text-brand transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
         </svg>
         <input
          value={search}
          onChange={e => setSearch(e.target.value)}
          placeholder="Search name, INCI, code…"
-         className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition-all w-52"
+         aria-label="Search name, INCI, code"
+         className="pl-9 pr-4 py-2 text-xs border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-52"
         />
        </div>
       {/* category filter removed (server-side pagination uses search + backend ordering) */}
@@ -2316,14 +2320,15 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          onChange={e => setZohoSku(e.target.value)}
          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void onImportZohoSku(); } }}
          placeholder="Missing SKU code…"
+         aria-label="Missing SKU code to import from Zoho"
          disabled={zohoImporting}
-         className="px-3 py-2 text-xs border border-indigo-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all w-36 disabled:opacity-50"
+         className="px-3 py-2 text-xs border border-brand-soft rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:bg-surface transition-all w-36 disabled:opacity-50"
         />
         <button
          type="button"
          onClick={() => { void onImportZohoSku(); }}
          disabled={zohoImporting || !zohoSku.trim()}
-         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+         className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft bg-surface text-brand text-xs font-semibold hover:bg-brand-soft disabled:opacity-50 disabled:pointer-events-none transition-colors"
         >
          {zohoImporting ? 'Fetching…' : 'Fetch from Zoho'}
         </button>
@@ -2331,7 +2336,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
        {/* new RM button */}
        <button
         onClick={onSwitchToForm}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-linear-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:translate-y-0 active:shadow-md"
        >
         <span className="text-base leading-none">+</span> New RM
        </button>
@@ -2339,10 +2344,10 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
      </div>
 
      {bulkUploadRunning && (
-      <div className="px-6 py-3 border-b border-gray-100 bg-teal-50/40">
-       <div className="text-xs text-gray-700 mb-1.5 font-medium">Uploading workbook — server is parsing and importing…</div>
-       <div className="h-2.5 rounded-full bg-teal-100 overflow-hidden shadow-inner">
-        <div className="h-full w-full rounded-full bg-linear-to-r from-teal-500 to-teal-600 animate-pulse" />
+      <div className="px-6 py-3 border-b border-hairline bg-brand-soft">
+       <div className="text-xs text-ink-2 mb-1.5 font-medium">Uploading workbook — server is parsing and importing…</div>
+       <div className="h-2.5 rounded-full bg-brand-soft overflow-hidden shadow-inner">
+        <div className="h-full w-full rounded-full bg-brand animate-pulse" />
        </div>
       </div>
      )}
@@ -2351,8 +2356,8 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
      <div className="overflow-x-auto">
       <table className="w-full text-xs">
        <thead>
-        <tr className="border-b border-gray-100 bg-linear-to-r from-slate-50/70 to-transparent">
-         <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Sr No</th>
+        <tr className="border-b border-hairline bg-surface-3">
+         <th scope="col" className="px-4 py-4 text-left text-xs font-semibold text-ink-3 uppercase tracking-wide">Sr No</th>
          <SortableTableTh
           label="Code"
           column="code"
@@ -2407,7 +2412,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           accent="teal"
           thClassName="py-4"
          />
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Assign</th>
+         <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-3">Assign</th>
          <SortableTableTh
           label="Products"
           column="products"
@@ -2417,16 +2422,16 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           accent="teal"
           thClassName="py-4"
          />
-         <th className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-gray-600">Logs</th>
-         <th className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-gray-600">Actions</th>
+         <th scope="col" className="px-4 py-4 text-left font-semibold uppercase tracking-wider text-ink-3">Logs</th>
+         <th scope="col" className="px-4 py-4 text-right font-semibold uppercase tracking-wider text-ink-3">Actions</th>
         </tr>
        </thead>
-       <tbody className="divide-y divide-gray-50">
+       <tbody className="divide-y divide-hairline">
         {totalFiltered === 0 ? (
          <tr>
-          <td colSpan={11} className="px-4 py-12 text-center text-gray-400 text-sm">
+          <td colSpan={11} className="px-4 py-12 text-center text-ink-4 text-sm">
            <div className="flex flex-col items-center gap-2">
-            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
             No raw materials match your search.
@@ -2438,15 +2443,15 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          const subCategoryLabel = rmListSubCategoryLabel(rm);
          const catStyle = getCategoryStyle(categoryLabel);
          return (
-          <tr key={rm.code} className="hover:bg-linear-to-r hover:from-teal-50/50 hover:to-transparent transition-colors group border-b border-gray-50 last:border-0">
+          <tr key={rm.code} className="hover:bg-linear-to-r hover:from-brand-soft hover:to-transparent transition-colors group border-b border-hairline last:border-0">
            {/* sr no */}
-           <td className="px-4 py-3.5 text-[11px] text-gray-500 whitespace-nowrap">{startIndex + idx + 1}</td>
+           <td className="px-4 py-3.5 text-[11px] text-ink-3 whitespace-nowrap">{startIndex + idx + 1}</td>
            {/* code */}
-           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-teal-700 whitespace-nowrap group-hover:text-teal-900">{rm.code}</td>
+           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-brand whitespace-nowrap group-hover:text-brand">{rm.code}</td>
            {/* name / inci */}
            <td className="px-4 py-3.5 whitespace-nowrap">
-            <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">{rm.name}</p>
-            <p className="text-gray-400 text-[10px] mt-0.5 italic">{rm.inci}</p>
+            <p className="font-semibold text-ink group-hover:text-brand transition-colors">{rm.name}</p>
+            <p className="text-ink-4 text-[10px] mt-0.5 italic">{rm.inci}</p>
            </td>
            {/* category */}
            <td className="px-4 py-3.5">
@@ -2455,9 +2460,9 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             </span>
            </td>
            {/* sub-category */}
-           <td className="px-4 py-3.5 text-gray-700 font-medium">{subCategoryLabel || '—'}</td>
+           <td className="px-4 py-3.5 text-ink-2 font-medium">{subCategoryLabel || '—'}</td>
            {/* uom */}
-           <td className="px-4 py-3.5 text-gray-700 font-semibold">{rm.uom}</td>
+           <td className="px-4 py-3.5 text-ink-2 font-semibold">{rm.uom}</td>
            {/* status */}
            <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
             <MasterApprovalStatusCell
@@ -2488,7 +2493,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
            {/* products — compact link; full SKU list in modal */}
            <td className="px-4 py-3.5">
             {rm.products.length === 0 ? (
-             <span className="text-gray-300 text-xs">—</span>
+             <span className="text-ink-4 text-xs">—</span>
             ) : (
              <button
               type="button"
@@ -2496,7 +2501,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
                e.stopPropagation();
                setLinkedSkusModalRm(rm);
               }}
-              className="text-xs font-semibold text-teal-600 hover:text-teal-800 hover:underline focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-1 rounded"
+              className="text-xs font-semibold text-brand hover:text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:ring-offset-1 rounded"
              >
               View SKU ({rm.products.length})
              </button>
@@ -2516,7 +2521,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
             <button
              type="button"
              onClick={(e) => { e.stopPropagation(); onEditRm(rm); }}
-             className="text-[10px] font-semibold text-teal-600 hover:text-teal-800 hover:underline mr-2"
+             className="text-[10px] font-semibold text-brand hover:text-brand hover:underline mr-2"
             >
              Edit
             </button>
@@ -2537,13 +2542,13 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
 
      {/* Pagination */}
      {totalPages > 1 && (
-      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 bg-white">
-       <div className="text-xs text-gray-600">
-        Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
-        <span className="font-semibold text-gray-900">{totalPages}</span> • Showing{' '}
-        <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
-        <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
-        <span className="font-semibold text-gray-900">{totalFiltered}</span>
+      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-hairline bg-surface">
+       <div className="text-xs text-ink-3">
+        Page <span className="font-semibold text-ink">{safeCurrentPage}</span> of{' '}
+        <span className="font-semibold text-ink">{totalPages}</span> • Showing{' '}
+        <span className="font-semibold text-ink">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
+        <span className="font-semibold text-ink">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+        <span className="font-semibold text-ink">{totalFiltered}</span>
        </div>
        <div className="flex items-center gap-3">
         <select
@@ -2552,7 +2557,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
           setPageSize(Number(e.target.value));
           setCurrentPage(1);
          }}
-         className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+         className="text-xs px-3 py-2 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         >
          <option value={10}>10</option>
          <option value={25}>25</option>
@@ -2562,7 +2567,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          type="button"
          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
          disabled={safeCurrentPage <= 1}
-         className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+         className="px-3 py-2 text-xs font-semibold border border-border rounded-lg bg-surface text-ink-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
          Prev
         </button>
@@ -2570,7 +2575,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          type="button"
          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
          disabled={safeCurrentPage >= totalPages}
-         className="px-3 py-2 text-xs font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+         className="px-3 py-2 text-xs font-semibold border border-border rounded-lg bg-surface text-ink-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
          Next
         </button>
@@ -2586,31 +2591,31 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       onClick={() => setLinkedSkusModalRm(null)}
      >
       <div
-       className="my-auto w-full max-w-6xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+       className="my-auto w-full max-w-6xl max-h-[calc(100svh-2rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
        role="dialog"
        aria-modal="true"
        aria-labelledby="linked-skus-modal-title"
        onClick={(e) => e.stopPropagation()}
       >
-       <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-slate-50 px-5 py-4">
+       <div className="flex items-start justify-between gap-3 border-b border-hairline bg-surface-3 px-5 py-4">
         <div className="min-w-0">
-         <h2 id="linked-skus-modal-title" className="text-lg font-bold text-gray-900">
+         <h2 id="linked-skus-modal-title" className="text-lg font-bold text-ink">
           Linked product SKUs
          </h2>
-         <p className="mt-1 truncate text-xs text-gray-600 font-mono">{linkedSkusModalRm.code}</p>
-         <p className="mt-0.5 text-sm text-gray-800">{linkedSkusModalRm.name}</p>
+         <p className="mt-1 truncate text-xs text-ink-3 font-mono">{linkedSkusModalRm.code}</p>
+         <p className="mt-0.5 text-sm text-ink">{linkedSkusModalRm.name}</p>
         </div>
         <button
          type="button"
          onClick={() => setLinkedSkusModalRm(null)}
-         className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-sm text-gray-500 hover:bg-white hover:text-gray-800"
+         className="shrink-0 rounded-lg border border-border px-2 py-1 text-sm text-ink-3 hover:bg-surface hover:text-ink"
          aria-label="Close"
         >
          ×
         </button>
        </div>
        <div className="max-h-[min(60vh,28rem)] overflow-y-auto px-5 py-4">
-        <p className="mb-3 text-xs text-gray-500">
+        <p className="mb-3 text-xs text-ink-3">
          When a linked code matches a product in the master list, use Open PR master to view or edit that product.
         </p>
         <MasterLinkedPrProductsPanel
@@ -2619,11 +2624,11 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          variant="table"
         />
        </div>
-       <div className="border-t border-gray-100 bg-gray-50 px-5 py-3 text-right">
+       <div className="border-t border-hairline bg-surface-3 px-5 py-3 text-right">
         <button
          type="button"
          onClick={() => setLinkedSkusModalRm(null)}
-         className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+         className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-3"
         >
          Close
         </button>
@@ -2654,7 +2659,7 @@ const InputField: React.FC<{
  disabled?: boolean;
 }> = ({ label, id, value, onChange, type = 'text', placeholder, error, requiredMark, readOnly, disabled }) => (
  <div>
-  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
    {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
   </label>
@@ -2668,8 +2673,8 @@ const InputField: React.FC<{
    placeholder={placeholder}
    aria-invalid={error ? true : undefined}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-   } ${readOnly || disabled ? 'bg-slate-100 text-slate-800 cursor-not-allowed' : ''}`}
+    error ? 'border-red-500 bg-red-50/40' : 'border-border'
+   } ${readOnly || disabled ? 'bg-surface-3 text-ink cursor-not-allowed' : ''}`}
   />
   {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
  </div>
@@ -2689,7 +2694,7 @@ const SelectField: React.FC<{
  emptyLabel?: string;
 }> = ({ label, id, value, onChange, options, disabled, requiredMark, error, emptyLabel }) => (
  <div>
-  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
    {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
   </label>
@@ -2700,8 +2705,8 @@ const SelectField: React.FC<{
    disabled={disabled}
    aria-invalid={error ? true : undefined}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-   } ${disabled ? 'bg-slate-100' : ''}`}
+    error ? 'border-red-500 bg-red-50/40' : 'border-border'
+   } ${disabled ? 'bg-surface-3' : ''}`}
   >
    <option value="">{emptyLabel ?? 'Select...'}</option>
    {options.map((opt) => {
@@ -2725,7 +2730,7 @@ const TextareaField: React.FC<{
  error?: string;
 }> = ({ label, id, value, onChange, rows = 3, placeholder, requiredMark, error }) => (
  <div>
-  <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={id} className="block text-sm font-medium text-ink-2 mb-1">
    {label}
    {requiredMark ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
   </label>
@@ -2737,7 +2742,7 @@ const TextareaField: React.FC<{
    rows={rows}
    placeholder={placeholder}
    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-    error ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+    error ? 'border-red-500 bg-red-50/40' : 'border-border'
    }`}
   />
   {error ? <p className="mt-1 text-xs text-red-600" role="alert">{error}</p> : null}

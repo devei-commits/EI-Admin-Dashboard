@@ -52,12 +52,12 @@ function computeItemProgress(item: OrderItem) {
 }
 
 const STAGE_COLORS_PILL: Record<string, string> = {
-  PLANNING:    'bg-gray-100 text-gray-600 border-gray-200',
-  PRODUCTION:  'bg-amber-50 text-amber-700 border-amber-200',
-  FG_READY:    'bg-emerald-50 text-emerald-700 border-emerald-200',
-  PACKED:      'bg-orange-50 text-orange-700 border-orange-200',
-  INVOICED:    'bg-purple-50 text-purple-700 border-purple-200',
-  SHIPPED:     'bg-teal-50 text-teal-700 border-teal-200',
+  PLANNING:    'bg-surface-3 text-ink-3 border-border',
+  PRODUCTION:  'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30',
+  FG_READY:    'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30',
+  PACKED:      'bg-brand-soft text-brand border-brand-soft',
+  INVOICED:    'bg-brand-soft text-brand border-brand-soft',
+  SHIPPED:     'bg-brand-soft text-brand border-brand-soft',
 };
 
 function ffStatusToStage(status: string): string {
@@ -604,13 +604,13 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-        <h2 className="text-lg font-bold text-gray-800">
+      <div className="flex items-center justify-between pb-4 border-b border-border">
+        <h2 className="text-lg font-bold text-ink">
           Sale Orders Overview
         </h2>
         <button
           onClick={() => setIsAddSOModalOpen(true)}
-          className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center gap-2"
+          className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand text-white hover:bg-brand-press transition-all flex items-center gap-2"
         >
           <Plus size={16} />
           New Sale Order
@@ -701,9 +701,9 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
       {/* Sale Orders Grid */}
       {filteredSOs.length > 0 ? (
         <>
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
           <table className="w-full text-sm border-collapse">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-surface-3 border-b border-border">
               <tr>
                 <SortableTableTh label="SO" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
                 <SortableTableTh label="Product" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} />
@@ -712,7 +712,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   label={
                     <>
                       Availability
-                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">RM / PM lines · WH or BMR/BPR done</div>
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-ink-3">RM / PM lines · WH or BMR/BPR done</div>
                     </>
                   }
                   column="availability"
@@ -720,15 +720,15 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   sortDirection={sortDirection}
                   onSort={toggleSaleOrderSort}
                 />
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm whitespace-nowrap">
+                <th scope="col" className="px-4 py-3 text-left font-semibold text-ink-2 text-sm whitespace-nowrap">
                   Fulfillment Progress
-                  <div className="text-[10px] font-normal text-gray-500">FG · Packed · Invoiced · Shipped</div>
+                  <div className="text-[10px] font-normal text-ink-3">FG · Packed · Invoiced · Shipped</div>
                 </th>
                 <SortableTableTh
                   label={
                     <>
                       Exec%
-                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">lifecycle / batches</div>
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-ink-3">lifecycle / batches</div>
                     </>
                   }
                   column="execPct"
@@ -736,12 +736,12 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   sortDirection={sortDirection}
                   onSort={toggleSaleOrderSort}
                 />
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm whitespace-nowrap">Batch Stages</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold text-ink-2 text-sm whitespace-nowrap">Batch Stages</th>
                 <SortableTableTh
                   label={
                     <>
                       Batches
-                      <div className="text-[10px] font-normal normal-case tracking-normal text-gray-500">click to open BMR</div>
+                      <div className="text-[10px] font-normal normal-case tracking-normal text-ink-3">click to open BMR</div>
                     </>
                   }
                   column="batches"
@@ -750,10 +750,10 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                   onSort={toggleSaleOrderSort}
                 />
                 <SortableTableTh label="#" column="sentCount" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleSaleOrderSort} align="right" />
-                <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm">Actions</th>
+                <th scope="col" className="px-4 py-3 text-left font-semibold text-ink-2 text-sm">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-hairline">
               {useRowPagination
                 ? pagedEnrichedRows.map((row) => (
                     <SaleOrderItemTableRow
@@ -770,16 +770,16 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
                     const clientKey = `${clientGroup.clientName.toLowerCase()}__${clientGroup.city.toLowerCase()}`;
                     const clientRows = enrichedRows.filter((r) => r.clientKey === clientKey);
                     const groupHeader = (
-                      <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-blue-50/60">
+                      <tr key={`client-header-${clientGroup.clientName}-${clientGroup.city}`} className="bg-brand-soft">
                         <td colSpan={10} className="px-4 py-2.5">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold text-blue-900">
+                            <div className="text-sm font-semibold text-brand">
                               {clientGroup.clientName}
                               {clientGroup.city ? (
-                                <span className="text-xs font-normal text-blue-700 ml-2">({clientGroup.city})</span>
+                                <span className="text-xs font-normal text-brand ml-2">({clientGroup.city})</span>
                               ) : null}
                             </div>
-                            <div className="text-xs text-blue-800">
+                            <div className="text-xs text-brand">
                               {clientGroup.orders.length} order{clientGroup.orders.length !== 1 ? 's' : ''}
                             </div>
                           </div>
@@ -804,8 +804,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
-          <div className="text-xs text-gray-600">
+        <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border bg-surface-3">
+          <div className="text-xs text-ink-3">
             {useRowPagination
               ? `Page ${safeCurrentPage} of ${totalPages} · Showing ${pagedEnrichedRows.length} of ${sortedEnrichedRows.length} rows`
               : `Page ${safeCurrentPage} of ${totalPages} · Showing ${pagedClientGroups.length} of ${groupedByClient.length} clients`}
@@ -814,7 +814,8 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value) || 10)}
-              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+              aria-label="Rows per page"
+              className="text-xs border border-border rounded px-2 py-1 bg-surface"
             >
               <option value={10}>10 / page</option>
               <option value={20}>20 / page</option>
@@ -824,7 +825,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={safeCurrentPage <= 1}
-              className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-50"
             >
               Prev
             </button>
@@ -832,7 +833,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={safeCurrentPage >= totalPages}
-              className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-50"
             >
               Next
             </button>
@@ -840,12 +841,12 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
         </div>
         </>
       ) : (
-        <div className="text-center py-16 px-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
-          <div className="inline-block bg-gray-200 p-4 rounded-full">
-            <ShoppingCart size={40} className="text-gray-500" />
+        <div className="text-center py-16 px-4 bg-surface-3 border-2 border-dashed border-border rounded-xl">
+          <div className="inline-block bg-surface-3 p-4 rounded-full">
+            <ShoppingCart size={40} className="text-ink-3" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-800 mt-4">No Orders Found</h3>
-          <p className="text-sm text-gray-500 mt-1 max-w-xs mx-auto">
+          <h3 className="text-lg font-semibold text-ink mt-4">No Orders Found</h3>
+          <p className="text-sm text-ink-3 mt-1 max-w-xs mx-auto">
             {searchQuery || activeFilter !== 'all' || activePipelineStage
               ? 'Try adjusting your search or filter to find what you are looking for.'
               : 'Get started by creating a new sale order. It will appear here.'}
@@ -963,7 +964,7 @@ export const SaleOrdersView: React.FC<SaleOrdersViewProps> = ({
 
 function MiniBar({ pct, color }: { pct: number; color: string }) {
   return (
-    <div className="w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden shrink-0 inline-block">
+    <div className="w-20 h-1.5 rounded-full bg-surface-3 overflow-hidden shrink-0 inline-block">
       <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
     </div>
   );
@@ -1014,23 +1015,23 @@ function SaleOrderItemTableRow({
   const commercialStatus = so.commercialStatus;
 
   return (
-    <tr className="hover:bg-gray-50/60">
+    <tr className="hover:bg-surface-3/60">
       {/* SO No + commercial status + SLA */}
       <td className="px-4 py-3 align-top">
-        <div className="font-mono text-[12px] text-gray-900 font-semibold">{so.soNo}</div>
-        <div className="text-[10px] text-gray-400 mt-0.5">{so.orderDate}</div>
+        <div className="font-mono text-[12px] text-ink font-semibold">{so.soNo}</div>
+        <div className="text-[10px] text-ink-4 mt-0.5">{so.orderDate}</div>
         {commercialStatus && (
           <div className="mt-1">
             <CommercialBadge status={commercialStatus} />
           </div>
         )}
         {sla.overdue && (
-          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-red-600 font-semibold">
+          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-err font-semibold">
             <AlertCircle size={9} /> {sla.daysOverdue}d overdue
           </div>
         )}
         {!sla.overdue && sla.approaching && (
-          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-amber-600 font-semibold">
+          <div className="mt-1 flex items-center gap-0.5 text-[9px] text-warn font-semibold">
             <Clock size={9} /> Due soon
           </div>
         )}
@@ -1038,36 +1039,36 @@ function SaleOrderItemTableRow({
 
       {/* Product */}
       <td className="px-4 py-3 align-top">
-        <div className="font-semibold text-gray-900 text-[13px]">{item.productName}</div>
-        {item.pack && <div className="text-[10px] text-gray-400 mt-0.5">{item.pack}</div>}
+        <div className="font-semibold text-ink text-[13px]">{item.productName}</div>
+        {item.pack && <div className="text-[10px] text-ink-4 mt-0.5">{item.pack}</div>}
       </td>
 
       {/* Qty + Due Date */}
       <td className="px-4 py-3 text-right align-top">
-        <div className="font-mono text-[13px] text-gray-900 font-bold">{formatNumber(item.orderedQty)}</div>
-        <div className="text-[10px] text-gray-400 mt-0.5">Due {fmtShortDate(so.dueDate)}</div>
+        <div className="font-mono text-[13px] text-ink font-bold">{formatNumber(item.orderedQty)}</div>
+        <div className="text-[10px] text-ink-4 mt-0.5">Due {fmtShortDate(so.dueDate)}</div>
       </td>
 
       {/* RM / PM Availability */}
       <td className="px-4 py-3 align-top">
         <div className="text-[11px]">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span className="text-gray-500">RM</span>
-            <b className={rmOk ? 'text-emerald-700' : 'text-amber-700'}>{rmNumerator}/{rmDenominator || 0}</b>
+            <span className="text-ink-3">RM</span>
+            <b className={rmOk ? 'text-ok' : 'text-warn'}>{rmNumerator}/{rmDenominator || 0}</b>
           </div>
-          <div className="text-[10px] text-gray-500 mt-1">started {rmStarted}/{totalBatches || 0}</div>
-          <div className="bg-gray-200/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
-            <div className={rmOk ? 'bg-emerald-500' : 'bg-amber-500'} style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
+          <div className="text-[10px] text-ink-3 mt-1">started {rmStarted}/{totalBatches || 0}</div>
+          <div className="bg-surface-3/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
+            <div className={rmOk ? 'bg-ok' : 'bg-warn'} style={{ width: `${rmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
           </div>
         </div>
         <div className="text-[11px] mt-2">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span className="text-gray-500">PM</span>
-            <b className={pmOk ? 'text-emerald-700' : 'text-amber-700'}>{pmNumerator}/{pmDenominator || 0}</b>
+            <span className="text-ink-3">PM</span>
+            <b className={pmOk ? 'text-ok' : 'text-warn'}>{pmNumerator}/{pmDenominator || 0}</b>
           </div>
-          <div className="text-[10px] text-gray-500 mt-1">started {pmStarted}/{totalBatches || 0}</div>
-          <div className="bg-gray-200/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
-            <div className={pmOk ? 'bg-emerald-500' : 'bg-amber-500'} style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
+          <div className="text-[10px] text-ink-3 mt-1">started {pmStarted}/{totalBatches || 0}</div>
+          <div className="bg-surface-3/60 rounded-full h-1.5 mt-1.5" style={{ width: 100 }}>
+            <div className={pmOk ? 'bg-ok' : 'bg-warn'} style={{ width: `${pmAvailabilityPct}%`, height: 6, borderRadius: 999 }} />
           </div>
         </div>
       </td>
@@ -1075,16 +1076,16 @@ function SaleOrderItemTableRow({
       {/* Fulfillment Progress: FG / Packed / Invoiced / Shipped */}
       <td className="px-4 py-3 align-top min-w-[180px]">
         {[
-          { label: 'FG',  qty: progress.fgReady,  pct: fgPct,  color: 'bg-emerald-400' },
-          { label: 'Pkg', qty: progress.packed,   pct: pkPct,  color: 'bg-amber-400'   },
-          { label: 'Inv', qty: progress.invoiced, pct: invPct, color: 'bg-purple-400'  },
-          { label: 'Shp', qty: progress.shipped,  pct: shpPct, color: 'bg-teal-400'    },
+          { label: 'FG',  qty: progress.fgReady,  pct: fgPct,  color: 'bg-brand' },
+          { label: 'Pkg', qty: progress.packed,   pct: pkPct,  color: 'bg-brand' },
+          { label: 'Inv', qty: progress.invoiced, pct: invPct, color: 'bg-brand' },
+          { label: 'Shp', qty: progress.shipped,  pct: shpPct, color: 'bg-brand' },
         ].map(({ label, qty, pct, color }) => (
           <div key={label} className="flex items-center gap-2 mb-1.5">
-            <span className="text-[10px] text-gray-400 w-6 shrink-0">{label}</span>
+            <span className="text-[10px] text-ink-4 w-6 shrink-0">{label}</span>
             <MiniBar pct={pct} color={color} />
-            <span className="text-[10px] tabular-nums text-gray-700 whitespace-nowrap">
-              {formatNumber(qty)}<span className="text-gray-400">/{formatNumber(item.orderedQty)}</span>
+            <span className="text-[10px] tabular-nums text-ink-2 whitespace-nowrap">
+              {formatNumber(qty)}<span className="text-ink-4">/{formatNumber(item.orderedQty)}</span>
             </span>
           </div>
         ))}
@@ -1092,10 +1093,10 @@ function SaleOrderItemTableRow({
 
       {/* Exec% */}
       <td className="px-4 py-3 align-top">
-        <div className={`text-2xl font-extrabold ${execPct >= 100 ? 'text-emerald-600' : execPct >= 40 ? 'text-amber-600' : 'text-amber-700'}`}>
+        <div className={`text-2xl font-extrabold ${execPct >= 100 ? 'text-ok' : execPct >= 40 ? 'text-warn' : 'text-warn'}`}>
           {execPct}%
         </div>
-        <div className="text-[10px] text-gray-500 font-normal">
+        <div className="text-[10px] text-ink-3 font-normal">
           {batchCount} batch{batchCount !== 1 ? 'es' : ''} · wt. by planned qty
         </div>
       </td>
@@ -1103,7 +1104,7 @@ function SaleOrderItemTableRow({
       {/* Batch Stage Pills */}
       <td className="px-4 py-3 align-top min-w-[120px]">
         <div className="flex flex-wrap gap-1">
-          {pills.length === 0 && <span className="text-[10px] text-gray-400">—</span>}
+          {pills.length === 0 && <span className="text-[10px] text-ink-4">—</span>}
           {pills.slice(0, 4).map((p, i) => {
             const cls = STAGE_COLORS_PILL[p.stage] ?? STAGE_COLORS_PILL.PLANNING;
             return (
@@ -1114,7 +1115,7 @@ function SaleOrderItemTableRow({
             );
           })}
           {pills.length > 4 && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-gray-100 text-gray-500 border-gray-200 text-[9.5px]">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-surface-3 text-ink-3 border-border text-[9.5px]">
               +{pills.length - 4}
             </span>
           )}
@@ -1124,20 +1125,20 @@ function SaleOrderItemTableRow({
       {/* Batches */}
       <td className="px-4 py-3 align-top">
         {planningAvailabilityLoading && !planningItem ? (
-          <div className="text-[11px] text-gray-500">Loading…</div>
+          <div className="text-[11px] text-ink-3">Loading…</div>
         ) : totalBatches === 0 ? (
-          <div className="text-[11px] text-gray-500">No batches</div>
+          <div className="text-[11px] text-ink-3">No batches</div>
         ) : (
           <button type="button" className="text-left" onClick={() => onViewDetails(so.soNo)}>
-            <div className="text-[12px] text-gray-900 font-semibold">{sentCount}/{totalBatches} Batches</div>
-            <div className="text-[10px] text-gray-500">click to open BMR</div>
+            <div className="text-[12px] text-ink font-semibold">{sentCount}/{totalBatches} Batches</div>
+            <div className="text-[10px] text-ink-3">click to open BMR</div>
           </button>
         )}
       </td>
 
       {/* # sent */}
       <td className="px-4 py-3 text-right align-top">
-        <b className="font-mono text-[14px] text-gray-900">{sentCount}</b>
+        <b className="font-mono text-[14px] text-ink">{sentCount}</b>
       </td>
 
       {/* Actions + Comments */}
@@ -1145,7 +1146,7 @@ function SaleOrderItemTableRow({
         <div className="flex flex-col gap-1.5 items-start">
           {!isEditLocked(so) && (
             <button type="button" onClick={() => onEdit(so)}
-              className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 whitespace-nowrap">
+              className="px-2.5 py-1.5 rounded-md border text-xs font-semibold border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft whitespace-nowrap">
               Edit SO
             </button>
           )}
@@ -1153,7 +1154,7 @@ function SaleOrderItemTableRow({
             <button type="button"
               onClick={() => onComments(so.id!, so.soNo)}
               title="Comments & history"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-semibold border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 whitespace-nowrap">
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-semibold border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft whitespace-nowrap">
               <MessageSquare size={12} />
               Comments
             </button>

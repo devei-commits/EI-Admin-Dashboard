@@ -72,10 +72,10 @@ const QualityCheckAttachmentsSection: React.FC<QualityCheckAttachmentsSectionPro
         <table className="w-full text-xs mb-3">
           <thead>
             <tr className="text-left text-[10px] text-slate-500 border-b border-slate-200">
-              <th className="py-2 pr-3">Attachment</th>
-              <th className="py-2 pr-3">Type</th>
-              <th className="py-2 pr-3">Uploaded</th>
-              <th className="py-2 w-16">Action</th>
+              <th scope="col" className="py-2 pr-3">Attachment</th>
+              <th scope="col" className="py-2 pr-3">Type</th>
+              <th scope="col" className="py-2 pr-3">Uploaded</th>
+              <th scope="col" className="py-2 w-16">Action</th>
             </tr>
           </thead>
           <tbody>

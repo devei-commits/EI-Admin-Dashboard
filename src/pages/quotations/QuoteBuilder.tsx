@@ -3,7 +3,7 @@
  * calculator. Live 7-band pricing & timeline, blended-SG auto-compute with
  * manual fallback, full config panel, and save.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calculator, ArrowLeft, Save, AlertTriangle, Loader2, FlaskConical, Package, X, Search, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -340,7 +340,7 @@ export default function QuoteBuilder() {
                 {selectedBom && (
                   <div className="mt-2 flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-3 py-2">
                     <Package className="w-4 h-4 text-slate-500" /><span className="font-medium text-slate-900">{selectedBom.bomCode}</span><span className="text-gray-500 truncate">{selectedBom.name}</span>
-                    <button onClick={() => { setSelectedBom(null); setResult(null); }} className="ml-auto text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                    <button onClick={() => { setSelectedBom(null); setResult(null); }} aria-label="Clear selected BOM" className="ml-auto text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
                   </div>
                 )}
               </div>
@@ -426,7 +426,7 @@ export default function QuoteBuilder() {
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={r.price_per_kg} onChange={(e) => setRm(i, 'price_per_kg', e.target.value)} /></td>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-16 text-right`} type="number" step="0.001" placeholder="opt" value={r.specific_gravity} onChange={(e) => setRm(i, 'specific_gravity', e.target.value)} /></td>
                     <td className="p-1"><select className={`${selectClassName} py-1 px-2`} value={r.category} onChange={(e) => setRm(i, 'category', e.target.value)}>{RM_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></td>
-                    <td className="p-1 text-right"><button onClick={() => setAdhocRm((p) => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                    <td className="p-1 text-right"><button onClick={() => setAdhocRm((p) => p.filter((_, j) => j !== i))} aria-label="Remove RM line" className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocRm((p) => [...p, emptyRm()])} span={7} label="Add RM line" />
@@ -440,7 +440,7 @@ export default function QuoteBuilder() {
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-14 text-right`} type="number" value={p.qty_per_unit} onChange={(e) => setPm(i, 'qty_per_unit', e.target.value)} /></td>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={p.price_per_pc} onChange={(e) => setPm(i, 'price_per_pc', e.target.value)} /></td>
                     <td className="p-1"><select className={`${selectClassName} py-1 px-2`} value={p.material} onChange={(e) => setPm(i, 'material', e.target.value)}>{PM_MATERIALS.map((m) => <option key={m}>{m}</option>)}</select></td>
-                    <td className="p-1 text-right"><button onClick={() => setAdhocPm((prev) => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                    <td className="p-1 text-right"><button onClick={() => setAdhocPm((prev) => prev.filter((_, j) => j !== i))} aria-label="Remove PM line" className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocPm((p) => [...p, emptyPm()])} span={6} label="Add PM line" />
@@ -528,7 +528,7 @@ export default function QuoteBuilder() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">RM</th><th className="py-3 px-3 text-right">PM</th><th className="py-3 px-3 text-right">Conv.</th><th className="py-3 px-3 text-right">OH</th><th className="py-3 px-3 text-right">Cost</th><th className="py-3 px-3 text-right">Markup</th><th className="py-3 px-3 text-right">Margin</th><th className="py-3 px-4 text-right">Sell ₹</th>{result && result.bands[0]?.target > 0 && <th className="py-3 px-3 text-right">Gap</th>}
+                      <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th><th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th><th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>{result && result.bands[0]?.target > 0 && <th scope="col" className="py-3 px-3 text-right">Gap</th>}
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {result?.bands.map((b) => (
@@ -548,7 +548,7 @@ export default function QuoteBuilder() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Procurement</th><th className="py-3 px-3 text-right">Manufacturing</th><th className="py-3 px-3 text-right">QC</th><th className="py-3 px-3 text-right">Dispatch</th><th className="py-3 px-3 text-right">Total</th><th className="py-3 px-4 text-right">Weeks</th>
+                      <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th><th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {result?.bands.map((b) => (
@@ -570,7 +570,7 @@ export default function QuoteBuilder() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                        <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Required RM ₹/kg</th><th className="py-3 px-3 text-right">Current RM ₹/kg</th><th className="py-3 px-3 text-right">Headroom</th><th className="py-3 px-4">Feasible</th>
+                        <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Required RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Current RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Headroom</th><th scope="col" className="py-3 px-4">Feasible</th>
                       </tr></thead>
                       <tbody className="divide-y divide-gray-50">
                         {result.target_calc.map((t) => (
@@ -602,10 +602,10 @@ export default function QuoteBuilder() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                          <th className="py-2.5 px-4">Ingredient / Component</th>
-                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
-                          <th className="py-2.5 px-3 text-right">Master ₹</th>
-                          <th className="py-2.5 px-3 text-right">Type</th>
+                          <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Master ₹</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Type</th>
                         </tr></thead>
                         <tbody className="divide-y divide-gray-50">
                           {result.rm_detail.map((r, i) => (
@@ -641,10 +641,10 @@ export default function QuoteBuilder() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                          <th className="py-2.5 px-4">Ingredient / Component</th>
-                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
-                          <th className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
-                          <th className="py-2.5 px-3 text-right">vs Master</th>
+                          <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">vs Master</th>
                         </tr></thead>
                         <tbody className="divide-y divide-gray-50">
                           {result.rm_detail.map((r, i) => {
@@ -700,7 +700,7 @@ function LineEditor({ title, cols, children }: { title: string; cols: string[]; 
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
       <div className="overflow-x-auto p-2">
         <table className="w-full text-sm min-w-[44rem]">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{cols.map((c) => <th key={c} className="px-2 py-1">{c}</th>)}<th></th></tr></thead>
+          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{cols.map((c) => <th scope="col" key={c} className="px-2 py-1">{c}</th>)}<th scope="col"></th></tr></thead>
           <tbody>{children}</tbody>
         </table>
       </div>
@@ -722,7 +722,7 @@ function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-            <th className="py-2.5 px-4">Item</th><th className="py-2.5 px-3 text-right">{qtyHeader}</th><th className="py-2.5 px-3 text-right">Master ₹</th><th className="py-2.5 px-3 text-right">Vendor ₹</th><th className="py-2.5 px-3 text-right">Used ₹</th><th className="py-2.5 px-4 text-right">{lastHeader}</th>
+            <th scope="col" className="py-2.5 px-4">Item</th><th scope="col" className="py-2.5 px-3 text-right">{qtyHeader}</th><th scope="col" className="py-2.5 px-3 text-right">Master ₹</th><th scope="col" className="py-2.5 px-3 text-right">Vendor ₹</th><th scope="col" className="py-2.5 px-3 text-right">Used ₹</th><th scope="col" className="py-2.5 px-4 text-right">{lastHeader}</th>
           </tr></thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map((r, i) => (
@@ -748,7 +748,7 @@ function BreakdownCard({ title, headers, rows }: { title: string; headers: strin
       <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">{headers.map((h, i) => <th key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">{headers.map((h, i) => <th scope="col" key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map((r, i) => {
               const missing = r[r.length - 1] === true;
@@ -779,6 +779,7 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
   const [qJobRef, setQJobRef] = useState(initialJobRef || '');
   const [linkedPreId, setLinkedPreId] = useState<number | string>(initialPreQuoteId ?? '');
   const [preQuotes, setPreQuotes] = useState<quotesApi.SavedQuoteListItem[]>([]);
+  const headingId = useId();
 
   useEffect(() => {
     if (qCategory !== 'post_production') { setPreQuotes([]); return; }
@@ -805,8 +806,8 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
 
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">{editId ? 'Update Quote' : 'Save Quote'}</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 id={headingId} className="text-lg font-bold text-slate-900">{editId ? 'Update Quote' : 'Save Quote'}</h2><button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="Quote Name" required><input className={inputClassName} value={quoteName} onChange={(e) => setQuoteName(e.target.value)} /></FormField>
           <FormField label="Customer / Client">

@@ -14,10 +14,10 @@ import {
  */
 function statusBadgeClass(status: string): string {
   const s = String(status || '').toLowerCase();
-  if (s.includes('complet') || s.includes('received')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  if (s.includes('transit') || s.includes('transfer')) return 'bg-blue-100 text-blue-700 border-blue-200';
-  if (s.includes('pending')) return 'bg-amber-100 text-amber-700 border-amber-200';
-  return 'bg-slate-100 text-slate-600 border-slate-200';
+  if (s.includes('complet') || s.includes('received')) return 'bg-ok-soft text-ok border-ok-soft';
+  if (s.includes('transit') || s.includes('transfer')) return 'bg-brand-soft text-brand border-brand-soft';
+  if (s.includes('pending')) return 'bg-warn-soft text-warn border-warn-soft';
+  return 'bg-surface-3 text-ink-2 border-border';
 }
 
 /**
@@ -61,44 +61,44 @@ const WarehouseReturnsTab = ({ search = '' }: { search?: string } = {}) => {
   return (
     <div className="p-6 w-full">
         {error && (
-          <div className="mb-4 px-4 py-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">{error}</div>
+          <div className="mb-4 px-4 py-3 rounded-lg border border-err-soft bg-err-soft text-err text-sm">{error}</div>
         )}
 
-        <div className="border border-slate-200 rounded-lg overflow-x-auto">
+        <div className="border border-border rounded-lg overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-surface-2 text-ink-2">
               <tr className="text-left">
-                <th className="px-4 py-3 font-semibold">MRN No</th>
-                <th className="px-4 py-3 font-semibold">Product</th>
-                <th className="px-4 py-3 font-semibold">Batch</th>
-                <th className="px-4 py-3 font-semibold">Returned by</th>
-                <th className="px-4 py-3 font-semibold">To zone</th>
-                <th className="px-4 py-3 font-semibold text-center">Items</th>
-                <th className="px-4 py-3 font-semibold">Received</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
+                <th scope="col" className="px-4 py-3 font-semibold">MRN No</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Product</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Batch</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Returned by</th>
+                <th scope="col" className="px-4 py-3 font-semibold">To zone</th>
+                <th scope="col" className="px-4 py-3 font-semibold text-center">Items</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Received</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-hairline">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400">Loading returns…</td>
+                  <td colSpan={8} className="px-4 py-10 text-center text-ink-4">Loading returns…</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-ink-4">
                     {rows.length === 0 ? 'No returns yet.' : 'No returns match your search.'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{r.mrnNo}</td>
-                    <td className="px-4 py-3 text-slate-700">{mrnDisplayPrName(r)}</td>
-                    <td className="px-4 py-3 text-slate-600">{mrnDisplayBatchNumber(r)}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.requestedBy || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.muReceiveZone || r.whDispatchZone || '—'}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{Array.isArray(r.lineItems) ? r.lineItems.length : 0}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatMrnDisplayDate(r.receivedAtMu || r.createdAt)}</td>
+                  <tr key={r.id} className="hover:bg-surface-2">
+                    <td className="px-4 py-3 font-medium text-ink">{r.mrnNo}</td>
+                    <td className="px-4 py-3 text-ink-2">{mrnDisplayPrName(r)}</td>
+                    <td className="px-4 py-3 text-ink-2">{mrnDisplayBatchNumber(r)}</td>
+                    <td className="px-4 py-3 text-ink-2">{r.requestedBy || '—'}</td>
+                    <td className="px-4 py-3 text-ink-2">{r.muReceiveZone || r.whDispatchZone || '—'}</td>
+                    <td className="px-4 py-3 text-center text-ink-2">{Array.isArray(r.lineItems) ? r.lineItems.length : 0}</td>
+                    <td className="px-4 py-3 text-ink-2">{formatMrnDisplayDate(r.receivedAtMu || r.createdAt)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeClass(r.status)}`}>
                         {r.status || '—'}

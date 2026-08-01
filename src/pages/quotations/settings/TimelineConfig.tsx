@@ -87,7 +87,7 @@ function MaterialLeadsTab() {
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50 whitespace-nowrap">
-              <th className="py-2.5 px-3">Code</th><th className="py-2.5 px-3">Name</th><th className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th className="py-2.5 px-3 text-right">Vendor lead</th><th className="py-2.5 px-3 text-right">Master lead (d)</th>
+              <th scope="col" className="py-2.5 px-3">Code</th><th scope="col" className="py-2.5 px-3">Name</th><th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Vendor lead</th><th scope="col" className="py-2.5 px-3 text-right">Master lead (d)</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {items.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-gray-400">No materials match.</td></tr>}
@@ -160,7 +160,7 @@ function ProcurementTab() {
         <div className="border border-gray-200 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
-              <th className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th className="py-2.5 px-3 text-right">Individual (d)</th><th className="py-2.5 px-3 text-right">Batch (d)</th><th className="py-2.5 px-3"></th>
+              <th scope="col" className="py-2.5 px-3">{type === 'RM' ? 'Category' : 'Material'}</th><th scope="col" className="py-2.5 px-3 text-right">Individual (d)</th><th scope="col" className="py-2.5 px-3 text-right">Batch (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
@@ -230,7 +230,7 @@ function ManufacturingTab() {
         <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
-              <th className="py-2.5 px-3">Type</th><th className="py-2.5 px-3">Subtype</th><th className="py-2.5 px-3 text-right">Band</th><th className="py-2.5 px-3 text-right">Mfg (d)</th><th className="py-2.5 px-3 text-right">Cycle (d)</th><th className="py-2.5 px-3"></th>
+              <th scope="col" className="py-2.5 px-3">Type</th><th scope="col" className="py-2.5 px-3">Subtype</th><th scope="col" className="py-2.5 px-3 text-right">Band</th><th scope="col" className="py-2.5 px-3 text-right">Mfg (d)</th><th scope="col" className="py-2.5 px-3 text-right">Cycle (d)</th><th scope="col" className="py-2.5 px-3"></th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
@@ -277,7 +277,7 @@ function QcTab() {
       {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th className="py-2.5 px-3">Grade Ref</th><th className="py-2.5 px-3 text-right">QC Days</th><th className="py-2.5 px-3"></th></tr></thead>
+            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">QC Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
                 <tr key={row.id}>
@@ -309,7 +309,7 @@ function DispatchTab() {
       {loading ? <Loader2 className="w-5 h-5 mx-auto text-slate-400 animate-spin my-6" /> : (
         <div className="border border-gray-200 rounded-lg overflow-hidden max-w-md">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th className="py-2.5 px-3">Grade Ref</th><th className="py-2.5 px-3 text-right">Dispatch Days</th><th className="py-2.5 px-3"></th></tr></thead>
+            <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50"><th scope="col" className="py-2.5 px-3">Grade Ref</th><th scope="col" className="py-2.5 px-3 text-right">Dispatch Days</th><th scope="col" className="py-2.5 px-3"></th></tr></thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
                 <tr key={row.id}>

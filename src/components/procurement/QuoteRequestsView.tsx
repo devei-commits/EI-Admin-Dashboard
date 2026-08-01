@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, RefreshCw, MessageSquare, Loader2, FileText, Pencil, Plus, Download } from 'lucide-react';
+import { ChatCircle, Flag, ClipboardText } from '@phosphor-icons/react';
 import { fetchPlanningQuotationAsks, type PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
 import type { VendorQuote } from '../../types/procurement.types';
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../constants/procurement';
 import { quoteSlaLevel } from '../../lib/procurementSla';
 import { type RfqTemplateData } from './RfqTemplatePopup';
+import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcLoading, ProcError, ProcEmpty, procChipClass } from './ProcSection';
 import { QuotationEditPopup } from './QuotationEditPopup';
 import { RequestQuotationModal, type RequestQuotationContext } from './RequestQuotationModal';
 import { recordQuotationToPriceList } from '../../utils/recordQuotationToPriceList';
@@ -194,97 +196,85 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const breached = rows.filter((r) => r.status === 'requested' && quoteSlaLevel(r.daysOpen) === 'bad').length;
   const fromPlanning = rows.filter((r) => r.source === 'planning').length;
 
-  const chip = (active: boolean) =>
-    `px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors ${
-      active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-    }`;
-
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="text-xs text-slate-600">
-          💬 <b className="text-slate-800">Quote Requests</b> · {rows.length} active · {awaiting} awaiting response
-          {breached > 0 && <span className="ml-2 text-red-600 font-semibold">🚩 {breached} SLA-breached</span>}
-          <span className="ml-2 text-slate-400">· {fromPlanning} from Planning</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setRequestOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">
-            <Plus size={14} /> Request Quotation
-          </button>
-          {onExport && (
-            <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 bg-white hover:bg-slate-50">
-              <Download size={14} /> Export
+      <ProcSectionHeader
+        icon={<ChatCircle className="w-4 h-4 shrink-0" />}
+        title="Quote Requests"
+        stats={[
+          { value: rows.length, label: 'active' },
+          { value: awaiting, label: 'awaiting response', tone: 'brand' },
+          { value: breached, label: 'SLA-breached', tone: 'err', hidden: breached === 0 },
+          { value: fromPlanning, label: 'from Planning' },
+        ]}
+        actions={
+          <>
+            <button onClick={() => setRequestOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white hover:bg-brand-press">
+              <Plus size={14} /> Request Quotation
             </button>
-          )}
-          <button onClick={() => void load()} title="Refresh" className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-500">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
+            {onExport && (
+              <button onClick={onExport} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-border text-ink-3 bg-surface hover:bg-surface-2">
+                <Download size={14} /> Export
+              </button>
+            )}
+            <button onClick={() => void load()} disabled={loading} title="Refresh" aria-label="Refresh" className="p-2 rounded-lg border border-border hover:bg-surface-2 text-ink-3 disabled:opacity-50 disabled:cursor-not-allowed">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </>
+        }
+      />
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+      <ProcFilterBar stack>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase">Source</span>
+          <span className="text-[10px] font-bold text-ink-4 uppercase">Source</span>
           {(['all', 'planning', 'procurement'] as const).map((s) => (
-            <button key={s} onClick={() => setSourceFilter(s)} className={chip(sourceFilter === s)}>
-              {s === 'all' ? 'All' : s === 'planning' ? '📋 Planning' : '⊕ Procurement'}
+            <button key={s} onClick={() => setSourceFilter(s)} className={`${procChipClass(sourceFilter === s)} inline-flex items-center gap-1`}>
+              {s === 'all' ? 'All' : s === 'planning' ? <><ClipboardText className="w-3 h-3" /> Planning</> : <><Plus className="w-3 h-3" /> Procurement</>}
             </button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search QT ID, item, vendor…"
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+          <ProcSearch value={search} onChange={setSearch} placeholder="Search QT ID, item, vendor…" />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className={procSelectClass}>
             <option value="all">All Statuses</option>
             {(Object.keys(QUOTE_STATUS_CONFIG) as QuoteStatus[]).map((s) => (
               <option key={s} value={s}>{QUOTE_STATUS_CONFIG[s].label}</option>
             ))}
           </select>
         </div>
-      </div>
+      </ProcFilterBar>
 
       {loading && rows.length === 0 ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-blue-500 mr-2" /><span className="text-sm text-slate-500">Loading quote requests…</span></div>
+        <ProcLoading label="Loading quote requests…" />
       ) : error ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-12 text-center"><p className="text-red-500 text-sm mb-3">{error}</p><button onClick={() => void load()} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Retry</button></div>
+        <ProcError message={error} onRetry={() => void load()} />
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm"><MessageSquare size={30} className="mx-auto mb-2 opacity-30" />No quote requests.</div>
+        <ProcEmpty icon={<MessageSquare size={30} />}>No quote requests.</ProcEmpty>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                {['Req Date', 'QT Req ID', 'Source', 'Item', 'Vendor(s)', 'Req Qty', 'Target Price', 'Quote Status', 'SLA', 'Actions'].map((h) => (
-                  <th key={h} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+        <ProcTableCard>
+            <ProcThead cols={['Req Date', 'QT Req ID', 'Source', 'Item', 'Vendor(s)', { label: 'Req Qty', align: 'right' }, { label: 'Target Price', align: 'right' }, 'Quote Status', 'SLA', 'Actions']} />
+            <tbody className="divide-y divide-hairline">
               {rows.map((r) => {
                 const sc = QUOTE_STATUS_CONFIG[r.status];
                 const src = PR_SOURCE_CONFIG[r.source];
                 const slaLevel = quoteSlaLevel(r.daysOpen);
                 const linkedQuote = r.id.startsWith('proc-') ? vendorQuotes.find((q) => `proc-${q.id}` === r.id) : undefined;
                 return (
-                  <tr key={r.id} className="hover:bg-blue-50/30 transition-colors">
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(r.requestDate)}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-blue-600">{r.qtId}</td>
+                  <tr key={r.id} className="hover:bg-brand-soft transition-colors">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.requestDate)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-brand">{r.qtId}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${src.text} ${src.bg} ${src.border}`}>{src.emoji} {src.label}</span>
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${src.text} ${src.bg} ${src.border}`}>{src.label}</span>
                     </td>
                     <td className="px-3 py-2.5 max-w-[170px]">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={r.itemName}>{r.itemName}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{r.itemCode}</p>
+                      <p className="text-xs font-semibold text-ink truncate" title={r.itemName}>{r.itemName}</p>
+                      <p className="text-[10px] text-ink-4 font-mono">{r.itemCode}</p>
                     </td>
-                    <td className="px-3 py-2.5 max-w-[130px]"><p className="text-xs text-slate-700 truncate">{r.vendors}</p></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.qtyTiers.join(' / ')}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-slate-700">{r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[130px]"><p className="text-xs text-ink-2 truncate">{r.vendors}</p></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right text-xs tabular-nums text-ink-2">{r.qtyTiers.join(' / ')}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right text-xs tabular-nums text-ink-2">{r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sc.text} ${sc.bg} ${sc.border}`}>{sc.label}</span></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>{SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d</span><span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>{SLA_LEVEL_PREFIX[slaLevel]} {r.daysOpen}d</span><span className="text-[9.5px] text-ink-4 ml-1">/ {SLA_DEFAULTS.quoteDays}d</span></td>
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1">
                         {(() => {
@@ -293,22 +283,22 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                           // RFQ rows (planning_quotation_asks) are edited in the RequestQuotationModal while still pending.
                           const canEditRfq = !!r.ask && r.status === 'requested';
                           if (!canRecord && !showEdit && !canEditRfq) {
-                            return <span className="text-xs text-slate-300">—</span>;
+                            return <span className="text-xs text-ink-4">—</span>;
                           }
                           return (
                             <>
                               {canEditRfq && (
-                                <button onClick={() => setEditingAsk(r.ask!)} title="Edit quote request" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
+                                <button onClick={() => setEditingAsk(r.ask!)} title="Edit quote request" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
                                   <Pencil size={12} /> Edit
                                 </button>
                               )}
                               {showEdit && (
-                                <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-[10.5px] font-semibold">
+                                <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
                                   <Pencil size={12} /> Edit
                                 </button>
                               )}
                               {canRecord && (
-                                <button onClick={() => setRecordingFor(r.templateData)} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-[10.5px] font-semibold">
+                                <button onClick={() => setRecordingFor(r.templateData)} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2 text-[10.5px] font-semibold">
                                   <FileText size={12} /> Record Quote
                                 </button>
                               )}
@@ -321,8 +311,7 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                 );
               })}
             </tbody>
-          </table>
-        </div>
+        </ProcTableCard>
       )}
 
       {/* Record the quotation — enter MOQ price bands and save straight to the price list. */}

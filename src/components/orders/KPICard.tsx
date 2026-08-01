@@ -17,9 +17,9 @@ export const KPICard: React.FC<KPICardProps> = ({
   return (
     <div 
       className={`
-        flex-1 min-w-27.5 bg-white border border-gray-200 rounded-[10px] 
+        flex-1 min-w-27.5 bg-surface border border-border rounded-[10px]
         px-3.5 py-3 transition-all duration-150 relative overflow-hidden shadow-sm
-        hover:border-gray-300 hover:shadow
+        hover:border-border hover:shadow
         ${onClick ? 'cursor-pointer' : 'cursor-default'}
       `}
       onClick={onClick}
@@ -31,16 +31,16 @@ export const KPICard: React.FC<KPICardProps> = ({
         style={{ background: 'currentColor' }}
       />
 
-      <div className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+      <div className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider mb-1.5">
         {label}
       </div>
       
-      <div className="font-mono text-[22px] font-extrabold leading-none text-gray-900">
+      <div className="font-mono text-[22px] font-extrabold leading-none text-ink">
         {value}
       </div>
       
       {sub && (
-        <div className="text-[10px] text-gray-600 mt-1">
+        <div className="text-[10px] text-ink-3 mt-1">
           {sub}
         </div>
       )}

@@ -405,7 +405,7 @@ const ViewRoles: React.FC = () => {
        <SortableTableTh label="Permissions Set" column="permissionsSet" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Created At" column="createdAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
        <SortableTableTh label="Updated At" column="updatedAt" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleRoleSort} />
-       <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
+       <th scope="col" className="px-5 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed">
         Actions
        </th>
       </tr>

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
+import { X } from '@phosphor-icons/react';
 import type { ProcurementRequest, PackagingCondition, StockCheckLineData } from '../../types/procurement.types';
 
 interface StockCheckLine {
@@ -81,6 +82,7 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
     initialLines.map((line) => ({ ...line })),
   );
   const [overallRemarks, setOverallRemarks] = useState('');
+  const headingId = useId();
 
   const handleLineChange = (
     index: number,
@@ -127,80 +129,87 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[1px] px-4" onClick={onClose}>
       <div
-        className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[90vh] overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        className="w-full max-w-3xl bg-surface rounded-2xl shadow-2xl border border-border max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+        <div className="px-6 py-4 border-b border-border bg-surface-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Update Physical Count</p>
-            <h2 className="text-sm font-semibold text-slate-900 mt-1">{scId}</h2>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-ink-3">Update Physical Count</p>
+            <h2 id={headingId} className="text-sm font-semibold text-ink mt-1">{scId}</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-xl leading-none"
+            className="text-ink-4 hover:text-ink-2 leading-none"
             aria-label="Close"
           >
-            ×
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-50">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-surface-3">
           {lines.map((line, idx) => {
             const variance = line.physicalQty - line.systemQty;
             return (
               <div
                 key={line.itemCode ?? `${line.itemName}-${idx}`}
-                className="rounded-xl border border-slate-200 bg-white p-4 space-y-3"
+                className="rounded-xl border border-border bg-surface p-4 space-y-3"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-ink">
                       {line.itemName}{' '}
-                      <span className="text-[11px] text-slate-500 font-normal">System: {line.systemQty}</span>
-                    </p>in 
-                    <p className="text-[11px] text-slate-500 font-mono">{line.itemCode}</p>
+                      <span className="text-[11px] text-ink-3 font-normal">System: {line.systemQty}</span>
+                    </p>
+                    <p className="text-[11px] text-ink-3 font-mono">{line.itemCode}</p>
                   </div>
-                  <p className="text-[11px] text-slate-500">Variance: <span className="font-semibold text-amber-700">{variance}</span></p>
+                  <p className="text-[11px] text-ink-3">Variance: <span className="font-semibold text-warn">{variance}</span></p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Zone</label>
+                    <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">Zone</label>
                     <input
                       value={line.zone}
                       onChange={(e) => handleLineChange(idx, 'zone', e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-800"
+                      aria-label="Zone"
+                      className="w-full rounded-lg border border-border bg-surface-3 px-3 py-2 text-xs text-ink"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Rack / Location</label>
+                    <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">Rack / Location</label>
                     <input
                       value={line.rack}
                       onChange={(e) => handleLineChange(idx, 'rack', e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-800"
+                      aria-label="Rack / Location"
+                      className="w-full rounded-lg border border-border bg-surface-3 px-3 py-2 text-xs text-ink"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                    <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">
                       Physical Qty Found *
                     </label>
                     <input
                       value={String(line.physicalQty)}
                       onChange={(e) => handleLineChange(idx, 'physicalQty', e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
+                      aria-label="Physical Qty Found"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Packaging Condition</label>
+                    <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">Packaging Condition</label>
                     <select
                       value={line.packagingCondition}
                       onChange={(e) => handleLineChange(idx, 'packagingCondition', e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
+                      aria-label="Packaging Condition"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink"
                     >
                       <option value="Good">Good</option>
                       <option value="Damaged">Damaged</option>
@@ -211,13 +220,14 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                    <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">
                       Batch No (comma-sep)
                     </label>
                     <input
                       value={line.batchNo}
                       onChange={(e) => handleLineChange(idx, 'batchNo', e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
+                      aria-label="Batch No (comma-sep)"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink"
                     />
                   </div>
                 </div>
@@ -225,28 +235,29 @@ const StockCheckUpdateModal: React.FC<StockCheckUpdateModalProps> = ({
             );
           })}
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs space-y-2">
-            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Overall Remarks</label>
+          <div className="rounded-xl border border-border bg-surface p-4 text-xs space-y-2">
+            <label className="block text-[10px] font-semibold text-ink-3 uppercase mb-1">Overall Remarks</label>
             <textarea
               value={overallRemarks}
               onChange={(e) => setOverallRemarks(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 resize-none"
+              aria-label="Overall Remarks"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink resize-none"
               placeholder="Notes on discrepancies, damages, or follow-ups"
             />
           </div>
         </div>
 
-        <div className="px-6 py-3 border-t border-slate-200 bg-white flex items-center justify-end gap-3">
+        <div className="px-6 py-3 border-t border-border bg-surface flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100"
+            className="px-4 py-2 rounded-lg border border-border text-xs font-semibold text-ink-2 bg-surface hover:bg-surface-3"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 rounded-lg bg-amber-500 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
+            className="px-4 py-2 rounded-lg bg-brand text-xs font-semibold text-white shadow-[var(--e1)] hover:bg-brand-press"
           >
             Save Update
           </button>

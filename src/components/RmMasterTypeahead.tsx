@@ -148,6 +148,7 @@ export default function RmMasterTypeahead({
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-label={placeholder}
         autoComplete="off"
         disabled={disabled || loading}
         placeholder={loading ? 'Loading raw materials…' : placeholder}
@@ -155,7 +156,7 @@ export default function RmMasterTypeahead({
         onChange={(e) => onInputChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+        className="w-full px-2 py-1.5 border border-border rounded text-sm"
       />
       {showList && anchor && typeof document !== 'undefined'
         ? createPortal(
@@ -164,7 +165,7 @@ export default function RmMasterTypeahead({
               id={listId}
               role="listbox"
               style={portalStyle}
-              className="max-h-52 overflow-auto rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg"
+              className="max-h-52 overflow-auto rounded-md border border-border bg-surface py-1 text-sm shadow-lg"
             >
               {suggestions.map((opt, idx) => (
                 <li
@@ -173,10 +174,10 @@ export default function RmMasterTypeahead({
                   aria-selected={idx === activeIndex}
                   className={`cursor-pointer px-2 py-1.5 ${
                     opt.disabled
-                      ? 'cursor-not-allowed text-slate-400'
+                      ? 'cursor-not-allowed text-ink-4'
                       : idx === activeIndex
-                        ? 'bg-violet-50 text-violet-900'
-                        : 'text-slate-800 hover:bg-slate-50'
+                        ? 'bg-brand-soft text-brand'
+                        : 'text-ink hover:bg-surface-3'
                   }`}
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -185,7 +186,7 @@ export default function RmMasterTypeahead({
                   onMouseEnter={() => setActiveIndex(idx)}
                 >
                   {opt.label}
-                  {opt.disabled ? <span className="ml-1 text-[10px] text-slate-400">(already added)</span> : null}
+                  {opt.disabled ? <span className="ml-1 text-[10px] text-ink-4">(already added)</span> : null}
                 </li>
               ))}
             </ul>,
@@ -197,7 +198,7 @@ export default function RmMasterTypeahead({
             <p
               ref={hintRef}
               style={portalStyle}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-500 shadow"
+              className="rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink-3 shadow"
             >
               {requirePickFromList ? 'No matching raw materials.' : 'No match — text will be saved as manual INCI / name.'}
             </p>,

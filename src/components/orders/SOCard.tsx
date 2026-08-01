@@ -61,7 +61,7 @@ export const SOCard: React.FC<SOCardProps> = ({
       onClick: () => onPick(saleOrder.soNo),
       show: hasFGReady,
       className:
-        'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200',
+        'bg-ok-soft text-ok hover:bg-ok-soft border-[color:var(--st-green-fg)]/30',
     },
     {
       label: 'Invoice',
@@ -69,7 +69,7 @@ export const SOCard: React.FC<SOCardProps> = ({
       onClick: () => onInvoice(saleOrder.soNo),
       show: hasPicking,
       className:
-        'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200',
+        'bg-brand-soft text-brand hover:bg-brand-soft border-brand-soft',
     },
     {
       label: 'Ship',
@@ -77,26 +77,26 @@ export const SOCard: React.FC<SOCardProps> = ({
       onClick: () => onShip(saleOrder.soNo),
       show: hasInvoiced,
       className:
-        'bg-orange-50 text-orange-700 hover:bg-orange-100 border-orange-200',
+        'bg-brand-soft text-brand hover:bg-brand-soft border-brand-soft',
     },
     {
       label: 'Track',
       icon: Radar,
       onClick: () => onTrack(saleOrder.soNo),
       show: hasShipped,
-      className: 'bg-teal-50 text-teal-700 hover:bg-teal-100 border-teal-200',
+      className: 'bg-brand-soft text-brand hover:bg-brand-soft border-brand-soft',
     },
     {
       label: 'Details',
       icon: Eye,
       onClick: () => onViewDetails(saleOrder.soNo),
       show: true,
-      className: 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200',
+      className: 'bg-surface-3 text-ink-3 hover:bg-surface-3 border-border',
     },
   ];
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden transition-all hover:shadow-md hover:border-gray-300">
+    <div className="bg-surface-3 border border-border rounded-lg overflow-hidden transition-all hover:shadow-md hover:border-border">
       {/* Header */}
       <div
         className="px-4 py-3 cursor-pointer"
@@ -105,24 +105,24 @@ export const SOCard: React.FC<SOCardProps> = ({
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-sm font-bold text-gray-800">
+              <span className="font-mono text-sm font-bold text-ink">
                 {saleOrder.soNo}
               </span>
               <StatusBadge status={saleOrder.soStatus} type="so" />
               {saleOrder.priority === 'high' && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-err-soft text-err border border-[color:var(--st-red-fg)]/30">
                   Priority
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1 text-sm text-gray-700 font-medium">
-              <User size={14} className="text-gray-500" />
+            <div className="flex items-center gap-1 text-sm text-ink-2 font-medium">
+              <User size={14} className="text-ink-3" />
               <span>{saleOrder.customer}</span>
             </div>
           </div>
           <div className="text-right">
-            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
-              <Calendar size={14} className="text-gray-400" />
+            <div className="flex items-center gap-1.5 text-sm font-medium text-ink-3">
+              <Calendar size={14} className="text-ink-4" />
               <span>{formatDate(saleOrder.orderDate)}</span>
             </div>
             <div
@@ -134,11 +134,11 @@ export const SOCard: React.FC<SOCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-sm font-medium text-gray-600 mt-2">
-          <CircleDollarSign size={14} className="text-gray-400" />
+        <div className="flex items-center gap-1.5 text-sm font-medium text-ink-3 mt-2">
+          <CircleDollarSign size={14} className="text-ink-4" />
           <span>{formatCurrency(totalValue)}</span>
-          <span className="text-gray-300">|</span>
-          <ShoppingCart size={14} className="text-gray-400" />
+          <span className="text-ink-4">|</span>
+          <ShoppingCart size={14} className="text-ink-4" />
           <span>
             {saleOrder.items.length} item
             {saleOrder.items.length > 1 ? 's' : ''}
@@ -148,21 +148,21 @@ export const SOCard: React.FC<SOCardProps> = ({
 
       {/* Progress Bar */}
       <div className="px-4 pb-3">
-        <div className="relative h-2.5 w-full bg-gray-200 rounded-full">
+        <div className="relative h-2.5 w-full bg-surface-3 rounded-full">
           <div
-            className="absolute top-0 left-0 h-full bg-green-400 rounded-full transition-all duration-500"
+            className="absolute top-0 left-0 h-full bg-ok rounded-full transition-all duration-500"
             style={{ width: `${progress.readyPct}%` }}
           />
           <div
-            className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-500"
+            className="absolute top-0 left-0 h-full bg-brand rounded-full transition-all duration-500"
             style={{ width: `${progress.shippedPct}%` }}
           />
         </div>
-        <div className="flex justify-between mt-1.5 text-xs font-medium text-gray-500">
+        <div className="flex justify-between mt-1.5 text-xs font-medium text-ink-3">
           {progress.readyPct === 0 && progress.shippedPct === 0 ? (
             <>
               <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-gray-400" /> Pending
+                <span className="w-2 h-2 rounded-full bg-ink-4" /> Pending
               </span>
               <span>0% of {progress.total} units</span>
             </>
@@ -170,10 +170,10 @@ export const SOCard: React.FC<SOCardProps> = ({
             <>
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-400" /> FG Ready
+                  <span className="w-2 h-2 rounded-full bg-ok" /> FG Ready
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-500" /> Shipped
+                  <span className="w-2 h-2 rounded-full bg-brand" /> Shipped
                 </span>
               </div>
               <span>
@@ -182,18 +182,18 @@ export const SOCard: React.FC<SOCardProps> = ({
             </>
           )}
         </div>
-        <div className="mt-1 text-[11px] text-gray-500 font-medium">
+        <div className="mt-1 text-[11px] text-ink-3 font-medium">
           Lifecycle exec: {progress.fulfillmentLifecyclePct}%
         </div>
         {progress.batchesTotal > 0 && (
-          <div className="mt-0.5 text-[11px] text-gray-500 font-medium">
+          <div className="mt-0.5 text-[11px] text-ink-3 font-medium">
             Batches: {progress.batchesDonePct}% ({progress.batchesDone}/{progress.batchesTotal}) done
           </div>
         )}
       </div>
 
       {/* Actions Footer */}
-      <div className="px-3 py-2 border-t border-gray-200 bg-white flex items-center justify-end gap-2">
+      <div className="px-3 py-2 border-t border-border bg-surface flex items-center justify-end gap-2">
         {cardActions
           .filter((action) => action.show)
           .map((action) => (
@@ -204,6 +204,7 @@ export const SOCard: React.FC<SOCardProps> = ({
                 action.onClick();
               }}
               title={action.label}
+              aria-label={action.label}
               className={`h-8 w-8 flex items-center justify-center rounded-md border transition-all ${action.className}`}
             >
               <action.icon size={16} />

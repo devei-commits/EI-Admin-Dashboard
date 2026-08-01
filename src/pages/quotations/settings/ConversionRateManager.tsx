@@ -106,9 +106,9 @@ export default function ConversionRateManager() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">MOQ Band</th>
+                    <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600">MOQ Band</th>
                     {vols.map(v => (
-                      <th key={v} className="px-4 py-2 text-center font-medium text-gray-600">{v} mL</th>
+                      <th scope="col" key={v} className="px-4 py-2 text-center font-medium text-gray-600">{v} mL</th>
                     ))}
                   </tr>
                 </thead>
@@ -127,6 +127,7 @@ export default function ConversionRateManager() {
                                 type="number"
                                 step="0.5"
                                 min="0"
+                                aria-label={`Rate for ${pkg}, ${band}, ${vol} mL`}
                                 className="w-20 border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 value={map[pkg]?.[band]?.[vol] ?? ''}
                                 onChange={e => setCell(pkg, band, vol, e.target.value)}
@@ -137,6 +138,7 @@ export default function ConversionRateManager() {
                                 disabled={isSaving}
                                 className="p-1 text-blue-600 hover:text-blue-800 disabled:opacity-40"
                                 title="Save"
+                                aria-label="Save"
                               >
                                 <Save className="h-3.5 w-3.5" />
                               </button>

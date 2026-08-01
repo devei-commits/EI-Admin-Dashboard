@@ -151,7 +151,7 @@ export function MasterAddCustomFieldModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            className="px-4 py-2 border border-border text-ink-2 rounded-lg text-sm font-medium hover:bg-surface-3 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -159,7 +159,7 @@ export function MasterAddCustomFieldModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-press disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save field'}
           </button>
@@ -168,8 +168,8 @@ export function MasterAddCustomFieldModal({
     >
       <div className="space-y-4">
         <div>
-          <label htmlFor="cf-name" className="block text-sm font-medium text-gray-700 mb-1">
-            Parameter / field name <span className="text-red-600">*</span>
+          <label htmlFor="cf-name" className="block text-sm font-medium text-ink-2 mb-1">
+            Parameter / field name <span className="text-err">*</span>
           </label>
           <input
             id="cf-name"
@@ -180,18 +180,18 @@ export function MasterAddCustomFieldModal({
               if (error) setError('');
             }}
             placeholder="e.g. Neck finish torque spec"
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           />
         </div>
         <div>
-          <label htmlFor="cf-type" className="block text-sm font-medium text-gray-700 mb-1">
-            Data type / input method <span className="text-red-600">*</span>
+          <label htmlFor="cf-type" className="block text-sm font-medium text-ink-2 mb-1">
+            Data type / input method <span className="text-err">*</span>
           </label>
           <select
             id="cf-type"
             value={type}
             onChange={(e) => setType(e.target.value as MasterCustomFieldType)}
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           >
             {FIELD_TYPES.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -202,7 +202,7 @@ export function MasterAddCustomFieldModal({
         </div>
         {showOptions ? (
           <div>
-            <label htmlFor="cf-options" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="cf-options" className="block text-sm font-medium text-ink-2 mb-1">
               Dropdown options (comma-separated)
             </label>
             <input
@@ -211,19 +211,19 @@ export function MasterAddCustomFieldModal({
               value={optionsText}
               onChange={(e) => setOptionsText(e.target.value)}
               placeholder="Option A, Option B, Option C"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
         ) : null}
         <div>
-          <label htmlFor="cf-mand" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="cf-mand" className="block text-sm font-medium text-ink-2 mb-1">
             Mandatory?
           </label>
           <select
             id="cf-mand"
             value={mandatory ? 'true' : 'false'}
             onChange={(e) => setMandatory(e.target.value === 'true')}
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           >
             <option value="false">No · Optional</option>
             <option value="true">Yes · Mandatory</option>
@@ -231,7 +231,7 @@ export function MasterAddCustomFieldModal({
         </div>
         {showUnit ? (
           <div>
-            <label htmlFor="cf-unit" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="cf-unit" className="block text-sm font-medium text-ink-2 mb-1">
               Unit (mm / kg / Nm / % etc)
             </label>
             <input
@@ -239,20 +239,20 @@ export function MasterAddCustomFieldModal({
               type="text"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
         ) : null}
         {scopeMode ? (
           <div>
-            <label htmlFor="cf-scope" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="cf-scope" className="block text-sm font-medium text-ink-2 mb-1">
               Add to group
             </label>
             <select
               id="cf-scope"
               value={scope}
               onChange={(e) => setScope(e.target.value as TechnicalSpecAddScope)}
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             >
               <option value="category">Category (all of {categoryScopeLabel || 'this category'})</option>
               {allowSubCategoryScope ? (
@@ -265,7 +265,7 @@ export function MasterAddCustomFieldModal({
           </div>
         ) : null}
         {error ? (
-          <p className="text-xs text-red-600" role="alert">
+          <p className="text-xs text-err" role="alert">
             {error}
           </p>
         ) : null}

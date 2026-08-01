@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import { createVendorClient, fetchNextCode } from '../../services/vendorClient.service';
 import type { Vendor, PurchaseOrder, MainTab, SideSection } from '../../types/procurement.types';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 import { formatStagedPaymentTermsSummary } from '../../lib/stagedPaymentTerms';
+import { ProcSection, ProcSectionHeader, ProcStatCards, ProcTableCard, ProcThead } from '../../components/procurement/ProcSection';
+import { X } from '@phosphor-icons/react';
 
 export type ProcurementVendorsProps = {
   vendors: Vendor[];
@@ -42,6 +44,7 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
   const [loadingCode, setLoadingCode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const addModalHeadingId = useId();
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -110,184 +113,147 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
   return (
     <div className="flex gap-4 h-screen-minus-header">
       <div className="flex-1 pr-4">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold font-archivo text-slate-900">Vendor Directory</h2>
-            <p className="text-sm text-slate-600 mt-1">Manage suppliers and purchase orders</p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => applyRouteState('Procurement', sideSection)}
-              className="px-4 py-2 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-300 hover:bg-cyan-100 transition"
-            >
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 rounded-lg bg-yellow-400 text-yellow-900 font-semibold hover:bg-yellow-500 transition"
-            >
-              + Add Vendor
-            </button>
-          </div>
-        </div>
+        <ProcSection>
+        <ProcSectionHeader
+          title="Vendor Directory"
+          subtitle="Manage suppliers and purchase orders"
+          actions={
+            <>
+              <button onClick={() => applyRouteState('Procurement', sideSection)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface text-ink-2 border border-border hover:bg-surface-3">Back</button>
+              <button type="button" onClick={() => setShowAddModal(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-brand-ink hover:bg-brand-press">+ Add Vendor</button>
+            </>
+          }
+        />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <div className="rounded-xl border border-cyan-300 bg-cyan-50 p-4">
-            <p className="text-xs text-cyan-600 tracking-widest font-semibold">TOTAL VENDORS</p>
-            <p className="text-3xl font-bold text-cyan-700 mt-2">{vendors.length}</p>
-          </div>
-          <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4">
-            <p className="text-xs text-emerald-600 tracking-widest font-semibold">ACTIVE</p>
-            <p className="text-3xl font-bold text-emerald-700 mt-2">{vendors.filter(v => v.status === 'Active').length}</p>
-          </div>
-          <div className="rounded-xl border border-yellow-300 bg-yellow-50 p-4">
-            <p className="text-xs text-yellow-600 tracking-widest font-semibold">RM SUPPLIERS</p>
-            <p className="text-3xl font-bold text-yellow-700 mt-2">{vendors.filter(v => v.type === 'RM').length}</p>
-          </div>
-          <div className="rounded-xl border border-violet-300 bg-violet-50 p-4">
-            <p className="text-xs text-violet-600 tracking-widest font-semibold">PM SUPPLIERS</p>
-            <p className="text-3xl font-bold text-violet-700 mt-2">{vendors.filter(v => v.type === 'PM').length}</p>
-          </div>
-        </div>
+        <ProcStatCards cards={[
+          { label: 'Total Vendors', value: vendors.length, tone: 'brand' },
+          { label: 'Active', value: vendors.filter(v => v.status === 'Active').length, tone: 'ok' },
+          { label: 'RM Suppliers', value: vendors.filter(v => v.type === 'RM').length, tone: 'warn' },
+          { label: 'PM Suppliers', value: vendors.filter(v => v.type === 'PM').length, tone: 'brand' },
+        ]} />
 
-        <div className="rounded-xl border border-blue-200 bg-white overflow-hidden shadow-sm">
-          <div className="px-6 py-4 border-b border-blue-200 bg-linear-to-r from-blue-50 to-cyan-50">
-            <h3 className="font-bold text-slate-900">Vendor Directory</h3>
-          </div>
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0">
-                <tr className="text-left text-xs tracking-widest text-slate-500 border-b border-slate-200 bg-slate-50">
-                  <th className="px-6 py-3">VENDOR</th>
-                  <th className="px-6 py-3">CATEGORY</th>
-                  <th className="px-6 py-3">CONTACT</th>
-                  <th className="px-6 py-3">CITY</th>
-                  <th className="px-6 py-3">PAYMENT TERMS</th>
-                  <th className="px-6 py-3">RATING</th>
-                  <th className="px-6 py-3">POS ISSUED</th>
-                  <th className="px-6 py-3">STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
+        <ProcTableCard>
+            <ProcThead cols={['Vendor', 'Category', 'Contact', 'City', 'Payment Terms', 'Rating', 'POs Issued', 'Status']} />
+            <tbody className="divide-y divide-hairline">
                 {vendors.map(vendor => (
                   <tr
                     key={vendor.id}
                     onClick={() => setSelectedVendor(vendor)}
-                    className="border-b border-slate-100 hover:bg-blue-50 transition cursor-pointer"
+                    className="hover:bg-surface-3 transition-colors cursor-pointer"
                   >
-                    <td className="px-6 py-3 font-semibold text-slate-900">{vendor.name}</td>
-                    <td className="px-6 py-3">
-                      <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${vendor.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-violet-50 text-violet-700 border border-violet-200'}`}>
+                    <td className="px-3 py-2.5 font-semibold text-ink">{vendor.name}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-block px-2 py-1 rounded text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">
                         {vendor.type}
                       </span>
                     </td>
-                    <td className="px-6 py-3 text-slate-700">{vendor.contact}</td>
-                    <td className="px-6 py-3 text-slate-600">{vendor.city}</td>
-                    <td className="px-6 py-3 text-slate-600 text-xs max-w-[220px]">
+                    <td className="px-3 py-2.5 text-ink-2">{vendor.contact}</td>
+                    <td className="px-3 py-2.5 text-ink-3">{vendor.city}</td>
+                    <td className="px-3 py-2.5 text-ink-3 text-xs max-w-[220px]">
                       <span className="line-clamp-2" title={formatStagedPaymentTermsSummary(vendor.paymentTerms)}>
                         {formatStagedPaymentTermsSummary(vendor.paymentTerms)}
                       </span>
                     </td>
-                    <td className="px-6 py-3">
-                      <span className="text-yellow-700 font-bold">{vendor.rating}</span>
+                    <td className="px-3 py-2.5">
+                      <span className="text-warn font-bold">{vendor.rating}</span>
                     </td>
-                    <td className="px-6 py-3 text-slate-600 font-semibold">{vendor.posIssued}</td>
-                    <td className="px-6 py-3">
-                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">{vendor.status}</span>
+                    <td className="px-3 py-2.5 text-ink-3 font-semibold tabular-nums">{vendor.posIssued}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-ok-soft text-ok">{vendor.status}</span>
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            </tbody>
+        </ProcTableCard>
+        </ProcSection>
       </div>
 
       {selectedVendor && (
-        <div className="w-96 bg-white border-l border-slate-200 overflow-y-auto shadow-lg rounded-lg">
-          <div className="sticky top-0 bg-linear-to-r from-blue-50 to-cyan-50 border-b border-blue-200 px-6 py-4 flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 text-lg">{selectedVendor.name}</h3>
+        <div className="w-96 bg-surface border-l border-border overflow-y-auto shadow-lg rounded-lg">
+          <div className="sticky top-0 bg-brand-soft border-b border-brand-soft px-6 py-4 flex items-center justify-between">
+            <h3 className="font-bold text-ink text-lg">{selectedVendor.name}</h3>
             <button
+              type="button"
               onClick={() => setSelectedVendor(null)}
-              className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+              aria-label="Close"
+              className="text-ink-4 hover:text-ink-3"
             >
-              X
+              <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="p-6 space-y-4">
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">VENDOR ID</p>
-              <p className="text-sm font-mono text-slate-700 mt-1">{selectedVendor.vendorCode}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">VENDOR ID</p>
+              <p className="text-sm font-mono text-ink-2 mt-1">{selectedVendor.vendorCode}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">CATEGORY</p>
-              <span className={`inline-block px-2 py-1 rounded text-xs font-semibold mt-1 ${selectedVendor.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-violet-50 text-violet-700 border border-violet-200'}`}>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">CATEGORY</p>
+              <span className={`inline-block px-2 py-1 rounded text-xs font-semibold mt-1 ${selectedVendor.type === 'RM' ? 'bg-brand-soft text-brand border border-brand-soft' : 'bg-brand-soft text-brand border border-brand-soft'}`}>
                 {selectedVendor.type}
               </span>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">CONTACT</p>
-              <p className="text-sm text-slate-700 mt-1">{selectedVendor.contact}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">CONTACT</p>
+              <p className="text-sm text-ink-2 mt-1">{selectedVendor.contact}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">EMAIL</p>
-              <p className="text-sm text-blue-600 mt-1">{selectedVendor.email}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">EMAIL</p>
+              <p className="text-sm text-brand mt-1">{selectedVendor.email}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">PHONE</p>
-              <p className="text-sm text-slate-700 font-mono mt-1">{selectedVendor.phone}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">PHONE</p>
+              <p className="text-sm text-ink-2 font-mono mt-1">{selectedVendor.phone}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">CITY</p>
-              <p className="text-sm text-slate-700 mt-1">{selectedVendor.city}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">CITY</p>
+              <p className="text-sm text-ink-2 mt-1">{selectedVendor.city}</p>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">PAYMENT TERMS</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">PAYMENT TERMS</p>
               <div className="mt-1">
                 <PaymentTermsDisplay value={selectedVendor.paymentTerms} />
               </div>
             </div>
 
             <div>
-              <p className="text-xs text-slate-500 tracking-widest font-semibold">RATING</p>
-              <p className="text-sm text-yellow-700 font-bold mt-1">{selectedVendor.rating}</p>
+              <p className="text-xs text-ink-3 tracking-widest font-semibold">RATING</p>
+              <p className="text-sm text-warn font-bold mt-1">{selectedVendor.rating}</p>
             </div>
 
-            <div className="border-t border-slate-200 pt-4">
-              <p className="text-xs text-slate-500 tracking-widest font-semibold mb-3">PURCHASE ORDERS ({purchaseOrders.filter(po => po.vendorId === selectedVendor.id).length})</p>
+            <div className="border-t border-border pt-4">
+              <p className="text-xs text-ink-3 tracking-widest font-semibold mb-3">PURCHASE ORDERS ({purchaseOrders.filter(po => po.vendorId === selectedVendor.id).length})</p>
               <div className="space-y-3">
                 {purchaseOrders.filter(po => po.vendorId === selectedVendor.id).map((po) => (
-                  <div key={po.id} className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div key={po.id} className="p-3 rounded-lg bg-surface-3 border border-border">
                     <div className="flex items-start justify-between mb-2">
-                      <p className="font-mono text-xs text-slate-600">{po.poNumber}</p>
+                      <p className="font-mono text-xs text-ink-3">{po.poNumber}</p>
                       <span
                         className={`px-2 py-0.5 rounded text-xs font-semibold ${
                           po.status === 'Delivered'
-                            ? 'bg-emerald-100 text-emerald-700'
+                            ? 'bg-ok-soft text-ok'
                             : po.status === 'Shipped'
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-brand-soft text-brand'
                             : po.status === '80% Complete'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-orange-100 text-orange-700'
+                            ? 'bg-warn-soft text-warn'
+                            : 'bg-warn-soft text-warn'
                         }`}
                       >
                         {po.status}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600 mb-1">Value: ₹{po.value.toLocaleString('en-IN')}</p>
-                    <p className="text-xs text-slate-500">{po.date}</p>
+                    <p className="text-xs text-ink-3 mb-1">Value: ₹{po.value.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-ink-3">{po.date}</p>
                   </div>
                 ))}
                 {purchaseOrders.filter(po => po.vendorId === selectedVendor.id).length === 0 && (
-                  <p className="text-xs text-slate-500 italic">No purchase orders yet</p>
+                  <p className="text-xs text-ink-3 italic">No purchase orders yet</p>
                 )}
               </div>
             </div>
@@ -298,93 +264,97 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeAddModal}>
           <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={addModalHeadingId}
+            className="bg-surface rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
-              <h3 className="text-lg font-bold text-slate-900">Add Vendor</h3>
+            <div className="sticky top-0 bg-surface-3 border-b border-border px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h3 id={addModalHeadingId} className="text-lg font-bold text-ink">Add Vendor</h3>
               <button
                 type="button"
                 onClick={closeAddModal}
                 disabled={saving}
-                className="text-slate-400 hover:text-slate-600 text-xl font-bold disabled:opacity-50"
+                aria-label="Close"
+                className="text-ink-4 hover:text-ink-3 disabled:opacity-50"
               >
-                X
+                <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleAddVendorSubmit} className="p-6 space-y-4">
               {formError && (
-                <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
+                <div className="p-3 rounded-lg bg-err-soft text-err text-sm border border-[color:var(--st-red-fg)]/30">
                   {formError}
                 </div>
               )}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Vendor code</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Vendor code</label>
                 <input
                   type="text"
                   value={nextCode}
                   readOnly
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700 font-mono text-sm"
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface-3 text-ink-2 font-mono text-sm"
                 />
-                {loadingCode && <p className="text-xs text-slate-500 mt-1">Generating code…</p>}
+                {loadingCode && <p className="text-xs text-ink-3 mt-1">Generating code…</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Name *</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Name *</label>
                 <input
                   type="text"
                   required
                   value={addForm.name}
                   onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="Vendor / trade name"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Email</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Email</label>
                 <input
                   type="email"
                   value={addForm.email}
                   onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="email@example.com"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Phone</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Phone</label>
                 <input
                   type="text"
                   value={addForm.phone}
                   onChange={(e) => setAddForm((p) => ({ ...p, phone: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="Phone number"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Location / City</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Location / City</label>
                 <input
                   type="text"
                   value={addForm.location}
                   onChange={(e) => setAddForm((p) => ({ ...p, location: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="City or state"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Country</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Country</label>
                 <input
                   type="text"
                   value={addForm.country}
                   onChange={(e) => setAddForm((p) => ({ ...p, country: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="Country"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Category</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Category</label>
                 <select
                   value={addForm.category}
                   onChange={(e) => setAddForm((p) => ({ ...p, category: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                 >
                   <option value="Raw Material">Raw Material (RM)</option>
                   <option value="Packaging">Packaging (PM)</option>
@@ -392,22 +362,22 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Payment terms</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Payment terms</label>
                 <input
                   type="text"
                   value={addForm.paymentTerms}
                   onChange={(e) => setAddForm((p) => ({ ...p, paymentTerms: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="e.g. Net 30"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 tracking-widest mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-ink-3 tracking-widest mb-1">Notes</label>
                 <textarea
                   value={addForm.notes}
                   onChange={(e) => setAddForm((p) => ({ ...p, notes: e.target.value }))}
                   rows={2}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   placeholder="Optional notes"
                 />
               </div>
@@ -416,14 +386,14 @@ const ProcurementVendors: React.FC<ProcurementVendorsProps> = ({
                   type="button"
                   onClick={closeAddModal}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-ink-2 hover:bg-surface-3 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving || loadingCode || !nextCode}
-                  className="flex-1 px-4 py-2 rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-700 disabled:opacity-50"
+                  className="flex-1 px-4 py-2 rounded-lg bg-brand text-white font-semibold hover:bg-brand-press disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Create Vendor'}
                 </button>

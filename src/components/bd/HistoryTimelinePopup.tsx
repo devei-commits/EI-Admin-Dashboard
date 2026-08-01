@@ -77,6 +77,7 @@ export const HistoryTimelinePopup: React.FC<HistoryTimelinePopupProps> = ({ code
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void postComment(); } }}
             placeholder="Add a comment…"
+            aria-label="Add a comment"
             className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
           />
           <button onClick={postComment} disabled={posting || !comment.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">

@@ -170,9 +170,9 @@ export default function QuotationsList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/50">
-                  <th className="py-3 px-4 w-8"></th><th className="py-3 px-4">Ref</th><th className="py-3 px-4">Type</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">BOM</th><th className="py-3 px-4 text-right">Headline ₹</th><th className="py-3 px-4">MOQ</th>
-                  <th className="py-3 px-4">Created</th><th className="py-3 px-4"></th>
+                  <th scope="col" className="py-3 px-4 w-8"></th><th scope="col" className="py-3 px-4">Ref</th><th scope="col" className="py-3 px-4">Type</th><th scope="col" className="py-3 px-4">Name</th><th scope="col" className="py-3 px-4">Status</th><th scope="col" className="py-3 px-4">Customer</th>
+                  <th scope="col" className="py-3 px-4">BOM</th><th scope="col" className="py-3 px-4 text-right">Headline ₹</th><th scope="col" className="py-3 px-4">MOQ</th>
+                  <th scope="col" className="py-3 px-4">Created</th><th scope="col" className="py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">

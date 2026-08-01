@@ -12,8 +12,8 @@ import {
 } from '../../lib/inboundGrnDetailsMeta';
 
 const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100';
-const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500';
+  'w-full rounded-lg border border-border px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3';
+const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3';
 
 export interface GrnConfirmDetailsSectionProps {
   value: InboundGrnDetailsMeta;
@@ -47,10 +47,10 @@ export const GrnConfirmDetailsSection: React.FC<GrnConfirmDetailsSectionProps> =
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 p-4">
+    <section className="rounded-xl border border-border p-4">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-800">2 · Confirm Details</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-ink">2 · Confirm Details</h3>
+        <p className="mt-1 text-xs text-ink-3">
           Upload additional docs and declare how many distinct batches were received in this shipment.
           The next step will ask for batch-wise details.
         </p>
@@ -76,26 +76,26 @@ export const GrnConfirmDetailsSection: React.FC<GrnConfirmDetailsSectionProps> =
             type="button"
             disabled={disabled}
             onClick={() => attachRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2 disabled:opacity-60"
           >
             <Paperclip className="h-4 w-4" aria-hidden /> Choose file
           </button>
           {attachments.length === 0 ? (
-            <span className="text-xs text-slate-500">No file chosen</span>
+            <span className="text-xs text-ink-3">No file chosen</span>
           ) : null}
         </div>
         {attachments.length ? (
           <ul className="mt-2 space-y-1">
             {attachments.map((name, i) => (
-              <li key={`${name}-${i}`} className="flex items-center gap-2 text-xs text-slate-700">
-                <Paperclip className="h-3 w-3 text-slate-400" aria-hidden />
+              <li key={`${name}-${i}`} className="flex items-center gap-2 text-xs text-ink-2">
+                <Paperclip className="h-3 w-3 text-ink-4" aria-hidden />
                 <span className="truncate">{name}</span>
                 {!disabled ? (
                   <button
                     type="button"
                     onClick={() => onChange({ attachments: attachments.filter((_, j) => j !== i) })}
                     aria-label="Remove attachment"
-                    className="text-slate-400 hover:text-slate-700"
+                    className="text-ink-4 hover:text-ink-2"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -133,7 +133,7 @@ export const GrnConfirmDetailsSection: React.FC<GrnConfirmDetailsSectionProps> =
               onChange={(e) => onChange({ totalWeightKg: toNumOrNull(e.target.value) })}
               className={inputClass}
             />
-            <span className="text-sm text-slate-500">kg</span>
+            <span className="text-sm text-ink-3">kg</span>
           </div>
         </div>
         <div>
@@ -158,14 +158,14 @@ export const GrnConfirmDetailsSection: React.FC<GrnConfirmDetailsSectionProps> =
           {GRN_STORAGE_REQUIREMENTS.map((req) => (
             <label
               key={req.key}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-ink-2 hover:bg-surface-2"
             >
               <input
                 type="checkbox"
                 checked={!!(value.storageRequirements ?? {})[req.key]}
                 disabled={disabled}
                 onChange={() => toggleStorage(req.key)}
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-border"
               />
               {req.label}
             </label>

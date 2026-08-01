@@ -250,8 +250,8 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Products & Batches</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h2 className="text-xl font-bold text-ink">Products & Batches</h2>
+        <p className="text-sm text-ink-3 mt-0.5">
           Batch-split level view — FG output, location, status per batch
         </p>
       </div>
@@ -268,9 +268,9 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
         }}
       />
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <table className="w-full text-sm border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-surface-3 border-b border-border">
             <tr>
               <SortableTableTh label="Sale Order" column="saleOrder" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Customer" column="customer" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
@@ -285,14 +285,14 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
               <SortableTableTh label="Invoice" column="invoice" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="AWB / Courier" column="awb" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
               <SortableTableTh label="Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
-              <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold text-ink-2">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-hairline">
             {groupedRows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-gray-500">
-                  <Package className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                <td colSpan={14} className="px-4 py-12 text-center text-ink-3">
+                  <Package className="w-10 h-10 mx-auto mb-2 text-ink-4" />
                   <p className="font-medium">No batches found</p>
                   <p className="text-xs mt-1">
                     {searchQuery || activeFilter !== 'all'
@@ -312,8 +312,8 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                   return (
                     <tr
                       key={`${group.so.soNo}-${split.bprNo || splitIdx}`}
-                      className={`hover:bg-gray-50 transition-colors ${
-                        splitIdx < rowSpan - 1 ? 'border-b border-dashed border-gray-100' : ''
+                      className={`hover:bg-surface-3 transition-colors ${
+                        splitIdx < rowSpan - 1 ? 'border-b border-dashed border-hairline' : ''
                       }`}
                     >
                       {/* SO-level cells — only on first split row */}
@@ -323,29 +323,29 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleViewSO(group.so.soNo)}
-                              className="font-mono text-xs font-bold text-blue-600 hover:underline text-left"
+                              className="font-mono text-xs font-bold text-brand hover:underline text-left"
                             >
                               {group.so.soNo}
                             </button>
                             {group.so.priority === 'high' && (
-                              <span className="block text-[10px] font-bold text-red-600 mt-0.5">High</span>
+                              <span className="block text-[10px] font-bold text-err mt-0.5">High</span>
                             )}
                           </td>
                           <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
-                            <div className="font-semibold text-gray-800 text-xs">{group.so.customer}</div>
-                            <div className="text-[11px] text-gray-500">{group.so.customerCity || '—'}</div>
+                            <div className="font-semibold text-ink text-xs">{group.so.customer}</div>
+                            <div className="text-[11px] text-ink-3">{group.so.customerCity || '—'}</div>
                           </td>
                           <td className="px-4 py-3 align-top" rowSpan={rowSpan}>
-                            <div className="font-semibold text-gray-800 text-xs leading-snug">{group.item.productName}</div>
+                            <div className="font-semibold text-ink text-xs leading-snug">{group.item.productName}</div>
                             <div className="flex gap-1 mt-0.5 flex-wrap">
-                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-ink-3">
                                 {group.item.sku}
                               </span>
-                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-600">
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-3 text-ink-3">
                                 {group.item.pack}
                               </span>
                             </div>
-                            <div className="text-[10px] text-gray-400 mt-1">
+                            <div className="text-[10px] text-ink-4 mt-1">
                               {group.item.orderedQty} units ordered
                             </div>
                           </td>
@@ -364,11 +364,11 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                       <td className="px-4 py-3">
                         {split.bprNo ? (
                           <>
-                            <div className="font-mono text-[10px] text-blue-600">{split.bmrNo}</div>
-                            <div className="font-mono text-[10px] text-purple-600">{split.bprNo}</div>
+                            <div className="font-mono text-[10px] text-brand">{split.bmrNo}</div>
+                            <div className="font-mono text-[10px] text-brand">{split.bprNo}</div>
                           </>
                         ) : (
-                          <span className="text-[10px] text-gray-400 italic">Pending</span>
+                          <span className="text-[10px] text-ink-4 italic">Pending</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs">
@@ -376,11 +376,11 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                       </td>
                       <td className="px-4 py-3 text-right">
                         {split.fgQty != null && split.fgQty > 0 ? (
-                          <span className="font-mono text-xs font-bold text-emerald-600">
+                          <span className="font-mono text-xs font-bold text-ok">
                             {formatNumber(split.fgQty)}
                           </span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-ink-4">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 min-w-52">
@@ -388,20 +388,20 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                       </td>
                       <td className="px-4 py-3">
                         {split.fgLocation ? (
-                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-100 text-teal-700 border border-teal-200">
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-mono bg-brand-soft text-brand border border-brand-soft">
                             {split.fgLocation}
                           </span>
                         ) : (
-                          <span className="text-gray-400 text-[10.5px]">—</span>
+                          <span className="text-ink-4 text-[10.5px]">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      <td className="px-4 py-3 font-mono text-xs text-ink-3">
                         {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
+                      <td className="px-4 py-3 text-xs text-ink-3">
                         {split.invoiceNo != null ? String(split.invoiceNo) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
+                      <td className="px-4 py-3 text-xs text-ink-3">
                         {split.awbNo || split.courier
                           ? [split.awbNo, split.courier].filter(Boolean).join(' / ')
                           : '—'}
@@ -436,7 +436,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                             </Button>
                           )}
                           {['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) && (
-                            <span className="text-[9.5px] text-gray-500">In Production</span>
+                            <span className="text-[9.5px] text-ink-3">In Production</span>
                           )}
                           {split.ffStatus === 'fg_ready' &&
                             ((Number(split.bulkYield) || 0) > 0 ||
@@ -478,6 +478,7 @@ export const ProductsBatchesView: React.FC<ProductsBatchesViewProps> = ({
                             variant="ghost"
                             onClick={() => handleViewSO(group.so.soNo)}
                             title="View Sale Order Details"
+                            aria-label="View Sale Order Details"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
@@ -537,14 +538,14 @@ function BatchTimelineCell({ split }: { split: BatchSplit }) {
 
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] text-gray-600">
+      <div className="text-[10px] text-ink-3">
         <span className="font-medium">Planned:</span> {formatNumber(planned)}{' '}
         <span className="font-medium ml-1.5">FG:</span> {formatNumber(fgOutput)}{' '}
         <span className="font-medium ml-1.5">Rem:</span> {formatNumber(remaining)}
       </div>
-      <div className="w-full h-1.5 bg-gray-100 rounded">
+      <div className="w-full h-1.5 bg-surface-3 rounded">
         <div
-          className="h-1.5 rounded bg-indigo-500"
+          className="h-1.5 rounded bg-brand"
           style={{ width: `${pct}%` }}
           title={`Completion ${pct}%`}
         />
@@ -556,10 +557,10 @@ function BatchTimelineCell({ split }: { split: BatchSplit }) {
             title={step.label}
             className={`h-2 w-2 rounded-full ${
               step.status === 'done'
-                ? 'bg-emerald-500'
+                ? 'bg-ok'
                 : step.status === 'active'
-                  ? 'bg-indigo-500'
-                  : 'bg-gray-300'
+                  ? 'bg-brand'
+                  : 'bg-surface-3'
             }`}
           />
         ))}

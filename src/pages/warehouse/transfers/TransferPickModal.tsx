@@ -194,28 +194,33 @@ const TransferPickModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-auto py-8 px-4 print:bg-white print:p-0">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl print:shadow-none print:max-w-none">
+      <div
+        className="bg-surface rounded-xl shadow-2xl w-full max-w-5xl print:shadow-none print:max-w-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transfer-pick-modal-title"
+      >
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 print:hidden">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-border print:hidden">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">📋 {headerTitle}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h2 id="transfer-pick-modal-title" className="text-lg font-bold text-ink">📋 {headerTitle}</h2>
+            <p className="text-xs text-ink-3 mt-0.5">
               {route} · {lines.length} item{lines.length === 1 ? '' : 's'}
               {requiredDate ? ` · Required ${requiredDate}` : ''}
               {requestedBy ? ` · Requested by ${requestedBy}` : ''}
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-ink-4 hover:text-ink-2 text-xl leading-none">×</button>
         </div>
 
         <div className="p-6 space-y-6">
           {error && (
-            <div className="px-4 py-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm print:hidden">{error}</div>
+            <div className="px-4 py-3 rounded-lg border border-err-soft bg-err-soft text-err text-sm print:hidden">{error}</div>
           )}
 
           {/* Items + pack entry */}
           <div className="print:hidden">
-            <div className="text-sm font-semibold text-slate-700 mb-2">📦 Items + current packs available</div>
+            <div className="text-sm font-semibold text-ink-2 mb-2">📦 Items + current packs available</div>
             <div className="space-y-4">
               {lines.map((line) => {
                 const taken = takenFor(line.id);
@@ -223,37 +228,37 @@ const TransferPickModal = ({
                 const balanced = Math.abs(taken - line.requiredQty) < 1e-6 && taken > 0;
                 const shortBy = Math.round((line.requiredQty - line.sih) * 100) / 100;
                 return (
-                  <div key={line.id} className="border border-slate-200 rounded-lg">
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 bg-slate-50 rounded-t-lg text-sm">
-                      <div className="font-semibold text-slate-800">
-                        {line.itemName} <span className="text-slate-400 font-normal">{line.itemCode}</span>
+                  <div key={line.id} className="border border-border rounded-lg">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-3 bg-surface-2 rounded-t-lg text-sm">
+                      <div className="font-semibold text-ink">
+                        {line.itemName} <span className="text-ink-4 font-normal">{line.itemCode}</span>
                       </div>
-                      <div className="text-slate-600">Req <b>{line.requiredQty} {line.uom}</b></div>
-                      <div className={short ? 'text-amber-700' : 'text-slate-600'}>
+                      <div className="text-ink-2">Req <b>{line.requiredQty} {line.uom}</b></div>
+                      <div className={short ? 'text-warn' : 'text-ink-2'}>
                         SIH <b>{line.sih} {line.uom}</b>{short ? ` ⚠ short ${shortBy}` : ''}
                       </div>
-                      <div className="text-slate-500">
-                        Rack <b className="text-slate-700">{line.rack || '—'}</b> · <b className="text-slate-700">{line.sih} {line.uom}</b> available
+                      <div className="text-ink-3">
+                        Rack <b className="text-ink-2">{line.rack || '—'}</b> · <b className="text-ink-2">{line.sih} {line.uom}</b> available
                       </div>
-                      <div className={`ml-auto text-xs font-semibold ${balanced ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      <div className={`ml-auto text-xs font-semibold ${balanced ? 'text-ok' : 'text-ink-4'}`}>
                         taken {taken} / {line.requiredQty} {line.uom}
                       </div>
                     </div>
 
                     <div className="px-4 py-3">
-                      <p className="mb-1.5 text-[11px] text-slate-500 leading-snug">
+                      <p className="mb-1.5 text-[11px] text-ink-3 leading-snug">
                         🪓 Add one row per pack you handle. Enter the <b>pack&apos;s full size</b> and how much of it
                         you&apos;re <b>transferring</b> — the leftover auto-returns to stock with its own restock label.
                         Taking a whole pack means no leftover.
                       </p>
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-left text-xs text-slate-500">
-                            <th className="py-1 font-medium">Pack size ({line.uom})</th>
-                            <th className="py-1 font-medium">Transfer qty ({line.uom})</th>
-                            <th className="py-1 font-medium">Stays in stock</th>
-                            <th className="py-1 font-medium">Labels generated</th>
-                            <th className="py-1"></th>
+                          <tr className="text-left text-xs text-ink-3">
+                            <th scope="col" className="py-1 font-medium">Pack size ({line.uom})</th>
+                            <th scope="col" className="py-1 font-medium">Transfer qty ({line.uom})</th>
+                            <th scope="col" className="py-1 font-medium">Stays in stock</th>
+                            <th scope="col" className="py-1 font-medium">Labels generated</th>
+                            <th scope="col" className="py-1"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -266,41 +271,43 @@ const TransferPickModal = ({
                                 <td className="py-1 pr-2">
                                   <input value={r.packSize} onChange={(e) => updateRow(line.id, r.id, { packSize: e.target.value })}
                                     inputMode="decimal" placeholder="full pack e.g. 50"
-                                    className="w-28 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                    aria-label={`Pack size for ${line.itemName}`}
+                                    className="w-28 px-2 py-1 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
                                 </td>
                                 <td className="py-1 pr-2">
                                   <div className="flex items-center gap-1.5">
                                     <input value={r.take} onChange={(e) => updateRow(line.id, r.id, { take: e.target.value })}
                                       inputMode="decimal" placeholder="e.g. 25"
-                                      className="w-20 px-2 py-1 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                                      aria-label={`Transfer quantity for ${line.itemName}`}
+                                      className="w-20 px-2 py-1 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
                                     {packSize > 0 && take !== packSize ? (
                                       <button type="button" onClick={() => updateRow(line.id, r.id, { take: String(packSize) })}
-                                        className="text-[10px] font-semibold text-amber-700 hover:text-amber-800 whitespace-nowrap">whole pack</button>
+                                        className="text-[10px] font-semibold text-brand hover:text-brand-press whitespace-nowrap">whole pack</button>
                                     ) : null}
                                   </div>
                                 </td>
-                                <td className="py-1 pr-2 text-slate-600 whitespace-nowrap">
+                                <td className="py-1 pr-2 text-ink-2 whitespace-nowrap">
                                   {residual > 0 ? `${residual} ${line.uom}` : take > 0 ? 'nothing (full pack)' : '—'}
                                 </td>
                                 <td className="py-1 pr-2 text-[11px] leading-snug">
                                   {take > 0 ? (
-                                    <span className="text-emerald-700">🏷️ Transfer {take} {line.uom}{line.trNo ? ` → ${line.trNo}` : ''}</span>
+                                    <span className="text-ok">🏷️ Transfer {take} {line.uom}{line.trNo ? ` → ${line.trNo}` : ''}</span>
                                   ) : (
-                                    <span className="text-slate-300">—</span>
+                                    <span className="text-ink-4">—</span>
                                   )}
                                   {residual > 0 ? (
-                                    <span className="block text-cyan-700">♻️ Restock {residual} {line.uom} @ {line.rack || 'rack'}</span>
+                                    <span className="block text-brand">♻️ Restock {residual} {line.uom} @ {line.rack || 'rack'}</span>
                                   ) : null}
                                 </td>
                                 <td className="py-1 text-right">
-                                  <button onClick={() => removeRow(line.id, r.id)} className="text-slate-400 hover:text-rose-600 text-xs">remove</button>
+                                  <button onClick={() => removeRow(line.id, r.id)} className="text-ink-4 hover:text-err text-xs">remove</button>
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
-                      <button onClick={() => addRow(line.id)} className="mt-2 text-xs font-semibold text-amber-700 hover:text-amber-800">🪓 + Split / add pack</button>
+                      <button onClick={() => addRow(line.id)} className="mt-2 text-xs font-semibold text-brand hover:text-brand-press">🪓 + Split / add pack</button>
                     </div>
                   </div>
                 );
@@ -308,7 +315,7 @@ const TransferPickModal = ({
             </div>
 
             <button onClick={handleGenerate} disabled={saving}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold disabled:opacity-50">
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-sm font-semibold disabled:opacity-50">
               Generate Labels &amp; Pick
             </button>
           </div>
@@ -317,14 +324,14 @@ const TransferPickModal = ({
           {labels && (
             <div>
               <div className="flex items-center justify-between mb-2 print:hidden">
-                <div className="text-sm font-semibold text-slate-700">🏷️ Generated labels ({labels.length}) — preview before print</div>
-                <button onClick={handlePrint} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">Print</button>
+                <div className="text-sm font-semibold text-ink-2">🏷️ Generated labels ({labels.length}) — preview before print</div>
+                <button onClick={handlePrint} className="px-3 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold hover:bg-surface-2">Print</button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {labels.map((l) => (
-                  <div key={l.code} className={`border rounded-lg p-3 text-xs ${l.kind === 'restock' ? 'border-cyan-300 bg-cyan-50' : 'border-slate-300 bg-white'}`}>
+                  <div key={l.code} className={`border rounded-lg p-3 text-xs ${l.kind === 'restock' ? 'border-brand-soft bg-brand-soft' : 'border-border bg-surface'}`}>
                     <div className="flex items-start justify-between">
-                      <div className="font-bold text-slate-800">{l.code}</div>
+                      <div className="font-bold text-ink">{l.code}</div>
                       <QRCodeSVG
                         value={`${l.code}|${l.itemCode}|${l.qty}${l.uom}|${l.kind === 'transfer' ? l.trNo ?? '' : `RESTOCK:${l.rack ?? ''}`}`}
                         size={44}
@@ -332,12 +339,12 @@ const TransferPickModal = ({
                       />
 
                     </div>
-                    <div className="mt-1 font-semibold text-slate-700">{l.itemName}</div>
-                    <div className="text-slate-500">{l.itemCode} · {l.qty} {l.uom}</div>
+                    <div className="mt-1 font-semibold text-ink-2">{l.itemName}</div>
+                    <div className="text-ink-3">{l.itemCode} · {l.qty} {l.uom}</div>
                     {l.kind === 'transfer' ? (
-                      <div className="mt-1 text-slate-600">{l.trNo}<br />{l.route}</div>
+                      <div className="mt-1 text-ink-2">{l.trNo}<br />{l.route}</div>
                     ) : (
-                      <div className="mt-1 text-cyan-700 font-medium">Restock<br />{l.rack}</div>
+                      <div className="mt-1 text-brand font-medium">Restock<br />{l.rack}</div>
                     )}
                   </div>
                 ))}
@@ -347,14 +354,15 @@ const TransferPickModal = ({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 print:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-4 border-t border-border print:hidden">
           {onAssignPicker ? (
             <div className="mr-auto flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-600 whitespace-nowrap">Picker</label>
+              <label className="text-xs font-semibold text-ink-2 whitespace-nowrap">Picker</label>
               <select
                 value={assignedPicker ?? ''}
                 onChange={(e) => onAssignPicker(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900"
+                aria-label="Picker"
+                className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-ink"
               >
                 <option value="">— Assign picker —</option>
                 {pickers.map((p) => (
@@ -363,12 +371,12 @@ const TransferPickModal = ({
               </select>
             </div>
           ) : null}
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-2">Cancel</button>
           <button
             onClick={handleConfirm}
             disabled={!labels || saving || (Boolean(onAssignPicker) && !String(assignedPicker ?? '').trim())}
             title={Boolean(onAssignPicker) && !String(assignedPicker ?? '').trim() ? 'Assign a picker first' : undefined}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
+            className="px-4 py-2 rounded-lg bg-ok hover:bg-ok text-white text-sm font-semibold disabled:opacity-50">
             {saving ? 'Saving…' : 'Confirm pick & save labels'}
           </button>
         </div>

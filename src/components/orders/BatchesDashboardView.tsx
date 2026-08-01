@@ -7,6 +7,7 @@ import type { BatchDashboardRow, StageLogEntry } from '../../types/orderFulfillm
 import { fetchBatchesDashboard } from '../../services/fulfillment.service';
 import { BATCH_STAGE_FILTER_OPTIONS } from '../../constants/orderFulfillment';
 import { CommentsPanel } from './CommentsPanel';
+import { ProcSectionHeader, ProcFilterBar, ProcThead } from '../procurement/ProcSection';
 
 /* ── Formatting helpers ───────────────────────────────────────────────────── */
 function fmtDate(d: string | null | undefined): string {
@@ -34,13 +35,13 @@ function daysToGo(due: string | null | undefined): number | null {
 
 /* ── Stage colors / badge ─────────────────────────────────────────────────── */
 const STAGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  PLANNING:    { bg: 'bg-gray-100',   text: 'text-gray-600',    border: 'border-gray-200' },
-  PROCUREMENT: { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200' },
-  PRODUCTION:  { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200' },
-  FG_READY:    { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  PACKED:      { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200' },
-  INVOICED:    { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200' },
-  SHIPPED:     { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200' },
+  PLANNING:    { bg: 'bg-surface-3',   text: 'text-ink-3',    border: 'border-border' },
+  PROCUREMENT: { bg: 'bg-brand-soft',    text: 'text-brand',    border: 'border-brand-soft' },
+  PRODUCTION:  { bg: 'bg-warn-soft',   text: 'text-warn',   border: 'border-[color:var(--st-amber-fg)]/30' },
+  FG_READY:    { bg: 'bg-ok-soft', text: 'text-ok', border: 'border-[color:var(--st-green-fg)]/30' },
+  PACKED:      { bg: 'bg-brand-soft',  text: 'text-brand',  border: 'border-brand-soft' },
+  INVOICED:    { bg: 'bg-brand-soft',  text: 'text-brand',  border: 'border-brand-soft' },
+  SHIPPED:     { bg: 'bg-brand-soft',    text: 'text-brand',    border: 'border-brand-soft' },
 };
 
 function StageBadge({ stage, label }: { stage: string; label: string }) {
@@ -57,17 +58,17 @@ function QtyCell({ value, denom, color }: { value: number; denom: number; color:
   const pct = denom > 0 ? Math.min(100, Math.round((value / denom) * 100)) : 0;
   return (
     <div className="flex items-center gap-1.5">
-      <span className="inline-block w-12 h-1.5 rounded-full bg-gray-100 overflow-hidden shrink-0">
+      <span className="inline-block w-12 h-1.5 rounded-full bg-surface-3 overflow-hidden shrink-0">
         <span className={`block h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </span>
-      <span className="text-[11px] tabular-nums text-gray-700">{fmtNum(value)}</span>
+      <span className="text-[11px] tabular-nums text-ink-2">{fmtNum(value)}</span>
     </div>
   );
 }
 
 /* ── Stage Time Log: one mini-row per stage (actual / committed) ──────────── */
 function StageTimeLog({ logs }: { logs: StageLogEntry[] }) {
-  if (!logs.length) return <span className="text-[10px] text-gray-400">—</span>;
+  if (!logs.length) return <span className="text-[10px] text-ink-4">—</span>;
   return (
     <div className="flex flex-col gap-1 min-w-[160px]">
       {logs.map((log) => {
@@ -77,22 +78,22 @@ function StageTimeLog({ logs }: { logs: StageLogEntry[] }) {
           ? Math.min(100, Math.round((actual / committed) * 100))
           : actual != null ? 100 : 0;
         const barColor = log.slipped
-          ? 'bg-red-500'
+          ? 'bg-err'
           : log.approaching
-            ? 'bg-amber-500'
-            : actual != null ? 'bg-emerald-500' : 'bg-gray-200';
+            ? 'bg-warn'
+            : actual != null ? 'bg-ok' : 'bg-surface-3';
         const Icon = log.slipped ? AlertTriangle : log.completedAt != null ? CheckCircle : Clock;
         return (
           <div key={log.stage} className="grid items-center gap-1.5" style={{ gridTemplateColumns: '58px 1fr 56px' }}>
-            <span className="flex items-center gap-0.5 text-[9px] font-semibold text-gray-600 truncate" title={log.stageLabel}>
-              <Icon size={8} className={`shrink-0 ${log.slipped ? 'text-red-500' : log.completedAt != null ? 'text-emerald-500' : 'text-gray-400'}`} />
+            <span className="flex items-center gap-0.5 text-[9px] font-semibold text-ink-3 truncate" title={log.stageLabel}>
+              <Icon size={8} className={`shrink-0 ${log.slipped ? 'text-err' : log.completedAt != null ? 'text-ok' : 'text-ink-4'}`} />
               {log.stageLabel}
             </span>
-            <span className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <span className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
               <span className={`block h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
             </span>
-            <span className={`text-[9px] font-mono text-right whitespace-nowrap ${log.slipped ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-              {log.slipped && '🚩'}{actual != null ? `${actual}d` : '—'} / {committed != null ? `${committed}d` : '—'}
+            <span className={`text-[9px] font-mono text-right whitespace-nowrap ${log.slipped ? 'text-err font-bold' : 'text-ink-4'}`}>
+              {actual != null ? `${actual}d` : '—'} / {committed != null ? `${committed}d` : '—'}
             </span>
           </div>
         );
@@ -220,85 +221,94 @@ export const BatchesDashboardView: React.FC = () => {
 
   return (
     <>
+      <ProcSectionHeader
+        icon={<Package className="w-[18px] h-[18px] text-brand" />}
+        title="Products & Batches"
+        stats={[
+          { value: grouped.length, label: grouped.length === 1 ? 'product line' : 'product lines' },
+          { value: totalBatches, label: totalBatches === 1 ? 'batch' : 'batches' },
+          ...(overdueCount > 0 ? [{ value: overdueCount, label: 'overdue', tone: 'err' as const }] : []),
+        ]}
+      />
+
       {/* Filters */}
-      <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/70 p-3 space-y-2">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
-          <div className="relative xl:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+      <ProcFilterBar stack className="mb-4 mt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-4" size={15} />
             <input
               type="text"
               placeholder="Search batch no, SO no, product…"
+              aria-label="Search batch no, SO no, product…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
+              className="w-full pl-9 pr-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-brand text-sm bg-surface"
             />
           </div>
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            aria-label="Filter by stage"
+            className="px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:ring-2 focus:ring-[color:var(--ring)] focus:border-brand"
           >
             {BATCH_STAGE_FILTER_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600 whitespace-nowrap shrink-0">Due before</label>
+          <div className="flex items-center gap-2 min-w-[220px]">
+            <label className="text-xs text-ink-3 whitespace-nowrap shrink-0">Due before</label>
             <input type="date" value={dueBefore} onChange={(e) => setDueBefore(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500" />
+              aria-label="Due before"
+              className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-surface focus:ring-2 focus:ring-[color:var(--ring)] focus:border-brand" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 ml-auto shrink-0">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)}
-                className="w-4 h-4 rounded accent-orange-500" />
-              <span className="text-sm text-gray-700">Flagged only</span>
+                className="w-4 h-4 rounded accent-[color:var(--accent)]" />
+              <span className="text-sm text-ink-2 whitespace-nowrap">Flagged only</span>
             </label>
-            <button onClick={load} title="Refresh" className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500">
+            <button onClick={load} title="Refresh" aria-label="Refresh" className="p-2 rounded-lg border border-border hover:bg-surface-3 text-ink-3">
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-ink-3">
             {grouped.length} product line{grouped.length !== 1 ? 's' : ''}
-            {totalBatches !== grouped.length && <span className="ml-1 text-gray-400">({totalBatches} batch{totalBatches !== 1 ? 'es' : ''})</span>}
-            {overdueCount > 0 && <span className="ml-2 text-red-600 font-semibold">🚩 {overdueCount} overdue</span>}
+            {totalBatches !== grouped.length && <span className="ml-1 text-ink-4">({totalBatches} batch{totalBatches !== 1 ? 'es' : ''})</span>}
+            {overdueCount > 0 && <span className="ml-2 text-err font-semibold">{overdueCount} overdue</span>}
           </span>
           <button
             onClick={() => { setSearch(''); setStageFilter('all'); setFlaggedOnly(false); setDueBefore(''); }}
-            className="text-xs text-gray-500 hover:text-gray-800 underline"
+            className="text-xs text-ink-3 hover:text-ink underline"
           >
             Clear filters
           </button>
         </div>
-      </div>
+      </ProcFilterBar>
 
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 size={22} className="animate-spin text-orange-500 mr-2" />
-          <span className="text-sm text-gray-500">Loading dashboard…</span>
+          <Loader2 size={22} className="animate-spin text-brand mr-2" />
+          <span className="text-sm text-ink-3">Loading dashboard…</span>
         </div>
       ) : error ? (
         <div className="flex flex-col items-center py-16">
-          <p className="text-red-500 text-sm mb-3">{error}</p>
-          <button onClick={load} className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600">Retry</button>
+          <p className="text-err text-sm mb-3">{error}</p>
+          <button onClick={load} className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press">Retry</button>
         </div>
       ) : grouped.length === 0 ? (
-        <div className="flex flex-col items-center py-16 text-gray-400">
+        <div className="flex flex-col items-center py-16 text-ink-4">
           <Package size={32} className="mb-2 opacity-30" />
           <p className="text-sm">No batches found</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {['SO #', 'Client', 'Product', 'Order Qty', 'Due Date', 'Batch', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', ''].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap ${h === 'Order Qty' ? 'text-right' : ''} ${h === '' ? 'w-8' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+            <ProcThead
+              cols={['SO #', 'Client', 'Product', { label: 'Order Qty', align: 'right' }, 'Due Date', 'Batch', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', '']}
+            />
             <tbody>
               {grouped.map((group) => {
                 const rep = group.representative;
@@ -316,8 +326,8 @@ export const BatchesDashboardView: React.FC = () => {
                   return (
                     <tr
                       key={row.id}
-                      className={`transition-colors ${group.worstSla.overdue ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-orange-50/30'} ${
-                        batchIdx < rowSpan - 1 ? 'border-b border-dashed border-gray-100' : 'border-b border-gray-100'
+                      className={`transition-colors ${group.worstSla.overdue ? 'bg-err-soft/40 hover:bg-err-soft/60' : 'hover:bg-brand-soft/30'} ${
+                        batchIdx < rowSpan - 1 ? 'border-b border-dashed border-hairline' : 'border-b border-hairline'
                       }`}
                     >
                       {/* SO-level cells — rendered once with rowSpan */}
@@ -325,47 +335,47 @@ export const BatchesDashboardView: React.FC = () => {
                         <>
                           {/* SO # */}
                           <td className="px-3 py-2.5 whitespace-nowrap align-top" rowSpan={rowSpan}>
-                            <p className="text-xs font-semibold text-gray-800">{rep.soNo}</p>
-                            <p className="text-[10px] text-gray-400">{fmtDate(rep.soDate)}</p>
+                            <p className="text-xs font-semibold text-ink">{rep.soNo}</p>
+                            <p className="text-[10px] text-ink-4">{fmtDate(rep.soDate)}</p>
                           </td>
 
                           {/* Client */}
                           <td className="px-3 py-2.5 align-top max-w-[130px]" rowSpan={rowSpan}>
-                            <p className="text-xs text-gray-800 truncate" title={rep.client.name}>{rep.client.name}</p>
-                            {rep.client.code && <p className="text-[10px] text-gray-400 font-mono">{rep.client.code}</p>}
+                            <p className="text-xs text-ink truncate" title={rep.client.name}>{rep.client.name}</p>
+                            {rep.client.code && <p className="text-[10px] text-ink-4 font-mono">{rep.client.code}</p>}
                           </td>
 
                           {/* Product */}
                           <td className="px-3 py-2.5 align-top max-w-[150px]" rowSpan={rowSpan}>
-                            <p className="text-xs text-gray-800 leading-snug" title={rep.product.name}>{rep.product.name}</p>
-                            <p className="text-[10px] text-gray-400 font-mono">{rep.product.code}</p>
+                            <p className="text-xs text-ink leading-snug" title={rep.product.name}>{rep.product.name}</p>
+                            <p className="text-[10px] text-ink-4 font-mono">{rep.product.code}</p>
                           </td>
 
                           {/* Order Qty */}
                           <td className="px-3 py-2.5 whitespace-nowrap text-right align-top" rowSpan={rowSpan}>
-                            <span className="text-xs tabular-nums font-semibold text-gray-800">{fmtNum(ordered)}</span>
+                            <span className="text-xs tabular-nums font-semibold text-ink">{fmtNum(ordered)}</span>
                           </td>
 
                           {/* Due Date */}
                           <td className="px-3 py-2.5 whitespace-nowrap align-top" rowSpan={rowSpan}>
                             {group.worstSla.overdue ? (
                               <>
-                                <p className="text-xs font-bold text-red-600 flex items-center gap-1">
+                                <p className="text-xs font-bold text-err flex items-center gap-1">
                                   <AlertCircle size={11} className="shrink-0" />{fmtDate(rep.dueDate)}
                                 </p>
-                                <p className="text-[10px] text-red-500 font-semibold">{group.worstSla.daysOverdue}d overdue</p>
+                                <p className="text-[10px] text-err font-semibold">{group.worstSla.daysOverdue}d overdue</p>
                               </>
                             ) : group.worstSla.approaching ? (
                               <>
-                                <p className="text-xs font-semibold text-amber-600 flex items-center gap-1">
+                                <p className="text-xs font-semibold text-warn flex items-center gap-1">
                                   <Clock size={11} className="shrink-0" />{fmtDate(rep.dueDate)}
                                 </p>
-                                <p className="text-[10px] text-amber-600">{dtg != null ? `${dtg}d to go` : ''}</p>
+                                <p className="text-[10px] text-warn">{dtg != null ? `${dtg}d to go` : ''}</p>
                               </>
                             ) : (
                               <>
-                                <p className="text-xs text-gray-700">{fmtDate(rep.dueDate)}</p>
-                                {dtg != null && dtg >= 0 && <p className="text-[10px] text-gray-400">{dtg}d to go</p>}
+                                <p className="text-xs text-ink-2">{fmtDate(rep.dueDate)}</p>
+                                {dtg != null && dtg >= 0 && <p className="text-[10px] text-ink-4">{dtg}d to go</p>}
                               </>
                             )}
                           </td>
@@ -376,25 +386,25 @@ export const BatchesDashboardView: React.FC = () => {
 
                       {/* Batch Planning */}
                       <td className="px-3 py-2.5 align-top min-w-[130px]">
-                        <p className="text-xs font-semibold text-gray-700">
-                          {row.batch.batchNo || row.batch.bprNo || <span className="italic text-gray-400 font-normal">Pending</span>}
+                        <p className="text-xs font-semibold text-ink-2">
+                          {row.batch.batchNo || row.batch.bprNo || <span className="italic text-ink-4 font-normal">Pending</span>}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="inline-block w-10 h-1 rounded-full bg-gray-100 overflow-hidden shrink-0">
-                            <span className="block h-full rounded-full bg-blue-400" style={{ width: `${Math.min(100, cov)}%` }} />
+                          <span className="inline-block w-10 h-1 rounded-full bg-surface-3 overflow-hidden shrink-0">
+                            <span className="block h-full rounded-full bg-brand" style={{ width: `${Math.min(100, cov)}%` }} />
                           </span>
-                          <span className="text-[9px] text-gray-400 whitespace-nowrap">
+                          <span className="text-[9px] text-ink-4 whitespace-nowrap">
                             {fmtNum(row.batch.plannedQty)} / {fmtNum(ordered)} · {cov}% cov
                           </span>
                         </div>
-                        {row.batch.bmrNo && <p className="text-[9px] text-gray-400 mt-0.5">BMR {row.batch.bmrNo}</p>}
+                        {row.batch.bmrNo && <p className="text-[9px] text-ink-4 mt-0.5">BMR {row.batch.bmrNo}</p>}
                       </td>
 
                       {/* FG / Packed / Invoiced / Shipped */}
-                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.fgQty} denom={batchQty} color="bg-orange-400" /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.packedQty} denom={batchQty} color="bg-amber-400" /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.invoicedQty} denom={batchQty} color="bg-purple-400" /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.shippedQty} denom={batchQty} color="bg-teal-400" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.fgQty} denom={batchQty} color="bg-brand" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.packedQty} denom={batchQty} color="bg-brand" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.invoicedQty} denom={batchQty} color="bg-brand" /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap align-top"><QtyCell value={row.shippedQty} denom={batchQty} color="bg-brand" /></td>
 
                       {/* Batch Status */}
                       <td className="px-3 py-2.5 whitespace-nowrap align-top">
@@ -410,12 +420,13 @@ export const BatchesDashboardView: React.FC = () => {
                       <td className="px-3 py-2.5 align-top">
                         <button
                           onClick={() => setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` })}
-                          className="relative p-1.5 rounded-lg hover:bg-orange-100 text-gray-400 hover:text-orange-600 transition-colors"
+                          className="relative p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors"
                           title="History & comments"
+                          aria-label="History & comments"
                         >
                           <MessageSquare size={14} />
                           {row.commentCount > 0 && (
-                            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-brand text-white text-[8px] font-bold rounded-full flex items-center justify-center">
                               {row.commentCount > 9 ? '9+' : row.commentCount}
                             </span>
                           )}

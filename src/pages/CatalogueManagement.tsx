@@ -441,13 +441,13 @@ const CatalogueManagement = () => {
        <table className="w-full">
         <thead>
          <tr className="bg-gray-50 border-b border-gray-200">
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Product Code</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Brand / Name</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Category</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">SKU</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Price</th>
-          <th className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Status</th>
-          <th className="px-4 py-3 text-center text-xs font-semibold text-amber-800 uppercase tracking-wider">Actions</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Product Code</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Brand / Name</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Category</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">SKU</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Price</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-amber-800 uppercase tracking-wider">Status</th>
+          <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-amber-800 uppercase tracking-wider">Actions</th>
          </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">

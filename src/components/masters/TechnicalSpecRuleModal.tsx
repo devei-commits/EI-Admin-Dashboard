@@ -32,7 +32,7 @@ const FIELD_TYPES: { value: MasterCustomFieldType; label: string }[] = [
 ];
 
 const inputClass =
-  'w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100';
+  'w-full rounded border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:bg-surface-3';
 
 function typeLabel(type: MasterCustomFieldType): string {
   return FIELD_TYPES.find((t) => t.value === type)?.label ?? type;
@@ -191,23 +191,28 @@ export function TechnicalSpecRuleModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+      <div
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-surface p-6 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="technical-spec-rule-modal-title"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">
+            <h2 id="technical-spec-rule-modal-title" className="text-lg font-bold text-ink">
               {editingRule ? 'Edit technical rule' : 'New technical rule'} — {entityLabel}
             </h2>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <p className="mt-0.5 text-xs text-ink-3">
               Technical spec custom fields (TECH module) items of this category pull live.
             </p>
           </div>
-          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+          <span className="rounded-full bg-brand-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand">
             Technical
           </span>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block text-xs font-semibold text-gray-600">
+          <label className="block text-xs font-semibold text-ink-3">
             Category
             <SpecScopeCombobox
               accent="indigo"
@@ -221,7 +226,7 @@ export function TechnicalSpecRuleModal({
               placeholder="Select or type a category"
             />
           </label>
-          <label className="block text-xs font-semibold text-gray-600">
+          <label className="block text-xs font-semibold text-ink-3">
             Sub-category (leave blank for a category-wide rule)
             <SpecScopeCombobox
               accent="indigo"
@@ -236,37 +241,37 @@ export function TechnicalSpecRuleModal({
 
         {/* Field list */}
         <div className="mt-5">
-          <h3 className="text-sm font-semibold text-gray-800">Technical fields</h3>
+          <h3 className="text-sm font-semibold text-ink">Technical fields</h3>
           {fields.length === 0 ? (
-            <p className="mt-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-500">
+            <p className="mt-2 rounded-lg border border-dashed border-border bg-surface-3 p-3 text-xs text-ink-3">
               No fields yet — add the first technical spec field below.
             </p>
           ) : (
-            <div className="mt-2 overflow-x-auto rounded-lg border border-gray-200">
+            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-gray-200 bg-gray-50 text-xs text-gray-600">
+                <thead className="border-b border-border bg-surface-3 text-xs text-ink-3">
                   <tr>
-                    <th className="px-3 py-2 font-semibold">Label</th>
-                    <th className="px-3 py-2 font-semibold">Type</th>
-                    <th className="px-3 py-2 font-semibold">Unit</th>
-                    <th className="px-3 py-2 font-semibold">Options</th>
-                    <th className="px-3 py-2 font-semibold">Required</th>
-                    <th className="px-3 py-2 font-semibold">Actions</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Label</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Type</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Unit</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Options</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Required</th>
+                    <th scope="col" className="px-3 py-2 font-semibold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-hairline">
                   {fields.map((f) => (
-                    <tr key={f.id} className={draftId === f.id ? 'bg-indigo-50/60' : 'hover:bg-gray-50'}>
-                      <td className="px-3 py-2 font-medium text-gray-900">{f.label}</td>
-                      <td className="px-3 py-2 text-gray-600">{typeLabel(f.type)}</td>
-                      <td className="px-3 py-2 text-gray-600">{f.unit || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{f.options?.length ? f.options.join(', ') : '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{f.required ? 'Yes' : 'No'}</td>
+                    <tr key={f.id} className={draftId === f.id ? 'bg-brand-soft' : 'hover:bg-surface-3'}>
+                      <td className="px-3 py-2 font-medium text-ink">{f.label}</td>
+                      <td className="px-3 py-2 text-ink-3">{typeLabel(f.type)}</td>
+                      <td className="px-3 py-2 text-ink-3">{f.unit || '—'}</td>
+                      <td className="px-3 py-2 text-ink-3">{f.options?.length ? f.options.join(', ') : '—'}</td>
+                      <td className="px-3 py-2 text-ink-3">{f.required ? 'Yes' : 'No'}</td>
                       <td className="px-3 py-2 space-x-2 whitespace-nowrap">
-                        <button type="button" onClick={() => startEditField(f)} className="text-indigo-600 hover:underline">
+                        <button type="button" onClick={() => startEditField(f)} className="text-brand hover:underline">
                           Edit
                         </button>
-                        <button type="button" onClick={() => removeField(f.id)} className="text-red-600 hover:underline">
+                        <button type="button" onClick={() => removeField(f.id)} className="text-err hover:underline">
                           Remove
                         </button>
                       </td>
@@ -279,12 +284,12 @@ export function TechnicalSpecRuleModal({
         </div>
 
         {/* Inline add/edit field form */}
-        <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+        <div className="mt-4 rounded-lg border border-brand-soft bg-brand-soft p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand">
             {draftId ? 'Edit field' : 'Add field'}
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold text-gray-600">
+            <label className="block text-xs font-semibold text-ink-3">
               Field name *
               <input
                 className={`mt-1 ${inputClass}`}
@@ -296,7 +301,7 @@ export function TechnicalSpecRuleModal({
                 placeholder="e.g. Bulk density"
               />
             </label>
-            <label className="block text-xs font-semibold text-gray-600">
+            <label className="block text-xs font-semibold text-ink-3">
               Data type *
               <select
                 className={`mt-1 ${inputClass}`}
@@ -311,7 +316,7 @@ export function TechnicalSpecRuleModal({
               </select>
             </label>
             {showUnit ? (
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-3">
                 Unit (mm / kg / g·ml⁻¹ / % …)
                 <input
                   className={`mt-1 ${inputClass}`}
@@ -322,7 +327,7 @@ export function TechnicalSpecRuleModal({
               </label>
             ) : null}
             {showOptions ? (
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-3">
                 Dropdown options (comma-separated)
                 <input
                   className={`mt-1 ${inputClass}`}
@@ -332,7 +337,7 @@ export function TechnicalSpecRuleModal({
                 />
               </label>
             ) : null}
-            <label className="block text-xs font-semibold text-gray-600">
+            <label className="block text-xs font-semibold text-ink-3">
               Mandatory?
               <select
                 className={`mt-1 ${inputClass}`}
@@ -344,12 +349,12 @@ export function TechnicalSpecRuleModal({
               </select>
             </label>
           </div>
-          {draftError ? <p className="mt-2 text-xs text-red-600">{draftError}</p> : null}
+          {draftError ? <p className="mt-2 text-xs text-err">{draftError}</p> : null}
           <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={commitDraftField}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+              className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-press"
             >
               {draftId ? 'Update field' : '+ Add field'}
             </button>
@@ -357,7 +362,7 @@ export function TechnicalSpecRuleModal({
               <button
                 type="button"
                 onClick={resetDraft}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-3"
               >
                 Cancel edit
               </button>
@@ -370,7 +375,7 @@ export function TechnicalSpecRuleModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50"
           >
             Cancel
           </button>
@@ -378,7 +383,7 @@ export function TechnicalSpecRuleModal({
             type="button"
             onClick={() => void save()}
             disabled={saving || !category.trim() || fields.length === 0}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save rule'}
           </button>

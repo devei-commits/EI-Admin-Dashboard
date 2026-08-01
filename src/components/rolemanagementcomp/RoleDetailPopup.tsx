@@ -20,12 +20,18 @@ interface RoleDetailPopupProps {
 const RoleDetailPopup: React.FC<RoleDetailPopupProps> = ({ role, onClose }) => {
  return (
   <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-   <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+   <div
+    className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-auto"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="role-detail-popup-title"
+   >
     <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
-     <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">Role Details</h3>
+     <h3 id="role-detail-popup-title" className="text-2xl font-semibold text-gray-800 tracking-tight">Role Details</h3>
      <button
       onClick={onClose}
       className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      aria-label="Close"
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

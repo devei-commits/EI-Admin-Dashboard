@@ -955,19 +955,19 @@ const OutboundDashboard = ({
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'Pending Pick':
-        return 'bg-rose-50 text-rose-700 border border-rose-200';
+        return 'bg-err-soft text-err border border-err-soft';
       case 'In Pick':
-        return 'bg-amber-50 text-amber-700 border border-amber-200';
+        return 'bg-warn-soft text-warn border border-warn-soft';
       case 'In Transfer':
-        return 'bg-cyan-50 text-cyan-700 border border-cyan-200';
+        return 'bg-brand-soft text-brand border border-brand-soft';
       case 'In Transit':
-        return 'bg-sky-50 text-sky-800 border border-sky-200';
+        return 'bg-brand-soft text-brand border border-brand-soft';
       case 'Received at MU':
-        return 'bg-indigo-50 text-indigo-800 border border-indigo-200';
+        return 'bg-brand-soft text-brand border border-brand-soft';
       case 'Completed':
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+        return 'bg-ok-soft text-ok border border-ok-soft';
       default:
-        return 'bg-slate-50 text-slate-700 border border-slate-200';
+        return 'bg-surface-2 text-ink-2 border border-border';
     }
   };
 
@@ -990,14 +990,14 @@ const OutboundDashboard = ({
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-white relative">
+    <div className="flex-1 overflow-auto bg-surface relative">
       {toast && (
         <div className="fixed top-4 right-4 z-70">
           <div
             className={`px-3 py-2 rounded-md border text-xs font-semibold shadow-lg ${
               toast.type === 'success'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-rose-50 text-rose-700 border-rose-200'
+                ? 'bg-ok-soft text-ok border-ok-soft'
+                : 'bg-err-soft text-err border-err-soft'
             }`}
           >
             {toast.message}
@@ -1007,39 +1007,39 @@ const OutboundDashboard = ({
       <div className="p-6 w-full">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-          <div className="bg-white border border-cyan-200 rounded-lg p-4">
-            <div className="text-cyan-700 text-xs font-semibold uppercase tracking-wider mb-2">Total MRNs</div>
-            <div className="text-3xl font-bold text-cyan-400">{counts.total}</div>
+          <div className="bg-surface border border-brand-soft rounded-lg p-4">
+            <div className="text-brand text-xs font-semibold uppercase tracking-wider mb-2">Total MRNs</div>
+            <div className="text-3xl font-bold text-brand">{counts.total}</div>
           </div>
-          <div className="bg-white border border-rose-200 rounded-lg p-4">
-            <div className="text-rose-700 text-xs font-semibold uppercase tracking-wider mb-2">Pending Pick</div>
-            <div className="text-3xl font-bold text-rose-600">{counts.pendingPick}</div>
+          <div className="bg-surface border border-err-soft rounded-lg p-4">
+            <div className="text-err text-xs font-semibold uppercase tracking-wider mb-2">Pending Pick</div>
+            <div className="text-3xl font-bold text-err">{counts.pendingPick}</div>
           </div>
-          <div className="bg-white border border-amber-200 rounded-lg p-4">
-            <div className="text-amber-700 text-xs font-semibold uppercase tracking-wider mb-2">In Pick</div>
-            <div className="text-3xl font-bold text-amber-600">{counts.inPick}</div>
+          <div className="bg-surface border border-warn-soft rounded-lg p-4">
+            <div className="text-warn text-xs font-semibold uppercase tracking-wider mb-2">In Pick</div>
+            <div className="text-3xl font-bold text-warn">{counts.inPick}</div>
           </div>
-          <div className="bg-white border border-blue-200 rounded-lg p-4">
-            <div className="text-blue-700 text-xs font-semibold uppercase tracking-wider mb-2">In Transfer</div>
-            <div className="text-3xl font-bold text-blue-600">{counts.inTransfer}</div>
+          <div className="bg-surface border border-brand-soft rounded-lg p-4">
+            <div className="text-brand text-xs font-semibold uppercase tracking-wider mb-2">In Transfer</div>
+            <div className="text-3xl font-bold text-brand">{counts.inTransfer}</div>
           </div>
-          <div className="bg-white border border-emerald-200 rounded-lg p-4">
-            <div className="text-emerald-700 text-xs font-semibold uppercase tracking-wider mb-2">Completed</div>
-            <div className="text-3xl font-bold text-emerald-600">{counts.completed}</div>
+          <div className="bg-surface border border-ok-soft rounded-lg p-4">
+            <div className="text-ok text-xs font-semibold uppercase tracking-wider mb-2">Completed</div>
+            <div className="text-3xl font-bold text-ok">{counts.completed}</div>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="bg-white border border-slate-200 rounded-lg">
+        <div className="bg-surface border border-border rounded-lg">
           {/* Header */}
-          <div className="p-6 border-b border-slate-200">
+          <div className="p-6 border-b border-border">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h1 className="text-xl font-bold text-slate-900">Outbound transfers</h1>
+              <h1 className="text-xl font-bold text-ink">Outbound transfers</h1>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setRequestTransferOpen(true)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50"
+                  className="px-4 py-2 rounded-lg border border-border bg-surface text-ink-2 text-sm font-semibold hover:bg-surface-2"
                 >
                   Request Transfer
                 </button>
@@ -1052,7 +1052,7 @@ const OutboundDashboard = ({
                       ? 'No saved picks (In Pick) — assign picker and Save Pick on a request first.'
                       : 'Dispatch saved pick requests with logistics details.'
                   }
-                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
+                  className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
                 >
                   Initiate Transfer
                   {savedPickMrns.length > 0 ? ` (${savedPickMrns.length})` : ''}
@@ -1068,8 +1068,8 @@ const OutboundDashboard = ({
                   onClick={() => setStatusFilter(filter)}
                   className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
                     statusFilter === filter
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                      ? 'bg-brand text-white'
+                      : 'text-ink-3 hover:text-ink-2 hover:bg-surface-3'
                   }`}
                 >
                   {filter}
@@ -1089,7 +1089,7 @@ const OutboundDashboard = ({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 bg-white border border-slate-300 rounded text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              className="w-full px-4 py-2 bg-surface border border-border rounded text-ink placeholder-ink-4 focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
 
@@ -1104,7 +1104,7 @@ const OutboundDashboard = ({
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
+                <tr className="border-b border-border bg-surface-2">
                   {(
                     [
                       { col: 'mrnNo' as const, label: 'Request ID (MRN)' },
@@ -1118,23 +1118,23 @@ const OutboundDashboard = ({
                       { col: 'status' as const, label: 'Status' },
                     ] as const
                   ).map(({ col, label }) => (
-                    <th key={col} className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+                    <th scope="col" key={col} className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider">
                       <button
                         type="button"
                         onClick={() => toggleSort(col)}
                         aria-sort={sortColumn === col ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
-                        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                           sortColumn === col
-                            ? 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100'
-                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+                            ? 'text-brand bg-brand-soft hover:bg-brand-soft'
+                            : 'text-ink-3 hover:text-ink hover:bg-surface-3/70'
                         }`}
                       >
                         {label}
                         <span
                           className={`text-[10px] not-italic leading-none transition-opacity duration-150 ${
                             sortColumn === col
-                              ? 'opacity-100 text-cyan-600'
-                              : 'opacity-0 group-hover:opacity-70 text-slate-500'
+                              ? 'opacity-100 text-brand'
+                              : 'opacity-0 group-hover:opacity-70 text-ink-3'
                           }`}
                           aria-hidden
                         >
@@ -1147,24 +1147,24 @@ const OutboundDashboard = ({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-slate-500">Loading transfer orders…</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-8 text-center text-ink-3">Loading transfer orders…</td></tr>
                 ) : sortedMRNs.length === 0 ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-slate-500">No transfer orders found.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-8 text-center text-ink-3">No transfer orders found.</td></tr>
                 ) : (
                   sortedMRNs.map(mrn => (
                     <tr
                       key={mrn.id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+                      className="border-b border-hairline hover:bg-surface-2 transition-colors cursor-pointer"
                       onClick={() => handleOpenPanel(mrn, 'view')}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenPanel(mrn, 'view'); } }}
                     >
                       <td className="px-6 py-4">
-                        <div className="text-amber-700 font-medium text-sm">{mrn.mrnNo}</div>
+                        <div className="text-brand font-medium text-sm">{mrn.mrnNo}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${mrn.isInboundFromMu ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-700'}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${mrn.isInboundFromMu ? 'bg-brand-soft text-brand' : 'bg-surface-3 text-ink-2'}`}>
                           {mrn.isInboundFromMu ? TRANSFER_TYPE_LABEL.inbound_from_mu : TRANSFER_TYPE_LABEL.outbound}
                         </span>
                       </td>
@@ -1172,40 +1172,40 @@ const OutboundDashboard = ({
                         {(() => {
                           const src = mrnSourceDoc(mrn);
                           if (!src) {
-                            return <span className="text-slate-400 text-xs">—</span>;
+                            return <span className="text-ink-4 text-xs">—</span>;
                           }
                           return (
                             <span className="inline-flex items-center gap-1.5 text-xs">
                               <span
                                 className={`px-1.5 py-0.5 rounded font-medium ${
                                   src.kind === 'bpr'
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : 'bg-teal-100 text-teal-700'
+                                    ? 'bg-brand-soft text-brand'
+                                    : 'bg-brand-soft text-brand'
                                 }`}
                               >
                                 {src.kind === 'bpr' ? 'BPR' : 'BMR'}
                               </span>
-                              <span className="text-slate-700 font-mono">{src.id}</span>
+                              <span className="text-ink-2 font-mono">{src.id}</span>
                             </span>
                           );
                         })()}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-slate-900 text-sm max-w-[220px] truncate" title={displayMrnItemName(mrn)}>
+                        <div className="text-ink text-sm max-w-[220px] truncate" title={displayMrnItemName(mrn)}>
                           {displayMrnItemName(mrn)}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-slate-700 text-sm whitespace-nowrap">{formatMrnDisplayDate(mrn.createdAt)}</div>
+                        <div className="text-ink-2 text-sm whitespace-nowrap">{formatMrnDisplayDate(mrn.createdAt)}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-slate-700 text-sm whitespace-nowrap">{mrnDisplayExpectedDate(mrn)}</div>
+                        <div className="text-ink-2 text-sm whitespace-nowrap">{mrnDisplayExpectedDate(mrn)}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-slate-800 text-sm font-mono">{mrnDisplayBatchNumber(mrn)}</div>
+                        <div className="text-ink-2 text-sm font-mono">{mrnDisplayBatchNumber(mrn)}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className={`text-sm ${mrn.assignedPicker ? 'text-slate-900' : 'text-slate-400'}`}>
+                        <div className={`text-sm ${mrn.assignedPicker ? 'text-ink' : 'text-ink-4'}`}>
                           {mrn.assignedPicker || 'Unassigned'}
                         </div>
                       </td>
@@ -1220,7 +1220,7 @@ const OutboundDashboard = ({
                             type="button"
                             onClick={() => openPickModal(mrn)}
                             title="Open Transfer Copy: enter packs, split, and generate QR labels."
-                            className="mt-1.5 block w-full whitespace-nowrap rounded-md bg-amber-500 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-600"
+                            className="mt-1.5 block w-full whitespace-nowrap rounded-md bg-brand px-2 py-1 text-[10px] font-semibold text-white hover:bg-brand-press"
                           >
                             🏷️ Generate Labels &amp; Pick
                           </button>
@@ -1245,14 +1245,14 @@ const OutboundDashboard = ({
           aria-labelledby="mrn-modal-title"
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <h2 id="mrn-modal-title" className="text-base font-bold text-slate-900">Stock Request — {selectedMRN.mrnNo}</h2>
+            <div className="shrink-0 flex items-center justify-between border-b border-border px-4 py-3">
+              <h2 id="mrn-modal-title" className="text-base font-bold text-ink">Stock Request — {selectedMRN.mrnNo}</h2>
               <button
                 onClick={closePickPanel}
-                className="h-8 w-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg leading-none"
+                className="h-8 w-8 rounded-lg border border-border bg-surface-2 text-ink-3 hover:bg-surface-3 hover:text-ink-2 flex items-center justify-center text-lg leading-none"
                 aria-label="Close"
               >
                 ×
@@ -1260,38 +1260,38 @@ const OutboundDashboard = ({
             </div>
 
             <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-              <div className="inline-flex px-2 py-0.5 rounded border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-semibold">
+              <div className="inline-flex px-2 py-0.5 rounded border border-err-soft bg-err-soft text-err text-[10px] font-semibold">
                 {selectedMRN.status}
               </div>
 
               <section>
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Request Details</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">Request Details</h3>
                 <div className="grid grid-cols-2 gap-1.5">
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <p className="text-[9px] text-slate-500 uppercase">MRN No.</p>
-                    <p className="text-[11px] font-semibold text-amber-700">{selectedMRN.mrnNo}</p>
+                  <div className="rounded border border-border bg-surface-2 p-2">
+                    <p className="text-[9px] text-ink-3 uppercase">MRN No.</p>
+                    <p className="text-[11px] font-semibold text-brand">{selectedMRN.mrnNo}</p>
                   </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <p className="text-[9px] text-slate-500 uppercase">Requested By</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.requestedBy}</p>
+                  <div className="rounded border border-border bg-surface-2 p-2">
+                    <p className="text-[9px] text-ink-3 uppercase">Requested By</p>
+                    <p className="text-[11px] font-semibold text-ink">{selectedMRN.requestedBy}</p>
                   </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2 col-span-2">
-                    <p className="text-[9px] text-slate-500 uppercase">Notes</p>
-                    <p className="text-[11px] font-semibold text-slate-900">{selectedMRN.notes || '—'}</p>
+                  <div className="rounded border border-border bg-surface-2 p-2 col-span-2">
+                    <p className="text-[9px] text-ink-3 uppercase">Notes</p>
+                    <p className="text-[11px] font-semibold text-ink">{selectedMRN.notes || '—'}</p>
                   </div>
                 </div>
               </section>
 
               <section>
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Assign Picker / Transfer Team</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">Assign Picker / Transfer Team</h3>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                      Picker <span className="text-rose-600">*</span>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                      Picker <span className="text-err">*</span>
                     </label>
                     {String(selectedMRN.assignedPicker || '').trim() ? (
                       <div
-                        className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                        className="w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-[11px] text-ink-2"
                         title="Picker was saved once and cannot be changed. Contact an admin if this was a mistake."
                       >
                         {selectedMRN.assignedPicker}
@@ -1300,7 +1300,8 @@ const OutboundDashboard = ({
                       <select
                         value={assignedPicker}
                         onChange={(e) => setAssignedPicker(e.target.value)}
-                        className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                        aria-label="Assign picker"
+                        className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                       >
                         <option value="">— Assign Picker —</option>
                         {assignablePickers.map((p) => (
@@ -1310,21 +1311,22 @@ const OutboundDashboard = ({
                     )}
                   </div>
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer Team</label>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">Transfer Team</label>
                     <input
                       type="text"
                       value={assignedTransferBy}
                       onChange={(e) => setAssignedTransferBy(e.target.value)}
                       placeholder="Transfer team / person"
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="Transfer team / person"
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                   {isMtrOutbound(selectedMRN) && (
                     <>
                       <div className="col-span-2">
-                        <label className="block text-[9px] text-slate-500 uppercase mb-1">Transfer from (warehouse)</label>
+                        <label className="block text-[9px] text-ink-3 uppercase mb-1">Transfer from (warehouse)</label>
                         <div
-                          className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                          className="w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-[11px] text-ink-2"
                           title="Set in Production when sending the MTR. Not editable in Warehouse."
                         >
                           {selectedMRN.whDispatchZone
@@ -1333,22 +1335,23 @@ const OutboundDashboard = ({
                         </div>
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                          Transfer to (manufacturing / ML) <span className="text-rose-600">*</span>
+                        <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                          Transfer to (manufacturing / ML) <span className="text-err">*</span>
                         </label>
                         {String(selectedMRN.muReceiveZone || '').trim() ? (
                           <div
-                            className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-800"
+                            className="w-full rounded border border-border bg-surface-2 px-2 py-1.5 text-[11px] text-ink-2"
                             title="Saved when Production sent the MTR."
                           >
                             {zoneLabelInAreas(productionAreas, selectedMRN.muReceiveZone!)}
-                            <span className="block text-[10px] text-slate-500 font-mono mt-0.5">{selectedMRN.muReceiveZone}</span>
+                            <span className="block text-[10px] text-ink-3 font-mono mt-0.5">{selectedMRN.muReceiveZone}</span>
                           </div>
                         ) : allProductionZones.length > 0 ? (
                           <select
                             value={selectedMlLocation}
                             onChange={(e) => setSelectedMlLocation(e.target.value)}
-                            className="w-full rounded border border-amber-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                            aria-label="Transfer to (manufacturing / ML zone)"
+                            className="w-full rounded border border-brand bg-surface px-2 py-1.5 text-[11px] text-ink"
                           >
                             <option value="">— Select manufacturing zone —</option>
                             {productionAreas.map((a) => (
@@ -1363,11 +1366,11 @@ const OutboundDashboard = ({
                             ))}
                           </select>
                         ) : (
-                          <div className="rounded border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-900">
+                          <div className="rounded border border-warn-soft bg-warn-soft px-2 py-2 text-[11px] text-warn">
                             No manufacturing zones in Facility Management. Add a production area with zones, then refresh.
                           </div>
                         )}
-                        <p className="mt-1 text-[10px] text-slate-500">
+                        <p className="mt-1 text-[10px] text-ink-3">
                           {String(selectedMRN.muReceiveZone || '').trim()
                             ? 'From Production (Send MTR). Use Initiate Transfer on the list page when goods leave the warehouse.'
                             : selectedMlLocation
@@ -1383,15 +1386,15 @@ const OutboundDashboard = ({
               </section>
 
               <section>
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">
                   Pick List — {activePickItems.length} Items
                 </h3>
                 {isMtrOutbound(selectedMRN) && (
-                  <p className="text-[9px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mb-1.5">
+                  <p className="text-[9px] text-warn bg-warn-soft border border-warn-soft rounded px-2 py-1.5 mb-1.5">
                     Save pick when ready. Use the page-level <strong>Initiate Transfer</strong> button to dispatch saved picks (In Pick) with logistics details.
                   </p>
                 )}
-                <div className="rounded border border-slate-200 overflow-hidden">
+                <div className="rounded border border-border overflow-hidden">
                   {activePickItems.map((item) => {
                     const shortQty = pickedQty[item.id] ?? String(item.required);
                     const hasShort = Number(shortQty) < item.required;
@@ -1402,20 +1405,20 @@ const OutboundDashboard = ({
                     return (
                       <div
                         key={item.id}
-                        className={`px-2.5 py-2 border-b border-slate-100 last:border-b-0 ${
-                          locked ? 'bg-slate-100/80 border-slate-200' : 'bg-white'
+                        className={`px-2.5 py-2 border-b border-hairline last:border-b-0 ${
+                          locked ? 'bg-surface-3/80 border-border' : 'bg-surface'
                         }`}
                       >
                         <div className={`flex items-start gap-2 ${locked ? 'opacity-70' : ''}`}>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-semibold text-slate-900">
+                            <p className="text-[11px] font-semibold text-ink">
                               {item.name}
                               {mtr && (
                                 <span
                                   className={`ml-1.5 inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-semibold ${
                                     locked
-                                      ? 'border-slate-300 bg-slate-200 text-slate-700'
-                                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                      ? 'border-border bg-surface-3 text-ink-2'
+                                      : 'border-ok-soft bg-ok-soft text-ok'
                                   }`}
                                   title="Per-line MTR transfer phase from server"
                                 >
@@ -1423,31 +1426,32 @@ const OutboundDashboard = ({
                                 </span>
                               )}
                             </p>
-                            <p className="text-[10px] text-slate-500">
+                            <p className="text-[10px] text-ink-3">
                               Required: {item.required} {item.uom}
                               {item.location !== '—' ? ` · At ${item.location}` : ''}
                               {locked && (
-                                <span className="ml-1 text-slate-600 font-medium">· Already dispatched from WH</span>
+                                <span className="ml-1 text-ink-2 font-medium">· Already dispatched from WH</span>
                               )}
                             </p>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-slate-500">Qty:</span>
+                            <span className="text-[10px] text-ink-3">Qty:</span>
                             <input
                               value={shortQty}
                               disabled={mtr && locked}
+                              aria-label={`Pick quantity for ${item.name}`}
                               title={mtr && locked ? 'Quantity is fixed for lines that already left WH.' : undefined}
                               onChange={(e) => setPickedQty((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                              className="w-16 rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px] text-slate-900 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                              className="w-16 rounded border border-border bg-surface px-1.5 py-1 text-[10px] text-ink disabled:bg-surface-3 disabled:text-ink-3 disabled:cursor-not-allowed"
                             />
-                            <span className="text-[10px] text-slate-500">{item.uom}</span>
+                            <span className="text-[10px] text-ink-3">{item.uom}</span>
                             <span
                               className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${
                                 locked
-                                  ? 'bg-slate-200 text-slate-600 border-slate-300'
+                                  ? 'bg-surface-3 text-ink-2 border-border'
                                   : hasShort
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                                    ? 'bg-warn-soft text-warn border-warn-soft'
+                                    : 'bg-surface-2 text-ink-2 border-border'
                               }`}
                             >
                               {locked ? 'WH done' : hasShort ? 'Short' : 'Pending'}
@@ -1461,16 +1465,16 @@ const OutboundDashboard = ({
               </section>
 
               {selectedMRN.notes && (
-                <div className="rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-700">
+                <div className="rounded border border-warn-soft bg-warn-soft px-2.5 py-2 text-[10px] text-warn">
                   {selectedMRN.notes}
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex flex-wrap justify-end gap-2">
+            <div className="shrink-0 bg-surface border-t border-border px-4 py-3 flex flex-wrap justify-end gap-2">
               <button
                 onClick={handleSaveChanges}
-                className="px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-700 text-white text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-ink-3 hover:bg-ink-2 text-white text-[11px] font-semibold"
               >
                 Save changes
               </button>
@@ -1479,7 +1483,7 @@ const OutboundDashboard = ({
                   type="button"
                   onClick={() => { setPanelOpen(false); setPickSplitOpen(true); }}
                   title="Pick from available packaging: pick full packs or split to take partial qty."
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold"
+                  className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-press text-white text-[11px] font-semibold"
                 >
                   🏷️ Generate Labels &amp; Pick
                 </button>
@@ -1494,14 +1498,14 @@ const OutboundDashboard = ({
                       ? 'Pick was already saved (status is no longer Pending pick).'
                       : 'Requires an assigned picker. Sets status to In pick.'
                   }
-                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cyan-500"
+                  className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-press text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
                 >
                   Save Pick
                 </button>
               )}
               <button
                 onClick={closePickPanel}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-surface-3 border border-border text-ink-2 text-[11px] font-semibold"
               >
                 Close
               </button>
@@ -1551,15 +1555,15 @@ const OutboundDashboard = ({
           aria-labelledby="initiate-transfer-title"
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-surface rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <h2 id="initiate-transfer-title" className="text-base font-bold text-slate-900">Initiate Transfer</h2>
+            <div className="shrink-0 flex items-center justify-between border-b border-border px-4 py-3">
+              <h2 id="initiate-transfer-title" className="text-base font-bold text-ink">Initiate Transfer</h2>
               <button
                 type="button"
                 onClick={closeInitiateModal}
-                className="h-8 w-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg leading-none"
+                className="h-8 w-8 rounded-lg border border-border bg-surface-2 text-ink-3 hover:bg-surface-3 hover:text-ink-2 flex items-center justify-center text-lg leading-none"
                 aria-label="Close"
               >
                 ×
@@ -1568,62 +1572,67 @@ const OutboundDashboard = ({
 
             <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               <section>
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">Initiate transfer details</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">Initiate transfer details</h3>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="col-span-2">
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                      Tracking / LR no. <span className="text-rose-600">*</span>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                      Tracking / LR no. <span className="text-err">*</span>
                     </label>
                     <input
                       type="text"
                       value={logisticsTrackingNo}
                       onChange={(e) => setLogisticsTrackingNo(e.target.value)}
                       placeholder="Enter LR or tracking number"
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="Tracking / LR no."
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                      Driver / transporter <span className="text-rose-600">*</span>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                      Driver / transporter <span className="text-err">*</span>
                     </label>
                     <input
                       type="text"
                       value={logisticsTransporter}
                       onChange={(e) => setLogisticsTransporter(e.target.value)}
                       placeholder="Driver or transporter name"
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="Driver / transporter"
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                      Dispatch date <span className="text-rose-600">*</span>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                      Dispatch date <span className="text-err">*</span>
                     </label>
                     <input
                       type="date"
                       value={logisticsDispatchDate}
                       onChange={(e) => setLogisticsDispatchDate(e.target.value)}
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="Dispatch date"
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">ETA (optional)</label>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">ETA (optional)</label>
                     <input
                       type="date"
                       value={logisticsEtaDate}
                       onChange={(e) => setLogisticsEtaDate(e.target.value)}
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="ETA (optional)"
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-[9px] text-slate-500 uppercase mb-1">
-                      Vehicle no. <span className="text-rose-600">*</span>
+                    <label className="block text-[9px] text-ink-3 uppercase mb-1">
+                      Vehicle no. <span className="text-err">*</span>
                     </label>
                     <input
                       type="text"
                       value={logisticsVehicleNo}
                       onChange={(e) => setLogisticsVehicleNo(e.target.value)}
                       placeholder="Enter vehicle number"
-                      className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-[11px] text-slate-900"
+                      aria-label="Vehicle no."
+                      className="w-full rounded border border-border bg-surface px-2 py-1.5 text-[11px] text-ink"
                     />
                   </div>
                 </div>
@@ -1631,58 +1640,58 @@ const OutboundDashboard = ({
 
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand">
                     Saved pick requests ({savedPickMrns.length})
                     {selectedInitiateMrns.length > 0 ? (
-                      <span className="ml-1.5 font-normal normal-case text-slate-500">
+                      <span className="ml-1.5 font-normal normal-case text-ink-3">
                         · {selectedInitiateMrns.length} selected
                       </span>
                     ) : null}
                   </h3>
                   {savedPickMrns.length > 0 && (
-                    <label className="inline-flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer">
+                    <label className="inline-flex items-center gap-1.5 text-[10px] text-ink-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={allSavedPicksSelected}
                         onChange={(e) => toggleAllInitiateMrns(e.target.checked)}
-                        className="rounded border-slate-300"
+                        className="rounded border-border"
                       />
                       Select all
                     </label>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-500 mb-2">
+                <p className="text-[10px] text-ink-3 mb-2">
                   Only requests with status <strong>In Pick</strong> (picker saved) appear here. Select one or more — all chosen requests dispatch together with the same logistics details.
                 </p>
                 {savedPickMrns.length === 0 ? (
-                  <div className="rounded border border-slate-200 bg-slate-50 px-3 py-4 text-center text-[11px] text-slate-500">
+                  <div className="rounded border border-border bg-surface-2 px-3 py-4 text-center text-[11px] text-ink-3">
                     No saved picks yet. Open a request, assign a picker, and tap Save Pick.
                   </div>
                 ) : (
-                  <div className="rounded border border-slate-200 overflow-hidden divide-y divide-slate-100">
+                  <div className="rounded border border-border overflow-hidden divide-y divide-hairline">
                     {savedPickMrns.map((mrn) => {
                       const selected = !!initiateSelectedMrnIds[mrn.id];
                       return (
                         <label
                           key={mrn.id}
                           className={`flex items-start gap-2.5 w-full text-left px-3 py-2.5 transition-colors cursor-pointer ${
-                            selected ? 'bg-amber-50 border-l-4 border-l-amber-500' : 'bg-white hover:bg-slate-50 border-l-4 border-l-transparent'
+                            selected ? 'bg-brand-soft border-l-4 border-l-brand' : 'bg-surface hover:bg-surface-2 border-l-4 border-l-transparent'
                           }`}
                         >
                           <input
                             type="checkbox"
                             checked={selected}
                             onChange={(e) => toggleInitiateMrnSelection(mrn, e.target.checked)}
-                            className="mt-0.5 rounded border-slate-300"
+                            className="mt-0.5 rounded border-border"
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold text-amber-700">{mrn.mrnNo}</span>
+                              <span className="text-[11px] font-semibold text-brand">{mrn.mrnNo}</span>
                               <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-medium border ${getStatusBadgeColor(mrn.status)}`}>
                                 {mrn.status}
                               </span>
                             </div>
-                            <div className="mt-0.5 text-[10px] text-slate-600">
+                            <div className="mt-0.5 text-[10px] text-ink-2">
                               Picker: {mrn.assignedPicker}
                               {(() => {
                                 const src = mrnSourceDoc(mrn);
@@ -1701,16 +1710,16 @@ const OutboundDashboard = ({
 
               {selectedInitiateMrns.length > 0 && (
                 <section>
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 mb-1.5">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">
                     Lines ({selectedInitiateMrns.length} request{selectedInitiateMrns.length === 1 ? '' : 's'})
                   </h3>
-                  <p className="text-[9px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mb-1.5">
+                  <p className="text-[9px] text-warn bg-warn-soft border border-warn-soft rounded px-2 py-1.5 mb-1.5">
                     Tick lines to include in this combined transfer. WH-pending lines only for MTR requests.
                   </p>
                   <div className="space-y-3">
                     {selectedInitiateMrns.map((mrn) => (
-                      <div key={mrn.id} className="rounded border border-slate-200 overflow-hidden">
-                        <div className="px-2.5 py-1.5 bg-slate-50 border-b border-slate-200 text-[10px] font-semibold text-slate-700">
+                      <div key={mrn.id} className="rounded border border-border overflow-hidden">
+                        <div className="px-2.5 py-1.5 bg-surface-2 border-b border-border text-[10px] font-semibold text-ink-2">
                           {mrn.mrnNo}
                           {(() => {
                             const src = mrnSourceDoc(mrn);
@@ -1726,7 +1735,7 @@ const OutboundDashboard = ({
                           return (
                             <div
                               key={lineKey}
-                              className={`px-2.5 py-2 border-b border-slate-100 last:border-b-0 ${locked ? 'bg-slate-100/80' : 'bg-white'}`}
+                              className={`px-2.5 py-2 border-b border-hairline last:border-b-0 ${locked ? 'bg-surface-3/80' : 'bg-surface'}`}
                             >
                               <div className={`flex items-start gap-2 ${locked ? 'opacity-70' : ''}`}>
                                 <input
@@ -1745,21 +1754,21 @@ const OutboundDashboard = ({
                                   className="mt-0.5 disabled:cursor-not-allowed"
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-semibold text-slate-900">
+                                  <p className="text-[11px] font-semibold text-ink">
                                     {li.name || li.itemCode}
                                     {mtr && (
                                       <span
                                         className={`ml-1.5 inline-flex items-center rounded border px-1 py-0.5 text-[9px] font-semibold ${
                                           locked
-                                            ? 'border-slate-300 bg-slate-200 text-slate-700'
-                                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                            ? 'border-border bg-surface-3 text-ink-2'
+                                            : 'border-ok-soft bg-ok-soft text-ok'
                                         }`}
                                       >
                                         {phaseLabel}
                                       </span>
                                     )}
                                   </p>
-                                  <p className="text-[10px] text-slate-500">
+                                  <p className="text-[10px] text-ink-3">
                                     Qty: {li.quantity} {li.unit}
                                   </p>
                                 </div>
@@ -1774,11 +1783,11 @@ const OutboundDashboard = ({
               )}
             </div>
 
-            <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex flex-wrap justify-end gap-2">
+            <div className="shrink-0 bg-surface border-t border-border px-4 py-3 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={closeInitiateModal}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-surface-3 border border-border text-ink-2 text-[11px] font-semibold"
               >
                 Cancel
               </button>
@@ -1807,7 +1816,7 @@ const OutboundDashboard = ({
                         ? 'Fill all required transfer details.'
                         : `Dispatch ${selectedInitiateMrns.length} request(s) with shared logistics.`
                 }
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
+                className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-press text-white text-[11px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
               >
                 {initiatingTransfer
                   ? 'Initiating…'

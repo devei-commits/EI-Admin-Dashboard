@@ -229,20 +229,20 @@ const WarehouseInventory: React.FC = () => {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">CODE</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM NAME</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">TYPE</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM GROUPS</th>
-                <th className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ZONE/RACK</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">WH STOCK</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML1 STOCK</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML2 STOCK</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN TRANSIT</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN HAND</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">RESERVED</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">REORDER</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">AVG/MO</th>
-                <th className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">STATUS</th>
+                <th scope="col" className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">CODE</th>
+                <th scope="col" className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM NAME</th>
+                <th scope="col" className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">TYPE</th>
+                <th scope="col" className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ITEM GROUPS</th>
+                <th scope="col" className="px-2 py-2 text-left font-semibold text-gray-900 whitespace-nowrap">ZONE/RACK</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">WH STOCK</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML1 STOCK</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">ML2 STOCK</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN TRANSIT</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">IN HAND</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">RESERVED</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">REORDER</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">AVG/MO</th>
+                <th scope="col" className="px-2 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">STATUS</th>
               </tr>
             </thead>
             <tbody>

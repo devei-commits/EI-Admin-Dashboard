@@ -1,7 +1,7 @@
 /**
  * Quote Detail — full breakdown of a saved quote + PDF export.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, ArrowLeft, Download, Mail, Pencil, Loader2, ChevronDown, X, Clock, ShoppingCart, GitBranch, AlertTriangle, ReceiptText, ExternalLink, ClipboardCheck, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -319,9 +319,9 @@ export default function QuoteDetail() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-              <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">RM</th><th className="py-3 px-3 text-right">PM</th><th className="py-3 px-3 text-right">Conv.</th>
-              <th className="py-3 px-3 text-right">OH</th><th className="py-3 px-3 text-right">Cost</th><th className="py-3 px-3 text-right">Markup</th>
-              <th className="py-3 px-3 text-right">Margin</th><th className="py-3 px-4 text-right">Sell ₹</th>
+              <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th>
+              <th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th>
+              <th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {r.bands.map((b) => (
@@ -348,8 +348,8 @@ export default function QuoteDetail() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-              <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Procurement</th><th className="py-3 px-3 text-right">Manufacturing</th>
-              <th className="py-3 px-3 text-right">QC</th><th className="py-3 px-3 text-right">Dispatch</th><th className="py-3 px-3 text-right">Total</th><th className="py-3 px-4 text-right">Weeks</th>
+              <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th>
+              <th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
               {r.bands.map((b) => (
@@ -418,11 +418,11 @@ function ActualsCard({ actuals: a, onEdit, onDelete }: { actuals: QuoteActuals; 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-gray-50/40">
-            <th className="py-2.5 px-4">Component</th>
-            <th className="py-2.5 px-3 text-right">Estimated</th>
-            <th className="py-2.5 px-3 text-right">Actual</th>
-            <th className="py-2.5 px-3 text-right">Variance ₹</th>
-            <th className="py-2.5 px-3 text-right">Variance %</th>
+            <th scope="col" className="py-2.5 px-4">Component</th>
+            <th scope="col" className="py-2.5 px-3 text-right">Estimated</th>
+            <th scope="col" className="py-2.5 px-3 text-right">Actual</th>
+            <th scope="col" className="py-2.5 px-3 text-right">Variance ₹</th>
+            <th scope="col" className="py-2.5 px-3 text-right">Variance %</th>
           </tr></thead>
           <tbody className="divide-y divide-gray-50">
             {rows.map(({ label, key }) => {
@@ -522,15 +522,16 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
     return <span className={`text-xs font-semibold ${cls}`}>{diff > 0 ? '+' : ''}{diff.toFixed(2)}{p != null ? ` (${p > 0 ? '+' : ''}${p.toFixed(1)}%)` : ''}</span>;
   };
 
+  const headingId = useId();
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center p-5 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{existing ? 'Edit' : 'Enter'} Production Actuals</h2>
+            <h2 id={headingId} className="text-lg font-bold text-slate-900">{existing ? 'Edit' : 'Enter'} Production Actuals</h2>
             <p className="text-xs text-gray-400 mt-0.5">{quote.quote_ref} · {quote.bom_code}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-5 space-y-5">
           <div className="grid grid-cols-2 gap-3">
@@ -558,10 +559,10 @@ function ActualsModal({ quote, existing, preBands, onClose, onSaved }: { quote: 
             <div className="border border-gray-100 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead><tr className="text-xs font-semibold text-gray-400 uppercase border-b border-gray-100 bg-gray-50/60">
-                  <th className="py-2 px-3 text-left">Component</th>
-                  <th className="py-2 px-3 text-center">Estimated</th>
-                  <th className="py-2 px-3 text-center">Actual</th>
-                  <th className="py-2 px-3 text-right">Variance</th>
+                  <th scope="col" className="py-2 px-3 text-left">Component</th>
+                  <th scope="col" className="py-2 px-3 text-center">Estimated</th>
+                  <th scope="col" className="py-2 px-3 text-center">Actual</th>
+                  <th scope="col" className="py-2 px-3 text-right">Variance</th>
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {[
@@ -621,10 +622,11 @@ function ConvertModal({ quote, onClose, onDone }: { quote: SavedQuoteFull; onClo
     else toast.error(r.error ? String(r.error) : 'Failed to convert');
   };
 
+  const headingId = useId();
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">Convert to Sales Order</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 id={headingId} className="text-lg font-bold text-slate-900">Convert to Sales Order</h2><button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="MOQ Band">
             <select className={inputClassName} value={bandIdx} onChange={(e) => pickBand(Number(e.target.value))}>
@@ -656,10 +658,11 @@ function StatusModal({ action, quoteId, quoteRef, onClose, onDone }: { action: A
     if (r.success && r.data) { toast.success(`${quoteRef} → ${action.label}`); onDone(r.data); }
     else toast.error(r.error ? String(r.error) : 'Failed to change status');
   };
+  const headingId = useId();
   return (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">{action.label}</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-white rounded-xl shadow-lg w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 id={headingId} className="text-lg font-bold text-slate-900">{action.label}</h2><button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
         <div className="p-5">
           <FormField label="Note (optional)"><textarea className={inputClassName} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason or comment for the audit trail…" /></FormField>
         </div>

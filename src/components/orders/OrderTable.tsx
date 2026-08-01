@@ -54,14 +54,14 @@ const OrderSortButton: React.FC<OrderSortButtonProps> = ({
 }) => (
   <button
     onClick={() => onSort(field)}
-    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+    className="flex items-center gap-1 hover:text-brand transition-colors"
   >
     {label}
     <span className="text-xs">
       {sortField === field ? (
         sortDirection === 'asc' ? '▲' : '▼'
       ) : (
-        <span className="text-gray-400">⇅</span>
+        <span className="text-ink-4">⇅</span>
       )}
     </span>
   </button>
@@ -487,10 +487,10 @@ const OrderTable: React.FC = () => {
 
   const getPriorityColor = (priority: Order['priority']) => {
     const colors = {
-      'Low': 'text-slate-400',
-      'Medium': 'text-blue-600',
-      'High': 'text-slate-800',
-      'Urgent': 'text-red-600 font-bold'
+      'Low': 'text-ink-4',
+      'Medium': 'text-brand',
+      'High': 'text-ink',
+      'Urgent': 'text-err font-bold'
     };
     return colors[priority];
   };
@@ -518,17 +518,17 @@ const OrderTable: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
+    <div className="p-6 bg-surface-3 min-h-screen">
       {/* Create Order Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="create-order-modal-title">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Create New Order</h2>
+                <h2 id="create-order-modal-title" className="text-2xl font-bold text-ink">Create New Order</h2>
                 <button
                   onClick={handleCloseCreateModal}
-                  className="text-slate-500 hover:text-gray-700 text-2xl"
+                  className="text-ink-3 hover:text-ink-2 text-2xl"
                 >
                   ×
                 </button>
@@ -537,76 +537,82 @@ const OrderTable: React.FC = () => {
               <div className="space-y-6">
                 {/* Company Information */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-700 mb-3">Company Information</h3>
+                  <h3 className="text-lg font-semibold text-ink-2 mb-3">Company Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Company Name *
                       </label>
                       <input
                         type="text"
                         value={formData.companyName || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Enter company name"
+                        aria-label="Enter company name"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Address *
                       </label>
                       <input
                         type="text"
                         value={formData.doctorClinicAddress || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, doctorClinicAddress: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Enter address"
+                        aria-label="Enter address"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Contact Person
                       </label>
                       <input
                         type="text"
                         value={formData.contactPerson || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactPerson: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Contact person name"
+                        aria-label="Contact person name"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Email
                       </label>
                       <input
                         type="email"
                         value={formData.contactEmail || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="email@example.com"
+                        aria-label="Email"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Phone
                       </label>
                       <input
                         type="tel"
                         value={formData.contactPhone || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="+1-555-0000"
+                        aria-label="Phone"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Priority
                       </label>
                       <select
                         value={formData.priority || 'Medium'}
                         onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value as Order['priority'] }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
+                        aria-label="Priority"
                       >
                         <option value="Low">Low</option>
                         <option value="Medium">Medium</option>
@@ -620,10 +626,10 @@ const OrderTable: React.FC = () => {
                 {/* Products */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-semibold text-gray-700">Products *</h3>
+                    <h3 className="text-lg font-semibold text-ink-2">Products *</h3>
                     <button
                       onClick={addProduct}
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                      className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-sm"
                     >
                       + Add Product
                     </button>
@@ -632,48 +638,52 @@ const OrderTable: React.FC = () => {
                     {formProducts.map((product) => (
                       <div key={product.id} className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="block text-xs text-slate-400 mb-1">Product Name</label>
+                          <label className="block text-xs text-ink-4 mb-1">Product Name</label>
                           <input
                             type="text"
                             value={product.name}
                             onChange={(e) => updateProduct(product.id, 'name', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             placeholder="Product name"
+                            aria-label="Product name"
                           />
                         </div>
                         <div className="w-24">
-                          <label className="block text-xs text-slate-400 mb-1">Quantity</label>
+                          <label className="block text-xs text-ink-4 mb-1">Quantity</label>
                           <input
                             type="number"
                             value={product.quantity}
                             onChange={(e) => updateProduct(product.id, 'quantity', parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             min="1"
+                            aria-label="Quantity"
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-slate-400 mb-1">Unit Price (₹)</label>
+                          <label className="block text-xs text-ink-4 mb-1">Unit Price (₹)</label>
                           <input
                             type="number"
                             value={product.unitPrice}
                             onChange={(e) => updateProduct(product.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             min="0"
                             step="0.01"
+                            aria-label="Unit Price (₹)"
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-slate-400 mb-1">Total (₹)</label>
+                          <label className="block text-xs text-ink-4 mb-1">Total (₹)</label>
                           <input
                             type="text"
                             value={product.total.toFixed(2)}
                             readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-surface-3 text-sm"
+                            aria-label="Total (₹)"
                           />
                         </div>
                         <button
                           onClick={() => removeProduct(product.id)}
-                          className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                          className="px-3 py-2 bg-err text-white rounded hover:bg-err text-sm"
                         >
                           ×
                         </button>
@@ -682,7 +692,7 @@ const OrderTable: React.FC = () => {
                   </div>
                   {formProducts.length > 0 && (
                     <div className="mt-3 text-right">
-                      <span className="text-lg font-bold text-gray-800">
+                      <span className="text-lg font-bold text-ink">
                         Total: ₹{formProducts.reduce((sum, p) => sum + p.total, 0).toFixed(2)}
                       </span>
                     </div>
@@ -691,15 +701,16 @@ const OrderTable: React.FC = () => {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-2 mb-1">
                     Notes
                   </label>
                   <textarea
                     value={formData.notes || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                     rows={3}
                     placeholder="Additional notes or instructions..."
+                    aria-label="Notes"
                   />
                 </div>
 
@@ -707,13 +718,13 @@ const OrderTable: React.FC = () => {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseCreateModal}
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
+                    className="px-6 py-2 border border-border rounded-lg hover:bg-surface-2"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCreateOrder}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    className="px-6 py-2 bg-brand text-white rounded-lg hover:bg-brand-press"
                   >
                     Create Order
                   </button>
@@ -727,13 +738,13 @@ const OrderTable: React.FC = () => {
       {/* Edit Order Modal */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="edit-order-modal-title">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Edit Order</h2>
+                <h2 id="edit-order-modal-title" className="text-2xl font-bold text-ink">Edit Order</h2>
                 <button
                   onClick={handleCloseEditModal}
-                  className="text-slate-500 hover:text-gray-700 text-2xl"
+                  className="text-ink-3 hover:text-ink-2 text-2xl"
                 >
                   ×
                 </button>
@@ -742,76 +753,82 @@ const OrderTable: React.FC = () => {
               <div className="space-y-6">
                 {/* Company Information */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-700 mb-3">Company Information</h3>
+                  <h3 className="text-lg font-semibold text-ink-2 mb-3">Company Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Company Name *
                       </label>
                       <input
                         type="text"
                         value={formData.companyName || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Enter company name"
+                        aria-label="Enter company name"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Address *
                       </label>
                       <input
                         type="text"
                         value={formData.doctorClinicAddress || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, doctorClinicAddress: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Enter address"
+                        aria-label="Enter address"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Contact Person
                       </label>
                       <input
                         type="text"
                         value={formData.contactPerson || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactPerson: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="Contact person name"
+                        aria-label="Contact person name"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Email
                       </label>
                       <input
                         type="email"
                         value={formData.contactEmail || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="email@example.com"
+                        aria-label="Email"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Phone
                       </label>
                       <input
                         type="tel"
                         value={formData.contactPhone || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                         placeholder="+1-555-0000"
+                        aria-label="Phone"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-ink-2 mb-1">
                         Priority
                       </label>
                       <select
                         value={formData.priority || 'Medium'}
                         onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value as Order['priority'] }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
+                        aria-label="Priority"
                       >
                         <option value="Low">Low</option>
                         <option value="Medium">Medium</option>
@@ -825,10 +842,10 @@ const OrderTable: React.FC = () => {
                 {/* Products */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-semibold text-gray-700">Products *</h3>
+                    <h3 className="text-lg font-semibold text-ink-2">Products *</h3>
                     <button
                       onClick={addProduct}
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                      className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-sm"
                     >
                       + Add Product
                     </button>
@@ -837,48 +854,52 @@ const OrderTable: React.FC = () => {
                     {formProducts.map((product) => (
                       <div key={product.id} className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="block text-xs text-slate-400 mb-1">Product Name</label>
+                          <label className="block text-xs text-ink-4 mb-1">Product Name</label>
                           <input
                             type="text"
                             value={product.name}
                             onChange={(e) => updateProduct(product.id, 'name', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             placeholder="Product name"
+                            aria-label="Product name"
                           />
                         </div>
                         <div className="w-24">
-                          <label className="block text-xs text-slate-400 mb-1">Quantity</label>
+                          <label className="block text-xs text-ink-4 mb-1">Quantity</label>
                           <input
                             type="number"
                             value={product.quantity}
                             onChange={(e) => updateProduct(product.id, 'quantity', parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             min="1"
+                            aria-label="Quantity"
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-slate-400 mb-1">Unit Price (₹)</label>
+                          <label className="block text-xs text-ink-4 mb-1">Unit Price (₹)</label>
                           <input
                             type="number"
                             value={product.unitPrice}
                             onChange={(e) => updateProduct(product.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                             min="0"
                             step="0.01"
+                            aria-label="Unit Price (₹)"
                           />
                         </div>
                         <div className="w-32">
-                          <label className="block text-xs text-slate-400 mb-1">Total (₹)</label>
+                          <label className="block text-xs text-ink-4 mb-1">Total (₹)</label>
                           <input
                             type="text"
                             value={product.total.toFixed(2)}
                             readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-slate-50 text-sm"
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-surface-3 text-sm"
+                            aria-label="Total (₹)"
                           />
                         </div>
                         <button
                           onClick={() => removeProduct(product.id)}
-                          className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                          className="px-3 py-2 bg-err text-white rounded hover:bg-err text-sm"
                         >
                           ×
                         </button>
@@ -887,7 +908,7 @@ const OrderTable: React.FC = () => {
                   </div>
                   {formProducts.length > 0 && (
                     <div className="mt-3 text-right">
-                      <span className="text-lg font-bold text-gray-800">
+                      <span className="text-lg font-bold text-ink">
                         Total: ₹{formProducts.reduce((sum, p) => sum + p.total, 0).toFixed(2)}
                       </span>
                     </div>
@@ -896,15 +917,16 @@ const OrderTable: React.FC = () => {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-ink-2 mb-1">
                     Notes
                   </label>
                   <textarea
                     value={formData.notes || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
                     rows={3}
                     placeholder="Additional notes or instructions..."
+                    aria-label="Notes"
                   />
                 </div>
 
@@ -912,13 +934,13 @@ const OrderTable: React.FC = () => {
                 <div className="flex justify-end gap-3">
                   <button
                     onClick={handleCloseEditModal}
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
+                    className="px-6 py-2 border border-border rounded-lg hover:bg-surface-2"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleEditOrder}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                    className="px-6 py-2 bg-brand text-white rounded-lg hover:bg-brand-press"
                   >
                     Update Order
                   </button>
@@ -932,13 +954,13 @@ const OrderTable: React.FC = () => {
       {/* Details Modal */}
       {showDetailsModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="details-order-modal-title">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
+                <h2 id="details-order-modal-title" className="text-2xl font-bold text-ink">Order Details</h2>
                 <button
                   onClick={handleCloseDetailsModal}
-                  className="text-slate-500 hover:text-gray-700 text-2xl"
+                  className="text-ink-3 hover:text-ink-2 text-2xl"
                 >
                   ×
                 </button>
@@ -948,11 +970,11 @@ const OrderTable: React.FC = () => {
                 {/* Order Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm text-slate-500">Order ID</label>
-                    <p className="text-lg font-semibold text-gray-800">{selectedOrder.orderId}</p>
+                    <label className="text-sm text-ink-3">Order ID</label>
+                    <p className="text-lg font-semibold text-ink">{selectedOrder.orderId}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-slate-500">Status</label>
+                    <label className="text-sm text-ink-3">Status</label>
                     <p>
                       <UnifiedBadge variant={getStatusBadgeColor(selectedOrder.orderStatus)}>
                         {selectedOrder.orderStatus}
@@ -960,71 +982,71 @@ const OrderTable: React.FC = () => {
                     </p>
                   </div>
                   <div>
-                    <label className="text-sm text-slate-500">Company Name</label>
-                    <p className="text-gray-800">{selectedOrder.companyName}</p>
+                    <label className="text-sm text-ink-3">Company Name</label>
+                    <p className="text-ink">{selectedOrder.companyName}</p>
                   </div>
                   <div>
-                    <label className="text-sm text-slate-500">Priority</label>
+                    <label className="text-sm text-ink-3">Priority</label>
                     <p className={`font - medium ${getPriorityColor(selectedOrder.priority)} `}>
                       {selectedOrder.priority}
                     </p>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm text-slate-500">Address</label>
-                    <p className="text-gray-800">{selectedOrder.doctorClinicAddress}</p>
+                    <label className="text-sm text-ink-3">Address</label>
+                    <p className="text-ink">{selectedOrder.doctorClinicAddress}</p>
                   </div>
                   {selectedOrder.contactPerson && (
                     <div>
-                      <label className="text-sm text-slate-500">Contact Person</label>
-                      <p className="text-gray-800">{selectedOrder.contactPerson}</p>
+                      <label className="text-sm text-ink-3">Contact Person</label>
+                      <p className="text-ink">{selectedOrder.contactPerson}</p>
                     </div>
                   )}
                   {selectedOrder.contactEmail && (
                     <div>
-                      <label className="text-sm text-slate-500">Email</label>
-                      <p className="text-gray-800">{selectedOrder.contactEmail}</p>
+                      <label className="text-sm text-ink-3">Email</label>
+                      <p className="text-ink">{selectedOrder.contactEmail}</p>
                     </div>
                   )}
                   {selectedOrder.contactPhone && (
                     <div>
-                      <label className="text-sm text-slate-500">Phone</label>
-                      <p className="text-gray-800">{selectedOrder.contactPhone}</p>
+                      <label className="text-sm text-ink-3">Phone</label>
+                      <p className="text-ink">{selectedOrder.contactPhone}</p>
                     </div>
                   )}
                   <div>
-                    <label className="text-sm text-slate-500">Date Registered</label>
-                    <p className="text-gray-800">{selectedOrder.dateRegistered}</p>
+                    <label className="text-sm text-ink-3">Date Registered</label>
+                    <p className="text-ink">{selectedOrder.dateRegistered}</p>
                   </div>
                 </div>
 
                 {/* Products */}
                 {selectedOrder.products && selectedOrder.products.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-3">Products</h3>
+                    <h3 className="text-lg font-semibold text-ink-2 mb-3">Products</h3>
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full">
-                        <thead className="bg-slate-50">
+                        <thead className="bg-surface-3">
                           <tr>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Product</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Quantity</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Unit Price</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
+                            <th scope="col" className="px-4 py-2 text-left text-sm font-semibold text-ink-2">Product</th>
+                            <th scope="col" className="px-4 py-2 text-right text-sm font-semibold text-ink-2">Quantity</th>
+                            <th scope="col" className="px-4 py-2 text-right text-sm font-semibold text-ink-2">Unit Price</th>
+                            <th scope="col" className="px-4 py-2 text-right text-sm font-semibold text-ink-2">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {selectedOrder.products.map((product) => (
                             <tr key={product.id}>
-                              <td className="px-4 py-2 text-sm text-gray-800">{product.name}</td>
-                              <td className="px-4 py-2 text-sm text-gray-800 text-right">{product.quantity}</td>
-                              <td className="px-4 py-2 text-sm text-gray-800 text-right">₹{product.unitPrice.toFixed(2)}</td>
-                              <td className="px-4 py-2 text-sm font-medium text-gray-800 text-right">₹{product.total.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm text-ink">{product.name}</td>
+                              <td className="px-4 py-2 text-sm text-ink text-right">{product.quantity}</td>
+                              <td className="px-4 py-2 text-sm text-ink text-right">₹{product.unitPrice.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-sm font-medium text-ink text-right">₹{product.total.toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot className="bg-slate-50">
+                        <tfoot className="bg-surface-3">
                           <tr>
-                            <td colSpan={3} className="px-4 py-2 text-right font-semibold text-gray-700">Grand Total:</td>
-                            <td className="px-4 py-2 text-right font-bold text-gray-900">₹{selectedOrder.totalAmount.toLocaleString()}</td>
+                            <td colSpan={3} className="px-4 py-2 text-right font-semibold text-ink-2">Grand Total:</td>
+                            <td className="px-4 py-2 text-right font-bold text-ink">₹{selectedOrder.totalAmount.toLocaleString()}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -1035,14 +1057,14 @@ const OrderTable: React.FC = () => {
                 {/* Status History Timeline */}
                 {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-3">Order Timeline</h3>
+                    <h3 className="text-lg font-semibold text-ink-2 mb-3">Order Timeline</h3>
                     <div className="space-y-3">
                       {selectedOrder.statusHistory.map((history, index) => (
                         <div key={index} className="flex gap-3">
                           <div className="flex flex-col items-center">
-                            <div className={`w - 3 h - 3 rounded - full ${index === selectedOrder.statusHistory!.length - 1 ? 'bg-blue-500' : 'bg-gray-400'} `}></div>
+                            <div className={`w - 3 h - 3 rounded - full ${index === selectedOrder.statusHistory!.length - 1 ? 'bg-brand' : 'bg-ink-4'} `}></div>
                             {index < selectedOrder.statusHistory!.length - 1 && (
-                              <div className="w-0.5 h-full bg-gray-300 my-1"></div>
+                              <div className="w-0.5 h-full bg-surface-3 my-1"></div>
                             )}
                           </div>
                           <div className="flex-1 pb-4">
@@ -1050,10 +1072,10 @@ const OrderTable: React.FC = () => {
                               <UnifiedBadge variant={getStatusBadgeColor(history.status as Order['orderStatus'])}>
                                 {history.status}
                               </UnifiedBadge>
-                              <span className="text-xs text-slate-500">{history.timestamp}</span>
+                              <span className="text-xs text-ink-3">{history.timestamp}</span>
                             </div>
-                            <p className="text-sm text-slate-400 mt-1">Changed by: {history.changedBy}</p>
-                            {history.notes && <p className="text-sm text-gray-700 mt-1">{history.notes}</p>}
+                            <p className="text-sm text-ink-4 mt-1">Changed by: {history.changedBy}</p>
+                            {history.notes && <p className="text-sm text-ink-2 mt-1">{history.notes}</p>}
                           </div>
                         </div>
                       ))}
@@ -1064,16 +1086,16 @@ const OrderTable: React.FC = () => {
                 {/* Notes */}
                 {selectedOrder.notes && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Notes</h3>
-                    <p className="text-gray-700 bg-slate-50 p-3 rounded-lg">{selectedOrder.notes}</p>
+                    <h3 className="text-lg font-semibold text-ink-2 mb-2">Notes</h3>
+                    <p className="text-ink-2 bg-surface-3 p-3 rounded-lg">{selectedOrder.notes}</p>
                   </div>
                 )}
 
                 {/* Cancellation Reason */}
                 {selectedOrder.cancellationReason && (
                   <div>
-                    <h3 className="text-lg font-semibold text-red-700 mb-2">Cancellation Reason</h3>
-                    <p className="text-gray-700 bg-red-50 p-3 rounded-lg border border-red-200">{selectedOrder.cancellationReason}</p>
+                    <h3 className="text-lg font-semibold text-err mb-2">Cancellation Reason</h3>
+                    <p className="text-ink-2 bg-err-soft p-3 rounded-lg border border-[color:var(--st-red-fg)]/30">{selectedOrder.cancellationReason}</p>
                   </div>
                 )}
 
@@ -1081,7 +1103,7 @@ const OrderTable: React.FC = () => {
                 <div className="flex gap-3">
                   <button
                     onClick={handleCloseDetailsModal}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
+                    className="px-4 py-2 border border-border rounded-lg hover:bg-surface-2"
                   >
                     Close
                   </button>
@@ -1095,35 +1117,36 @@ const OrderTable: React.FC = () => {
       {/* Cancel Order Modal */}
       {showCancelModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
+          <div className="bg-white rounded-lg w-full max-w-md" role="dialog" aria-modal="true" aria-labelledby="cancel-order-modal-title">
             <div className="p-6">
-              <h2 className="text-xl font-bold text-red-600 mb-4">Cancel Order</h2>
-              <p className="text-gray-700 mb-4">
+              <h2 id="cancel-order-modal-title" className="text-xl font-bold text-err mb-4">Cancel Order</h2>
+              <p className="text-ink-2 mb-4">
                 Are you sure you want to cancel order <strong>{selectedOrder.orderId}</strong>?
                 This action cannot be undone.
               </p>
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-2 mb-2">
                   Cancellation Reason *
                 </label>
                 <textarea
                   value={cancellationReason}
                   onChange={(e) => setCancellationReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--st-red-fg)]"
                   rows={3}
                   placeholder="Please provide a reason for cancellation..."
+                  aria-label="Cancellation reason"
                 />
               </div>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={handleCloseCancelModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-slate-50"
+                  className="px-4 py-2 border border-border rounded-lg hover:bg-surface-2"
                 >
                   No, Keep Order
                 </button>
                 <button
                   onClick={handleCancelOrder}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                  className="px-4 py-2 bg-err text-white rounded-lg hover:bg-err"
                 >
                   Yes, Cancel Order
                 </button>
@@ -1136,34 +1159,34 @@ const OrderTable: React.FC = () => {
       {/* Quick Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-slate-500 text-sm">Total Orders</div>
-          <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
+          <div className="text-ink-3 text-sm">Total Orders</div>
+          <div className="text-2xl font-bold text-ink">{stats.total}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-slate-500 text-sm">Pending</div>
-          <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+          <div className="text-ink-3 text-sm">Pending</div>
+          <div className="text-2xl font-bold text-warn">{stats.pending}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-slate-500 text-sm">Processing</div>
-          <div className="text-2xl font-bold text-blue-600">{stats.processing}</div>
+          <div className="text-ink-3 text-sm">Processing</div>
+          <div className="text-2xl font-bold text-brand">{stats.processing}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-slate-500 text-sm">Shipped</div>
-          <div className="text-2xl font-bold text-indigo-600">{stats.shipped}</div>
+          <div className="text-ink-3 text-sm">Shipped</div>
+          <div className="text-2xl font-bold text-brand">{stats.shipped}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="text-slate-500 text-sm">Delivered</div>
-          <div className="text-2xl font-bold text-green-600">{stats.delivered}</div>
+          <div className="text-ink-3 text-sm">Delivered</div>
+          <div className="text-2xl font-bold text-ok">{stats.delivered}</div>
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-md">
         {/* Header with Filter Toggle */}
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">Order Tracker</h2>
+          <h2 className="text-xl font-semibold text-ink">Order Tracker</h2>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="md:hidden px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            className="md:hidden px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-press"
           >
             {showFilters ? 'Hide Filters' : 'Show Filters'}
           </button>
@@ -1174,7 +1197,7 @@ const OrderTable: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {/* Quick Search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Quick Search
               </label>
               <input
@@ -1185,13 +1208,14 @@ const OrderTable: React.FC = () => {
                   setCurrentPage(1);
                 }}
                 placeholder="Search by Order ID, Company, Product..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Search by Order ID, Company, Product..."
               />
             </div>
 
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Order Status
               </label>
               <select
@@ -1200,7 +1224,8 @@ const OrderTable: React.FC = () => {
                   setStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Order Status"
               >
                 <option value="all">All Statuses</option>
                 <option value="Pending">Pending</option>
@@ -1216,7 +1241,7 @@ const OrderTable: React.FC = () => {
 
             {/* Product Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Product Type
               </label>
               <select
@@ -1225,7 +1250,8 @@ const OrderTable: React.FC = () => {
                   setProductTypeFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Product Type"
               >
                 <option value="all">All Products</option>
                 <option value="Medical Equipment">Medical Equipment</option>
@@ -1239,7 +1265,7 @@ const OrderTable: React.FC = () => {
 
             {/* Priority Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Priority
               </label>
               <select
@@ -1248,7 +1274,8 @@ const OrderTable: React.FC = () => {
                   setPriorityFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Priority"
               >
                 <option value="all">All Priorities</option>
                 <option value="Low">Low</option>
@@ -1260,7 +1287,7 @@ const OrderTable: React.FC = () => {
 
             {/* Date From */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Date From
               </label>
               <input
@@ -1270,13 +1297,14 @@ const OrderTable: React.FC = () => {
                   setDateFrom(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Date From"
               />
             </div>
 
             {/* Date To */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink-2 mb-1">
                 Date To
               </label>
               <input
@@ -1286,7 +1314,8 @@ const OrderTable: React.FC = () => {
                   setDateTo(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
+                aria-label="Date To"
               />
             </div>
           </div>
@@ -1295,13 +1324,13 @@ const OrderTable: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleClearFilters}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 transition-colors"
             >
               Clear All Filters
             </button>
             <button
               onClick={() => setShowSaveFilter(!showSaveFilter)}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-press transition-colors"
             >
               {showSaveFilter ? 'Cancel Save' : 'Save Current Filter'}
             </button>
@@ -1310,7 +1339,7 @@ const OrderTable: React.FC = () => {
           {/* Save Filter Form */}
           {showSaveFilter && (
             <div className="mt-4 p-4 bg-white rounded-lg border">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-ink-2 mb-2">
                 Filter Name
               </label>
               <div className="flex gap-2">
@@ -1319,11 +1348,12 @@ const OrderTable: React.FC = () => {
                   value={filterName}
                   onChange={(e) => setFilterName(e.target.value)}
                   placeholder="e.g., High Priority Pending Orders"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]"
+                  aria-label="Filter Name"
                 />
                 <button
                   onClick={handleSaveFilter}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                  className="px-4 py-2 bg-ok text-white rounded-lg hover:bg-ok"
                 >
                   Save
                 </button>
@@ -1334,19 +1364,19 @@ const OrderTable: React.FC = () => {
           {/* Saved Filters */}
           {savedFilters.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-gray-600 mb-2">Saved Filters</h3>
+              <h3 className="text-sm font-medium text-ink-3 mb-2">Saved Filters</h3>
               <div className="flex flex-wrap gap-2">
                 {savedFilters.map(filter => (
-                  <div key={filter.id} className="flex items-center gap-1 bg-blue-100 px-3 py-1 rounded-full">
+                  <div key={filter.id} className="flex items-center gap-1 bg-brand-soft px-3 py-1 rounded-full">
                     <button
                       onClick={() => handleLoadFilter(filter)}
-                      className="text-blue-700 hover:text-blue-900 font-medium"
+                      className="text-brand hover:text-brand font-medium"
                     >
                       {filter.name}
                     </button>
                     <button
                       onClick={() => handleDeleteFilter(filter.id)}
-                      className="text-red-600 hover:text-red-800 ml-1"
+                      className="text-err hover:text-err ml-1"
                     >
                       ×
                     </button>
@@ -1359,32 +1389,32 @@ const OrderTable: React.FC = () => {
 
         {/* Bulk Actions */}
         {selectedOrders.length > 0 && (
-          <div className="p-4 bg-blue-50 border-b flex flex-wrap items-center gap-4">
-            <span className="text-sm font-medium text-gray-700">
+          <div className="p-4 bg-brand-soft border-b flex flex-wrap items-center gap-4">
+            <span className="text-sm font-medium text-ink-2">
               {selectedOrders.length} order(s) selected
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => handleBulkAction('Approve')}
-                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                className="px-3 py-1 bg-ok text-white rounded hover:bg-ok text-sm"
               >
                 Approve Selected
               </button>
               <button
                 onClick={() => handleBulkAction('Reject')}
-                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                className="px-3 py-1 bg-err text-white rounded hover:bg-err text-sm"
               >
                 Reject Selected
               </button>
               <button
                 onClick={() => handleBulkAction('Export')}
-                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-sm"
               >
                 Export Selected
               </button>
               <button
                 onClick={() => setSelectedOrders([])}
-                className="px-3 py-1 bg-slate-500 text-white rounded hover:bg-gray-600 text-sm"
+                className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-sm"
               >
                 Clear Selection
               </button>
@@ -1395,65 +1425,67 @@ const OrderTable: React.FC = () => {
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-100 border-b">
+            <thead className="bg-surface-3 border-b">
               <tr>
-                <th className="px-4 py-3 text-left">
+                <th scope="col" className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
                     checked={selectedOrders.length === currentRecords.length && currentRecords.length > 0}
                     onChange={handleSelectAll}
-                    className="rounded border-gray-300"
+                    className="rounded border-border"
+                    aria-label="Select all orders"
                   />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="orderId" label="Order ID" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="companyName" label="Company" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="productType" label="Product Type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="quantity" label="Quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="totalAmount" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="priority" label="Priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="dateRegistered" label="Date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-ink-2">
                   <OrderSortButton field="orderStatus" label="Status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                <th scope="col" className="px-4 py-3 text-center text-sm font-semibold text-ink-2">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-hairline">
               {currentRecords.map((order) => (
-                <tr key={order.orderId} className="hover:bg-slate-50">
+                <tr key={order.orderId} className="hover:bg-surface-2">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
                       checked={selectedOrders.includes(order.orderId)}
                       onChange={() => handleSelectOrder(order.orderId)}
-                      className="rounded border-gray-300"
+                      className="rounded border-border"
+                      aria-label={`Select order ${order.orderId}`}
                     />
                   </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.orderId}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{order.companyName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{order.productType}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{order.quantity}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700 font-medium">₹{order.totalAmount.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-ink">{order.orderId}</td>
+                  <td className="px-4 py-3 text-sm text-ink-2">{order.companyName}</td>
+                  <td className="px-4 py-3 text-sm text-ink-2">{order.productType}</td>
+                  <td className="px-4 py-3 text-sm text-ink-2">{order.quantity}</td>
+                  <td className="px-4 py-3 text-sm text-ink-2 font-medium">₹{order.totalAmount.toLocaleString()}</td>
                   <td className={`px - 4 py - 3 text - sm font - medium ${getPriorityColor(order.priority)} `}>
                     {order.priority}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{order.dateRegistered}</td>
+                  <td className="px-4 py-3 text-sm text-ink-2">{order.dateRegistered}</td>
                   <td className="px-4 py-3">
                     <UnifiedBadge variant={getStatusBadgeColor(order.orderStatus)}>
                       {order.orderStatus}
@@ -1463,7 +1495,7 @@ const OrderTable: React.FC = () => {
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => openDetailsModal(order)}
-                        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+                        className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-xs"
                         title="View Details"
                       >
                         View
@@ -1477,24 +1509,25 @@ const OrderTable: React.FC = () => {
         </div>
 
         {/* Mobile Card View */}
-        <div className="md:hidden divide-y divide-gray-200">
+        <div className="md:hidden divide-y divide-hairline">
           {currentRecords.map((order) => (
-            <div key={order.orderId} className="p-4 hover:bg-slate-50">
+            <div key={order.orderId} className="p-4 hover:bg-surface-2">
               <div className="flex items-start gap-3 mb-3">
                 <input
                   type="checkbox"
                   checked={selectedOrders.includes(order.orderId)}
                   onChange={() => handleSelectOrder(order.orderId)}
-                  className="mt-1 rounded border-gray-300"
+                  className="mt-1 rounded border-border"
+                  aria-label={`Select order ${order.orderId}`}
                 />
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-2">
-                    <span className="font-semibold text-gray-900">{order.orderId}</span>
+                    <span className="font-semibold text-ink">{order.orderId}</span>
                     <UnifiedBadge variant={getStatusBadgeColor(order.orderStatus)}>
                       {order.orderStatus}
                     </UnifiedBadge>
                   </div>
-                  <div className="space-y-1 text-sm text-gray-600">
+                  <div className="space-y-1 text-sm text-ink-3">
                     <div><strong>Company:</strong> {order.companyName}</div>
                     <div><strong>Product:</strong> {order.productType}</div>
                     <div><strong>Quantity:</strong> {order.quantity}</div>
@@ -1503,13 +1536,13 @@ const OrderTable: React.FC = () => {
                       <span><strong>Priority:</strong> <span className={getPriorityColor(order.priority)}>{order.priority}</span></span>
                       <span><strong>Date:</strong> {order.dateRegistered}</span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">{order.doctorClinicAddress}</div>
+                    <div className="text-xs text-ink-3 mt-1">{order.doctorClinicAddress}</div>
                   </div>
                   {/* Mobile Actions */}
                   <div className="flex flex-wrap gap-2 mt-3">
                     <button
                       onClick={() => openDetailsModal(order)}
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+                      className="px-3 py-1 bg-brand text-white rounded hover:bg-brand-press text-xs"
                     >
                       View Details
                     </button>
@@ -1522,14 +1555,14 @@ const OrderTable: React.FC = () => {
 
         {/* Pagination */}
         <div className="p-4 border-t flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-ink-3">
             Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, sortedOrders.length)} of {sortedOrders.length} orders
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
@@ -1539,7 +1572,7 @@ const OrderTable: React.FC = () => {
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>

@@ -272,12 +272,12 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                  <th className="px-3 py-2 w-10">Pick</th>
-                  <th className="px-3 py-2">Lab Vendor</th>
-                  <th className="px-3 py-2">Tier</th>
-                  <th className="px-3 py-2">Price / sample</th>
-                  <th className="px-3 py-2">Lead Time</th>
-                  <th className="px-3 py-2">Last used</th>
+                  <th scope="col" className="px-3 py-2 w-10">Pick</th>
+                  <th scope="col" className="px-3 py-2">Lab Vendor</th>
+                  <th scope="col" className="px-3 py-2">Tier</th>
+                  <th scope="col" className="px-3 py-2">Price / sample</th>
+                  <th scope="col" className="px-3 py-2">Lead Time</th>
+                  <th scope="col" className="px-3 py-2">Last used</th>
                 </tr>
               </thead>
               <tbody>
@@ -340,6 +340,7 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
               onChange={(e) => setSampleNote(e.target.value)}
               className="mt-1.5 w-full rounded border border-slate-300 px-2 py-1.5 text-[11px] text-slate-700"
               placeholder="e.g. 100 g each from drum 1 & 4"
+              aria-label="Sample note"
             />
           </label>
           <StatCell label="Price / unit (from list)" value={formatInr(pricePerSample)} />

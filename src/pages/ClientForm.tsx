@@ -806,10 +806,10 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -904,14 +904,14 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Email</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Level</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Preferred</th>
-                        <th className="px-3 py-3"></th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Email</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Level</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Preferred</th>
+                        <th scope="col" className="px-3 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1007,14 +1007,14 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">A/c</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">IFSC</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Default</th>
-                        <th className="px-3 py-3"></th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">A/c</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">IFSC</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Type</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-600">Default</th>
+                        <th scope="col" className="px-3 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1224,14 +1224,14 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Category</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Volume</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Frequency</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Price</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Priority</th>
-                        <th className="px-2 py-3"></th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Category</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Volume</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Frequency</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Price</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-gray-600">Priority</th>
+                        <th scope="col" className="px-2 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>

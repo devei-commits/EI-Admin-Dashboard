@@ -30,8 +30,8 @@ const KPI = ({
   label: string;
   children: React.ReactNode;
 }) => (
-  <div className="bg-black/10 dark:bg-black/15 border border-gray-200 dark:border-gray-700 rounded-lg py-2.5 px-3">
-    <div className="text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+  <div className="bg-black/10 dark:bg-black/15 border border-border rounded-lg py-2.5 px-3">
+    <div className="text-[9px] font-bold text-ink-3 uppercase tracking-wider mb-0.5">
       {label}
     </div>
     <div className="text-[11.5px] font-bold">{children}</div>
@@ -96,11 +96,11 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
 
   const modalTitle = (
     <div>
-      <div className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight" id="sod-title">
+      <div className="text-xl font-bold text-ink tracking-tight" id="sod-title">
         {saleOrder.soNo}
       </div>
       <div
-        className="text-[10.5px] text-gray-500 dark:text-gray-400 mt-0.5"
+        className="text-[10.5px] text-ink-3 mt-0.5"
         id="sod-sub"
       >
         {saleOrder.customer}
@@ -157,7 +157,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
           <KPI label="Payment">{formatStagedPaymentTermsSummary(saleOrder.paymentTerms)}</KPI>
           <KPI label="Priority">
             {saleOrder.priority === 'high' ? (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-err/15 text-err border border-[color:var(--st-red-fg)]/30">
                 High
               </span>
             ) : (
@@ -166,7 +166,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
           </KPI>
           <KPI label="Exec (lifecycle)">
             {progress.fulfillmentLifecyclePct}%
-            <span className="block text-[9px] font-normal text-gray-500 mt-0.5">plan → deliver</span>
+            <span className="block text-[9px] font-normal text-ink-3 mt-0.5">plan → deliver</span>
           </KPI>
           <KPI label="FG Ready">
             {progress.readyPct}% · {progress.ready.toLocaleString('en-IN')} units
@@ -177,14 +177,14 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
         </div>
 
         {/* Ship address */}
-        <div className="flex gap-2 p-2.5 pl-3.5 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <MapPin className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0 mt-0.5" aria-hidden />
+        <div className="flex gap-2 p-2.5 pl-3.5 bg-black/5 dark:bg-black/20 border border-border rounded-lg">
+          <MapPin className="w-4 h-4 text-ink-3 shrink-0 mt-0.5" aria-hidden />
           <div>
-            <div className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <div className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider">
               Deliver To
             </div>
             <div className="text-[12.5px] font-bold mt-0.5">{saleOrder.customer}</div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+            <div className="text-[11px] text-ink-3 whitespace-pre-wrap">
               {cleanAddress(saleOrder.shipAddress, saleOrder.customer) || '—'}
             </div>
           </div>
@@ -192,43 +192,43 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
 
         {/* Notes alert */}
         {saleOrder.notes && (
-          <div className="flex gap-2 p-3 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 text-blue-800 dark:text-blue-200 text-sm">
+          <div className="flex gap-2 p-3 rounded-lg bg-brand-soft border border-brand-soft text-brand text-sm">
             <FileText className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
             <div>{saleOrder.notes}</div>
           </div>
         )}
 
         {/* Overall progress bar */}
-        {/* <div className="p-3 px-4 bg-black/5 dark:bg-black/20 border border-gray-200 dark:border-gray-700 rounded-lg">
+        {/* <div className="p-3 px-4 bg-black/5 dark:bg-black/20 border border-border rounded-lg">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[9.5px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <span className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider">
               Fulfillment Progress
             </span>
-            <span className="font-mono text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400">
+            <span className="font-mono text-[11px] font-extrabold text-ok">
               {progress.readyPct}% FG Ready · {progress.shippedPct}% Shipped
             </span>
           </div>
           <div className="h-2 rounded-full bg-white/10 dark:bg-black/20 overflow-hidden relative">
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/50 dark:bg-emerald-400/50 z-1 transition-all"
+              className="absolute inset-y-0 left-0 rounded-full bg-ok/50 z-1 transition-all"
               style={{ width: `${progress.readyPct}%` }}
             />
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-blue-500 dark:bg-blue-400 z-2 transition-all"
+              className="absolute inset-y-0 left-0 rounded-full bg-brand z-2 transition-all"
               style={{ width: `${progress.shippedPct}%` }}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[9.5px] text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[9.5px] text-ink-3">
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500/50 dark:bg-emerald-400/50 inline-block" />
+              <span className="w-2 h-2 rounded-full bg-ok/50 inline-block" />
               FG Ready
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 inline-block" />
+              <span className="w-2 h-2 rounded-full bg-brand inline-block" />
               Shipped
             </span>
             {progress.batchesTotal > 0 && (
-              <span className="font-semibold text-gray-600 dark:text-gray-300">
+              <span className="font-semibold text-ink-2">
                 Batches: {progress.batchesDonePct}% ({progress.batchesDone}/{progress.batchesTotal}) done
               </span>
             )}
@@ -274,35 +274,35 @@ function ItemWithBatches({
   const itemValue = item.orderedQty * item.unitPrice;
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mb-4">
-      <div className="px-4 py-3 bg-black/10 dark:bg-black/15 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+    <div className="border border-border rounded-xl overflow-hidden mb-4">
+      <div className="px-4 py-3 bg-black/10 dark:bg-black/15 border-b border-border flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[13px] font-extrabold">{item.productName}</div>
           <div className="flex gap-1.5 mt-1 flex-wrap">
-            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-surface-3 text-ink-2">
               {item.sku}
             </span>
-            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-surface-3 text-ink-2">
               {item.pack}
             </span>
-            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" title="Unit price — what EI charges the client">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-surface-3 text-ink-2" title="Unit price — what EI charges the client">
               {formatCurrency(item.unitPrice)}/unit
             </span>
-            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700" title="MRP from the sale order (product master, editable per SO)">
+            <span className="inline-flex px-1.5 py-0.5 rounded text-[8px] font-mono bg-warn-soft text-warn border border-[color:var(--st-amber-fg)]/30" title="MRP from the sale order (product master, editable per SO)">
               MRP {item.mrp != null && item.mrp > 0 ? `₹${item.mrp.toLocaleString('en-IN')}` : '—'}
             </span>
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[9.5px] text-gray-500 dark:text-gray-400">FG Ready / Ordered</div>
-          <div className="font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
+          <div className="text-[9.5px] text-ink-3">FG Ready / Ordered</div>
+          <div className="font-mono text-sm font-black text-ok">
             {formatNumber(readyQty)}
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-normal">
+            <span className="text-[10px] text-ink-3 font-normal">
               {' '}
               / {formatNumber(item.orderedQty)}
             </span>
           </div>
-          <div className="text-[9.5px] text-gray-500 dark:text-gray-400">
+          <div className="text-[9.5px] text-ink-3">
             Value {formatCurrency(itemValue)}
           </div>
         </div>
@@ -310,11 +310,11 @@ function ItemWithBatches({
 
       {/* RM/PM availability summary (from warehouse) */}
       {(planningItem || planningAvailabilityLoading) && (
-        <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/20 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-4 py-3 bg-surface-2 border-b border-border">
           {planningAvailabilityLoading ? (
-            <div className="text-[11px] text-gray-600 dark:text-gray-300">Loading RM/PM availability…</div>
+            <div className="text-[11px] text-ink-3">Loading RM/PM availability…</div>
           ) : planningItem ? (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-700 dark:text-gray-200">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-2">
               <span>
                 RM: {planningItem.rmStartedCount}/{planningItem.rmStartableCount} started · {planningItem.rmStartableCount}/{planningItem.totalBatches} available
               </span>
@@ -332,32 +332,32 @@ function ItemWithBatches({
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800/50">
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+            <tr className="bg-surface-3">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Batch No
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Planned
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 FG Output
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 FG Location
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Picked
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Invoice
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 AWB / Courier
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Status
               </th>
-              <th className="text-left py-2 px-3 text-[10px] font-bold uppercase text-gray-600 dark:text-gray-400">
+              <th scope="col" className="text-left py-2 px-3 text-[10px] font-bold uppercase text-ink-3">
                 Actions
               </th>
             </tr>
@@ -365,7 +365,7 @@ function ItemWithBatches({
           <tbody>
             {item.batchSplits.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                <td colSpan={9} className="py-6 text-center text-ink-3 text-sm">
                   No production batches linked yet.
                 </td>
               </tr>
@@ -409,13 +409,13 @@ function BatchRow({
     ['wip', 'fg_pending', 'bulk_qc'].includes(split.ffStatus) || !split.fgQty;
 
   return (
-    <tr className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+    <tr className="border-b border-hairline last:border-0 hover:bg-surface-2">
       <td className="py-2 px-3">
-        <div className="font-mono text-[10px] text-gray-700 dark:text-gray-200">
+        <div className="font-mono text-[10px] text-ink-2">
           Batch {batchNo}
         </div>
         {planningBatch ? (
-          <div className="mt-1 text-[9.3px] text-gray-500 dark:text-gray-400">
+          <div className="mt-1 text-[9.3px] text-ink-3">
             RM: {formatNumber(planningBatch.rmNeededTotalKg)} / {formatNumber(planningBatch.rmRequestedTotalKg)} KG · rem{' '}
             {formatNumber(planningBatch.rmRemainingTotalKg)}
             <br />
@@ -427,23 +427,23 @@ function BatchRow({
       <td className="py-2 px-3 font-mono">{formatNumber(split.plannedQty)}</td>
       <td className="py-2 px-3 font-mono font-bold">
         {(split.fgOutput ?? split.fgQty) != null && Number(split.fgOutput ?? split.fgQty) > 0 ? (
-          <span className="text-emerald-600 dark:text-emerald-400">
+          <span className="text-ok">
             {formatNumber(Number(split.fgOutput ?? split.fgQty))}
           </span>
         ) : (
-          <span className="text-gray-400 dark:text-gray-500">—</span>
+          <span className="text-ink-4">—</span>
         )}
       </td>
       <td className="py-2 px-3">
         {split.fgLocation ? (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-teal-500/15 text-teal-700 dark:text-teal-400 border border-teal-500/30">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-brand-soft text-brand border border-brand">
             <MapPin className="w-3 h-3" /> {split.fgLocation}
           </span>
         ) : (
           '—'
         )}
       </td>
-      <td className="py-2 px-3 font-mono text-gray-500 dark:text-gray-400">
+      <td className="py-2 px-3 font-mono text-ink-3">
         {split.pickedQty != null && split.pickedQty > 0 ? formatNumber(split.pickedQty) : '—'}
       </td>
       <td className="py-2 px-3">
@@ -463,7 +463,7 @@ function BatchRow({
             <button
               type="button"
               onClick={() => onAction('pick', soNo, split)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-ok hover:bg-ok text-white"
             >
               <Package className="w-3 h-3" /> Pick
             </button>
@@ -472,7 +472,7 @@ function BatchRow({
             <button
               type="button"
               onClick={() => onAction('invoice', soNo, split)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-brand hover:bg-brand-press text-white"
             >
               <FileText className="w-3 h-3" /> Invoice
             </button>
@@ -481,7 +481,7 @@ function BatchRow({
             <button
               type="button"
               onClick={() => onAction('ship', soNo, split)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-warn hover:bg-warn text-white"
             >
               <Truck className="w-3 h-3" /> Ship
             </button>
@@ -490,13 +490,13 @@ function BatchRow({
             <button
               type="button"
               onClick={() => onAction('track', soNo, split)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-slate-600 hover:bg-slate-700 text-white"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-brand hover:bg-brand-press text-white"
             >
               <CheckCircle className="w-3 h-3" /> Track
             </button>
           )}
           {isPending && (
-            <span className="text-[9px] text-gray-500 dark:text-gray-400">
+            <span className="text-[9px] text-ink-3">
               In production
             </span>
           )}

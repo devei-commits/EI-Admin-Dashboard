@@ -101,7 +101,7 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
               e.stopPropagation();
               onClose();
             }}
-            className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            className="flex-1 px-4 py-2.5 border border-border rounded-lg text-sm font-medium text-ink-2 hover:bg-surface-2 transition"
           >
             Cancel
           </button>
@@ -109,7 +109,7 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
             type="button"
             onClick={handleApplySwap}
             disabled={!formData.toMaterial || !formData.reason.trim() || !formData.approvedBy.trim()}
-            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+            className="flex-1 px-4 py-2.5 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-press disabled:bg-surface-3 disabled:cursor-not-allowed transition"
           >
             Apply Swap
           </button>
@@ -117,16 +117,16 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
       }
     >
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-          <ArrowRightLeft className="w-5 h-5 text-orange-600" />
+        <div className="w-10 h-10 rounded-xl bg-brand-soft flex items-center justify-center">
+          <ArrowRightLeft className="w-5 h-5 text-brand" />
         </div>
-        <p className="text-sm text-gray-600">Replace shortage material with alternative</p>
+        <p className="text-sm text-ink-3">Replace shortage material with alternative</p>
       </div>
 
       {/* Current Material Info */}
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <h3 className="font-semibold text-red-800 mb-2">Current Material (Shortage)</h3>
-        <div className="text-sm text-red-700 space-y-1">
+      <div className="bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded-lg p-4">
+        <h3 className="font-semibold text-err mb-2">Current Material (Shortage)</h3>
+        <div className="text-sm text-err space-y-1">
           <div><span className="font-medium">Material:</span> {material.itemName}</div>
           <div><span className="font-medium">Required:</span> {material.qty}</div>
           <div><span className="font-medium">Shortage:</span> {material.gap}</div>
@@ -137,14 +137,15 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
       <div className="space-y-4">
         {/* To Material Selection */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label className="block text-sm font-semibold text-ink-2 mb-2">
             REPLACEMENT MATERIAL
           </label>
           <select
             name="toMaterial"
             value={formData.toMaterial}
             onChange={handleInputChange}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Replacement material"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
           >
             <option value="">— Select replacement material —</option>
             {availableMaterials.map(materialName => (
@@ -157,7 +158,7 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
 
         {/* Swap Ratio */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label className="block text-sm font-semibold text-ink-2 mb-2">
             SWAP RATIO
           </label>
           <input
@@ -168,16 +169,17 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
             step="0.1"
             min="0.1"
             max="3.0"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Swap ratio"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-ink-3 mt-1">
             1.0 = same quantity; 0.9 = 90% of original; 1.1 = 110% of original
           </p>
         </div>
 
         {/* Reason */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label className="block text-sm font-semibold text-ink-2 mb-2">
             REASON FOR SWAP
           </label>
           <textarea
@@ -186,13 +188,14 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
             onChange={handleInputChange}
             rows={3}
             placeholder="e.g., Material shortage, cost optimization, supplier issue..."
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Reason for swap"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
           />
         </div>
 
         {/* Approved By */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <label className="block text-sm font-semibold text-ink-2 mb-2">
             APPROVED BY
           </label>
           <input
@@ -201,7 +204,8 @@ const SwapMaterialModal: React.FC<SwapMaterialModalProps> = ({
             value={formData.approvedBy}
             onChange={handleInputChange}
             placeholder="Enter approver name"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            aria-label="Enter approver name"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
           />
         </div>
       </div>

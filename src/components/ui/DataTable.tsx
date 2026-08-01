@@ -53,21 +53,22 @@ export function DataTable<T extends Record<string, unknown>>({
   const SortIcon = ({ col }: { col: TableColumn<T> }) => {
     if (!col.sortable) return null;
     const key = String(col.key);
-    if (sortKey !== key) return <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 ml-1 inline" />;
-    if (sortDir === 'asc') return <ChevronUp className="w-3.5 h-3.5 text-blue-500 ml-1 inline" />;
-    return <ChevronDown className="w-3.5 h-3.5 text-blue-500 ml-1 inline" />;
+    if (sortKey !== key) return <ChevronsUpDown className="w-3.5 h-3.5 text-ink-4 ml-1 inline" />;
+    if (sortDir === 'asc') return <ChevronUp className="w-3.5 h-3.5 text-brand ml-1 inline" />;
+    return <ChevronDown className="w-3.5 h-3.5 text-brand ml-1 inline" />;
   };
 
   return (
     <div className={`overflow-x-auto ${className}`}>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-gray-50">
+          <tr className="border-b border-border bg-surface-3">
             {columns.map((col) => (
-              <th
+              <th scope="col"
                 key={String(col.key)}
+                scope="col"
                 onClick={() => col.sortable && handleSort(String(col.key))}
-                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600 ${col.sortable ? 'cursor-pointer select-none hover:bg-gray-100' : ''} ${col.headerClassName ?? ''}`}
+                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-3 ${col.sortable ? 'cursor-pointer select-none hover:bg-surface-2' : ''} ${col.headerClassName ?? ''}`}
               >
                 {col.label}
                 <SortIcon col={col} />
@@ -75,10 +76,10 @@ export function DataTable<T extends Record<string, unknown>>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-hairline">
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-gray-400">
+              <td colSpan={columns.length} className="px-4 py-10 text-center text-ink-4">
                 {emptyMessage}
               </td>
             </tr>
@@ -87,7 +88,7 @@ export function DataTable<T extends Record<string, unknown>>({
               <tr
                 key={keyField ? String(row[keyField as string]) : idx}
                 onClick={() => onRowClick?.(row)}
-                className={`hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowClassName?.(row) ?? ''}`}
+                className={`hover:bg-surface-3 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowClassName?.(row) ?? ''}`}
               >
                 {columns.map((col) => (
                   <td key={String(col.key)} className={`px-4 py-3 ${col.className ?? ''}`}>

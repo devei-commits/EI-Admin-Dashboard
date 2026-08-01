@@ -167,13 +167,13 @@ export default function CustomizationPackagingCatalog() {
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Sort</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Option ID</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Title</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">SKU</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Custom</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Active</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Actions</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Sort</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Option ID</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Title</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">SKU</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Custom</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Active</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

@@ -3,25 +3,34 @@
 /* Font Family Configuration */
 @layer base {
   :root {
-    --font-archivo: 'Archivo', sans-serif;
-    --font-outfit: 'Outfit', sans-serif;
+    /* Apple-grade design language fonts (Phase 1). Old names kept as ALIASES so every existing
+       var(--font-outfit) / var(--font-archivo) / .font-outfit / .font-archivo usage resolves to
+       the new type without a code change. Archivo/Outfit are no longer loaded. */
+    --font-sans: 'Montserrat', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-display: 'Montserrat', -apple-system, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    --font-outfit: var(--font-sans);   /* deprecated alias */
+    --font-archivo: var(--font-display); /* deprecated alias */
   }
-  
+
   body {
-    font-family: var(--font-outfit);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  
+
   h1, h2, h3, h4, h5, h6, .heading {
-    font-family: var(--font-archivo);
+    font-family: var(--font-display);
   }
-  
+
   code, pre {
     @apply font-mono;
   }
 }
 
-/* PIS Theme Variables */
-@custom-variant dark (&:is(.dark *));
+/* Dark theme trigger: support BOTH the legacy `.dark` class and the new `[data-theme="dark"]`
+   attribute (the design system drives theming via <html data-theme>). */
+@custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 
 :root {
  /* New Minimalist Theme based on reference image */
@@ -90,7 +99,10 @@
  --color-secondary-foreground: var(--secondary-foreground);
  --color-muted: var(--muted);
  --color-muted-foreground: var(--muted-foreground);
- --color-accent: var(--accent);
+ /* Decoupled: the new design language repurposes --accent as the single blue brand accent
+    (see [data-theme] blocks below). Keep the Tailwind `accent` utility neutral so existing
+    bg-accent/hover:bg-accent surfaces stay gray until retinted per-module in Phase 3. */
+ --color-accent: var(--secondary);
  --color-accent-foreground: var(--accent-foreground);
  --color-destructive: var(--destructive);
  --color-destructive-foreground: var(--destructive-foreground);
@@ -129,6 +141,114 @@
  --color-amber-800: #000000;
  --color-amber-900: #000000;
  --color-amber-950: #000000;
+}
+
+/* =========================================================================
+   APPLE-GRADE DESIGN LANGUAGE — token foundation (Phase 1).
+   Additive + collision-safe: new tokens live under their own names and their own
+   @theme blocks, so existing utilities (bg-gray-*, bg-card, rounded-lg, amber-*, …)
+   are untouched. Screens are retinted onto these tokens module-by-module (Phase 3).
+   Values mirror ei-redesign-prototype.html exactly. Light + Dark parity.
+   Theme is driven by <html data-theme="light|dark">.
+   ========================================================================= */
+
+/* Theme-agnostic scales (spacing / radius / type / motion) */
+:root {
+ --s1: 4px;  --s2: 8px;   --s3: 12px; --s4: 16px; --s5: 20px;
+ --s6: 24px; --s7: 32px;  --s8: 40px; --s9: 56px; --s10: 72px;
+
+ --r-xs: 7px; --r-sm: 9px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-2xl: 26px; --r-full: 999px;
+
+ --t-hero: clamp(30px, 3vw, 42px); --t-h1: 27px; --t-h2: 20px; --t-h3: 16px;
+ --t-body: 14px; --t-sm: 13px; --t-xs: 12px; --t-2xs: 11px;
+
+ --ease: cubic-bezier(.4, 0, .2, 1); --ease-out: cubic-bezier(.16, 1, .3, 1); --dur: .22s;
+}
+
+[data-theme="light"] {
+ --canvas: #f5f5f7; --surface: #ffffff; --surface-2: #fafafc; --surface-3: #f0f0f3; --surface-sunken: #ececf0;
+ --rail: rgba(252, 252, 253, .72); --nav-bg: rgba(255, 255, 255, .72); --topbar-bg: rgba(245, 245, 247, .68);
+ --ink: #1d1d1f; --ink-2: #48484a; --ink-3: #6e6e73; --ink-4: #a1a1a6;
+ --border: rgba(0, 0, 0, .085); --border-2: rgba(0, 0, 0, .14); --hairline: rgba(0, 0, 0, .06);
+ --accent: #0071e3; --accent-press: #0062c4; --accent-soft: rgba(0, 113, 227, .10); --accent-soft-2: rgba(0, 113, 227, .16); --accent-ink: #ffffff;
+ --accent-gradient: linear-gradient(180deg, #1a8cff 0%, #0071e3 100%);
+ --brand-gradient: linear-gradient(180deg, #3a3a3c 0%, #1d1d1f 100%);
+ --ring: rgba(0, 113, 227, .34);
+ --c1: #0071e3; --c2: #86868b; --c3: #c7c7cc; --c4: #e0e0e4;
+ --st-blue-bg: rgba(0, 113, 227, .10); --st-blue-fg: #0067cf;
+ --st-green-bg: rgba(52, 199, 89, .13); --st-green-fg: #248a3d;
+ --st-amber-bg: rgba(255, 149, 0, .14); --st-amber-fg: #a05a00;
+ --st-red-bg: rgba(255, 59, 48, .11); --st-red-fg: #c9281f;
+ --st-neutral-bg: rgba(0, 0, 0, .05); --st-neutral-fg: #52525a;
+ --e1: 0 .5px 1px rgba(0, 0, 0, .04), 0 1px 2px rgba(0, 0, 0, .04);
+ --e2: 0 2px 6px rgba(0, 0, 0, .05), 0 8px 24px rgba(0, 0, 0, .05);
+ --e3: 0 8px 24px rgba(0, 0, 0, .10), 0 32px 64px rgba(0, 0, 0, .14);
+ --inset-hi: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+[data-theme="dark"] {
+ --canvas: #000000; --surface: #1c1c1e; --surface-2: #222224; --surface-3: #2c2c2e; --surface-sunken: #161618;
+ --rail: rgba(22, 22, 24, .72); --nav-bg: rgba(28, 28, 30, .72); --topbar-bg: rgba(0, 0, 0, .6);
+ --ink: #f5f5f7; --ink-2: #c7c7cd; --ink-3: #98989f; --ink-4: #636368;
+ --border: rgba(255, 255, 255, .1); --border-2: rgba(255, 255, 255, .16); --hairline: rgba(255, 255, 255, .07);
+ --accent: #0a84ff; --accent-press: #3a9bff; --accent-soft: rgba(10, 132, 255, .16); --accent-soft-2: rgba(10, 132, 255, .24); --accent-ink: #ffffff;
+ --accent-gradient: linear-gradient(180deg, #3a9bff 0%, #0a84ff 100%);
+ --brand-gradient: linear-gradient(180deg, #48484a 0%, #2c2c2e 100%);
+ --ring: rgba(10, 132, 255, .45);
+ --c1: #0a84ff; --c2: #8e8e93; --c3: #48484a; --c4: #3a3a3c;
+ --st-blue-bg: rgba(10, 132, 255, .18); --st-blue-fg: #4ca5ff;
+ --st-green-bg: rgba(48, 209, 88, .18); --st-green-fg: #5fe07f;
+ --st-amber-bg: rgba(255, 159, 10, .18); --st-amber-fg: #ffb340;
+ --st-red-bg: rgba(255, 59, 48, .18); --st-red-fg: #ff6961;
+ --st-neutral-bg: rgba(255, 255, 255, .08); --st-neutral-fg: #a0a0a8;
+ --e1: 0 .5px 1px rgba(0, 0, 0, .5), 0 1px 2px rgba(0, 0, 0, .5);
+ --e2: 0 2px 6px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .55);
+ --e3: 0 8px 24px rgba(0, 0, 0, .55), 0 32px 64px rgba(0, 0, 0, .6);
+ --inset-hi: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+/* Fonts → Tailwind utilities (font-sans / font-mono) + preflight default. */
+@theme {
+ --font-sans: 'Montserrat', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+ --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* New tokens → Tailwind utilities under NEW names (no clash with existing bg-gray/bg-card/…):
+   bg-canvas, bg-surface, bg-surface-2/3, text-ink, text-ink-2/3/4, border-hairline,
+   border-strong, bg-brand, text-brand, bg-brand-soft, ring-brand, rounded-r-lg, …
+   Consumed by Phase 2 primitives + Phase 3 retints. */
+@theme inline {
+ --color-canvas: var(--canvas);
+ --color-surface: var(--surface);
+ --color-surface-2: var(--surface-2);
+ --color-surface-3: var(--surface-3);
+ --color-surface-sunken: var(--surface-sunken);
+ --color-ink: var(--ink);
+ --color-ink-2: var(--ink-2);
+ --color-ink-3: var(--ink-3);
+ --color-ink-4: var(--ink-4);
+ --color-hairline: var(--hairline);
+ --color-border-strong: var(--border-2);
+ --color-brand: var(--accent);
+ --color-brand-press: var(--accent-press);
+ --color-brand-soft: var(--accent-soft);
+ --color-brand-soft-2: var(--accent-soft-2);
+ --color-brand-ink: var(--accent-ink);
+ /* Semantic status tones (fg + soft bg). Use: text-ok / bg-ok-soft, text-err / bg-err-soft, … */
+ --color-ok: var(--st-green-fg);
+ --color-ok-soft: var(--st-green-bg);
+ --color-warn: var(--st-amber-fg);
+ --color-warn-soft: var(--st-amber-bg);
+ --color-err: var(--st-red-fg);
+ --color-err-soft: var(--st-red-bg);
+ --color-info: var(--st-blue-fg);
+ --color-info-soft: var(--st-blue-bg);
+ --color-neut: var(--st-neutral-fg);
+ --color-neut-soft: var(--st-neutral-bg);
+ --radius-r-sm: var(--r-sm);
+ --radius-r-md: var(--r-md);
+ --radius-r-lg: var(--r-lg);
+ --radius-r-xl: var(--r-xl);
 }
 
 @layer base {

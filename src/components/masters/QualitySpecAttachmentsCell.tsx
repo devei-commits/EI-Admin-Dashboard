@@ -18,7 +18,7 @@ type QualitySpecAttachmentsCellProps = {
 };
 
 const inputCls =
-  'w-full min-w-0 px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs leading-normal focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white';
+  'w-full min-w-0 px-2.5 py-1.5 border border-border rounded-lg text-xs leading-normal focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] bg-surface';
 
 function attachmentLabel(att: QualitySpecAttachment): string {
   if (att.name.trim()) return att.name.trim();
@@ -111,13 +111,13 @@ export function QualitySpecAttachmentsCell({
           {attachments.map((att) => (
             <li
               key={att.id}
-              className="flex items-start gap-1 rounded border border-gray-100 bg-gray-50/80 px-1.5 py-1"
+              className="flex items-start gap-1 rounded border border-hairline bg-surface-3 px-1.5 py-1"
             >
               <span className="shrink-0 text-[10px]" aria-hidden>
                 {att.type === 'file' ? '📎' : '🔗'}
               </span>
               <span
-                className="flex-1 min-w-0 text-[10px] text-gray-700 break-all leading-tight"
+                className="flex-1 min-w-0 text-[10px] text-ink-2 break-all leading-tight"
                 title={attachmentLabel(att)}
               >
                 {attachmentLabel(att)}
@@ -129,7 +129,7 @@ export function QualitySpecAttachmentsCell({
                     onClick={() => {
                       void viewAttachment(att);
                     }}
-                    className="px-1 py-0.5 text-[9px] font-semibold text-teal-700 hover:text-teal-900 focus:outline-none focus:ring-1 focus:ring-teal-400 rounded"
+                    className="px-1 py-0.5 text-[9px] font-semibold text-brand hover:text-brand focus:outline-none focus:ring-1 focus:ring-[color:var(--ring)] rounded"
                   >
                     View
                   </button>
@@ -139,7 +139,7 @@ export function QualitySpecAttachmentsCell({
                   onClick={() => {
                     void removeAttachment(att.id);
                   }}
-                  className="px-1 py-0.5 text-[9px] font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:ring-1 focus:ring-red-300 rounded"
+                  className="px-1 py-0.5 text-[9px] font-semibold text-err hover:text-err focus:outline-none focus:ring-1 focus:ring-[color:var(--st-red-fg)]/40 rounded"
                   aria-label={`Remove attachment ${attachmentLabel(att)}`}
                 >
                   ✕
@@ -149,11 +149,11 @@ export function QualitySpecAttachmentsCell({
           ))}
         </ul>
       ) : (
-        <p className="text-[10px] text-gray-400">No attachments</p>
+        <p className="text-[10px] text-ink-4">No attachments</p>
       )}
 
       {error ? (
-        <p className="text-[10px] text-red-600" role="alert">
+        <p className="text-[10px] text-err" role="alert">
           {error}
         </p>
       ) : null}
@@ -175,21 +175,23 @@ export function QualitySpecAttachmentsCell({
         <button
           type="button"
           title="Upload file(s)"
+          aria-label="Upload file(s)"
           disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
-          className="flex-1 px-2 py-1 text-[10px] font-semibold text-gray-700 bg-gray-100 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="flex-1 px-2 py-1 text-[10px] font-semibold text-ink-2 bg-surface-3 border border-border rounded hover:bg-surface-3 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         >
           {uploading ? '…' : '📎'}
         </button>
         <button
           type="button"
           title="Add link below"
+          aria-label="Add link below"
           disabled={uploading}
           onClick={() => {
             const el = document.getElementById(`${rowId}-link-input`);
             el?.focus();
           }}
-          className="flex-1 px-2 py-1 text-[10px] font-semibold text-gray-700 bg-gray-100 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="flex-1 px-2 py-1 text-[10px] font-semibold text-ink-2 bg-surface-3 border border-border rounded hover:bg-surface-3 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         >
           🔗
         </button>
@@ -215,7 +217,7 @@ export function QualitySpecAttachmentsCell({
           type="button"
           onClick={addLink}
           disabled={!linkDraft.trim() || uploading}
-          className="shrink-0 px-2 py-1 text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded hover:bg-teal-100 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-teal-400"
+          className="shrink-0 px-2 py-1 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded hover:bg-brand-soft disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         >
           Add
         </button>
@@ -224,7 +226,7 @@ export function QualitySpecAttachmentsCell({
         type="button"
         onClick={onRemoveRow}
         disabled={uploading}
-        className="px-2 py-1 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-300"
+        className="px-2 py-1 text-[10px] font-semibold text-err bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded hover:bg-err-soft disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[color:var(--st-red-fg)]/40"
         aria-label="Remove spec row"
       >
         ✕ Remove row

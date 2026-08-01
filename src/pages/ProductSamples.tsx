@@ -489,6 +489,7 @@ const ProductSamples = () => {
           setEntriesPerPage(Number(e.target.value));
           setCurrentPage(1);
          }}
+         aria-label="Entries per page"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
@@ -508,6 +509,7 @@ const ProductSamples = () => {
           setSearchTerm(e.target.value);
           setCurrentPage(1);
          }}
+         aria-label="Search"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
@@ -519,37 +521,37 @@ const ProductSamples = () => {
        <table className="w-full border-collapse">
         <thead>
          <tr className="border-b-2 border-gray-200">
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('id')}
           >
            S.No <SortIcon field="id" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('productId')}
           >
            Product Id <SortIcon field="productId" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('reqNos')}
           >
            Req Nos <SortIcon field="reqNos" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('comments')}
           >
            Comments <SortIcon field="comments" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('customer')}
           >
            Customer <SortIcon field="customer" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleSort('date')}
           >
@@ -645,6 +647,7 @@ const ProductSamples = () => {
           setProductEntriesPerPage(Number(e.target.value));
           setProductCurrentPage(1);
          }}
+         aria-label="Entries per page"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
@@ -664,6 +667,7 @@ const ProductSamples = () => {
           setProductSearchTerm(e.target.value);
           setProductCurrentPage(1);
          }}
+         aria-label="Search"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
@@ -675,37 +679,37 @@ const ProductSamples = () => {
        <table className="w-full border-collapse">
         <thead>
          <tr className="border-b-2 border-gray-200">
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('id')}
           >
            S.No <ProductSortIcon field="id" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('productId')}
           >
            Product Id <ProductSortIcon field="productId" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('reqNos')}
           >
            Req Nos <ProductSortIcon field="reqNos" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('comments')}
           >
            Comments <ProductSortIcon field="comments" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('customer')}
           >
            Customer <ProductSortIcon field="customer" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleProductSort('date')}
           >
@@ -823,6 +827,7 @@ const ProductSamples = () => {
           setQuotationEntriesPerPage(Number(e.target.value));
           setQuotationCurrentPage(1);
          }}
+         aria-label="Entries per page"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
@@ -842,6 +847,7 @@ const ProductSamples = () => {
           setQuotationSearchTerm(e.target.value);
           setQuotationCurrentPage(1);
          }}
+         aria-label="Search"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
@@ -853,31 +859,31 @@ const ProductSamples = () => {
        <table className="w-full border-collapse">
         <thead>
          <tr className="border-b-2 border-gray-200">
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleQuotationSort('id')}
           >
            S.No <QuotationSortIcon field="id" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleQuotationSort('productId')}
           >
            Product Id <QuotationSortIcon field="productId" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleQuotationSort('requestedNumbers')}
           >
            Requested Numbers <QuotationSortIcon field="requestedNumbers" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleQuotationSort('comments')}
           >
            Comments <QuotationSortIcon field="comments" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleQuotationSort('date')}
           >
@@ -969,6 +975,7 @@ const ProductSamples = () => {
           setTechnicalEntriesPerPage(Number(e.target.value));
           setTechnicalCurrentPage(1);
          }}
+         aria-label="Entries per page"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
@@ -988,6 +995,7 @@ const ProductSamples = () => {
           setTechnicalSearchTerm(e.target.value);
           setTechnicalCurrentPage(1);
          }}
+         aria-label="Search"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
@@ -999,25 +1007,25 @@ const ProductSamples = () => {
        <table className="w-full border-collapse">
         <thead>
          <tr className="border-b-2 border-gray-200">
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleTechnicalSort('id')}
           >
            S.No <TechnicalSortIcon field="id" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleTechnicalSort('productId')}
           >
            Product Id <TechnicalSortIcon field="productId" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleTechnicalSort('comments')}
           >
            Comments <TechnicalSortIcon field="comments" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleTechnicalSort('date')}
           >
@@ -1107,6 +1115,7 @@ const ProductSamples = () => {
           setOtherEntriesPerPage(Number(e.target.value));
           setOtherCurrentPage(1);
          }}
+         aria-label="Entries per page"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
         >
          <option value={10}>10</option>
@@ -1126,6 +1135,7 @@ const ProductSamples = () => {
           setOtherSearchTerm(e.target.value);
           setOtherCurrentPage(1);
          }}
+         aria-label="Search"
          className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
          placeholder="Search..."
         />
@@ -1137,25 +1147,25 @@ const ProductSamples = () => {
        <table className="w-full border-collapse">
         <thead>
          <tr className="border-b-2 border-gray-200">
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleOtherSort('id')}
           >
            S.No <OtherSortIcon field="id" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleOtherSort('productId')}
           >
            Product Id <OtherSortIcon field="productId" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleOtherSort('comments')}
           >
            Comments <OtherSortIcon field="comments" />
           </th>
-          <th 
+          <th scope="col" 
            className="text-left py-3 px-4 text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
            onClick={() => handleOtherSort('date')}
           >
@@ -1238,9 +1248,9 @@ const ProductSamples = () => {
    {/* Details Modal */}
    {showDetailsModal && selectedRequest && (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+     <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="request-details-modal-title">
       <div className="p-6">
-       <h2 className="text-2xl font-bold text-gray-800 mb-6">Request Details</h2>
+       <h2 id="request-details-modal-title" className="text-2xl font-bold text-gray-800 mb-6">Request Details</h2>
        
        <div className="space-y-4">
         {/* Product ID */}
@@ -1280,6 +1290,7 @@ const ProductSamples = () => {
           <textarea
            value={responseText}
            onChange={(e) => setResponseText(e.target.value)}
+           aria-label="Response"
            className="w-full h-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
            placeholder="Enter your response here..."
           />
@@ -1317,9 +1328,9 @@ const ProductSamples = () => {
    {/* Product Sample Details Modal */}
    {showProductDetailsModal && selectedProductSample && (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-[2px] p-4">
-     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+     <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="customer-details-modal-title">
       <div className="border-b border-slate-200 px-6 py-4">
-       <h2 className="text-xl md:text-2xl font-semibold text-slate-800">Customer Details</h2>
+       <h2 id="customer-details-modal-title" className="text-xl md:text-2xl font-semibold text-slate-800">Customer Details</h2>
       </div>
       <div className="p-6">
        

@@ -188,6 +188,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="qc-check-title"
       >
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex flex-wrap items-start justify-between gap-3">
@@ -354,14 +355,14 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                          <th className="px-3 py-2 w-8">#</th>
-                          <th className="px-3 py-2 min-w-[8rem]">Parameter</th>
-                          <th className="px-3 py-2 min-w-[8rem]">Spec (from master)</th>
-                          <th className="px-3 py-2 min-w-[7rem]">Method</th>
-                          <th className="px-3 py-2 w-16">Mandatory</th>
-                          <th className="px-3 py-2 min-w-[9rem]">Entry / Result</th>
-                          <th className="px-3 py-2 w-24">Pass/Fail (auto)</th>
-                          <th className="px-3 py-2 min-w-[8rem]">3rd-party?</th>
+                          <th scope="col" className="px-3 py-2 w-8">#</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">Parameter</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">Spec (from master)</th>
+                          <th scope="col" className="px-3 py-2 min-w-[7rem]">Method</th>
+                          <th scope="col" className="px-3 py-2 w-16">Mandatory</th>
+                          <th scope="col" className="px-3 py-2 min-w-[9rem]">Entry / Result</th>
+                          <th scope="col" className="px-3 py-2 w-24">Pass/Fail (auto)</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">3rd-party?</th>
                         </tr>
                       </thead>
                       <tbody>

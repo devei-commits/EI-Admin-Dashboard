@@ -19,9 +19,9 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
   if (!po) {
     return (
       <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50">
-        <div className="bg-white rounded-xl p-6">
-          <p className="text-red-600">PO not found.</p>
-          <button onClick={onClose} className="mt-3 px-4 py-2 bg-gray-200 rounded-lg">Close</button>
+        <div className="bg-surface rounded-xl p-6" role="dialog" aria-modal="true" aria-label="PO not found">
+          <p className="text-err">PO not found.</p>
+          <button onClick={onClose} className="mt-3 px-4 py-2 bg-surface-3 rounded-lg">Close</button>
         </div>
       </div>
     );
@@ -75,29 +75,29 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
       size="lg"
       footer={
         <>
-          <span className="text-xs text-gray-400 mr-auto">
+          <span className="text-xs text-ink-4 mr-auto">
             Triggers when Expected Delivery slips beyond committed date.
           </span>
-          <button onClick={onClose} className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+          <button onClick={onClose} className="px-5 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press">
             Ok
           </button>
         </>
       }
     >
-      <p className="text-sm text-gray-500 -mt-4">
+      <p className="text-sm text-ink-3 -mt-4">
         {po.id} · {po.vendor} · delayed to {po.delayedTo ? formatDate(po.delayedTo) : '—'}
       </p>
 
       <div className="space-y-4">
           {!po.delayed && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between">
+            <div className="bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg p-4 flex items-center justify-between">
               <div>
-                <div className="font-medium text-amber-800">PO not yet delayed</div>
-                <div className="text-xs text-amber-600">Click "Trigger Delay" to mark this PO as delayed (+6 days).</div>
+                <div className="font-medium text-warn">PO not yet delayed</div>
+                <div className="text-xs text-warn">Click "Trigger Delay" to mark this PO as delayed (+6 days).</div>
               </div>
               <button
                 onClick={triggerDelay}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+                className="px-4 py-2 bg-err text-white rounded-lg text-sm hover:bg-err"
               >
                 Trigger Delay
               </button>
@@ -105,7 +105,7 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
           )}
 
           {impacted.length === 0 ? (
-            <div className="text-gray-400 text-center py-8">No impacted items found.</div>
+            <div className="text-ink-4 text-center py-8">No impacted items found.</div>
           ) : (
             impacted.map((x: any) => {
               const hasBMR = x.bmr.length > 0;
@@ -113,25 +113,25 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
               return (
                 <div key={x.id} className="border rounded-xl p-4 space-y-3">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-800">{x.name}</h3>
-                    <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">{x.id}</span>
+                    <h3 className="font-semibold text-ink">{x.name}</h3>
+                    <span className="px-2 py-0.5 bg-surface-3 rounded text-xs font-mono">{x.id}</span>
                   </div>
-                  <div className="h-px bg-gray-200" />
+                  <div className="h-px bg-border" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* BMR/BPR reservations */}
                     <div>
-                      <h4 className="font-medium text-gray-700 text-sm mb-2">
+                      <h4 className="font-medium text-ink-2 text-sm mb-2">
                         {hasBMR ? 'Impacted BMR' : 'Impacted BPR'}
                       </h4>
                       <div className="overflow-auto max-h-44">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="bg-gray-50">
-                              <th className="text-left p-2">Doc</th>
-                              <th className="text-left p-2">Order</th>
-                              <th className="text-left p-2">Batch</th>
-                              <th className="text-right p-2">Qty</th>
-                              <th className="text-left p-2">Status</th>
+                            <tr className="bg-surface-3">
+                              <th scope="col" className="text-left p-2">Doc</th>
+                              <th scope="col" className="text-left p-2">Order</th>
+                              <th scope="col" className="text-left p-2">Batch</th>
+                              <th scope="col" className="text-right p-2">Qty</th>
+                              <th scope="col" className="text-left p-2">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -142,14 +142,14 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
                                   <td className="p-2 font-mono">{r.order}</td>
                                   <td className="p-2 font-mono">{r.batch}</td>
                                   <td className="p-2 text-right font-bold">
-                                    {fmtNum(r.qty)} <span className="text-gray-400">{x.uom}</span>
+                                    {fmtNum(r.qty)} <span className="text-ink-4">{x.uom}</span>
                                   </td>
                                   <td className="p-2">{r.status}</td>
                                 </tr>
                               ))
                             ) : (
                               <tr>
-                                <td colSpan={5} className="p-2 text-gray-400">
+                                <td colSpan={5} className="p-2 text-ink-4">
                                   No BMR/BPR reservations found.
                                 </td>
                               </tr>
@@ -161,15 +161,15 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
 
                     {/* Impacted orders */}
                     <div>
-                      <h4 className="font-medium text-gray-700 text-sm mb-2">Impacted Orders (blockers)</h4>
+                      <h4 className="font-medium text-ink-2 text-sm mb-2">Impacted Orders (blockers)</h4>
                       <div className="overflow-auto max-h-44">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="bg-gray-50">
-                              <th className="text-left p-2">Order</th>
-                              <th className="text-left p-2">Product</th>
-                              <th className="text-right p-2">Planning</th>
-                              <th className="text-right p-2">Req</th>
+                            <tr className="bg-surface-3">
+                              <th scope="col" className="text-left p-2">Order</th>
+                              <th scope="col" className="text-left p-2">Product</th>
+                              <th scope="col" className="text-right p-2">Planning</th>
+                              <th scope="col" className="text-right p-2">Req</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -180,13 +180,13 @@ export default function DelayImpactModal({ poId, onClose }: Props) {
                                   <td className="p-2">{o.product}</td>
                                   <td className="p-2 text-right">{o.planning}%</td>
                                   <td className="p-2 text-right font-bold">
-                                    {fmtNum(o.required)} <span className="text-gray-400">{x.uom}</span>
+                                    {fmtNum(o.required)} <span className="text-ink-4">{x.uom}</span>
                                   </td>
                                 </tr>
                               ))
                             ) : (
                               <tr>
-                                <td colSpan={4} className="p-2 text-gray-400">
+                                <td colSpan={4} className="p-2 text-ink-4">
                                   No blocker orders found.
                                 </td>
                               </tr>

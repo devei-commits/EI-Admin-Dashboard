@@ -361,14 +361,14 @@ export default function QuoteBomHub() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                        <th className="py-2.5 px-4">Ref</th>
-                        <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3">Type</th>
-                        <th className="py-2.5 px-4">Name</th>
-                        <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3">Customer</th>
-                        <th className="py-2.5 px-3 text-right">Sell ₹</th>
-                        <th className="py-2.5 px-3">Created</th>
+                        <th scope="col" className="py-2.5 px-4">Ref</th>
+                        <th scope="col" className="py-2.5 px-3">Category</th>
+                        <th scope="col" className="py-2.5 px-3">Type</th>
+                        <th scope="col" className="py-2.5 px-4">Name</th>
+                        <th scope="col" className="py-2.5 px-3">Status</th>
+                        <th scope="col" className="py-2.5 px-3">Customer</th>
+                        <th scope="col" className="py-2.5 px-3 text-right">Sell ₹</th>
+                        <th scope="col" className="py-2.5 px-3">Created</th>
                       </tr></thead>
                       <tbody className="divide-y divide-gray-50">
                         {job.quotes.map((q) => {

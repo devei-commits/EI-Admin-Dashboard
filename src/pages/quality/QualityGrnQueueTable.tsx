@@ -29,13 +29,13 @@ const QualityGrnQueueTable: React.FC<QualityGrnQueueTableProps> = ({
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
           <tr>
-            <th className="px-4 py-3 text-left">GRN #</th>
-            <th className="px-4 py-3 text-left">Item</th>
-            <th className="px-4 py-3 text-left">PO</th>
-            <th className="px-4 py-3 text-left">Vendor</th>
-            <th className="px-4 py-3 text-left">Status</th>
-            <th className="px-4 py-3 text-left">QC</th>
-            <th className="px-4 py-3 text-right">Action</th>
+            <th scope="col" className="px-4 py-3 text-left">GRN #</th>
+            <th scope="col" className="px-4 py-3 text-left">Item</th>
+            <th scope="col" className="px-4 py-3 text-left">PO</th>
+            <th scope="col" className="px-4 py-3 text-left">Vendor</th>
+            <th scope="col" className="px-4 py-3 text-left">Status</th>
+            <th scope="col" className="px-4 py-3 text-left">QC</th>
+            <th scope="col" className="px-4 py-3 text-right">Action</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">

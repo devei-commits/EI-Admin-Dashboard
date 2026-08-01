@@ -33,7 +33,7 @@ type PmSchemaFieldRendererProps = {
 };
 
 const inputClass =
-  'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  'w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]';
 
 const PmSchemaFieldRenderer: React.FC<PmSchemaFieldRendererProps> = ({
   module,
@@ -59,7 +59,7 @@ const PmSchemaFieldRenderer: React.FC<PmSchemaFieldRendererProps> = ({
   return (
     <div className={className}>
       {fields.length === 0 ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-ink-3">
           No fields for this section with the current category / sub-category. Adjust selections above.
         </p>
       ) : (
@@ -100,9 +100,9 @@ const PmSchemaField: React.FC<{
   const label = (
     <>
       {field.label}
-      {field.required ? <span className="text-red-600 ml-0.5">*</span> : null}
+      {field.required ? <span className="text-err ml-0.5">*</span> : null}
       {field.cond ? (
-        <span className="ml-1 text-[9px] font-bold uppercase text-amber-700">cond</span>
+        <span className="ml-1 text-[9px] font-bold uppercase text-warn">cond</span>
       ) : null}
     </>
   );
@@ -110,7 +110,7 @@ const PmSchemaField: React.FC<{
     <>
       {field.label}
       {field.cond ? (
-        <span className="ml-1 text-[9px] font-bold uppercase text-amber-700">cond</span>
+        <span className="ml-1 text-[9px] font-bold uppercase text-warn">cond</span>
       ) : null}
     </>
   );
@@ -118,7 +118,7 @@ const PmSchemaField: React.FC<{
   if (field.type === 'textarea') {
     return (
       <div className="sm:col-span-2">
-        <label htmlFor={field.key} className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor={field.key} className="block text-sm font-medium text-ink-2 mb-1">
           {label}
         </label>
         <textarea
@@ -129,7 +129,7 @@ const PmSchemaField: React.FC<{
           className={inputClass}
         />
         {error ? (
-          <p className="mt-1 text-xs text-red-600" role="alert">
+          <p className="mt-1 text-xs text-err" role="alert">
             {error}
           </p>
         ) : null}
@@ -154,7 +154,7 @@ const PmSchemaField: React.FC<{
 
   return (
     <div>
-      <label htmlFor={field.key} className="block text-sm font-medium text-gray-700 mb-1">
+      <label htmlFor={field.key} className="block text-sm font-medium text-ink-2 mb-1">
         {label}
       </label>
       <input
@@ -165,7 +165,7 @@ const PmSchemaField: React.FC<{
         className={inputClass}
       />
       {error ? (
-        <p className="mt-1 text-xs text-red-600" role="alert">
+        <p className="mt-1 text-xs text-err" role="alert">
           {error}
         </p>
       ) : null}

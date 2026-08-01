@@ -13,7 +13,7 @@ const WarehouseOutbound = () => {
   const tabBar = <TransfersTabBar active={tab} onChange={setTab} />;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-white">
+    <div className="flex-1 flex flex-col overflow-hidden bg-surface">
       <OutboundDashboard tab={tab} transfersTabBar={tabBar} />
     </div>
   );

@@ -176,12 +176,12 @@ const StaffPerformanceTable: React.FC<StaffPerformanceTableProps> = ({ metrics, 
    <table className="w-full">
     <thead>
      <tr className="border-b border-gray-200">
-      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff</th>
-      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Active</th>
-      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolved Today</th>
-      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg Time</th>
-      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Rating</th>
-      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Overdue</th>
+      <th scope="col" className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff</th>
+      <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Active</th>
+      <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolved Today</th>
+      <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg Time</th>
+      <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Rating</th>
+      <th scope="col" className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Overdue</th>
      </tr>
     </thead>
     <tbody className="divide-y divide-gray-100">
@@ -430,6 +430,7 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
       value={dateRange.from}
       onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
       className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+      aria-label="From date"
      />
      <span className="text-gray-400">to</span>
      <input
@@ -437,10 +438,12 @@ const TicketDashboard: React.FC<TicketDashboardProps> = ({
       value={dateRange.to}
       onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
       className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 focus:border-transparent"
+      aria-label="To date"
      />
      <button
       onClick={loadDashboardData}
       className="p-2 bg-gray-100 text-slate-900 rounded-lg hover:bg-gray-200 transition-colors"
+      aria-label="Refresh dashboard"
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

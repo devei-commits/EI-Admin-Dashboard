@@ -203,11 +203,11 @@ export function MasterCustomQualitySpecsSection({
   };
 
   return (
-    <div className="space-y-4 border-t border-gray-200 pt-4">
+    <div className="space-y-4 border-t border-border pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">Quality specifications</h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-3">Quality specifications</h3>
+          <p className="text-xs text-ink-3 mt-1">
             Custom parameters are shared across all items in the same category or sub-category. Removing a
             parameter on this item hides it here only — other items keep it.
           </p>
@@ -215,13 +215,13 @@ export function MasterCustomQualitySpecsSection({
         <button
           type="button"
           onClick={openAddModal}
-          className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+          className="px-2.5 py-1 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft"
         >
           + Add Custom Quality Spec
         </button>
       </div>
       {addError ? (
-        <p className="text-xs text-red-600" role="alert">
+        <p className="text-xs text-err" role="alert">
           {addError}
         </p>
       ) : null}

@@ -226,10 +226,10 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
    <div className="absolute inset-0 bg-black/45" onClick={() => !submitting && onClose()} />
-   <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
+   <div role="dialog" aria-modal="true" aria-labelledby="create-customer-ticket-title" className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
     <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
      <div>
-      <h2 className="text-lg font-semibold text-gray-900">New customer ticket</h2>
+      <h2 id="create-customer-ticket-title" className="text-lg font-semibold text-gray-900">New customer ticket</h2>
       <p className="text-sm text-gray-500 mt-0.5">
        Link a portal customer so the ticket shows on their site, or use guest details for callers without an account.
       </p>
@@ -260,6 +260,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
        onChange={(e) => setSubject(e.target.value)}
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
        maxLength={500}
+       aria-label="Subject"
       />
      </div>
 
@@ -270,6 +271,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
        onChange={(e) => setDescription(e.target.value)}
        rows={3}
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+       aria-label="Description"
       />
      </div>
 
@@ -280,6 +282,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
         value={category}
         onChange={(e) => setCategory(e.target.value as TicketCategory)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        aria-label="Category"
        >
         {CATEGORIES.map((c) => (
          <option key={c.value} value={c.value}>
@@ -294,6 +297,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
         value={priority}
         onChange={(e) => setPriority(e.target.value as TicketPriority)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        aria-label="Priority"
        >
         {PRIORITIES.map((p) => (
          <option key={p} value={p}>
@@ -350,6 +354,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
          placeholder="Type at least 2 characters (name or email)"
          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
          autoComplete="off"
+         aria-label="Find customer"
         />
         {customerSearchLoading && (
          <p className="text-xs text-gray-500">Searching…</p>
@@ -409,6 +414,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          aria-label="Name"
          />
         </div>
         <div>
@@ -418,6 +424,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
           value={customerEmail}
           onChange={(e) => setCustomerEmail(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          aria-label="Email"
          />
         </div>
         <div>
@@ -427,6 +434,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
           value={customerPhone}
           onChange={(e) => setCustomerPhone(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          aria-label="Phone"
          />
         </div>
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
@@ -443,6 +451,7 @@ const CreateCustomerTicketModal: React.FC<CreateCustomerTicketModalProps> = ({
        onChange={(e) => setAssigneeUserId(e.target.value)}
        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
        required
+       aria-label="Assign to"
       >
        <option value="">Select staff member…</option>
        {staffOptions.map((u) => (

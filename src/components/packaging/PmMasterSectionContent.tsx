@@ -151,7 +151,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             {pmUsesFunctionalTaxonomy
               ? 'SKU series, category & sub-category'
               : 'Category, sub-category & sub-sub category'}
@@ -169,7 +169,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
             />
             {formData.pmSkuCategory &&
             !pmSkuCategoryOptions.includes(String(formData.pmSkuCategory)) ? (
-              <p className="text-[10px] text-amber-800 mt-1 col-span-2">
+              <p className="text-[10px] text-warn mt-1 col-span-2">
                 Legacy category &quot;{String(formData.pmSkuCategory)}&quot; — pick a PPM / SPM / TPM option.
               </p>
             ) : null}
@@ -228,14 +228,14 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
 
         {!isNewPm ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Material Code (SKU)</label>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-800">
+            <label className="block text-sm font-medium text-ink-2 mb-1">Material Code (SKU)</label>
+            <div className="rounded-lg border border-border bg-surface-3 px-3 py-2.5 text-sm font-mono text-ink">
               {str(formData.itemCode) || '—'}
             </div>
           </div>
         ) : null}
 
-        <div className="border-t border-gray-200 pt-4">
+        <div className="border-t border-border pt-4">
           <InputField
             label="PM Name / Description"
             id="tradeCommercialName"
@@ -254,7 +254,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
         />
 
         <div>
-          <label htmlFor="level" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="level" className="block text-sm font-medium text-ink-2 mb-1">
             Level
           </label>
           <input
@@ -262,9 +262,9 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
             type="text"
             readOnly
             value={str(formData.level) || '—'}
-            className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-slate-800 cursor-default"
+            className="w-full p-2 border border-border rounded-lg text-sm bg-surface-3 text-ink cursor-default"
           />
-          <p className="text-xs text-gray-500 mt-2">Auto: PPM → Primary, SPM → Secondary, TPM → Tertiary</p>
+          <p className="text-xs text-ink-3 mt-2">Auto: PPM → Primary, SPM → Secondary, TPM → Tertiary</p>
         </div>
       </div>
     );
@@ -274,8 +274,8 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
         <PmSchemaFieldRenderer module="units" {...schemaRendererProps} />
-        <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+        <div className="border border-border rounded-lg p-3 sm:p-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Zoho integration
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -300,7 +300,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
               error={errors.pkgTaxPreference}
             />
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-ink-3 mt-2">
             HSN / SAC and GST rate are in the fields above per master schema. Taxable preference controls Zoho sync validation.
           </p>
         </div>
@@ -317,8 +317,8 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
   if (sectionIndex === 3) {
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
-        <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Linked products</h3>
+        <div className="border border-border rounded-lg p-3 sm:p-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Linked products</h3>
           {pmLinkedProductCodes.length > 0 ? (
             <MasterLinkedPrProductsPanel codes={pmLinkedProductCodes} accent="violet" />
           ) : (
@@ -382,7 +382,7 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
             }
           />
         ) : (
-          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-ink-3 border border-dashed border-border rounded-lg px-4 py-3">
             Complete <strong>Primary info</strong> and pick category / sub-category to add GRN quality
             specifications.
           </p>
@@ -395,10 +395,10 @@ const PmMasterSectionContent: React.FC<PmMasterSectionContentProps> = (props) =>
     return (
       <div className="min-w-0 space-y-5 sm:space-y-6">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
             Vendors &amp; commercial
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-ink-3 mb-3">
             Add vendors with MOQ, pricing, lead time, and payment terms. Pick a vendor from suggestions to
             auto-fill commercial details from the vendor master.
           </p>

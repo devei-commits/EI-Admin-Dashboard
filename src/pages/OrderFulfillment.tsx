@@ -8,6 +8,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ShoppingCart, Package, Loader2, LayoutDashboard, ArrowDownToLine } from 'lucide-react';
 import { SODashboardView } from '../components/orders/SODashboardView';
 import { BatchesDashboardView } from '../components/orders/BatchesDashboardView';
+import { FulfillmentSidebar } from '../components/orders/FulfillmentSidebar';
 import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData } from '../types/orderFulfillment';
 import { normalizePackSize } from '../utils/orderFulfillmentUtils';
 import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
@@ -480,13 +481,16 @@ export const OrderFulfillment: React.FC = () => {
   }, [saleOrders, searchTerm, statusFilter, priorityFilter, cityFilter, sortKey, sortOrder, dateFilter]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-screen-2xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200">
-        <div className="p-6">
-          <div className="flex flex-wrap justify-between items-start gap-4 mb-6 pl-12 sm:pl-0">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">Order Fulfillment</h1>
-              <p className="text-sm text-gray-500 mt-1">Manage sale orders from creation to delivery.</p>
+    <div className="flex min-h-screen bg-canvas text-ink">
+      <FulfillmentSidebar activeView={viewMode} onNavigate={setViewMode} counts={{ 'so-dashboard': saleOrders.length }} />
+      <div className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
+        <div className="sticky top-0 z-20 bg-surface border-b border-hairline px-4 sm:px-6 py-3 shrink-0">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-xs text-ink-3 mb-0.5">Order Management / Fulfillment</div>
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-ink truncate">
+                {viewMode === 'products-batches' ? 'Products & Batches' : 'SO Dashboard'}
+              </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* Pull a single SO straight from Zoho Books by number */}
@@ -506,13 +510,13 @@ export const OrderFulfillment: React.FC = () => {
                   placeholder="Zoho SO no…"
                   disabled={importingZohoSo}
                   aria-label="Zoho SO number"
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 w-36 disabled:opacity-60"
+                  className="px-3 py-1.5 text-sm border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-brand w-36 disabled:opacity-60"
                 />
                 <button
                   type="button"
                   onClick={() => { void handleZohoSoImport(false); }}
                   disabled={importingZohoSo || !zohoSoNo.trim()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-sm font-semibold text-ink-2 hover:bg-surface-3 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
                 >
                   <ArrowDownToLine size={16} className="shrink-0" aria-hidden />
                   {importingZohoSo ? 'Fetching…' : 'Fetch from Zoho'}
@@ -522,7 +526,7 @@ export const OrderFulfillment: React.FC = () => {
                   onClick={() => { void handleZohoSoImport(true); }}
                   disabled={importingZohoSo || !zohoSoNo.trim()}
                   title="Re-import an SO that already exists locally, overwriting it with Zoho's current data"
-                  className="inline-flex items-center px-2 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
+                  className="inline-flex items-center px-2 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-3 hover:bg-surface-3 disabled:opacity-60 disabled:pointer-events-none whitespace-nowrap"
                 >
                   Re-fetch
                 </button>
@@ -539,49 +543,35 @@ export const OrderFulfillment: React.FC = () => {
                 type="button"
                 onClick={() => salesOrderExcelInputRef.current?.click()}
                 disabled={importingSalesOrders}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-sm font-semibold text-ink-2 hover:bg-surface-3 disabled:opacity-60"
                 title="Import Sales Order Excel"
               >
                 {importingSalesOrders ? 'Importing SO…' : 'Import SO Excel'}
               </button>
               <Link
                 to="/planning"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-600 hover:text-orange-700 underline-offset-2 hover:underline shrink-0"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:text-brand underline-offset-2 hover:underline shrink-0"
               >
                 <LayoutDashboard size={16} className="shrink-0" aria-hidden />
                 Planning dashboard
               </Link>
             </div>
           </div>
+        </div>
 
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex gap-1 bg-gray-100 border border-gray-200 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('so-dashboard')}
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'so-dashboard' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-              >
-                <ShoppingCart size={16} /> SO Dashboard
-              </button>
-              <button
-                onClick={() => setViewMode('products-batches')}
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'products-batches' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}
-              >
-                <Package size={16} /> Products & Batches
-              </button>
-            </div>
-          </div>
-
+        <div className="flex-1 overflow-auto px-4 sm:px-6 py-5">
+          <div className="bg-surface rounded-[var(--r-lg)] border border-hairline p-4 sm:p-5 shadow-[var(--e1)]">
           {viewMode === 'products-batches' ? (
             <BatchesDashboardView />
           ) : loading ? (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="animate-spin text-orange-500 mr-3" size={24} />
-              <span className="text-gray-500">Loading fulfillment orders...</span>
+              <Loader2 className="animate-spin text-brand mr-3" size={24} />
+              <span className="text-ink-3">Loading fulfillment orders...</span>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <p className="text-red-500 mb-4">{error}</p>
-              <button onClick={loadOrders} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm">
+              <p className="text-err mb-4">{error}</p>
+              <button onClick={loadOrders} className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-press transition-colors text-sm">
                 Retry
               </button>
             </div>
@@ -598,6 +588,7 @@ export const OrderFulfillment: React.FC = () => {
               onDeepLinkSoConsumed={() => setDeepLinkSoNo(null)}
             />
           )}
+          </div>
         </div>
       </div>
       {selectedYield && (
@@ -609,14 +600,14 @@ export const OrderFulfillment: React.FC = () => {
         >
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Product</p><p className="text-xs font-semibold text-gray-800">{selectedYield.productName}</p></div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="text-xs font-semibold text-gray-800">{selectedYield.soNo || '—'}</p></div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BMR</p><p className="text-xs font-semibold text-gray-800">{selectedYield.bmrNo}</p></div>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BPR</p><p className="text-xs font-semibold text-gray-800">{selectedYield.bprNo}</p></div>
+              <div className="rounded-lg border border-border bg-surface-3 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">Product</p><p className="text-xs font-semibold text-ink">{selectedYield.productName}</p></div>
+              <div className="rounded-lg border border-border bg-surface-3 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">SO</p><p className="text-xs font-semibold text-ink">{selectedYield.soNo || '—'}</p></div>
+              <div className="rounded-lg border border-border bg-surface-3 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">BMR</p><p className="text-xs font-semibold text-ink">{selectedYield.bmrNo}</p></div>
+              <div className="rounded-lg border border-border bg-surface-3 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">BPR</p><p className="text-xs font-semibold text-ink">{selectedYield.bprNo}</p></div>
             </div>
             <div className="grid md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-                <h4 className="text-sm font-bold text-blue-900 mb-2">BMR (Production)</h4>
+              <div className="rounded-xl border border-brand-soft bg-brand-soft p-4">
+                <h4 className="text-sm font-bold text-brand mb-2">BMR (Production)</h4>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between"><span>Planned batch (KG)</span><b>{selectedYield.plannedQty.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
                   <div className="flex justify-between"><span>Actual yield (KG)</span><b>{selectedYield.bmrYieldKg.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</b></div>
@@ -624,8 +615,8 @@ export const OrderFulfillment: React.FC = () => {
                   <div className="flex justify-between"><span>Yield %</span><b>{selectedYield.bmrYieldPct.toFixed(1)}%</b></div>
                 </div>
               </div>
-              <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-4">
-                <h4 className="text-sm font-bold text-purple-900 mb-2">BPR (Filling/Packing)</h4>
+              <div className="rounded-xl border border-brand-soft bg-brand-soft p-4">
+                <h4 className="text-sm font-bold text-brand mb-2">BPR (Filling/Packing)</h4>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between"><span>Bulk units</span><b>{selectedYield.bprBulkUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
                   <div className="flex justify-between"><span>Actual output units</span><b>{selectedYield.actualOutputUnits.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</b></div>
@@ -634,64 +625,64 @@ export const OrderFulfillment: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <div className="rounded-xl border border-emerald-100 bg-ok-soft/60 p-4">
               <h4 className="text-sm font-bold text-emerald-900 mb-2">Fulfillment Completion</h4>
               <div className="grid md:grid-cols-3 gap-3 text-xs mb-3">
-                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Planned Qty</p>
-                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
+                <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Planned Qty</p>
+                  <p className="font-semibold text-ink">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Actual Output</p>
-                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
+                <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Actual Output</p>
+                  <p className="font-semibold text-ink">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Completion %</p>
-                  <p className="font-semibold text-emerald-700">{selectedYield.completionPercent.toFixed(1)}%</p>
+                <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Completion %</p>
+                  <p className="font-semibold text-ok">{selectedYield.completionPercent.toFixed(1)}%</p>
                 </div>
               </div>
-              <div className="w-full h-2 bg-emerald-100 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ok-soft rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500"
+                  className="h-full bg-ok"
                   style={{ width: `${Math.max(0, Math.min(100, selectedYield.completionPercent))}%` }}
                 />
               </div>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+            <div className="rounded-xl border border-amber-100 bg-warn-soft/60 p-4">
               <h4 className="text-sm font-bold text-amber-900 mb-2">Rework Batch Creation</h4>
               <p className="text-xs text-amber-900/80 mb-3">
                 If actual output is short against planned quantity after QC, create a rework batch for the same SO.
               </p>
               <div className="grid md:grid-cols-3 gap-3 mb-3">
-                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Planned Qty</p>
-                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
+                <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Planned Qty</p>
+                  <p className="font-semibold text-ink">{Math.round(selectedYield.plannedQty).toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Actual Output</p>
-                  <p className="font-semibold text-gray-900">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
+                <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Actual Output</p>
+                  <p className="font-semibold text-ink">{Math.round(selectedYield.actualOutputUnits).toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                  <p className="text-[10px] text-gray-500 uppercase">Shortfall</p>
-                  <p className="font-semibold text-amber-700">{Math.max(0, Math.round(selectedYield.plannedQty - selectedYield.actualOutputUnits)).toLocaleString('en-IN')}</p>
+                <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-surface px-3 py-2">
+                  <p className="text-[10px] text-ink-3 uppercase">Shortfall</p>
+                  <p className="font-semibold text-warn">{Math.max(0, Math.round(selectedYield.plannedQty - selectedYield.actualOutputUnits)).toLocaleString('en-IN')}</p>
                 </div>
               </div>
-              <div className="rounded-lg border border-amber-200 bg-white px-3 py-3 mb-3">
+              <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-surface px-3 py-3 mb-3">
                 <p className="text-[11px] font-semibold text-amber-900 mb-2">Rework Preview (editable before create)</p>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">Rework Qty (units)</label>
+                    <label className="block text-[11px] font-medium text-ink-3 mb-1">Rework Qty (units)</label>
                     <input
                       type="number"
                       min={1}
                       step={1}
                       value={reworkQtyInput}
                       onChange={(e) => setReworkQtyInput(e.target.value)}
-                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      className="w-full border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 text-sm bg-surface"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">Batch Size (KG, optional)</label>
+                    <label className="block text-[11px] font-medium text-ink-3 mb-1">Batch Size (KG, optional)</label>
                     <input
                       type="number"
                       min={0.001}
@@ -699,33 +690,33 @@ export const OrderFulfillment: React.FC = () => {
                       value={reworkBatchSizeKgInput}
                       onChange={(e) => setReworkBatchSizeKgInput(e.target.value)}
                       placeholder="Auto-scale from base batch"
-                      className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      className="w-full border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 text-sm bg-surface"
                     />
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] text-gray-600">
+                <p className="mt-2 text-[11px] text-ink-3">
                   This rework will be created under the same SO and base batch linkage. Quantity defaults to the shortfall and can be adjusted here.
                 </p>
               </div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Confirm SO ID</label>
+                  <label className="block text-[11px] font-medium text-ink-3 mb-1">Confirm SO ID</label>
                   <input
                     type="text"
                     value={reworkSoInput}
                     onChange={(e) => setReworkSoInput(e.target.value)}
                     placeholder={selectedYield.soNo}
-                    className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    className="w-full border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 text-sm bg-surface"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Reason (optional)</label>
+                  <label className="block text-[11px] font-medium text-ink-3 mb-1">Reason (optional)</label>
                   <input
                     type="text"
                     value={reworkReason}
                     onChange={(e) => setReworkReason(e.target.value)}
                     placeholder="Rework reason"
-                    className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    className="w-full border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 text-sm bg-surface"
                   />
                 </div>
               </div>

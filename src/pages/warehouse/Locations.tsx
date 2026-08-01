@@ -9,15 +9,15 @@ import { queryKeys } from '../../lib/queryClient';
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 
 const getUtilizationBarColor = (value: number) => {
-  if (value >= 90) return 'bg-rose-500';
-  if (value >= 70) return 'bg-amber-500';
-  return 'bg-emerald-500';
+  if (value >= 90) return 'bg-err';
+  if (value >= 70) return 'bg-warn';
+  return 'bg-ok';
 };
 
 const getUtilizationBadge = (value: number) => {
-  if (value >= 90) return 'text-rose-700 bg-rose-100 border-rose-200';
-  if (value >= 70) return 'text-amber-700 bg-amber-100 border-amber-200';
-  return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+  if (value >= 90) return 'text-err bg-err-soft border-err';
+  if (value >= 70) return 'text-warn bg-warn-soft border-warn';
+  return 'text-ok bg-ok-soft border-ok';
 };
 
 /** Max SKU chips shown per rack before collapsing into a "+N more" affordance. */
@@ -106,18 +106,18 @@ const WarehouseLocations = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 overflow-auto p-6 bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600">Loading warehouse locations…</p>
+      <div className="flex-1 overflow-auto p-6 bg-canvas flex items-center justify-center">
+        <p className="text-ink-2">Loading warehouse locations…</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 bg-slate-50">
+    <div className="flex-1 overflow-auto p-6 bg-canvas">
       <div className="w-full space-y-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Warehouse Locations & Rack Management</h1>
-          <p className="mt-1 text-sm text-slate-600">
+          <h1 className="text-3xl font-bold text-ink">Warehouse Locations & Rack Management</h1>
+          <p className="mt-1 text-sm text-ink-2">
             Grouped by facility → zone → rack. Click a facility to expand, or a rack for slot details.
           </p>
         </div>
@@ -125,36 +125,36 @@ const WarehouseLocations = () => {
         {facilityGroups.map((group) => {
           const collapsed = collapsedFacilities.has(group.key);
           return (
-            <section key={group.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <section key={group.key} className="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
               {/* Facility shell header */}
               <button
                 type="button"
                 onClick={() => toggleFacility(group.key)}
                 aria-expanded={!collapsed}
-                className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-surface-2 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                  <ChevronDown className={`h-5 w-5 shrink-0 text-ink-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                   <span className="text-2xl leading-none">{group.icon}</span>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-bold text-slate-900 leading-none">{group.label}</h2>
-                      <span className="text-xs font-medium text-slate-500">{group.sub}</span>
+                      <h2 className="text-xl font-bold text-ink leading-none">{group.label}</h2>
+                      <span className="text-xs font-medium text-ink-3">{group.sub}</span>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-ink-3">
                       {group.zones.length} zones · {group.racks} racks · {group.items} items stored
                     </p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Avg utilisation</p>
-                  <p className="text-xl font-bold text-cyan-700 leading-none">{group.util}%</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Avg utilisation</p>
+                  <p className="text-xl font-bold text-brand leading-none">{group.util}%</p>
                 </div>
               </button>
 
               {/* Zones inside the facility */}
               {!collapsed && (
-                <div className="border-t border-slate-200 divide-y divide-slate-200">
+                <div className="border-t border-border divide-y divide-border">
                   {group.zones.map((location) => {
                     const itemCount = location.racks.reduce((s, r) => s + (r.itemsStoredCount ?? 0), 0);
                     const meta = [
@@ -164,24 +164,24 @@ const WarehouseLocations = () => {
                     ].filter(Boolean).join(' · ');
                     return (
                       <div key={location.id}>
-                        <div className="px-5 py-3 bg-slate-50/70 flex items-start justify-between gap-3">
+                        <div className="px-5 py-3 bg-surface-2/70 flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-base leading-none">{location.icon ?? '📦'}</span>
-                              <h3 className="text-base font-semibold text-slate-800 leading-none">{location.name}</h3>
+                              <h3 className="text-base font-semibold text-ink-2 leading-none">{location.name}</h3>
                               {location.zoneLabel && (
-                                <span className="text-xs font-semibold text-emerald-700">{location.zoneLabel}</span>
+                                <span className="text-xs font-semibold text-ok">{location.zoneLabel}</span>
                               )}
                             </div>
-                            <p className="mt-1 text-xs text-slate-500">{meta}</p>
+                            <p className="mt-1 text-xs text-ink-3">{meta}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-[10px] uppercase tracking-wide text-slate-400">Util</p>
-                            <p className="text-base font-bold text-cyan-700 leading-none">{location.utilisationPct ?? 0}%</p>
+                            <p className="text-[10px] uppercase tracking-wide text-ink-4">Util</p>
+                            <p className="text-base font-bold text-brand leading-none">{location.utilisationPct ?? 0}%</p>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 border-t border-slate-100">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 border-t border-hairline">
                           {location.racks.map((rack) => {
                             const stored = rack.storedItems ?? [];
                             const shown = stored.slice(0, RACK_CHIP_CAP);
@@ -198,24 +198,24 @@ const WarehouseLocations = () => {
                                     setSelectedRack({ location, rack });
                                   }
                                 }}
-                                className="px-4 py-3 border-r border-b border-slate-200 text-left hover:bg-cyan-50 transition-colors cursor-pointer"
+                                className="px-4 py-3 border-r border-b border-border text-left hover:bg-brand-soft transition-colors cursor-pointer"
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <p className="text-lg font-bold text-cyan-700 leading-none">{rack.code}</p>
+                                  <p className="text-lg font-bold text-brand leading-none">{rack.code}</p>
                                   <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${getUtilizationBadge(rack.utilisationPct ?? 0)}`}>
                                     {rack.utilisationPct ?? 0}%
                                   </span>
                                 </div>
-                                <p className="mt-0.5 text-sm text-slate-600 truncate">{rack.description ?? rack.name}</p>
+                                <p className="mt-0.5 text-sm text-ink-2 truncate">{rack.description ?? rack.name}</p>
 
-                                <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="mt-2 h-1.5 bg-surface-3 rounded-full overflow-hidden">
                                   <div
                                     className={`h-full rounded-full ${getUtilizationBarColor(rack.utilisationPct ?? 0)}`}
                                     style={{ width: `${rack.utilisationPct ?? 0}%` }}
                                   />
                                 </div>
 
-                                <p className="mt-2 text-xs text-slate-600">
+                                <p className="mt-2 text-xs text-ink-2">
                                   {rack.levels} levels · {rack.slotsTotal} slots · {rack.itemsStoredCount ?? 0} items
                                 </p>
 
@@ -230,7 +230,7 @@ const WarehouseLocations = () => {
                                           ev.stopPropagation();
                                           openInventoryForStoredItem(s);
                                         }}
-                                        className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 border border-cyan-200 hover:bg-cyan-200"
+                                        className="text-[11px] px-1.5 py-0.5 rounded bg-brand-soft text-brand border border-brand hover:bg-brand-soft"
                                       >
                                         {s.code}
                                       </button>
@@ -243,7 +243,7 @@ const WarehouseLocations = () => {
                                           ev.stopPropagation();
                                           setSelectedRack({ location, rack });
                                         }}
-                                        className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 font-medium"
+                                        className="text-[11px] px-1.5 py-0.5 rounded bg-surface-3 text-ink-2 border border-border hover:bg-surface-3 font-medium"
                                       >
                                         +{extra} more
                                       </button>
@@ -266,7 +266,7 @@ const WarehouseLocations = () => {
         })}
 
         {facilityGroups.length === 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-border bg-surface p-10 text-center text-sm text-ink-3">
             No warehouse locations configured yet.
           </div>
         )}
@@ -274,24 +274,25 @@ const WarehouseLocations = () => {
 
       {selectedRack && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           onClick={() => setSelectedRack(null)}
           role="dialog"
           aria-modal="true"
           aria-label="Rack details"
         >
           <div
-            className="w-full max-w-3xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-y-auto"
+            className="w-full max-w-3xl max-h-[90vh] bg-surface rounded-xl border border-border shadow-2xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-3xl font-bold text-slate-900">
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+              <h2 className="text-3xl font-bold text-ink">
                 Rack - Bay {selectedRack.rack.code} - {selectedRack.rack.description ?? selectedRack.rack.name}
               </h2>
               <button
                 type="button"
                 onClick={() => setSelectedRack(null)}
-                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+                className="p-2 rounded-lg border border-border text-ink-2 hover:bg-surface-3"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -299,46 +300,46 @@ const WarehouseLocations = () => {
 
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bay</p>
-                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.code}</p>
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Bay</p>
+                  <p className="text-2xl font-bold text-brand mt-1">{selectedRack.rack.code}</p>
                 </div>
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Zone</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{selectedRack.location.name}</p>
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Zone</p>
+                  <p className="text-2xl font-bold text-ink mt-1">{selectedRack.location.name}</p>
                 </div>
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Levels × Slots</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Levels × Slots</p>
+                  <p className="text-2xl font-bold text-ink mt-1">
                     {selectedRack.rack.levels} × {selectedRack.rack.slotsTotal} = {selectedRack.rack.levels * selectedRack.rack.slotsTotal} positions
                   </p>
                 </div>
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Condition</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">{getRackCondition(selectedRack.rack.description ?? '')}</p>
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Condition</p>
+                  <p className="text-2xl font-bold text-ink mt-1">{getRackCondition(selectedRack.rack.description ?? '')}</p>
                 </div>
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Utilisation</p>
-                  <p className="text-2xl font-bold text-cyan-700 mt-1">{selectedRack.rack.utilisationPct ?? 0}%</p>
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Utilisation</p>
+                  <p className="text-2xl font-bold text-brand mt-1">{selectedRack.rack.utilisationPct ?? 0}%</p>
                 </div>
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
-                  <span className="inline-flex mt-2 px-3 py-1 rounded-full border border-emerald-200 bg-emerald-100 text-emerald-700 text-sm font-semibold">
+                <div className="border border-border rounded-lg p-4 bg-surface-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Status</p>
+                  <span className="inline-flex mt-2 px-3 py-1 rounded-full border border-ok bg-ok-soft text-ok text-sm font-semibold">
                     Active
                   </span>
                 </div>
               </div>
 
               <div>
-                <h3 className="text-lg font-bold text-cyan-700 border-b border-slate-200 pb-2">Rack Slot Map</h3>
+                <h3 className="text-lg font-bold text-brand border-b border-border pb-2">Rack Slot Map</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 mt-3">
                   {getRackSlotMap(selectedRack.rack).map((slot, idx) => (
                     <div
                       key={`${selectedRack.rack.id}-${slot.code}-${slot.label}-${idx}`}
                       className={`rounded-lg border p-2 text-center min-h-14 flex flex-col items-center justify-center ${
                         slot.isFilled
-                          ? 'bg-cyan-100 border-cyan-300 text-cyan-800'
-                          : 'bg-slate-50 border-slate-200 text-slate-500'
+                          ? 'bg-brand-soft border-brand text-brand'
+                          : 'bg-surface-2 border-border text-ink-3'
                       }`}
                     >
                       <p className="text-xs font-bold">{slot.code}</p>
@@ -349,12 +350,12 @@ const WarehouseLocations = () => {
               </div>
 
               <div>
-                <h3 className="text-lg font-bold text-cyan-700 border-b border-slate-200 pb-2">
+                <h3 className="text-lg font-bold text-brand border-b border-border pb-2">
                   Items Stored ({selectedRack.rack.itemsStoredCount ?? selectedRack.rack.storedItems?.length ?? 0})
                 </h3>
                 <div className="mt-2 space-y-2">
                   {(selectedRack.rack.storedItems?.length ?? 0) === 0 ? (
-                    <p className="text-sm text-slate-500">No items currently stored in this rack.</p>
+                    <p className="text-sm text-ink-3">No items currently stored in this rack.</p>
                   ) : (
                     (selectedRack.rack.storedItems ?? []).map((stored, i) => {
                       const inventoryItem = inventoryData.find((inv) => inv.warehouseInventoryId === stored.warehouseInventoryId);
@@ -363,14 +364,14 @@ const WarehouseLocations = () => {
                           key={`${stored.warehouseInventoryId}-${i}`}
                           type="button"
                           onClick={() => openInventoryForStoredItem(stored)}
-                          className="w-full flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors text-left"
+                          className="w-full flex items-center justify-between py-2 border-b border-hairline hover:bg-surface-2 transition-colors text-left"
                         >
                           <div>
-                            <p className="text-xs font-semibold text-cyan-700">{stored.code}</p>
-                            <p className="text-lg font-semibold text-slate-900">{stored.name}</p>
+                            <p className="text-xs font-semibold text-brand">{stored.code}</p>
+                            <p className="text-lg font-semibold text-ink">{stored.name}</p>
                           </div>
                           {inventoryItem && (
-                            <span className="px-3 py-1 rounded-lg border border-cyan-300 bg-cyan-100 text-cyan-800 text-sm font-bold">
+                            <span className="px-3 py-1 rounded-lg border border-brand bg-brand-soft text-brand text-sm font-bold">
                               {inventoryItem.stockInHand} {inventoryItem.whUnit}
                             </span>
                           )}
@@ -382,11 +383,11 @@ const WarehouseLocations = () => {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end">
+            <div className="px-6 py-4 border-t border-border flex justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedRack(null)}
-                className="px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-800"
+                className="px-4 py-2 rounded-lg bg-ink-2 text-white font-medium hover:bg-ink"
               >
                 Close
               </button>
@@ -397,7 +398,7 @@ const WarehouseLocations = () => {
 
       {selectedItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           onClick={() => setSelectedItem(null)}
           role="dialog"
           aria-modal="true"

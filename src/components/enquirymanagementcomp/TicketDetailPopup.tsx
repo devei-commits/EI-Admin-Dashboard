@@ -221,6 +221,7 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
      <textarea
       value={newMessage}
       onChange={(e) => setNewMessage(e.target.value)}
+      aria-label={isInternal ? "Add internal note" : "Type your response"}
       placeholder={isInternal ? "Add internal note..." : "Type your response..."}
       className={`flex-1 px-4 py-3 border rounded-xl resize-none focus:ring-2 focus:ring-slate-800 focus:border-transparent ${
        isInternal ? 'border-yellow-300 bg-yellow-50' : 'border-gray-300'
@@ -231,6 +232,7 @@ const MessagesSection: React.FC<MessagesSectionProps> = ({
       onClick={handleSend}
       disabled={!newMessage.trim()}
       className="px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors self-end"
+      aria-label="Send message"
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -312,6 +314,7 @@ const LinkedOrdersSection: React.FC<LinkedOrdersSectionProps> = ({
         onClick={() => onUnlinkOrder(order.orderId)}
         className="p-2 text-gray-400 hover:text-red-500 transition-colors"
         title="Unlink order"
+        aria-label="Unlink order"
        >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -488,7 +491,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
 
  return (
   <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-   <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+   <div role="dialog" aria-modal="true" aria-labelledby="ticket-detail-title" className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
     {/* Header */}
     <div className="flex items-start justify-between p-6 border-b border-gray-200 bg-gray-50/50">
      <div className="flex-1">
@@ -505,7 +508,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
         </span>
        )}
       </div>
-      <h2 className="text-xl font-semibold text-gray-900">{ticket.subject}</h2>
+      <h2 id="ticket-detail-title" className="text-xl font-semibold text-gray-900">{ticket.subject}</h2>
       <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
        <span>Created {new Date(ticket.createdAt).toLocaleDateString()}</span>
        <span>•</span>
@@ -523,6 +526,7 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
      <button
       onClick={onClose}
       className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      aria-label="Close"
      >
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -815,14 +819,15 @@ const TicketDetailPopup: React.FC<TicketDetailPopupProps> = ({
    {/* Resolve Modal */}
    {showResolveModal && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-60">
-     <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Resolve Ticket</h3>
+     <div role="dialog" aria-modal="true" aria-labelledby="resolve-ticket-title" className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h3 id="resolve-ticket-title" className="text-lg font-semibold text-gray-900 mb-4">Resolve Ticket</h3>
       <p className="text-sm text-gray-600 mb-4">
        Please provide resolution notes for this ticket.
       </p>
       <textarea
        value={resolutionNotes}
        onChange={(e) => setResolutionNotes(e.target.value)}
+       aria-label="Resolution notes"
        placeholder="Describe how the issue was resolved..."
        className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
        rows={4}

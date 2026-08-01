@@ -16,16 +16,18 @@ export interface StatusStyle {
   border: string;
 }
 
+// Design language: single brand accent + semantic status tones. Legacy tones collapse to
+// neutral (slate/gray) · brand-info (cyan/blue/violet) · warn (amber/orange) · ok (emerald) · err (red).
 export const TONE_CLASSES: Record<StatusTone, StatusStyle> = {
-  slate:   { text: 'text-slate-600',   bg: 'bg-slate-100',   border: 'border-slate-200' },
-  gray:    { text: 'text-gray-600',    bg: 'bg-gray-100',    border: 'border-gray-200' },
-  amber:   { text: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200' },
-  orange:  { text: 'text-orange-700',  bg: 'bg-orange-100',  border: 'border-orange-200' },
-  cyan:    { text: 'text-cyan-700',    bg: 'bg-cyan-50',     border: 'border-cyan-200' },
-  blue:    { text: 'text-blue-700',    bg: 'bg-blue-50',     border: 'border-blue-200' },
-  violet:  { text: 'text-violet-700',  bg: 'bg-violet-50',   border: 'border-violet-200' },
-  emerald: { text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200' },
-  red:     { text: 'text-red-700',     bg: 'bg-red-50',      border: 'border-red-200' },
+  slate:   { text: 'text-ink-2',  bg: 'bg-surface-3',  border: 'border-border' },
+  gray:    { text: 'text-ink-2',  bg: 'bg-surface-3',  border: 'border-border' },
+  amber:   { text: 'text-warn',   bg: 'bg-warn-soft',  border: 'border-[color:var(--st-amber-fg)]/30' },
+  orange:  { text: 'text-warn',   bg: 'bg-warn-soft',  border: 'border-[color:var(--st-amber-fg)]/30' },
+  cyan:    { text: 'text-brand',  bg: 'bg-brand-soft', border: 'border-brand-soft' },
+  blue:    { text: 'text-brand',  bg: 'bg-brand-soft', border: 'border-brand-soft' },
+  violet:  { text: 'text-brand',  bg: 'bg-brand-soft', border: 'border-brand-soft' },
+  emerald: { text: 'text-ok',     bg: 'bg-ok-soft',    border: 'border-[color:var(--st-green-fg)]/30' },
+  red:     { text: 'text-err',    bg: 'bg-err-soft',   border: 'border-[color:var(--st-red-fg)]/30' },
 };
 
 export interface StatusConfig extends StatusStyle {
@@ -41,8 +43,8 @@ function mk(label: string, tone: StatusTone): StatusConfig {
 export type PrSource = 'planning' | 'procurement';
 
 export const PR_SOURCE_CONFIG: Record<PrSource, StatusConfig & { emoji: string }> = {
-  planning:    { ...mk('Planning', 'blue'),    emoji: '📋' },
-  procurement: { ...mk('Procurement', 'violet'), emoji: '⊕' },
+  planning:    { ...mk('Planning', 'blue'),    emoji: '' },
+  procurement: { ...mk('Procurement', 'violet'), emoji: '' },
 };
 
 // ─── §9.1 PR workflow ────────────────────────────────────────────────────────
@@ -273,13 +275,15 @@ export const SLA_DEFAULTS = {
 export type SlaLevel = 'ok' | 'warn' | 'bad';
 
 export const SLA_LEVEL_CLASSES: Record<SlaLevel, string> = {
-  ok:   'text-emerald-600',
-  warn: 'text-amber-600 font-semibold',
-  bad:  'text-red-600 font-bold',
+  ok:   'text-ok',
+  warn: 'text-warn font-semibold',
+  bad:  'text-err font-bold',
 };
 
+// Emoji prefixes removed (design language: no emoji); SLA level is conveyed by
+// SLA_LEVEL_CLASSES colour/weight (text-ok / text-warn / text-err font-bold).
 export const SLA_LEVEL_PREFIX: Record<SlaLevel, string> = {
-  ok: '✓', warn: '⚠', bad: '🚩',
+  ok: '', warn: '', bad: '',
 };
 
 /**

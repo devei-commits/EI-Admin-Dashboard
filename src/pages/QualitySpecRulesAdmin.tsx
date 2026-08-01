@@ -595,12 +595,12 @@ export default function QualitySpecRulesAdmin() {
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b border-gray-100 bg-gray-50/80">
                   <tr className="text-[11px] uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-2.5 font-semibold">Type</th>
-                    <th className="px-4 py-2.5 font-semibold">Category</th>
-                    <th className="px-4 py-2.5 font-semibold">Sub-category</th>
-                    <th className="px-4 py-2.5 font-semibold">Rows / fields</th>
-                    <th className="px-4 py-2.5 font-semibold">Updated</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Actions</th>
+                    <th scope="col" className="px-4 py-2.5 font-semibold">Type</th>
+                    <th scope="col" className="px-4 py-2.5 font-semibold">Category</th>
+                    <th scope="col" className="px-4 py-2.5 font-semibold">Sub-category</th>
+                    <th scope="col" className="px-4 py-2.5 font-semibold">Rows / fields</th>
+                    <th scope="col" className="px-4 py-2.5 font-semibold">Updated</th>
+                    <th scope="col" className="px-4 py-2.5 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -663,9 +663,9 @@ export default function QualitySpecRulesAdmin() {
       {/* Quality rule editor */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="quality-rule-modal-title">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-bold text-gray-900">
+              <h2 id="quality-rule-modal-title" className="text-lg font-bold text-gray-900">
                 {editingRule ? 'Edit quality rule' : 'New quality rule'} —{' '}
                 {QUALITY_SPEC_RULE_ENTITY_TYPES.find((o) => o.value === entityType)?.label}
               </h2>
@@ -753,10 +753,10 @@ export default function QualitySpecRulesAdmin() {
       {/* Item-specific quality-spec editor */}
       {itemModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="item-specific-modal-title">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Item-specific quality specs — {entityLabel}</h2>
+                <h2 id="item-specific-modal-title" className="text-lg font-bold text-gray-900">Item-specific quality specs — {entityLabel}</h2>
                 <p className="mt-1 text-sm text-gray-600">
                   Pick one item and set its own quality specs. Saving locks the item to these specs — it stops
                   tracking category / sub-category rule changes.

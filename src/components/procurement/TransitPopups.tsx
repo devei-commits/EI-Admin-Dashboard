@@ -36,18 +36,18 @@ const VehicleFields: React.FC<{ v: TransitVehicle; set: (k: keyof TransitVehicle
 
 const PrimaryBtn: React.FC<{ onClick: () => void; busy?: boolean; disabled?: boolean; children: React.ReactNode }> = ({ onClick, busy, disabled, children }) => (
   <button type="button" onClick={onClick} disabled={busy || disabled}
-    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">
+    className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60 disabled:cursor-not-allowed">
     {busy ? 'Creating…' : children}
   </button>
 );
 const CancelBtn: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button type="button" onClick={onClick} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white">Cancel</button>
+  <button type="button" onClick={onClick} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3">Cancel</button>
 );
 
 const QtyStat: React.FC<{ label: string; value: React.ReactNode; tone?: 'default' | 'bad' }> = ({ label, value, tone = 'default' }) => (
-  <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
-    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
-    <p className={`text-base font-bold tabular-nums mt-0.5 ${tone === 'bad' ? 'text-amber-700' : 'text-slate-900'}`}>{value}</p>
+  <div className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+    <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">{label}</p>
+    <p className={`text-base font-bold tabular-nums mt-0.5 ${tone === 'bad' ? 'text-warn' : 'text-ink'}`}>{value}</p>
   </div>
 );
 
@@ -87,7 +87,7 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
     <ProcModalShell
       eyebrow="Initiate Transit · per line"
       title={poNo}
-      subtitle={<>{vendor ? `${vendor} · ` : ''}<span className="font-medium text-slate-800">{item.name}</span> <span className="font-mono text-xs text-slate-500">{item.code}</span></>}
+      subtitle={<>{vendor ? `${vendor} · ` : ''}<span className="font-medium text-ink">{item.name}</span> <span className="font-mono text-xs text-ink-3">{item.code}</span></>}
       onClose={onClose}
       footer={<><CancelBtn onClick={onClose} /><PrimaryBtn onClick={submit} busy={busy} disabled={!canSubmit}>Create Shipment + GRN</PrimaryBtn></>}
     >
@@ -96,13 +96,13 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
           <QtyStat label="PO Qty" value={`${poQty.toLocaleString('en-IN')}${item.unit ? ` ${item.unit}` : ''}`} />
           <QtyStat label="Already Shipped" value={alreadyShipped.toLocaleString('en-IN')} />
           <QtyStat label="Pending" value={pending.toLocaleString('en-IN')} tone={pending > 0 ? 'bad' : 'default'} />
-          <label className="rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 block">
-            <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">This Shipment Qty</span>
+          <label className="rounded-lg border border-brand-soft bg-brand-soft px-3 py-2 block">
+            <span className="text-[10px] font-semibold text-brand uppercase tracking-wide">This Shipment Qty</span>
             <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal"
-              className="mt-0.5 w-full bg-white border border-blue-300 rounded px-2 py-1 text-base font-bold tabular-nums text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+              className="mt-0.5 w-full bg-surface border border-brand-soft rounded px-2 py-1 text-base font-bold tabular-nums text-ink focus:ring-2 focus:ring-[color:var(--ring)] focus:outline-none" />
           </label>
         </div>
-        <p className="text-[10.5px] text-slate-500 mt-1.5">Pre-filled with Pending. Reduce for a partial dispatch — the remainder stays pending for the next transit.</p>
+        <p className="text-[10.5px] text-ink-3 mt-1.5">Pre-filled with Pending. Reduce for a partial dispatch — the remainder stays pending for the next transit.</p>
       </ModalSection>
 
       <ModalSection title="Vehicle & transit details">
@@ -110,11 +110,11 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
       </ModalSection>
 
       {submitError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
+        <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3.5 py-2.5 text-xs text-err">
           {submitError}
         </div>
       )}
-      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-[11px] text-slate-600">
+      <div className="rounded-lg border border-border bg-surface-2 px-3.5 py-2 text-[11px] text-ink-3">
         On create: a <b>Shipment Batch (SB)</b> + one <b>GRN</b> are generated (stage <b>In Transit</b>) and appear in the GRN tracker.
       </div>
     </ProcModalShell>
@@ -180,41 +180,41 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
     >
       <ModalSection title="PO lines · pick which go on this truck">
         {allDispatched && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+          <div className="mb-3 rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3.5 py-2.5 text-xs text-warn">
             <b>All items in this PO are already dispatched.</b> Pending is 0 for every line — either goods are in transit or have been received. To ship additional quantity, raise a new PO or cancel the existing GRN if it was created in error.
           </div>
         )}
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-slate-50 text-slate-500">
+              <tr className="bg-surface-3 text-ink-3">
                 {['Ship?', 'Item', 'PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].map((h) => (
-                  <th key={h} className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide ${['PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].includes(h) ? 'text-center' : 'text-left'}`}>{h}</th>
+                  <th scope="col" key={h} className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide ${['PO Qty', 'Already Dispatched', 'Pending', 'This Shipment Qty'].includes(h) ? 'text-center' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-hairline">
               {lines.map((l, i) => {
                 const r = rows[i];
                 const disabled = r.pending <= 0;
                 const dispatchedFull = disabled && l.alreadyShipped > 0 && l.alreadyShipped >= l.poQty;
                 const noQty = disabled && l.poQty <= 0;
                 return (
-                  <tr key={`${l.code}-${i}`} className={r.checked ? 'bg-blue-50/40' : disabled ? 'opacity-50' : ''}>
-                    <td className="px-3 py-2 text-center"><input type="checkbox" disabled={disabled} checked={r.checked} onChange={(e) => setRow(i, { checked: e.target.checked })} className="w-4 h-4 accent-blue-600" /></td>
+                  <tr key={`${l.code}-${i}`} className={r.checked ? 'bg-brand-soft' : disabled ? 'opacity-50' : ''}>
+                    <td className="px-3 py-2 text-center"><input type="checkbox" disabled={disabled} checked={r.checked} onChange={(e) => setRow(i, { checked: e.target.checked })} aria-label={`Ship ${l.name}`} className="w-4 h-4 accent-brand" /></td>
                     <td className="px-3 py-2">
-                      <div className="font-semibold text-slate-800 text-xs">{l.name}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{l.code}</div>
-                      {dispatchedFull && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">Dispatched</span>}
-                      {noQty && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">No PO qty</span>}
+                      <div className="font-semibold text-ink text-xs">{l.name}</div>
+                      <div className="text-[10px] text-ink-4 font-mono">{l.code}</div>
+                      {dispatchedFull && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-warn-soft text-warn border border-[color:var(--st-amber-fg)]/30">Dispatched</span>}
+                      {noQty && <span className="inline-flex mt-0.5 items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-surface-3 text-ink-3 border border-border">No PO qty</span>}
                     </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-xs text-slate-700">{l.poQty.toLocaleString('en-IN')}{l.unit ? ` ${l.unit}` : ''}</td>
-                    <td className="px-3 py-2 text-center tabular-nums text-xs text-slate-600">{l.alreadyShipped.toLocaleString('en-IN')}</td>
-                    <td className="px-3 py-2 text-center tabular-nums text-xs text-amber-700 font-semibold">{r.pending.toLocaleString('en-IN')}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-xs text-ink-2">{l.poQty.toLocaleString('en-IN')}{l.unit ? ` ${l.unit}` : ''}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-xs text-ink-3">{l.alreadyShipped.toLocaleString('en-IN')}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-xs text-warn font-semibold">{r.pending.toLocaleString('en-IN')}</td>
                     <td className="px-3 py-2 text-center">
-                      {disabled ? <span className="text-slate-300 text-xs">—</span> : (
-                        <input value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} disabled={!r.checked} inputMode="decimal"
-                          className="w-20 text-center bg-white border border-slate-300 rounded px-1.5 py-1 text-xs font-bold tabular-nums focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400" />
+                      {disabled ? <span className="text-ink-4 text-xs">—</span> : (
+                        <input value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} disabled={!r.checked} inputMode="decimal" aria-label={`This shipment qty for ${l.name}`}
+                          className="w-20 text-center bg-surface border border-border rounded px-1.5 py-1 text-xs font-bold tabular-nums focus:ring-2 focus:ring-[color:var(--ring)] focus:outline-none disabled:bg-surface-2 disabled:text-ink-4" />
                       )}
                     </td>
                   </tr>
@@ -223,7 +223,7 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
             </tbody>
           </table>
         </div>
-        <p className="text-[10.5px] text-slate-500 mt-1.5"><b>{selected.length}</b> line{selected.length !== 1 ? 's' : ''} selected · total load <b>{totalLoad.toLocaleString('en-IN')}</b>. Unchecked lines keep their Pending open for a later transit.</p>
+        <p className="text-[10.5px] text-ink-3 mt-1.5"><b>{selected.length}</b> line{selected.length !== 1 ? 's' : ''} selected · total load <b>{totalLoad.toLocaleString('en-IN')}</b>. Unchecked lines keep their Pending open for a later transit.</p>
       </ModalSection>
 
       <ModalSection title="Vehicle & transit details (apply to all checked items)">
@@ -231,11 +231,11 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
       </ModalSection>
 
       {submitError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
+        <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3.5 py-2.5 text-xs text-err">
           {submitError}
         </div>
       )}
-      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3.5 py-2 text-[11px] text-slate-600">
+      <div className="rounded-lg border border-border bg-surface-2 px-3.5 py-2 text-[11px] text-ink-3">
         On create: <b>one Shipment Batch</b> with <b>{selected.length || 'N'}</b> child GRN{selected.length !== 1 ? 's' : ''} (all stage <b>In Transit</b>, same truck) — they share the SB# in the GRN tracker.
       </div>
     </ProcModalShell>

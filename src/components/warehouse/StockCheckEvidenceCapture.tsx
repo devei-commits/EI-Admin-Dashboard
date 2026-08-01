@@ -144,7 +144,7 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
   if (readOnly) {
     const total = photos.length > 0 ? photos.length : savedPhotoCount;
     return (
-      <p className="text-xs text-slate-600">
+      <p className="text-xs text-ink-2">
         {total > 0
           ? `${total} photo${total === 1 ? '' : 's'} uploaded`
           : 'No photos uploaded'}
@@ -167,11 +167,11 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
         onDrop={handleDrop}
         className={`rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
           dragActive
-            ? 'border-sky-400 bg-sky-50'
-            : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+            ? 'border-brand bg-brand-soft'
+            : 'border-border bg-surface-2 hover:border-border'
         }`}
       >
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-ink-2">
           {photos.length > 0
             ? `✓ ${photos.length} photo${photos.length === 1 ? '' : 's'} added · drag & drop more`
             : 'Drag & drop evidence photos here'}
@@ -180,21 +180,21 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-2"
           >
             Upload from files
           </button>
           <button
             type="button"
             onClick={() => void startCamera()}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-2"
           >
             Use device camera
           </button>
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
-            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-2"
           >
             Open camera app
           </button>
@@ -204,6 +204,7 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
           type="file"
           accept="image/*"
           multiple
+          aria-label="Upload evidence photos from files"
           className="sr-only"
           onChange={(e) => handleFileInput(e.target.files)}
         />
@@ -212,15 +213,16 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
           type="file"
           accept="image/*"
           capture="environment"
+          aria-label="Capture evidence photo with device camera"
           className="sr-only"
           onChange={(e) => handleFileInput(e.target.files)}
         />
       </div>
 
       {cameraOpen ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-900 p-3 space-y-3">
+        <div className="rounded-lg border border-border bg-ink p-3 space-y-3">
           {cameraError ? (
-            <p className="text-xs text-rose-200" role="alert">
+            <p className="text-xs text-err" role="alert">
               {cameraError}
             </p>
           ) : (
@@ -236,14 +238,14 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
               type="button"
               onClick={captureFromCamera}
               disabled={!cameraReady}
-              className="px-3 py-1.5 rounded-lg bg-white text-xs font-semibold text-slate-900 hover:bg-slate-100 disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg bg-surface text-xs font-semibold text-ink hover:bg-surface-2 disabled:opacity-50"
             >
               Capture photo
             </button>
             <button
               type="button"
               onClick={stopCamera}
-              className="px-3 py-1.5 rounded-lg border border-slate-500 text-xs font-semibold text-white hover:bg-slate-800"
+              className="px-3 py-1.5 rounded-lg border border-ink-3 text-xs font-semibold text-white hover:bg-ink-2"
             >
               Cancel
             </button>
@@ -254,7 +256,7 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
       {photos.length > 0 ? (
         <ul className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {photos.map((photo) => (
-            <li key={photo.id} className="relative rounded-lg border border-slate-200 overflow-hidden bg-white">
+            <li key={photo.id} className="relative rounded-lg border border-border overflow-hidden bg-surface">
               <img
                 src={photo.previewUrl}
                 alt={`Evidence ${photo.source}`}
@@ -262,14 +264,14 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
                 height={120}
                 className="w-full h-24 object-cover"
               />
-              <div className="px-2 py-1 flex items-center justify-between gap-1 bg-slate-50 border-t border-slate-100">
-                <span className="text-[10px] text-slate-500 truncate">
+              <div className="px-2 py-1 flex items-center justify-between gap-1 bg-surface-2 border-t border-hairline">
+                <span className="text-[10px] text-ink-3 truncate">
                   {photo.source === 'camera' ? 'Camera' : 'File'}
                 </span>
                 <button
                   type="button"
                   onClick={() => removePhoto(photo.id)}
-                  className="text-[10px] font-semibold text-rose-600 hover:text-rose-800"
+                  className="text-[10px] font-semibold text-err hover:opacity-80"
                 >
                   Remove
                 </button>
@@ -278,7 +280,7 @@ const StockCheckEvidenceCapture: React.FC<StockCheckEvidenceCaptureProps> = ({
           ))}
         </ul>
       ) : savedPhotoCount > 0 ? (
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-ink-3">
           {savedPhotoCount} photo{savedPhotoCount === 1 ? '' : 's'} saved on a previous save (previews not stored).
         </p>
       ) : null}

@@ -68,7 +68,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   return (
    <div className="flex items-center justify-between gap-4">
     {totalItems !== undefined && (
-     <span className="text-sm text-gray-500">
+     <span className="text-sm text-ink-3">
       {startItem}–{endItem} of {totalItems}
      </span>
     )}
@@ -76,18 +76,18 @@ export const Pagination: React.FC<PaginationProps> = ({
      <button
       onClick={() => onPageChange(currentPage - 1)}
       disabled={currentPage === 1}
-      className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="p-1.5 rounded-lg text-ink-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       aria-label="Previous page"
      >
       <ChevronLeft className="w-4 h-4" />
      </button>
-     <span className="text-sm text-gray-600 px-2">
+     <span className="text-sm text-ink-2 px-2 tabular-nums">
       {currentPage} / {totalPages}
      </span>
      <button
       onClick={() => onPageChange(currentPage + 1)}
       disabled={currentPage === totalPages}
-      className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="p-1.5 rounded-lg text-ink-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       aria-label="Next page"
      >
       <ChevronRight className="w-4 h-4" />
@@ -100,7 +100,7 @@ export const Pagination: React.FC<PaginationProps> = ({
  return (
   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
    {totalItems !== undefined && (
-    <span className="text-sm text-gray-500">
+    <span className="text-sm text-ink-3">
      Showing {startItem}–{endItem} of {totalItems}
     </span>
    )}
@@ -108,24 +108,24 @@ export const Pagination: React.FC<PaginationProps> = ({
     <button
      onClick={() => onPageChange(currentPage - 1)}
      disabled={currentPage === 1}
-     className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+     className="px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
      aria-label="Previous page"
     >
      Previous
     </button>
     {getPageNumbers().map((page, idx) =>
      page === '...' ? (
-      <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-sm">
+      <span key={`ellipsis-${idx}`} className="px-2 text-ink-4 text-sm">
        ...
       </span>
      ) : (
       <button
        key={page}
        onClick={() => onPageChange(page)}
-       className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+       className={`px-3 py-1.5 text-sm rounded-[var(--r-sm)] tabular-nums transition-colors ${
         currentPage === page
-         ? 'bg-slate-800 text-white font-medium'
-         : 'text-gray-600 hover:bg-gray-100'
+         ? 'bg-brand text-brand-ink font-medium'
+         : 'text-ink-2 hover:bg-surface-3'
        }`}
       >
        {page}
@@ -135,7 +135,7 @@ export const Pagination: React.FC<PaginationProps> = ({
     <button
      onClick={() => onPageChange(currentPage + 1)}
      disabled={currentPage === totalPages}
-     className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+     className="px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
      aria-label="Next page"
     >
      Next

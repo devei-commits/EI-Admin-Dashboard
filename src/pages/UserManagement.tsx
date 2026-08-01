@@ -182,9 +182,9 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
      {/* Add new department */}
      <div className="flex gap-2 mb-4">
       <input value={addName} onChange={e => { setAddName(e.target.value); setAddCode(e.target.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')); }}
-       placeholder="Department name" className={`${inputClassName} flex-1`} />
+       placeholder="Department name" aria-label="Department name" className={`${inputClassName} flex-1`} />
       <input value={addCode} onChange={e => setAddCode(e.target.value)}
-       placeholder="Code (auto)" className={`${inputClassName} w-40`} />
+       placeholder="Code (auto)" aria-label="Department code" className={`${inputClassName} w-40`} />
       <button onClick={handleAdd} disabled={saving || !addName.trim()}
        className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
        <Plus className="w-3.5 h-3.5" /> Add
@@ -197,11 +197,11 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
        <div key={dept.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${dept.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
         {editId === dept.id ? (
          <>
-          <input value={editName} onChange={e => setEditName(e.target.value)} className={`${inputClassName} flex-1 py-1.5!`} autoFocus />
-          <input value={editCode} onChange={e => setEditCode(e.target.value)} className={`${inputClassName} w-36 py-1.5!`} />
-          <button onClick={() => handleUpdate(dept.id)} disabled={saving}
+          <input value={editName} onChange={e => setEditName(e.target.value)} aria-label="Department name" className={`${inputClassName} flex-1 py-1.5!`} autoFocus />
+          <input value={editCode} onChange={e => setEditCode(e.target.value)} aria-label="Department code" className={`${inputClassName} w-36 py-1.5!`} />
+          <button onClick={() => handleUpdate(dept.id)} disabled={saving} aria-label="Save department"
            className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><Check className="w-4 h-4" /></button>
-          <button onClick={() => setEditId(null)}
+          <button onClick={() => setEditId(null)} aria-label="Cancel edit"
            className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
          </>
         ) : (
@@ -213,9 +213,9 @@ function DepartmentManager({ departments, onRefresh }: { departments: Department
            className={`px-2 py-0.5 text-[10px] font-semibold rounded-md border ${dept.is_active ? 'text-green-600 bg-green-50 border-green-200' : 'text-slate-400 bg-slate-50 border-slate-200'}`}>
            {dept.is_active ? 'Active' : 'Inactive'}
           </button>
-          <button onClick={() => startEdit(dept)}
+          <button onClick={() => startEdit(dept)} aria-label="Edit department"
            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
-          <button onClick={() => handleDelete(dept)}
+          <button onClick={() => handleDelete(dept)} aria-label="Delete department"
            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>
          </>
         )}
@@ -610,6 +610,7 @@ const UserManagement = () => {
        <div key={label}>
         <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
         <select
+         aria-label={label}
          value={value}
          onChange={(e) => { setter(e.target.value); setCurrentPage(1); }}
          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
@@ -648,7 +649,7 @@ const UserManagement = () => {
         <SortableTableTh label="Role" column="role" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
         <SortableTableTh label="Last Login" column="lastLogin" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleUserSort} />
-        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+        <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
        </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
@@ -733,7 +734,7 @@ const UserManagement = () => {
        <div className="flex gap-2">
         <button onClick={() => handleOpenModal('view', user)} className="flex-1 px-3 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium">View</button>
         <button onClick={() => handleOpenModal('edit', user)} className="flex-1 px-3 py-2 bg-gray-100 text-slate-300 rounded-lg text-sm font-medium">Edit</button>
-        <button onClick={() => handleOpenModal('delete', user)} className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium"><Trash2 className="w-4 h-4" /></button>
+        <button onClick={() => handleOpenModal('delete', user)} aria-label="Delete" className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium"><Trash2 className="w-4 h-4" /></button>
        </div>
       </div>
      ))}
@@ -755,14 +756,14 @@ const UserManagement = () => {
    {/* View Modal */}
    {modalType === 'view' && selectedUser && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
+     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="user-view-modal-title">
       <div className="bg-slate-800 p-6 rounded-t-2xl">
        <div className="flex items-center justify-between">
         <div>
-         <h2 className="text-xl font-bold text-white">{selectedUser.firstName} {selectedUser.lastName}</h2>
+         <h2 id="user-view-modal-title" className="text-xl font-bold text-white">{selectedUser.firstName} {selectedUser.lastName}</h2>
          <p className="text-gray-100">{selectedUser.role} • {selectedUser.department}</p>
         </div>
-        <button onClick={handleCloseModal} className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
+        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
        </div>
       </div>
       <div className="p-6 space-y-4">
@@ -804,25 +805,25 @@ const UserManagement = () => {
    {/* Add/Edit Modal */}
    {(modalType === 'add' || modalType === 'edit') && (
     <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="user-edit-modal-title">
       <div className="bg-slate-800 p-5 rounded-t-2xl sticky top-0">
        <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">{modalType === 'add' ? 'Add New User' : 'Edit User'}</h2>
-        <button onClick={handleCloseModal} className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
+        <h2 id="user-edit-modal-title" className="text-lg font-bold text-white">{modalType === 'add' ? 'Add New User' : 'Edit User'}</h2>
+        <button onClick={handleCloseModal} aria-label="Close" className="p-2 hover:bg-white/20 rounded-lg"><X className="w-5 h-5 text-white" /></button>
        </div>
       </div>
       <div className="p-5 space-y-4">
        <div className="grid grid-cols-2 gap-4">
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">First Name *</label><input type="text" value={formData.firstName || ''} onChange={(e) => setFormData(p => ({ ...p, firstName: e.target.value }))} className={inputClassName} required /></div>
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Last Name *</label><input type="text" value={formData.lastName || ''} onChange={(e) => setFormData(p => ({ ...p, lastName: e.target.value }))} className={inputClassName} required /></div>
+        <div><label className="block text-sm font-medium text-slate-300 mb-1">First Name *</label><input type="text" aria-label="First Name" value={formData.firstName || ''} onChange={(e) => setFormData(p => ({ ...p, firstName: e.target.value }))} className={inputClassName} required /></div>
+        <div><label className="block text-sm font-medium text-slate-300 mb-1">Last Name *</label><input type="text" aria-label="Last Name" value={formData.lastName || ''} onChange={(e) => setFormData(p => ({ ...p, lastName: e.target.value }))} className={inputClassName} required /></div>
        </div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Email *</label><input type="email" value={formData.email || ''} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} className={inputClassName} required /></div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Mobile *</label><input type="tel" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
+       <div><label className="block text-sm font-medium text-slate-300 mb-1">Email *</label><input type="email" aria-label="Email" value={formData.email || ''} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} className={inputClassName} required /></div>
+       <div><label className="block text-sm font-medium text-slate-300 mb-1">Mobile *</label><input type="tel" aria-label="Mobile" value={formData.mobile || ''} onChange={(e) => setFormData(p => ({ ...p, mobile: e.target.value }))} className={inputClassName} required /></div>
        {modalType === 'add' && (
-        <div><label className="block text-sm font-medium text-slate-300 mb-1">Password *</label><input type="password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
+        <div><label className="block text-sm font-medium text-slate-300 mb-1">Password *</label><input type="password" aria-label="Password" value={formData.password ?? ''} onChange={(e) => setFormData(p => ({ ...p, password: e.target.value }))} className={inputClassName} placeholder="Min 6 characters" required minLength={6} /></div>
        )}
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
-       <div><label className="block text-sm font-medium text-slate-300 mb-1">Status</label><select value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
+       <div><label className="block text-sm font-medium text-slate-300 mb-1">Role *</label><select aria-label="Role" value={formData.role || ''} onChange={(e) => setFormData(p => ({ ...p, role: e.target.value }))} className={selectClassName} required disabled={roles.length === 0}><option value="">Select</option>{roles.map(r => <option key={r.role_id} value={r.role_name}>{r.role_name}</option>)}</select></div>
+       <div><label className="block text-sm font-medium text-slate-300 mb-1">Status</label><select aria-label="Status" value={formData.status || 'active'} onChange={(e) => setFormData(p => ({ ...p, status: e.target.value as User['status'] }))} className={selectClassName}><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option></select></div>
        {saveError && <p className="text-sm text-red-600">{saveError}</p>}
        <div className="flex gap-3 pt-4">
         <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 border border-gray-200 text-slate-400 rounded-lg font-medium hover:bg-slate-50" disabled={saving}>Cancel</button>

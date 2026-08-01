@@ -99,6 +99,7 @@ export const GrievanceDetailPopup: React.FC<GrievanceDetailPopupProps> = ({ grie
         <div>
           <p className={labelCls}>{mode === 'respond' ? 'Response to customer' : mode === 'rootcause' ? 'Root cause analysis' : 'Corrective & preventive action'}</p>
           <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} className={inputCls}
+            aria-label={mode === 'respond' ? 'Response to customer' : mode === 'rootcause' ? 'Root cause analysis' : 'Corrective & preventive action'}
             placeholder={mode === 'respond' ? 'Type the response…' : mode === 'rootcause' ? 'What caused this?' : 'What will be done to fix & prevent recurrence?'} />
         </div>
       ) : mode === 'escalate' ? (

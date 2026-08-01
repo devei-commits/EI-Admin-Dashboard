@@ -680,15 +680,15 @@ useEffect(() => {
       <table className="w-full text-sm">
        <thead>
         <tr className="bg-gray-50 border-b border-gray-200 text-left">
-         <th className="px-4 py-3">ID</th>
-         <th className="px-4 py-3">Customer</th>
-         <th className="px-4 py-3">Product</th>
-         <th className="px-4 py-3">Care / Category</th>
-         <th className="px-4 py-3">Summary</th>
-         <th className="px-4 py-3">Packaging</th>
-         <th className="px-4 py-3">Status</th>
-         <th className="px-4 py-3">Submitted</th>
-         <th className="px-4 py-3">Action</th>
+         <th scope="col" className="px-4 py-3">ID</th>
+         <th scope="col" className="px-4 py-3">Customer</th>
+         <th scope="col" className="px-4 py-3">Product</th>
+         <th scope="col" className="px-4 py-3">Care / Category</th>
+         <th scope="col" className="px-4 py-3">Summary</th>
+         <th scope="col" className="px-4 py-3">Packaging</th>
+         <th scope="col" className="px-4 py-3">Status</th>
+         <th scope="col" className="px-4 py-3">Submitted</th>
+         <th scope="col" className="px-4 py-3">Action</th>
         </tr>
        </thead>
        <tbody>
@@ -748,9 +748,9 @@ useEffect(() => {
   {selectedCustomization && (
    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
     <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedCustomization(null)} />
-    <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
+    <div role="dialog" aria-modal="true" aria-labelledby="product-customization-detail-title" className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-gray-200 shadow-xl p-5">
      <div className="flex items-start justify-between mb-4">
-      <h3 className="text-lg font-semibold text-gray-900">
+      <h3 id="product-customization-detail-title" className="text-lg font-semibold text-gray-900">
        Product Customization #{selectedCustomization.customization_id}
       </h3>
       <button type="button" onClick={() => setSelectedCustomization(null)} className="text-gray-500 hover:text-gray-800">
@@ -830,6 +830,7 @@ useEffect(() => {
         value={selectedCustomization.status || 'Pending'}
         onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, status: e.target.value } : prev)}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        aria-label="Status"
        >
         <option value="Pending">Pending</option>
         <option value="In Progress">In Progress</option>
@@ -853,6 +854,7 @@ useEffect(() => {
          } : prev);
         }}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+        aria-label="Allot BD Team Member"
        >
         <option value="">Unassigned</option>
         {bdAssignees.map((u) => (
@@ -877,6 +879,7 @@ useEffect(() => {
        onChange={(e) => setSelectedCustomization((prev) => prev ? { ...prev, internal_notes: e.target.value } : prev)}
        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
        placeholder="Add internal notes for BD/operations follow-up"
+       aria-label="Internal Notes"
       />
      </div>
 
