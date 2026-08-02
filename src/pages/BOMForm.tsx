@@ -2431,25 +2431,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       <PrTeamSectionGate
         canEdit={prCanEdit(accessKey)}
         viewOnlyLabel={`View only — ${stepKind === 'packaging' ? 'packaging' : 'product (RM)'} team maintains these process steps.`}
-        className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+        className="border border-border rounded-lg p-3 sm:p-4 bg-surface"
       >
-        <label className="block text-sm font-semibold text-blue-700 mb-3">{title}</label>
-        <p className="text-xs text-slate-600 mb-3">{description}</p>
+        <label className="block text-sm font-semibold text-brand mb-3">{title}</label>
+        <p className="text-xs text-ink-3 mb-3">{description}</p>
         <div className="space-y-2 mb-4">
-          <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-600 uppercase">
+          <div className="grid grid-cols-3 gap-2 text-xs font-semibold text-ink-3 uppercase">
             <div>Step</div>
             <div className="col-span-2">Step Description / Instruction</div>
           </div>
           <div className="space-y-2">
             {steps.map((step) => (
-              <div key={step.id} className="grid grid-cols-3 gap-2 text-sm items-start bg-slate-50 p-2 rounded">
-                <div className="text-slate-900 font-semibold">{step.stepNumber}</div>
+              <div key={step.id} className="grid grid-cols-3 gap-2 text-sm items-start bg-surface-3 p-2 rounded">
+                <div className="text-ink font-semibold">{step.stepNumber}</div>
                 <div className="col-span-2 flex justify-between items-start gap-2">
                   <div className="flex-1">
-                    <div className="text-slate-900">{step.instruction}</div>
-                    <div className="text-xs text-slate-600 mt-1">Duration: {step.duration}</div>
+                    <div className="text-ink">{step.instruction}</div>
+                    <div className="text-xs text-ink-3 mt-1">Duration: {step.duration}</div>
                   </div>
-                  <button type="button" onClick={() => removeStep(step.id)} className="text-red-600 hover:text-red-800">
+                  <button type="button" onClick={() => removeStep(step.id)} aria-label="Remove step" className="text-err hover:text-err">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -2459,7 +2459,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         </div>
         <div
           ref={draftRef}
-          className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+          className="border border-border rounded-lg p-3 bg-surface space-y-2"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && (e.target as HTMLElement).tagName === 'TEXTAREA') {
               e.preventDefault();
@@ -2467,26 +2467,29 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             }
           }}
         >
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New step</p>
+          <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">New step</p>
           <input
             type="text"
             placeholder="Step #"
+            aria-label="Step #"
             value={temp.stepNumber}
             onChange={(e) => setTemp((prev) => ({ ...prev, stepNumber: e.target.value }))}
             onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
-            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+            className="w-full px-2 py-1.5 border border-border rounded text-sm"
           />
           <textarea
             placeholder="Step Description / Instruction (Ctrl+Enter to add)"
+            aria-label="Step Description / Instruction"
             value={temp.instruction}
             onChange={(e) => setTemp((prev) => ({ ...prev, instruction: e.target.value }))}
             onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
             rows={2}
-            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+            className="w-full px-2 py-1.5 border border-border rounded text-sm"
           />
           <input
             type="text"
             placeholder="Duration (e.g., 15 mins)"
+            aria-label="Duration (e.g., 15 mins)"
             value={temp.duration}
             onChange={(e) => setTemp((prev) => ({ ...prev, duration: e.target.value }))}
             onBlur={() => runOnDraftLeave(draftRef, () => flushStepDraft(stepKind))}
@@ -2496,14 +2499,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 addStep(stepKind);
               }
             }}
-            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+            className="w-full px-2 py-1.5 border border-border rounded text-sm"
           />
         </div>
         <div className="flex justify-end mt-3">
           <button
             type="button"
             onClick={() => addStep(stepKind)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-brand-soft text-brand rounded-lg text-sm font-semibold hover:bg-brand-soft"
           >
             <Plus className="w-4 h-4" /> Add step to list
           </button>
@@ -2521,30 +2524,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <button
                 type="button"
                 onClick={() => { if (onClose) onClose(); else navigate('/bom'); }}
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+                className="text-sm font-medium text-brand hover:text-brand"
               >
                 ← Back to PR Master list
               </button>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-3">
                 {productIdFromRoute ? 'Editing linked PR / BOM registration' : 'Stepwise flow — same pattern as Raw Material master'}
               </p>
             </div>
 
             <PrTeamSectionGate canEdit={prCanEdit('primary')}>
             <div className="min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
                 Category &amp; sub-category
               </h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category <span className="text-red-600">*</span></label>
+                  <label className="block text-sm font-medium text-ink-2 mb-1">Category <span className="text-err">*</span></label>
                   <select
                     id="category"
+                    aria-label="Category"
                     value={formData.category}
                     onChange={(e) => handleInputChange('category', e.target.value)}
                     aria-invalid={errors.category ? true : undefined}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      errors.category ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${
+                      errors.category ? 'border-err bg-err-soft' : 'border-border'
                     }`}
                   >
                     <option value="">Select category</option>
@@ -2556,13 +2560,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       <option value={formData.category}>{formData.category} (legacy)</option>
                     ) : null}
                   </select>
-                  {errors.category ? <p className="mt-1 text-xs text-red-600">{errors.category}</p> : null}
+                  {errors.category ? <p className="mt-1 text-xs text-err">{errors.category}</p> : null}
                 </div>
                 <div>
-                  <label htmlFor="prSubCategory" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="prSubCategory" className="block text-sm font-medium text-ink-2 mb-1">
                     Sub-category
                     {prCategoryAllowsCustomSubCategory(formData.category) ? (
-                      <span className="text-red-600"> *</span>
+                      <span className="text-err"> *</span>
                     ) : null}
                   </label>
                   {prCategoryAllowsCustomSubCategory(formData.category) ? (
@@ -2574,8 +2578,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       disabled={!formData.category.trim()}
                       placeholder="Enter custom sub-category"
                       aria-invalid={errors.prSubCategory ? true : undefined}
-                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
-                        errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:bg-surface-3 disabled:text-ink-3 ${
+                        errors.prSubCategory ? 'border-err bg-err-soft' : 'border-border'
                       }`}
                     />
                   ) : (
@@ -2585,8 +2589,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       onChange={(e) => handleInputChange('prSubCategory', e.target.value)}
                       disabled={!formData.category.trim()}
                       aria-invalid={errors.prSubCategory ? true : undefined}
-                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-500 ${
-                        errors.prSubCategory ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
+                      className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:bg-surface-3 disabled:text-ink-3 ${
+                        errors.prSubCategory ? 'border-err bg-err-soft' : 'border-border'
                       }`}
                     >
                       <option value="">
@@ -2597,16 +2601,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       ))}
                     </select>
                   )}
-                  {errors.prSubCategory ? <p className="mt-1 text-xs text-red-600">{errors.prSubCategory}</p> : null}
+                  {errors.prSubCategory ? <p className="mt-1 text-xs text-err">{errors.prSubCategory}</p> : null}
                 </div>
-                <p className="text-xs text-gray-500 sm:col-span-2">
+                <p className="text-xs text-ink-3 sm:col-span-2">
                   Pick Skin Care, Hair Care, or Others. Skin Care and Hair Care use fixed sub-categories; Others
                   accepts a custom sub-category.
                 </p>
                 <div className="sm:col-span-2">
-                  <label htmlFor="bomCompositeItem" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="bomCompositeItem" className="block text-sm font-medium text-ink-2 mb-1">
                     Composite Item
-                    <span className="text-red-600 ml-0.5" aria-hidden>*</span>
+                    <span className="text-err ml-0.5" aria-hidden>*</span>
                   </label>
                   <select
                     id="bomCompositeItem"
@@ -2614,18 +2618,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     onChange={(e) => handleInputChange('bomCompositeItem', e.target.value)}
                     disabled={lockPrimaryFields}
                     aria-invalid={errors.bomCompositeItem ? true : undefined}
-                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                      errors.bomCompositeItem ? 'border-red-500 bg-red-50/40' : 'border-gray-300'
-                    } ${lockPrimaryFields ? 'bg-slate-100 text-slate-700 cursor-not-allowed' : ''}`}
+                    className={`w-full p-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${
+                      errors.bomCompositeItem ? 'border-err bg-err-soft' : 'border-border'
+                    } ${lockPrimaryFields ? 'bg-surface-3 text-ink-2 cursor-not-allowed' : ''}`}
                   >
                     <option value="">Select...</option>
                     <option value="Yes">Yes — Composite Item</option>
                     <option value="No">No — Single product</option>
                   </select>
                   {errors.bomCompositeItem ? (
-                    <p className="mt-1 text-xs text-red-600">{errors.bomCompositeItem}</p>
+                    <p className="mt-1 text-xs text-err">{errors.bomCompositeItem}</p>
                   ) : (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-ink-3 mt-1">
                       Composite flag is used for Books / workflows.
                     </p>
                   )}
@@ -2654,23 +2658,23 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             </div>
 
             <div className="min-w-0">
-              <label className="block text-sm font-semibold text-slate-900 mb-2">PRODUCT IDENTITY</label>
-              <div className="space-y-4 border-t border-slate-200 pt-4">
+              <label className="block text-sm font-semibold text-ink mb-2">PRODUCT IDENTITY</label>
+              <div className="space-y-4 border-t border-border pt-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Product Name <span className="text-red-600">*</span></label>
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Product Name <span className="text-err">*</span></label>
                   <input
                     id="productName"
                     type="text"
                     placeholder="e.g. EI Sunscreen Lotion SPF50+ PA++++"
                     value={formData.productName}
                     onChange={(e) => handleInputChange('productName', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   />
                 </div>
 
                 <div>
-                  <div className="block text-xs font-semibold text-slate-700 mb-2">
-                    PR record type <span className="text-red-600">*</span>
+                  <div className="block text-xs font-semibold text-ink-2 mb-2">
+                    PR record type <span className="text-err">*</span>
                   </div>
                   <div className={`flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-6 text-sm ${lockPrimaryFields ? 'opacity-90' : ''}`}>
                     <label className="inline-flex items-center gap-2 cursor-pointer">
@@ -2680,7 +2684,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         checked={formData.prRecordType === 'permanent'}
                         disabled={lockPrimaryFields}
                         onChange={() => handleInputChange('prRecordType', 'permanent')}
-                        className="text-blue-600"
+                        className="text-brand"
                       />
                       <span>Permanent — internal code <span className="font-mono">PR#####</span></span>
                     </label>
@@ -2691,7 +2695,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         checked={formData.prRecordType === 'temporary'}
                         disabled={lockPrimaryFields}
                         onChange={() => handleInputChange('prRecordType', 'temporary')}
-                        className="text-blue-600"
+                        className="text-brand"
                       />
                       <span>Temporary — internal code <span className="font-mono">TPR#####</span></span>
                     </label>
@@ -2703,13 +2707,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           checked={formData.prRecordType === 'legacy'}
                           disabled={lockPrimaryFields}
                           onChange={() => handleInputChange('prRecordType', 'legacy')}
-                          className="text-blue-600"
+                          className="text-brand"
                         />
                         <span>Legacy / unspecified (existing codes)</span>
                       </label>
                     ) : null}
                   </div>
-                  <p className="text-xs text-slate-500 mt-1.5">
+                  <p className="text-xs text-ink-3 mt-1.5">
                     {isNewProduct
                       ? 'Internal code is generated on save for the series you select and shown in the confirmation dialog.'
                       : 'Record type applies to how this product was registered.'}
@@ -2718,16 +2722,16 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 {!isNewProduct ? (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Internal PR code (SKU)</label>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono text-slate-800">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Internal PR code (SKU)</label>
+                    <div className="rounded-lg border border-border bg-surface-3 px-3 py-2.5 text-sm font-mono text-ink">
                       {formData.skuCode || '—'}
                     </div>
                   </div>
                 ) : null}
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="mrp">
-                    MRP Price <span className="text-slate-400 font-normal">(optional — sale order price comes from Items List client rates)</span>
+                  <label className="block text-xs font-semibold text-ink-2 mb-1" htmlFor="mrp">
+                    MRP Price <span className="text-ink-4 font-normal">(optional — sale order price comes from Items List client rates)</span>
                   </label>
                   <input
                     id="mrp"
@@ -2737,10 +2741,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     onChange={(e) => handleInputChange('mrp', e.target.value)}
                     aria-invalid={Boolean(errors.mrp)}
                     aria-describedby={errors.mrp ? 'mrp-error' : undefined}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${errors.mrp ? 'border-red-500' : 'border-slate-200'}`}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${errors.mrp ? 'border-err' : 'border-border'}`}
                   />
                   {errors.mrp ? (
-                    <p id="mrp-error" className="mt-1 text-xs text-red-600">
+                    <p id="mrp-error" className="mt-1 text-xs text-err">
                       {errors.mrp}
                     </p>
                   ) : null}
@@ -2893,9 +2897,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <PrTeamSectionGate canEdit={prCanEdit('formulaBom')}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-3">FORMULA BOM - RAW MATERIALS</label>
-                <div className="mb-4 max-w-md rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <label htmlFor="formula-bom-bulk-sg" className="mb-1 block text-xs font-semibold text-slate-700">
+                <label className="block text-sm font-semibold text-brand mb-3">FORMULA BOM - RAW MATERIALS</label>
+                <div className="mb-4 max-w-md rounded-lg border border-border bg-surface-3 p-3">
+                  <label htmlFor="formula-bom-bulk-sg" className="mb-1 block text-xs font-semibold text-ink-2">
                     Specific Gravity (vs water)
                   </label>
                   <input
@@ -2905,19 +2909,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     placeholder="e.g. 1.02 or 0.95–1.02"
                     value={formData.specificGravity}
                     onChange={(e) => handleInputChange('specificGravity', e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full rounded-lg border border-border px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     title="Bulk finished-product SG — pre-fills Planning BOM confirmation default SG"
                   />
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-ink-3">
                     Default SG for the whole blend when confirming BOM in Planning (litre stock → kg). Set per-RM SG on each line below.
                   </p>
                 </div>
-                <p className="text-xs text-slate-600 mb-2">
+                <p className="text-xs text-ink-3 mb-2">
                   Add ingredients in phase order with <strong>SG (specific gravity vs water)</strong> on each line. Choose <strong>RM</strong> for a fixed raw material, or <strong>Item group</strong> to reference a group name (e.g. Glycerine Group) — at Planning BOM confirm you pick which group member to use. Formula amounts are always <strong>% w/w on a kg batch</strong>. Total % w/w should equal 100%.
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[860px] grid-cols-13 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[860px] grid-cols-13 gap-2 text-xs font-semibold text-ink-3 uppercase sm:min-w-0">
                     <div className="col-span-1 min-w-0">Sr No</div>
                     <div className="col-span-3 min-w-0">INCI / Group name</div>
                     <div className="col-span-2 min-w-0">SKU / Group code</div>
@@ -2938,12 +2942,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         return (
                           <div
                             key={ing.id}
-                            className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-start p-2 rounded bg-blue-50 ring-2 ring-blue-200 sm:min-w-0"
+                            className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-start p-2 rounded bg-brand-soft ring-2 ring-brand-soft sm:min-w-0"
                           >
-                            <div className="col-span-1 min-w-0 pt-1.5 text-slate-400 font-mono">{i + 1}</div>
+                            <div className="col-span-1 min-w-0 pt-1.5 text-ink-4 font-mono">{i + 1}</div>
                             <div className="col-span-3 min-w-0 space-y-1">
                               <select
                                 value={formulaLineKind}
+                                aria-label="Formula line type"
                                 onChange={(e) => {
                                   const kind = e.target.value === 'item_group' ? 'item_group' : 'rm';
                                   setFormulaLineKind(kind);
@@ -2952,7 +2957,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                   setIngredientRmQuery('');
                                   setTempIngredient((prev) => ({ ...prev, inciName: '' }));
                                 }}
-                                className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-white"
+                                className="w-full px-2 py-1 border border-border rounded text-xs bg-surface"
                               >
                                 <option value="rm">RM</option>
                                 <option value="item_group">Item group</option>
@@ -2960,8 +2965,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                               {formulaLineKind === 'item_group' ? (
                                 <select
                                   value={selectedItemGroupId}
+                                  aria-label="Item group"
                                   onChange={(e) => setSelectedItemGroupId(e.target.value)}
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                  className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface"
                                 >
                                   <option value="">— Select item group —</option>
                                   {itemGroupsRm.map((g) => (
@@ -2995,25 +3001,27 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 />
                               )}
                             </div>
-                            <div className="col-span-2 min-w-0 pt-1.5 text-slate-600 font-mono text-xs break-all">
+                            <div className="col-span-2 min-w-0 pt-1.5 text-ink-3 font-mono text-xs break-all">
                               {inlineSku || '—'}
                             </div>
                             <div className="col-span-2 min-w-0">
                               <input
                                 type="text"
                                 placeholder="Phase"
+                                aria-label="Phase"
                                 value={tempIngredient.phase}
                                 onChange={(e) => setTempIngredient((prev) => ({ ...prev, phase: e.target.value }))}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface"
                               />
                             </div>
                             <div className="col-span-2 min-w-0">
                               <input
                                 type="number"
                                 placeholder="% W/W"
+                                aria-label="% W/W"
                                 value={tempIngredient.percentWW}
                                 onChange={(e) => setTempIngredient((prev) => ({ ...prev, percentWW: e.target.value }))}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono bg-white"
+                                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono bg-surface"
                               />
                             </div>
                             <div className="col-span-1 min-w-0">
@@ -3021,20 +3029,21 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 type="text"
                                 inputMode="decimal"
                                 placeholder="SG"
+                                aria-label="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
                                 title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
                                 value={tempIngredient.specificGravity}
                                 onChange={(e) =>
                                   setTempIngredient((prev) => ({ ...prev, specificGravity: e.target.value }))
                                 }
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono bg-white"
+                                className="w-full px-2 py-1.5 border border-border rounded text-sm font-mono bg-surface"
                               />
                             </div>
                             <div className="col-span-2 min-w-0 flex justify-end items-center gap-1 pt-0.5">
-                              <span className="text-slate-600 mr-auto text-xs font-semibold">KG</span>
+                              <span className="text-ink-3 mr-auto text-xs font-semibold">KG</span>
                               <button
                                 type="button"
                                 onClick={saveIngredientEdit}
-                                className="text-emerald-700 hover:text-emerald-900 p-1 rounded"
+                                className="text-ok hover:text-ok p-1 rounded"
                                 title="Save line"
                                 aria-label="Save line"
                               >
@@ -3043,7 +3052,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                               <button
                                 type="button"
                                 onClick={cancelIngredientEdit}
-                                className="text-slate-600 hover:text-slate-900 p-1 rounded text-xs font-medium px-1"
+                                className="text-ink-3 hover:text-ink p-1 rounded text-xs font-medium px-1"
                                 title="Cancel edit"
                                 aria-label="Cancel edit"
                               >
@@ -3052,7 +3061,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                               <button
                                 type="button"
                                 onClick={() => removeIngredient(ing.id)}
-                                className="text-red-600 hover:text-red-800 p-1 rounded"
+                                className="text-err hover:text-err p-1 rounded"
                                 title="Remove line"
                                 aria-label="Remove line"
                               >
@@ -3066,39 +3075,39 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       return (
                         <div
                           key={ing.id}
-                          className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                          className="grid min-w-[860px] grid-cols-13 gap-2 text-sm items-center p-2 rounded bg-surface-3 sm:min-w-0"
                         >
-                          <div className="col-span-1 min-w-0 text-slate-400 font-mono">{i + 1}</div>
-                          <div className="col-span-3 min-w-0 text-slate-900 break-words">
+                          <div className="col-span-1 min-w-0 text-ink-4 font-mono">{i + 1}</div>
+                          <div className="col-span-3 min-w-0 text-ink break-words">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span>{ing.inciName}</span>
                               {ing.itemGroupId ? (
-                                <span className="text-[9px] font-bold uppercase text-violet-700 bg-violet-100 px-1 py-0.5 rounded">
+                                <span className="text-[9px] font-bold uppercase text-brand bg-brand-soft px-1 py-0.5 rounded">
                                   Group
                                 </span>
                               ) : null}
                             </div>
                           </div>
-                          <div className="col-span-2 min-w-0 text-slate-600 font-mono text-xs break-all">
+                          <div className="col-span-2 min-w-0 text-ink-3 font-mono text-xs break-all">
                             {getFormulaIngredientSku(ing) || '—'}
                           </div>
-                          <div className="col-span-2 min-w-0 text-slate-600 break-words">{ing.phase}</div>
+                          <div className="col-span-2 min-w-0 text-ink-3 break-words">{ing.phase}</div>
                           <div
-                            className="col-span-2 min-w-0 text-slate-600 font-mono text-xs tabular-nums break-all leading-tight"
+                            className="col-span-2 min-w-0 text-ink-3 font-mono text-xs tabular-nums break-all leading-tight"
                             title={ing.percentWW}
                           >
                             {ing.percentWW}
                           </div>
-                          <div className="col-span-1 min-w-0 text-slate-600 font-mono tabular-nums">
+                          <div className="col-span-1 min-w-0 text-ink-3 font-mono tabular-nums">
                             {ing.specificGravity || '1'}
                           </div>
                           <div className="col-span-2 min-w-0 flex justify-end items-center gap-1">
-                            <span className="text-slate-600 mr-auto">KG</span>
+                            <span className="text-ink-3 mr-auto">KG</span>
                             <button
                               type="button"
                               onClick={() => beginEditIngredient(ing.id)}
                               disabled={Boolean(editingIngredientId)}
-                              className="text-blue-600 hover:text-blue-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                              className="text-brand hover:text-brand p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                               title="Edit line"
                               aria-label="Edit line"
                             >
@@ -3108,7 +3117,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                               type="button"
                               onClick={() => removeIngredient(ing.id)}
                               disabled={Boolean(editingIngredientId)}
-                              className="text-red-600 hover:text-red-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                              className="text-err hover:text-err p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                               title="Remove line"
                               aria-label="Remove line"
                             >
@@ -3124,13 +3133,14 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 {!editingIngredientId ? (
                   <div
                     ref={ingredientDraftRef}
-                    className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                    className="border border-border rounded-lg p-3 bg-surface space-y-2"
                   >
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
+                    <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">New line</p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <label className="text-xs font-semibold text-slate-600">Line type</label>
+                      <label className="text-xs font-semibold text-ink-3">Line type</label>
                       <select
                         value={formulaLineKind}
+                        aria-label="Line type"
                         onChange={(e) => {
                           const kind = e.target.value === 'item_group' ? 'item_group' : 'rm';
                           setFormulaLineKind(kind);
@@ -3139,7 +3149,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           setIngredientRmQuery('');
                           setTempIngredient((prev) => ({ ...prev, inciName: '' }));
                         }}
-                        className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                        className="px-2 py-1.5 border border-border rounded text-sm bg-surface"
                       >
                         <option value="rm">Raw material (RM)</option>
                         <option value="item_group">Item group</option>
@@ -3148,8 +3158,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     {formulaLineKind === 'item_group' ? (
                       <select
                         value={selectedItemGroupId}
+                        aria-label="Item group"
                         onChange={(e) => setSelectedItemGroupId(e.target.value)}
-                        className="w-full px-2 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        className="w-full px-2 py-2 border border-brand-soft rounded-lg text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                       >
                         <option value="">— Select item group (e.g. Glycerine Group) —</option>
                         {itemGroupsRm.map((g) => (
@@ -3187,30 +3198,33 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       <input
                         type="text"
                         placeholder="Phase"
+                        aria-label="Phase"
                         value={tempIngredient.phase}
                         onChange={(e) => setTempIngredient((prev) => ({ ...prev, phase: e.target.value }))}
-                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                        className="px-2 py-1.5 border border-border rounded text-sm"
                       />
                       <input
                         type="number"
                         placeholder="% W/W"
+                        aria-label="% W/W"
                         value={tempIngredient.percentWW}
                         onChange={(e) => setTempIngredient((prev) => ({ ...prev, percentWW: e.target.value }))}
-                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                        className="px-2 py-1.5 border border-border rounded text-sm"
                       />
                       <input
                         type="text"
                         inputMode="decimal"
                         placeholder="SG (vs water)"
+                        aria-label="SG (vs water) — specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
                         title="Specific gravity for this RM in this PR formula — used at Planning BOM confirmation"
                         value={tempIngredient.specificGravity}
                         onChange={(e) =>
                           setTempIngredient((prev) => ({ ...prev, specificGravity: e.target.value }))
                         }
-                        className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                        className="px-2 py-1.5 border border-border rounded text-sm"
                       />
                       <span
-                        className="px-2 py-1.5 text-sm font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded"
+                        className="px-2 py-1.5 text-sm font-semibold text-ink-3 bg-surface-3 border border-border rounded"
                         title="Formula BOM % w/w is always on a kg batch basis"
                       >
                         KG
@@ -3221,35 +3235,35 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
                   <div>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-ink-3">
                       Total (saved lines):{' '}
                       <span
                         className={`font-semibold ${
                           formulaPercentTotal > 100.001
-                            ? 'text-red-600'
+                            ? 'text-err'
                             : Math.abs(formulaPercentTotal - 100) <= 0.001
-                              ? 'text-blue-600'
-                              : 'text-amber-700'
+                              ? 'text-brand'
+                              : 'text-warn'
                         }`}
                       >
                         {formulaPercentTotal.toFixed(2)}%
                       </span>
                       {formulaPercentTotal > 100.001 ? (
-                        <span className="text-red-600"> — cannot exceed 100%</span>
+                        <span className="text-err"> — cannot exceed 100%</span>
                       ) : null}
                     </p>
                     {errors.formulaPercentTotal ? (
-                      <p className="mt-1 text-xs text-red-600">{errors.formulaPercentTotal}</p>
+                      <p className="mt-1 text-xs text-err">{errors.formulaPercentTotal}</p>
                     ) : null}
                     {editingIngredientId ? (
-                      <p className="mt-1 text-xs text-blue-700">Editing in place — save with ✓ on the row or Cancel.</p>
+                      <p className="mt-1 text-xs text-brand">Editing in place — save with ✓ on the row or Cancel.</p>
                     ) : null}
                   </div>
                   {!editingIngredientId ? (
                     <button
                       type="button"
                       onClick={addIngredient}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-brand-soft text-brand rounded-lg text-sm font-semibold hover:bg-brand-soft"
                     >
                       <Plus className="w-4 h-4" />
                       Add ingredient to list
@@ -3267,35 +3281,37 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               viewOnlyLabel="Automatic — SKU BOM is derived from Formula BOM. Edit formula lines to change per-unit quantities."
             >
             <div className="space-y-4">
-              <label className="block text-sm font-semibold text-violet-800 mb-2">
+              <label className="block text-sm font-semibold text-brand mb-2">
                 SKU BOM — RAW MATERIALS (PER UNIT){' '}
-                <span className="font-normal text-violet-600">(optional — derived from Formula BOM)</span>
+                <span className="font-normal text-brand">(optional — derived from Formula BOM)</span>
               </label>
-              <p className="text-xs text-slate-600 mb-3">
+              <p className="text-xs text-ink-3 mb-3">
                 Per-unit RM required for <strong>one</strong> finished unit. First qty column is always <strong>kg</strong> (planning/BOM basis); second column is the same amount in each RM&apos;s{' '}
                 <strong>standard UoM</strong> from Raw Materials master (L, KG, etc.). Lines are populated via <strong>Import from Formula BOM</strong> (Formula % w/w must total 100%).
                 When present, stored qtys must match net per unit (±0.001). Pack size on sale orders uses this net per unit.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-violet-50/80 border border-violet-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-brand-soft border border-brand-soft">
                 <div>
-                  <label className="block text-xs font-semibold text-violet-900 mb-1">Net per 1 product unit — quantity</label>
+                  <label className="block text-xs font-semibold text-brand mb-1">Net per 1 product unit — quantity</label>
                   <input
                     type="number"
                     step="0.0001"
                     min="0"
                     placeholder="e.g. 50"
+                    aria-label="Net per 1 product unit — quantity"
                     value={formData.skuBomLimitQty}
                     onChange={(e) => handleInputChange('skuBomLimitQty', e.target.value)}
-                    className="w-full px-2 py-1.5 border border-violet-200 rounded text-sm"
+                    className="w-full px-2 py-1.5 border border-brand-soft rounded text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-violet-900 mb-1">UOM</label>
+                  <label className="block text-xs font-semibold text-brand mb-1">UOM</label>
                   <select
                     value={formData.skuBomLimitUom}
+                    aria-label="Net per unit UOM"
                     onChange={(e) => handleInputChange('skuBomLimitUom', e.target.value)}
-                    className="w-full px-2 py-1.5 border border-violet-200 rounded text-sm"
+                    className="w-full px-2 py-1.5 border border-brand-soft rounded text-sm"
                   >
                     <option value="GM">G / GM (grams)</option>
                     <option value="KG">KG (kilograms)</option>
@@ -3303,25 +3319,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <option value="L">L (litres)</option>
                   </select>
                 </div>
-                <p className="sm:col-span-2 text-xs text-violet-800">
+                <p className="sm:col-span-2 text-xs text-brand">
                   Defines pack size for sale orders (e.g. <span className="font-mono">50 G</span>, <span className="font-mono">30 ML</span>).
                 </p>
               </div>
 
-              <div className="mb-4 p-3 rounded-lg border border-blue-200 bg-blue-50/80 space-y-2">
+              <div className="mb-4 p-3 rounded-lg border border-brand-soft bg-brand-soft space-y-2">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">
+                    <p className="text-xs font-semibold text-brand uppercase tracking-wide">
                       Import from Formula BOM
                     </p>
-                    <p className="text-[11px] text-blue-900/80 mt-0.5">
+                    <p className="text-[11px] text-brand mt-0.5">
                       Derives per-unit RM quantities from Formula BOM <strong>% w/w</strong> on the previous step (must total 100%). Uses net per unit above.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={importSkuBomFromFormulaBom}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-blue-300 bg-white text-blue-900 hover:bg-blue-100 shrink-0"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-brand-soft bg-surface text-brand hover:bg-brand-soft shrink-0"
                     title="Populate SKU BOM from Formula % w/w and net per-unit qty"
                   >
                     <ArrowUpFromLine className="w-3.5 h-3.5" />
@@ -3331,31 +3347,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               </div>
 
               {skuBomValidation.ok && skuBomValidation.sumInDisplay != null ? (
-                <p className="text-xs font-medium text-emerald-700 mb-3">
+                <p className="text-xs font-medium text-ok mb-3">
                   SKU BOM total {skuBomValidation.sumInDisplay.toFixed(4)} {skuBomValidation.displayUom} — matches limit.
                 </p>
               ) : !skuBomValidation.ok ? (
-                <p className="text-xs font-medium text-red-600 mb-3">{skuBomValidation.error}</p>
+                <p className="text-xs font-medium text-err mb-3">{skuBomValidation.error}</p>
               ) : formData.skuBomLines.length === 0 ? (
-                <p className="text-xs text-slate-500 mb-3">
+                <p className="text-xs text-ink-3 mb-3">
                   No SKU lines yet. Complete Formula BOM, then click <strong>Import from Formula BOM</strong>.
                 </p>
               ) : null}
 
-              <div className="mb-4 overflow-x-auto [-webkit-overflow-scrolling:touch] border border-slate-200 rounded-lg">
+              <div className="mb-4 overflow-auto max-h-[70vh] [-webkit-overflow-scrolling:touch] border border-border rounded-lg">
                 <table className="w-full text-sm min-w-[560px]">
-                  <thead>
-                    <tr className="bg-slate-50 text-xs font-semibold text-slate-600 uppercase">
-                      <th className="text-left p-2 w-12">Sr No</th>
-                      <th className="text-left p-2">INCI / Raw Material</th>
-                      <th className="text-right p-2">Required / unit (kg)</th>
-                      <th className="text-right p-2">Required / unit (Std UoM)</th>
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-surface-3 bg-surface-3 text-xs font-semibold text-ink-3 uppercase">
+                      <th scope="col" className="text-left p-2 w-12">Sr No</th>
+                      <th scope="col" className="text-left p-2">INCI / Raw Material</th>
+                      <th scope="col" className="text-right p-2">Required / unit (kg)</th>
+                      <th scope="col" className="text-right p-2">Required / unit (Std UoM)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {formData.skuBomLines.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-4 text-center text-sm text-slate-500">
+                        <td colSpan={4} className="p-4 text-center text-sm text-ink-3">
                           Import from Formula BOM to populate this list.
                         </td>
                       </tr>
@@ -3372,18 +3388,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                           rmMaster,
                         });
                         return (
-                          <tr key={row.id} className="border-t border-slate-100">
-                            <td className="p-2 text-slate-400 font-mono">{i + 1}</td>
-                            <td className="p-2 text-slate-900">
+                          <tr key={row.id} className="border-t border-hairline">
+                            <td className="p-2 text-ink-4 font-mono">{i + 1}</td>
+                            <td className="p-2 text-ink">
                               {row.inciName}
                               {row.rmCode ? (
-                                <span className="block text-[10px] font-mono text-violet-700">{row.rmCode}</span>
+                                <span className="block text-[10px] font-mono text-brand">{row.rmCode}</span>
                               ) : null}
                             </td>
-                            <td className="p-2 text-right font-mono font-bold text-violet-700">
+                            <td className="p-2 text-right font-mono font-bold text-brand">
                               {formatQtyWithUnit(display.kgQty, 'kg')}
                             </td>
-                            <td className="p-2 text-right font-mono font-bold text-indigo-700">
+                            <td className="p-2 text-right font-mono font-bold text-brand">
                               {formatSkuBomStdQtyWithUnit(display.stdQty, display.stdUom)}
                             </td>
                           </tr>
@@ -3402,13 +3418,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             <PrTeamSectionGate canEdit={prCanEdit('packBom')}>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-blue-700 mb-3">PACKAGING BOM</label>
-                <p className="text-xs text-slate-600 mb-3">
+                <label className="block text-sm font-semibold text-brand mb-3">PACKAGING BOM</label>
+                <p className="text-xs text-ink-3 mb-3">
                   List primary, secondary, and label components. Click the pencil on a row to edit in place (like Formula BOM), or add a new line below.
                 </p>
 
                 <div className="mb-4 space-y-2 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <div className="grid min-w-[980px] grid-cols-9 gap-2 text-xs font-semibold text-slate-600 uppercase sm:min-w-0">
+                  <div className="grid min-w-[980px] grid-cols-9 gap-2 text-xs font-semibold text-ink-3 uppercase sm:min-w-0">
                     <div>Sr No</div>
                     <div className="col-span-2">PM Description</div>
                     <div>SKU</div>
@@ -3430,7 +3446,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                         return (
                           <div
                             key={comp.id}
-                            className="min-w-[980px] rounded-lg border border-blue-200 bg-blue-50 p-3 ring-2 ring-blue-200 space-y-2 sm:min-w-0"
+                            className="min-w-[980px] rounded-lg border border-brand-soft bg-brand-soft p-3 ring-2 ring-brand-soft space-y-2 sm:min-w-0"
                           >
                             <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_auto] lg:items-start">
                               <PmMasterTypeahead
@@ -3464,7 +3480,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 <button
                                   type="button"
                                   onClick={saveComponentEdit}
-                                  className="text-emerald-700 hover:text-emerald-900 p-1.5 rounded"
+                                  className="text-ok hover:text-ok p-1.5 rounded"
                                   title="Save line"
                                   aria-label="Save line"
                                 >
@@ -3473,7 +3489,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 <button
                                   type="button"
                                   onClick={cancelComponentEdit}
-                                  className="text-slate-600 hover:text-slate-900 p-1.5 rounded text-xs font-medium"
+                                  className="text-ink-3 hover:text-ink p-1.5 rounded text-xs font-medium"
                                   title="Cancel edit"
                                   aria-label="Cancel edit"
                                 >
@@ -3482,7 +3498,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 <button
                                   type="button"
                                   onClick={() => removeComponent(comp.id)}
-                                  className="text-red-600 hover:text-red-800 p-1.5 rounded"
+                                  className="text-err hover:text-err p-1.5 rounded"
                                   title="Remove line"
                                   aria-label="Remove line"
                                 >
@@ -3490,12 +3506,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 </button>
                               </div>
                             </div>
-                            <p className="text-xs font-mono text-slate-600">SKU: {inlineSku || '—'}</p>
+                            <p className="text-xs font-mono text-ink-3">SKU: {inlineSku || '—'}</p>
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                               <div>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+                                <label className="block text-xs font-medium text-ink-3 mb-1">Category</label>
                                 <select
                                   value={tempComponent.pmSkuCategory}
+                                  aria-label="Category"
                                   onChange={(e) => {
                                     const canon = normalizePmSkuCategoryForSelect(e.target.value) || '';
                                     const level = pmLevelForSubCategory(canon);
@@ -3510,7 +3527,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                       type: level || prev.type,
                                     }));
                                   }}
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                  className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface"
                                 >
                                   <option value="">Select category…</option>
                                   {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
@@ -3521,9 +3538,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">Sub-category</label>
+                                <label className="block text-xs font-medium text-ink-3 mb-1">Sub-category</label>
                                 <select
                                   value={tempComponent.optionalPmSubCategory}
+                                  aria-label="Sub-category"
                                   disabled={!tempComponent.pmSkuCategory.trim()}
                                   onChange={(e) => {
                                     const detail =
@@ -3541,7 +3559,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                       ),
                                     }));
                                   }}
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white disabled:bg-slate-50"
+                                  className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3"
                                 >
                                   <option value="">Select sub-category…</option>
                                   {packDraftSubCategoryOptions.map((opt) => (
@@ -3552,9 +3570,10 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">Sub-sub category</label>
+                                <label className="block text-xs font-medium text-ink-3 mb-1">Sub-sub category</label>
                                 <select
                                   value={tempComponent.optionalPmSubSubCategory}
+                                  aria-label="Sub-sub category"
                                   disabled={
                                     !tempComponent.optionalPmSubCategory.trim() ||
                                     !pmDetailSubCategoryHasSubSubCategory(tempComponent.optionalPmSubCategory)
@@ -3565,7 +3584,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                                       optionalPmSubSubCategory: e.target.value,
                                     }))
                                   }
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white disabled:bg-slate-50"
+                                  className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3"
                                 >
                                   <option value="">Select sub-sub category…</option>
                                   {packDraftSubSubCategoryOptions.map((opt) => (
@@ -3580,23 +3599,26 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                               <input
                                 type="text"
                                 placeholder="Type (Primary / Secondary / Tertiary)"
+                                aria-label="Type (Primary / Secondary / Tertiary)"
                                 value={tempComponent.type}
                                 onChange={(e) => setTempComponent((prev) => ({ ...prev, type: e.target.value }))}
-                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                className="px-2 py-1.5 border border-border rounded text-sm bg-surface"
                               />
                               <input
                                 type="text"
                                 placeholder="Qty / Unit"
+                                aria-label="Qty / Unit"
                                 value={tempComponent.qtyUnit}
                                 onChange={(e) => setTempComponent((prev) => ({ ...prev, qtyUnit: e.target.value }))}
-                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                className="px-2 py-1.5 border border-border rounded text-sm bg-surface"
                               />
                               <input
                                 type="text"
                                 placeholder="UOM"
+                                aria-label="UOM"
                                 value={tempComponent.uom}
                                 onChange={(e) => setTempComponent((prev) => ({ ...prev, uom: e.target.value }))}
-                                className="px-2 py-1.5 border border-slate-200 rounded text-sm bg-white"
+                                className="px-2 py-1.5 border border-border rounded text-sm bg-surface"
                               />
                             </div>
                           </div>
@@ -3606,28 +3628,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       return (
                       <div
                         key={comp.id}
-                        className="grid min-w-[980px] grid-cols-9 gap-2 text-sm items-center p-2 rounded bg-slate-50 sm:min-w-0"
+                        className="grid min-w-[980px] grid-cols-9 gap-2 text-sm items-center p-2 rounded bg-surface-3 sm:min-w-0"
                       >
-                        <div className="text-slate-400 font-mono">{i + 1}</div>
-                        <div className="col-span-2 text-slate-900">{comp.pmDescription}</div>
-                        <div className="text-slate-600 font-mono text-xs break-all">
+                        <div className="text-ink-4 font-mono">{i + 1}</div>
+                        <div className="col-span-2 text-ink">{comp.pmDescription}</div>
+                        <div className="text-ink-3 font-mono text-xs break-all">
                           {getPackComponentSku(comp) || '—'}
                         </div>
-                        <div className="text-slate-600 text-xs">
+                        <div className="text-ink-3 text-xs">
                           {PM_SKU_CATEGORY_SELECT_OPTIONS.find((o) => o.value === comp.pmSkuCategory)?.label ||
                             comp.pmSkuCategory ||
                             '—'}
                         </div>
-                        <div className="text-slate-600 text-xs">{comp.optionalPmSubCategory || '—'}</div>
-                        <div className="text-slate-600 text-xs">{comp.optionalPmSubSubCategory || '—'}</div>
-                        <div className="text-slate-600">{comp.type}</div>
+                        <div className="text-ink-3 text-xs">{comp.optionalPmSubCategory || '—'}</div>
+                        <div className="text-ink-3 text-xs">{comp.optionalPmSubSubCategory || '—'}</div>
+                        <div className="text-ink-3">{comp.type}</div>
                         <div className="flex justify-end items-center gap-1">
-                          <span className="text-slate-600 mr-auto">{comp.qtyUnit}</span>
+                          <span className="text-ink-3 mr-auto">{comp.qtyUnit}</span>
                           <button
                             type="button"
                             onClick={() => beginEditComponent(comp.id)}
                             disabled={Boolean(editingComponentId)}
-                            className="text-blue-600 hover:text-blue-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                            className="text-brand hover:text-brand p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                             title="Edit line"
                             aria-label="Edit line"
                           >
@@ -3637,7 +3659,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             type="button"
                             onClick={() => removeComponent(comp.id)}
                             disabled={Boolean(editingComponentId)}
-                            className="text-red-600 hover:text-red-800 p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
+                            className="text-err hover:text-err p-1 rounded disabled:opacity-40 disabled:pointer-events-none"
                             title="Remove line"
                             aria-label="Remove line"
                           >
@@ -3653,9 +3675,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 {!editingComponentId ? (
                 <div
                   ref={packDraftRef}
-                  className="border border-slate-200 rounded-lg p-3 bg-white space-y-2"
+                  className="border border-border rounded-lg p-3 bg-surface space-y-2"
                 >
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">New line</p>
+                  <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">New line</p>
                   <PmMasterTypeahead
                     className="sm:col-span-2"
                     options={packPmTypeaheadOptions}
@@ -3686,7 +3708,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   />
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <div>
-                      <label htmlFor="packPmSkuCategory" className="block text-xs font-medium text-slate-600 mb-1">
+                      <label htmlFor="packPmSkuCategory" className="block text-xs font-medium text-ink-3 mb-1">
                         Category
                       </label>
                       <select
@@ -3706,7 +3728,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             type: level || prev.type,
                           }));
                         }}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm"
                       >
                         <option value="">Select category…</option>
                         {PM_SKU_CATEGORY_SELECT_OPTIONS.map((opt) => (
@@ -3717,7 +3739,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       </select>
                     </div>
                     <div>
-                      <label htmlFor="packPmSubCategoryDetail" className="block text-xs font-medium text-slate-600 mb-1">
+                      <label htmlFor="packPmSubCategoryDetail" className="block text-xs font-medium text-ink-3 mb-1">
                         Sub-category
                       </label>
                       <select
@@ -3740,7 +3762,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             ),
                           }));
                         }}
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm disabled:bg-surface-3 disabled:text-ink-4"
                       >
                         <option value="">Select sub-category…</option>
                         {packDraftSubCategoryOptions.map((opt) => (
@@ -3757,7 +3779,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                       </select>
                     </div>
                     <div>
-                      <label htmlFor="packPmSubSubCategoryDetail" className="block text-xs font-medium text-slate-600 mb-1">
+                      <label htmlFor="packPmSubSubCategoryDetail" className="block text-xs font-medium text-ink-3 mb-1">
                         Sub-sub category
                       </label>
                       <select
@@ -3773,7 +3795,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                             optionalPmSubSubCategory: e.target.value,
                           }))
                         }
-                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                        className="w-full px-2 py-1.5 border border-border rounded text-sm disabled:bg-surface-3 disabled:text-ink-4"
                       >
                         <option value="">Select sub-sub category…</option>
                         {packDraftSubSubCategoryOptions.map((opt) => (
@@ -3796,28 +3818,31 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     <input
                       type="text"
                       placeholder="Type (Primary / Secondary / Tertiary)"
+                      aria-label="Type (Primary / Secondary / Tertiary)"
                       value={tempComponent.type}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, type: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      className="px-2 py-1.5 border border-border rounded text-sm"
                     />
                     <input
                       type="text"
                       placeholder="Qty / Unit"
+                      aria-label="Qty / Unit"
                       value={tempComponent.qtyUnit}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, qtyUnit: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      className="px-2 py-1.5 border border-border rounded text-sm"
                     />
                     <input
                       type="text"
                       placeholder="UOM"
+                      aria-label="UOM"
                       value={tempComponent.uom}
                       onChange={(e) => setTempComponent(prev => ({ ...prev, uom: e.target.value }))}
-                      className="px-2 py-1.5 border border-slate-200 rounded text-sm"
+                      className="px-2 py-1.5 border border-border rounded text-sm"
                     />
                   </div>
                 </div>
                 ) : (
-                  <p className="text-xs text-blue-700">Editing in place — save with ✓ on the row or Cancel.</p>
+                  <p className="text-xs text-brand">Editing in place — save with ✓ on the row or Cancel.</p>
                 )}
 
                 <div className="flex justify-end mt-3">
@@ -3825,7 +3850,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   <button
                     type="button"
                     onClick={addComponent}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-50"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-brand-soft text-brand rounded-lg text-sm font-semibold hover:bg-brand-soft"
                   >
                     <Plus className="w-4 h-4" />
                     Add component to list
@@ -3865,16 +3890,17 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <PrTeamSectionGate
                 canEdit={prCanEdit('specsProduct')}
                 viewOnlyLabel="View only — product specs & regulatory claims are maintained by the product (RM) team."
-                className="space-y-4 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+                className="space-y-4 border border-border rounded-lg p-3 sm:p-4 bg-surface"
               >
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Product — business, storage &amp; specs</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4">Product — business, storage &amp; specs</h3>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Brand / Client</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Brand / Client</label>
                     <select
                       value={formData.brandClient}
+                      aria-label="Brand / Client"
                       onChange={(e) => handleInputChange('brandClient', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     >
                       <option value="">Select brand / client</option>
                       <option value="EI Own Brand">EI Own Brand</option>
@@ -3883,12 +3909,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="productForm">Product Form</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1" htmlFor="productForm">Product Form</label>
                     <select
                       id="productForm"
                       value={formData.productForm}
                       onChange={(e) => handleInputChange('productForm', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     >
                       <option value="">Select product form</option>
                       {PR_PRODUCT_FORM_OPTIONS.map((opt) => (
@@ -3904,11 +3930,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">QC Inspection Group</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">QC Inspection Group</label>
                     <select
                       value={formData.prQcGroup}
+                      aria-label="QC Inspection Group"
                       onChange={(e) => handleInputChange('prQcGroup', e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     >
                       <option value="">Select</option>
                       {PR_QC_GROUPS.map((g) => (
@@ -3917,11 +3944,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Default Storage Location Type</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Default Storage Location Type</label>
                     <select
                       value={formData.prDefaultStorageType}
+                      aria-label="Default Storage Location Type"
                       onChange={(e) => handleInputChange('prDefaultStorageType', e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     >
                       <option value="">Select</option>
                       {PR_STORAGE_TYPES.map((s) => (
@@ -3930,12 +3958,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Preference</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Tax Preference</label>
                     <select
                       value={formData.bomTaxPreference}
+                      aria-label="Tax Preference"
                       onChange={(e) => handleInputChange('bomTaxPreference', e.target.value)}
                       disabled={lockPrimaryFields}
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                      className={`w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${lockPrimaryFields ? 'bg-surface-3' : ''}`}
                     >
                       <option value="">Select tax preference</option>
                       {['Taxable', 'ExemptedGoods', 'ExemptedServices', 'NonGST'].map((t) => (
@@ -3946,25 +3975,27 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Returnable</label>
-                    <div className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-lg">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Returnable</label>
+                    <div className="flex items-center gap-3 px-3 py-2 border border-border rounded-lg">
                       <input
                         type="checkbox"
+                        aria-label="Returnable Item"
                         checked={formData.bomReturnable}
                         onChange={(e) => handleInputChange('bomReturnable', e.target.checked)}
                       />
-                      <span className="text-sm font-medium text-slate-700">Returnable Item</span>
+                      <span className="text-sm font-medium text-ink-2">Returnable Item</span>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Associated Items</label>
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Associated Items</label>
                     <textarea
                       value={formData.bomAssociateItems}
+                      aria-label="Associated Items"
                       onChange={(e) => handleInputChange('bomAssociateItems', e.target.value)}
                       rows={2}
                       disabled={lockPrimaryFields}
                       placeholder="Link related BOM / RM / packaging if any"
-                      className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${lockPrimaryFields ? 'bg-slate-100' : ''}`}
+                      className={`w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] ${lockPrimaryFields ? 'bg-surface-3' : ''}`}
                     />
                   </div>
                 </div>
@@ -3976,11 +4007,11 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                   onChange={handleCustomFieldChange}
                   onRemoveFieldValue={handleRemoveCustomFieldValue}
                 />
-                <label className="block text-sm font-semibold text-blue-700 mb-3 mt-4">REGULATORY &amp; CLAIMS (product)</label>
+                <label className="block text-sm font-semibold text-brand mb-3 mt-4">REGULATORY &amp; CLAIMS (product)</label>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Applicable Regulation</label>
-                    <select value={formData.applicableRegulation} onChange={(e) => handleInputChange('applicableRegulation', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Applicable Regulation</label>
+                    <select value={formData.applicableRegulation} aria-label="Applicable Regulation" onChange={(e) => handleInputChange('applicableRegulation', e.target.value)} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]">
                       <option value="">APPLICABLE REGULATION</option>
                       <option value="India - BIS / CDSCO">India - BIS / CDSCO</option>
                       <option value="EU">EU</option>
@@ -3988,8 +4019,8 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">COSMOS / Natural Certification</label>
-                    <select value={formData.cosmosNaturalCertification} onChange={(e) => handleInputChange('cosmosNaturalCertification', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">COSMOS / Natural Certification</label>
+                    <select value={formData.cosmosNaturalCertification} aria-label="COSMOS / Natural Certification" onChange={(e) => handleInputChange('cosmosNaturalCertification', e.target.value)} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]">
                       <option value="">COSMOS / NATURAL CERTIFICATION</option>
                       <option value="Not applicable">Not applicable</option>
                       <option value="COSMOS Organic">COSMOS Organic</option>
@@ -3997,28 +4028,28 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Dermatologically Tested</label>
-                    <select value={formData.dermatologicallyTested} onChange={(e) => handleInputChange('dermatologicallyTested', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Dermatologically Tested</label>
+                    <select value={formData.dermatologicallyTested} aria-label="Dermatologically Tested" onChange={(e) => handleInputChange('dermatologicallyTested', e.target.value)} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]">
                       <option value="">DERMATOLOGICALLY TESTED</option>
                       <option value="Yes - certified">Yes - certified</option>
                       <option value="No">No</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Cruelty Free / Vegan</label>
-                    <select value={formData.crueltyFreeVegan} onChange={(e) => handleInputChange('crueltyFreeVegan', e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Cruelty Free / Vegan</label>
+                    <select value={formData.crueltyFreeVegan} aria-label="Cruelty Free / Vegan" onChange={(e) => handleInputChange('crueltyFreeVegan', e.target.value)} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]">
                       <option value="">CRUELTY FREE / VEGAN</option>
                       <option value="Yes - certified">Yes - certified</option>
                       <option value="No">No</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Approved Marketing Claims</label>
-                    <textarea placeholder="e.g. Broad spectrum UVA+UVB, Niacinamide brightening..." value={formData.approvedMarketingClaims} onChange={(e) => handleInputChange('approvedMarketingClaims', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Approved Marketing Claims</label>
+                    <textarea placeholder="e.g. Broad spectrum UVA+UVB, Niacinamide brightening..." aria-label="Approved Marketing Claims" value={formData.approvedMarketingClaims} onChange={(e) => handleInputChange('approvedMarketingClaims', e.target.value)} rows={2} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Claims Substantiation</label>
-                    <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <label className="block text-xs font-semibold text-ink-2 mb-1">Claims Substantiation</label>
+                    <textarea placeholder="SPF test ref, in-vitro study, clinical report ref no." aria-label="Claims Substantiation" value={formData.claimsSubstantiation} onChange={(e) => handleInputChange('claimsSubstantiation', e.target.value)} rows={2} className="w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]" />
                   </div>
                 </div>
               </PrTeamSectionGate>
@@ -4026,17 +4057,18 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
               <PrTeamSectionGate
                 canEdit={prCanEdit('specsPackaging')}
                 viewOnlyLabel="View only — packaging specs are maintained by the packaging team."
-                className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white space-y-4"
+                className="border border-border rounded-lg p-3 sm:p-4 bg-surface space-y-4"
               >
-                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Packaging — configuration &amp; specs</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4">Packaging — configuration &amp; specs</h3>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pack Configuration</label>
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Pack Configuration</label>
                   <input
                     type="text"
                     placeholder="e.g. 1x50 tube"
+                    aria-label="Pack Configuration"
                     value={formData.packConfiguration}
                     onChange={(e) => handleInputChange('packConfiguration', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   />
                 </div>
                 <MasterCustomFieldsBlock
@@ -4052,9 +4084,9 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         );
       case 6:
         return (
-          <div className="border border-slate-200 rounded-lg p-3 sm:p-4 bg-white min-w-0">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Quality specifications</h3>
-            <p className="text-xs text-slate-500 mb-4">
+          <div className="border border-border rounded-lg p-3 sm:p-4 bg-surface min-w-0">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Quality specifications</h3>
+            <p className="text-xs text-ink-3 mb-4">
               Choose Bulk Clearance, Final Clearance, or Dispatch Specs. Use &ldquo;+ Add Common Spec&rdquo; or
               &ldquo;+ Add Specific Spec&rdquo; to open the same quality spec form as RM/PM masters.
             </p>
@@ -4097,7 +4129,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
           <PrTeamSectionGate
             canEdit={prCanEdit('licensing')}
             viewOnlyLabel="Licensing is restricted — only administrators may edit facility licences."
-            className="min-w-0 border border-slate-200 rounded-lg p-3 sm:p-4 bg-white"
+            className="min-w-0 border border-border rounded-lg p-3 sm:p-4 bg-surface"
           >
             <PrFacilityLicenceStep
               records={formData.prFacilityLicences}
@@ -4116,25 +4148,25 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       <div
         className={
           isModalPopup
-            ? 'min-h-[40vh] bg-[#f9fafb] flex items-center justify-center'
-            : 'min-h-screen bg-[#f9fafb] flex items-center justify-center'
+            ? 'min-h-[40vh] bg-canvas flex items-center justify-center'
+            : 'min-h-screen bg-canvas flex items-center justify-center'
         }
       >
-        <p className="text-gray-500">Loading product…</p>
+        <p className="text-ink-3">Loading product…</p>
       </div>
     );
     if (isModalPopup) {
       return (
         <>
-          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-surface">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-gray-800">Edit Product Registration (PR Master)</div>
+              <div className="text-sm font-semibold text-ink">Edit Product Registration (PR Master)</div>
             </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close PR master popup"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 hover:text-ink text-xs font-medium"
             >
               <span aria-hidden>✕</span>
               <span>Close</span>
@@ -4150,13 +4182,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const prFormBody = (
       <MasterCustomFieldsProvider entity="PR" taxonomyKey={prCustomFieldsTaxonomyKey}>
       {effectiveProductId ? (
-        <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+        <div className="mb-3 rounded-lg border border-border bg-surface-3 px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <p className="text-xs font-semibold text-gray-700">
+              <p className="text-xs font-semibold text-ink-2">
                 Approval — RM &amp; PM must both approve to go Active
               </p>
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[11px] text-ink-3">
                 Save your edits first. Any change to RM or PM details resets both approvals.
               </p>
             </div>
@@ -4247,22 +4279,22 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   if (isModalPopup) {
     return (
       <>
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-surface">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-800">
+            <div className="text-sm font-semibold text-ink">
               {isEditingPr ? 'Edit Product Registration (PR Master)' : 'New Product Registration (PR Master)'}
             </div>
             {isEditingPr ? (
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                <span className="font-mono font-semibold text-teal-700">
+                <span className="font-mono font-semibold text-brand">
                   {formData.skuCode.trim() || '—'}
                 </span>
                 {formData.productName.trim() ? (
                   <>
-                    <span className="text-gray-300" aria-hidden>
+                    <span className="text-ink-4" aria-hidden>
                       ·
                     </span>
-                    <span className="truncate font-medium text-gray-900">{formData.productName.trim()}</span>
+                    <span className="truncate font-medium text-ink">{formData.productName.trim()}</span>
                   </>
                 ) : null}
               </div>
@@ -4272,7 +4304,7 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
             type="button"
             onClick={onClose}
             aria-label="Close PR master popup"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-xs font-medium"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 hover:text-ink text-xs font-medium"
           >
             <span aria-hidden>✕</span>
             <span>Close</span>

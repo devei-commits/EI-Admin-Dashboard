@@ -28,9 +28,9 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
   if (!active) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div className="text-sm font-semibold text-slate-900">
+    <div className="rounded-xl border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-2 px-4 py-3">
+        <div className="text-sm font-semibold text-ink">
           {sorted.length} label{sorted.length === 1 ? '' : 's'} · GRN {displayGrnNo(grnNo)}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -39,7 +39,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
               value={selectedBox}
               onChange={(e) => setSelectedBox(Number(e.target.value))}
               aria-label="Preview box"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs"
             >
               {sorted.map((l) => (
                 <option key={l.boxIndex} value={l.boxIndex}>
@@ -51,7 +51,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
           <button
             type="button"
             onClick={() => print([active])}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink-2 hover:bg-surface-2"
           >
             <Printer className="h-4 w-4" aria-hidden />
             Print box {active.boxIndex}
@@ -59,7 +59,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
           <button
             type="button"
             onClick={() => print(sorted)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:bg-ink-2"
           >
             <Printer className="h-4 w-4" aria-hidden />
             Print all {sorted.length}
@@ -68,8 +68,8 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
       </div>
 
       <div className="flex flex-wrap gap-4 p-4">
-        <div className="w-[320px] shrink-0 rounded-lg border border-slate-300 p-3">
-          <div className="mb-2 text-xs font-bold text-slate-900">
+        <div className="w-[320px] shrink-0 rounded-lg border border-border p-3">
+          <div className="mb-2 text-xs font-bold text-ink">
             GRN {displayGrnNo(grnNo)} - Box {active.boxIndex}
           </div>
           <div className="mb-2 text-center">
@@ -80,7 +80,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
             />
           </div>
           {labelFieldRows(active, grnNo).map((row) => (
-            <p key={row.label} className="my-1 text-xs text-slate-800">
+            <p key={row.label} className="my-1 text-xs text-ink">
               <strong className="font-bold">{row.label}:</strong> {row.value}
             </p>
           ))}
@@ -88,7 +88,7 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
 
         {sorted.length > 1 ? (
           <div className="min-w-[180px] flex-1">
-            <p className="mb-2 text-xs font-semibold text-slate-500">All boxes</p>
+            <p className="mb-2 text-xs font-semibold text-ink-3">All boxes</p>
             <div className="flex flex-wrap gap-2">
               {sorted.map((l) => (
                 <button
@@ -97,13 +97,13 @@ export const GrnLabelPreview: React.FC<GrnLabelPreviewProps> = ({ labels, grnNo,
                   onClick={() => setSelectedBox(l.boxIndex)}
                   className={`rounded-lg border p-1.5 ${
                     l.boxIndex === active.boxIndex
-                      ? 'border-slate-900 bg-slate-50'
-                      : 'border-slate-200 hover:border-slate-400'
+                      ? 'border-brand bg-brand-soft'
+                      : 'border-border hover:border-border-strong'
                   }`}
                   title={`Box ${l.boxIndex}`}
                 >
                   <img src={l.qrImageDataUrl} alt={`QR Box ${l.boxIndex}`} className="h-14 w-14 object-contain" />
-                  <span className="mt-0.5 block text-center text-[10px] text-slate-600">Box {l.boxIndex}</span>
+                  <span className="mt-0.5 block text-center text-[10px] text-ink-2">Box {l.boxIndex}</span>
                 </button>
               ))}
             </div>

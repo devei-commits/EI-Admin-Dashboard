@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import type { Ticket, TicketCategory, TicketCollaboration, TicketPriority } from '../../types/ticket.types';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type TeamOpt = { id: string; name: string };
 type AreaOpt = { id: string; label: string };
@@ -213,13 +214,12 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
  if (!open) return null;
 
  return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-   <div className="absolute inset-0 bg-black/45" onClick={() => !submitting && onClose()} />
-   <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white border border-gray-200 shadow-xl">
-    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+  <ModalOverlay onClose={() => { if (!submitting) onClose(); }} z="z-50" dismissable={true} backdrop="default">
+   <div role="dialog" aria-modal="true" aria-labelledby="cross-team-ticket-title" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-surface border border-border shadow-xl">
+    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-hairline bg-surface px-5 py-4">
      <div>
-      <h2 className="text-lg font-semibold text-gray-900">Cross-team ticket</h2>
-      <p className="text-sm text-gray-500 mt-0.5">
+      <h2 id="cross-team-ticket-title" className="text-lg font-semibold text-ink">Cross-team ticket</h2>
+      <p className="text-sm text-ink-3 mt-0.5">
        Raise an internal issue, tag teams and colleagues, and flag PIS or other areas.
       </p>
      </div>
@@ -227,7 +227,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
       type="button"
       disabled={submitting}
       onClick={onClose}
-      className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+      className="rounded-lg p-2 text-ink-4 hover:bg-surface-3 hover:text-ink-2"
       aria-label="Close"
      >
       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -238,39 +238,42 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
 
     <form onSubmit={(e) => void handleSubmit(e)} className="p-5 space-y-5">
      {error && (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+      <div className="rounded-lg border border-err bg-err-soft px-3 py-2 text-sm text-err">{error}</div>
      )}
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+      <label className="block text-sm font-medium text-ink-2 mb-1">Subject</label>
       <input
        type="text"
        value={subject}
        onChange={(e) => setSubject(e.target.value)}
-       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+       className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-border"
        placeholder="Short summary for other teams"
        maxLength={500}
+       aria-label="Subject"
       />
      </div>
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+      <label className="block text-sm font-medium text-ink-2 mb-1">Description</label>
       <textarea
        value={description}
        onChange={(e) => setDescription(e.target.value)}
        rows={4}
-       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+       className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-slate-800 focus:ring-1 focus:ring-border"
        placeholder="Context, links, SKU/PIS codes, what you need from which team…"
+       aria-label="Description"
       />
      </div>
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Assign to *</label>
+      <label className="block text-sm font-medium text-ink-2 mb-1">Assign to *</label>
       <select
        value={primaryAssigneeId}
        onChange={(e) => setPrimaryAssigneeId(e.target.value)}
-       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+       className="w-full rounded-lg border border-border px-3 py-2 text-sm"
        required
+       aria-label="Assign to"
       >
        <option value="">Select primary assignee…</option>
        {staffOptions.map((u) => (
@@ -279,18 +282,19 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
         </option>
        ))}
       </select>
-      <p className="text-xs text-gray-500 mt-1">
+      <p className="text-xs text-ink-3 mt-1">
        Required at creation. You can reassign later; previous assignees are kept in history.
       </p>
      </div>
 
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
-       <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+       <label className="block text-sm font-medium text-ink-2 mb-1">Category</label>
        <select
         value={category}
         onChange={(e) => setCategory(e.target.value as TicketCategory)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+        aria-label="Category"
        >
         {INTERNAL_CATEGORIES.map((c) => (
          <option key={c.value} value={c.value}>
@@ -300,11 +304,12 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
        </select>
       </div>
       <div>
-       <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+       <label className="block text-sm font-medium text-ink-2 mb-1">Priority</label>
        <select
         value={priority}
         onChange={(e) => setPriority(e.target.value as TicketPriority)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+        aria-label="Priority"
        >
         {INTERNAL_PRIORITIES.map((p) => (
          <option key={p} value={p}>
@@ -316,10 +321,10 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
      </div>
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Tag teams</label>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Tag teams</label>
       <div className="flex flex-wrap gap-2">
        {teams.length === 0 ? (
-        <span className="text-sm text-gray-500">Loading teams…</span>
+        <span className="text-sm text-ink-3">Loading teams…</span>
        ) : (
         teams.map((t) => (
          <button
@@ -329,7 +334,7 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
            selectedTeamIds.has(t.id)
             ? 'border-violet-600 bg-violet-50 text-violet-900'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+            : 'border-border bg-surface text-ink-2 hover:border-border'
           }`}
          >
           {t.name}
@@ -340,11 +345,11 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
      </div>
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Issue areas</label>
-      <p className="text-xs text-gray-500 mb-2">Include <strong>PIS</strong> when the issue relates to product master data, codes, or formulations.</p>
+      <label className="block text-sm font-medium text-ink-2 mb-2">Issue areas</label>
+      <p className="text-xs text-ink-3 mb-2">Include <strong>PIS</strong> when the issue relates to product master data, codes, or formulations.</p>
       <div className="flex flex-wrap gap-2">
        {issueAreas.length === 0 ? (
-        <span className="text-sm text-gray-500">Loading…</span>
+        <span className="text-sm text-ink-3">Loading…</span>
        ) : (
         issueAreas.map((a) => (
          <button
@@ -354,9 +359,9 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
            selectedAreaIds.has(a.id)
             ? a.id === 'pis'
-             ? 'border-amber-500 bg-amber-50 text-amber-900'
-             : 'border-slate-700 bg-slate-50 text-slate-900'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+             ? 'border-warn bg-warn-soft text-warn'
+             : 'border-slate-700 bg-surface-2 text-ink'
+            : 'border-border bg-surface text-ink-2 hover:border-border'
           }`}
          >
           {a.label}
@@ -367,25 +372,26 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
      </div>
 
      <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Tag people</label>
+      <label className="block text-sm font-medium text-ink-2 mb-1">Tag people</label>
       <input
        type="text"
        value={memberSearch}
        onChange={(e) => setMemberSearch(e.target.value)}
        placeholder="Search by name or email…"
-       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2"
+       className="w-full rounded-lg border border-border px-3 py-2 text-sm mb-2"
+       aria-label="Tag people"
       />
       {memberSearch.trim().length >= 1 && filteredStaff.length > 0 && (
-       <div className="max-h-36 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50">
+       <div className="max-h-36 overflow-y-auto rounded-lg border border-border bg-surface-2">
         {filteredStaff.map((u) => (
          <button
           key={u.userid}
           type="button"
           onClick={() => addMember(u)}
-          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white"
+          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface"
          >
           <span>{u.display_name || u.email || `User ${u.userid}`}</span>
-          <span className="text-xs text-gray-500">{u.role_name || ''}</span>
+          <span className="text-xs text-ink-3">{u.role_name || ''}</span>
          </button>
         ))}
        </div>
@@ -395,10 +401,10 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
         {selectedMembers.map((m) => (
          <span
           key={m.userid}
-          className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-800"
+          className="inline-flex items-center gap-1 rounded-full bg-surface-3 px-2 py-1 text-xs text-ink"
          >
           {m.display_name || m.email}
-          <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => removeMember(m.userid)}>
+          <button type="button" className="text-ink-3 hover:text-err" onClick={() => removeMember(m.userid)}>
            ×
           </button>
          </span>
@@ -407,26 +413,26 @@ export const CrossTeamTicketModal: React.FC<CrossTeamTicketModalProps> = ({
       )}
      </div>
 
-     <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
+     <div className="flex justify-end gap-2 border-t border-hairline pt-4">
       <button
        type="button"
        disabled={submitting}
        onClick={onClose}
-       className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+       className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-2 hover:bg-surface-2"
       >
        Cancel
       </button>
       <button
        type="submit"
        disabled={submitting}
-       className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50"
+       className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-ink disabled:opacity-50"
       >
        {submitting ? 'Creating…' : 'Create ticket'}
       </button>
      </div>
     </form>
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 

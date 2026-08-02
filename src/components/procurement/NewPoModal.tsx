@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
+import { procInputClass } from './ProcSection';
 import { PO_TYPE_ORDER, PO_TYPE_CONFIG, type PoType } from '../../constants/procurement';
 import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
@@ -166,7 +167,7 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
     else setErr('Failed to create the purchase order.');
   };
 
-  const inputCls = 'w-full rounded border border-slate-300 px-2 py-1.5 text-xs';
+  const inputCls = procInputClass;
 
   return (
     <ProcModalShell
@@ -177,8 +178,8 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60">Cancel</button>
-          <button type="button" onClick={() => void submit()} disabled={busy || validLines.length === 0 || !vendorName.trim()} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1.5">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">Cancel</button>
+          <button type="button" onClick={() => void submit()} disabled={busy || validLines.length === 0 || !vendorName.trim()} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60 inline-flex items-center gap-1.5">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create Draft PO
           </button>
         </>
@@ -187,31 +188,31 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
       <ModalSection title="PO details">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="col-span-2">
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Vendor</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Vendor</label>
             <input list="new-po-vendors" value={vendorName} onChange={(e) => setVendorName(e.target.value)} className={inputCls} placeholder="Vendor name" />
             <datalist id="new-po-vendors">
               {vendors.map((v) => <option key={String(v.id)} value={v.name} />)}
             </datalist>
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Order date</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Order date</label>
             <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className={inputCls} />
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Expected</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Expected</label>
             <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} className={inputCls} />
           </div>
         </div>
 
         <div className="mt-3">
-          <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">PO type</label>
+          <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">PO type</label>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
             {PO_TYPE_ORDER.map((t) => {
               const cfg = PO_TYPE_CONFIG[t];
               const active = poType === t;
               return (
                 <button key={t} type="button" onClick={() => setPoType(t)} title={cfg.blurb}
-                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold text-left transition ${active ? `${cfg.bg} ${cfg.text} ${cfg.border} ring-1 ring-inset ring-current` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold text-left transition ${active ? `${cfg.bg} ${cfg.text} ${cfg.border} ring-1 ring-inset ring-current` : 'bg-surface text-ink-3 border-border hover:border-border'}`}>
                   {cfg.label}
                 </button>
               );
@@ -219,42 +220,42 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
           </div>
         </div>
 
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Payment split (advance · pre-shipment · post-shipment)</p>
+        <div className="mt-3 rounded-lg border border-border bg-surface-3 px-3 py-2">
+          <p className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-2">Payment split (advance · pre-shipment · post-shipment)</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div>
-              <label className="block text-[10px] text-slate-500 mb-0.5">Advance %</label>
+              <label className="block text-[10px] text-ink-3 mb-0.5">Advance %</label>
               <input value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-500 mb-0.5">Pre-shipment %</label>
+              <label className="block text-[10px] text-ink-3 mb-0.5">Pre-shipment %</label>
               <input value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-500 mb-0.5">Post-shipment %</label>
+              <label className="block text-[10px] text-ink-3 mb-0.5">Post-shipment %</label>
               <input value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-500 mb-0.5">Credit (days)</label>
+              <label className="block text-[10px] text-ink-3 mb-0.5">Credit (days)</label>
               <input value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} inputMode="numeric" className={inputCls} placeholder="—" />
             </div>
           </div>
-          <p className="text-[11px] text-slate-600 mt-2">{ptSummary}</p>
-          {ptError && <p className="text-[11px] text-red-600 mt-1">{ptError}</p>}
+          <p className="text-[11px] text-ink-3 mt-2">{ptSummary}</p>
+          {ptError && <p className="text-[11px] text-err mt-1">{ptError}</p>}
         </div>
       </ModalSection>
 
       <ModalSection title="Line items">
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500">
-                {['Item name', 'Code', 'Qty req', ''].map((h) => <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>)}
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
+                {['Item name', 'Code', 'Qty req', ''].map((h) => <th scope="col" key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => (
-                <tr key={i} className="border-t border-slate-100">
+                <tr key={l.itemKey ? `${l.itemKey}-${i}` : `line-${i}`} className="border-t border-hairline">
                   <td className="px-2 py-1.5 min-w-[16rem]">
                     <MaterialMasterTypeahead
                       options={materialOptions}
@@ -269,33 +270,33 @@ export const NewPoModal: React.FC<NewPoModalProps> = ({ poNumber, vendors, onClo
                     />
                   </td>
                   <td className="px-2 py-1.5">
-                    <input value={l.itemCode} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" />
+                    <input value={l.itemCode} readOnly title="Auto-filled from the selected item" aria-label="Item code (auto-filled)" className={`${inputCls} bg-surface-3 text-ink-3`} placeholder="—" />
                   </td>
                   <td className="px-2 py-1.5 w-36">
                     <div className="flex items-center gap-1.5">
-                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" />
-                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
+                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" aria-label="Quantity required" />
+                      <span className="text-[11px] font-semibold text-ink-3 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
                     </div>
                   </td>
-                  <td className="px-2 py-1.5"><button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button></td>
+                  <td className="px-2 py-1.5"><button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-ink-4 hover:text-err disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div className="mt-2">
-          <button type="button" onClick={addLine} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"><Plus className="h-3.5 w-3.5" /> Add line</button>
+          <button type="button" onClick={addLine} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-ink-2 text-xs font-semibold hover:bg-surface-3"><Plus className="h-3.5 w-3.5" /> Add line</button>
         </div>
       </ModalSection>
 
       <ModalSection title="Notes">
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Optional notes / T&C…" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-border px-3 py-2 text-sm" placeholder="Optional notes / T&C…" aria-label="Notes" />
       </ModalSection>
 
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-[11px] text-blue-800">
+      <div className="rounded-lg border border-brand-soft bg-brand-soft px-3.5 py-2 text-[11px] text-brand">
         On create, this Draft PO enters the normal flow — submit it for approval from its detail panel.
       </div>
-      {err && <p className="text-[12px] text-red-600">{err}</p>}
+      {err && <p className="text-[12px] text-err">{err}</p>}
     </ProcModalShell>
   );
 };

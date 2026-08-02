@@ -8,7 +8,9 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Warning } from '@phosphor-icons/react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
+import { procInputClass } from './ProcSection';
 import type { CreateProcurementPayload, ProcurementRequestItem } from '../../services/procurement.service';
 import { fetchPlanningExtractedList } from '../../services/planningExtracted.service';
 import { fetchRawMaterialsList, type RawMaterialRecord } from '../../services/rawMaterials.service';
@@ -185,7 +187,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
     else setErr('Failed to create the procurement request.');
   };
 
-  const inputCls = 'w-full rounded border border-slate-300 px-2 py-1.5 text-xs';
+  const inputCls = procInputClass;
 
   return (
     <ProcModalShell
@@ -196,8 +198,8 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60">Cancel</button>
-          <button type="button" onClick={() => void submit()} disabled={busy || validLines.length === 0} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1.5">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">Cancel</button>
+          <button type="button" onClick={() => void submit()} disabled={busy || validLines.length === 0} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60 inline-flex items-center gap-1.5">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create PR
           </button>
         </>
@@ -206,17 +208,17 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
       <ModalSection title="Request">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Priority</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Priority</label>
             <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls}>
               {['Low', 'Medium', 'High'].map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Required by</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Required by</label>
             <input type="date" value={requiredBy} onChange={(e) => setRequiredBy(e.target.value)} className={inputCls} />
           </div>
           <div className="col-span-2">
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Preferred vendor (optional)</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Preferred vendor (optional)</label>
             <VendorClientNameTypeahead
               parties={vendorList}
               selectedId={preferredVendorId}
@@ -235,7 +237,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
             />
           </div>
           <div className="col-span-2 md:col-span-4">
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Link to Planning SO (optional)</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Link to Planning SO (optional)</label>
             <select
               value={linkedPeId ?? ''}
               onChange={(e) => setLinkedPeId(e.target.value ? Number(e.target.value) : null)}
@@ -246,7 +248,7 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-ink-3">
               {linkedPeId != null
                 ? 'Linked — this PR (and its PO) will appear in Planning → Items Involved. Line codes/names are matched to RM/PM masters to attribute quantities.'
                 : 'Leave unlinked for a general/stock PR. Link it to a planning SO so its PO shows up in Items Involved.'}
@@ -256,18 +258,18 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
       </ModalSection>
 
       <ModalSection title="Line items">
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-ink-3 [&_th]:bg-surface-3">
                 {['Item name', 'Code', 'Qty req', ''].map((h) => (
-                  <th key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
+                  <th scope="col" key={h} className="px-2 py-1.5 text-left text-[10px] font-bold uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => (
-                <tr key={i} className="border-t border-slate-100">
+                <tr key={l.itemKey ? `${l.itemKey}-${i}` : `line-${i}`} className="border-t border-hairline">
                   <td className="px-2 py-1.5 min-w-[16rem]">
                     <MaterialMasterTypeahead
                       options={materialOptions}
@@ -281,36 +283,37 @@ export const NewPrModal: React.FC<NewPrModalProps> = ({ onClose, onCreate }) => 
                       placeholder="Search item by name or code…"
                     />
                   </td>
-                  <td className="px-2 py-1.5"><input value={l.code} readOnly title="Auto-filled from the selected item" className={`${inputCls} bg-slate-50 text-slate-600`} placeholder="—" /></td>
+                  <td className="px-2 py-1.5"><input value={l.code} readOnly title="Auto-filled from the selected item" aria-label="Item code (auto-filled)" className={`${inputCls} bg-surface-3 text-ink-3`} placeholder="—" /></td>
                   <td className="px-2 py-1.5 w-36">
                     <div className="flex items-center gap-1.5">
-                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" />
-                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
+                      <input value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} inputMode="decimal" className={inputCls} placeholder="0" aria-label="Quantity required" />
+                      <span className="text-[11px] font-semibold text-ink-3 whitespace-nowrap" title={`Auto-set: ${unitForType(l.type)} for ${l.type === 'PM' ? 'pack materials' : 'raw materials'}`}>{unitForType(l.type)}</span>
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" onClick={() => removeLine(i)} disabled={lines.length === 1} className="text-ink-4 hover:text-err disabled:opacity-30" aria-label="Remove line"><Trash2 className="h-4 w-4" /></button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+        <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-ink-2 text-xs font-semibold hover:bg-surface-3">
           <Plus className="h-3.5 w-3.5" /> Add line
         </button>
       </ModalSection>
 
       <ModalSection title="Notes">
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Optional notes / justification…" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-border px-3 py-2 text-sm" placeholder="Optional notes / justification…" aria-label="Notes" />
       </ModalSection>
 
       {linkedPeId != null && unresolvedWhenLinked > 0 && (
-        <p className="text-[12px] text-amber-700">
-          ⚠ {unresolvedWhenLinked} line{unresolvedWhenLinked > 1 ? 's' : ''} couldn't be matched to an RM/PM master by code or name — those lines won't attribute to Items Involved. Check the code/name.
+        <p className="text-[12px] text-warn flex items-start gap-1.5">
+          <Warning className="w-4 h-4 shrink-0" />
+          <span>{unresolvedWhenLinked} line{unresolvedWhenLinked > 1 ? 's' : ''} couldn't be matched to an RM/PM master by code or name — those lines won't attribute to Items Involved. Check the code/name.</span>
         </p>
       )}
-      {err && <p className="text-[12px] text-red-600">{err}</p>}
+      {err && <p className="text-[12px] text-err">{err}</p>}
     </ProcModalShell>
   );
 };

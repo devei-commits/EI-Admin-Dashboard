@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ProcModalShell, ModalSection } from './ProcModalShell';
+import { procInputClass } from './ProcSection';
 import VendorClientNameTypeahead from '../VendorClientNameTypeahead';
 import MaterialMasterTypeahead from '../MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions, type MaterialTypeaheadOption } from '../../lib/materialTypeahead';
@@ -157,19 +158,19 @@ export const RequestQuotationModal: React.FC<RequestQuotationModalProps> = ({ co
     else setErr(res.error || 'Failed to send the quotation request.');
   };
 
-  const inputCls = 'w-full rounded border border-slate-300 px-2 py-1.5 text-xs';
+  const inputCls = procInputClass;
 
   return (
     <ProcModalShell
       eyebrow="Quotation"
       title={isEdit ? 'Edit Quotation Request' : 'Request Quotation'}
-      subtitle={<><span className="font-semibold text-slate-800">{context.itemName}</span> <span className="font-mono text-xs text-slate-500">{context.itemCode}</span></>}
+      subtitle={<><span className="font-semibold text-ink">{context.itemName}</span> <span className="font-mono text-xs text-ink-3">{context.itemCode}</span></>}
       width="max-w-2xl"
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60">Cancel</button>
-          <button type="button" onClick={() => void submit()} disabled={busy || !(Number(qty) > 0) || !hasItem} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60 inline-flex items-center gap-1.5">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">Cancel</button>
+          <button type="button" onClick={() => void submit()} disabled={busy || !(Number(qty) > 0) || !hasItem} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60 inline-flex items-center gap-1.5">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {isEdit ? 'Save changes' : 'Send request'}
           </button>
         </>
@@ -178,7 +179,7 @@ export const RequestQuotationModal: React.FC<RequestQuotationModalProps> = ({ co
       <ModalSection title="What to quote">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="col-span-2">
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Item</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Item</label>
             {context.allowItemPick ? (
               <MaterialMasterTypeahead
                 options={materialOptions}
@@ -192,20 +193,20 @@ export const RequestQuotationModal: React.FC<RequestQuotationModalProps> = ({ co
               />
             ) : (
               <>
-                <div className="text-sm text-slate-800">{picked.itemName} <span className="text-[11px] font-semibold text-slate-500">({picked.itemType})</span></div>
-                <div className="text-[11px] font-mono text-slate-500">{picked.itemCode}</div>
+                <div className="text-sm text-ink">{picked.itemName} <span className="text-[11px] font-semibold text-ink-3">({picked.itemType})</span></div>
+                <div className="text-[11px] font-mono text-ink-3">{picked.itemCode}</div>
               </>
             )}
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Qty to quote</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Qty to quote</label>
             <div className="flex items-center gap-1.5">
               <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" className={inputCls} placeholder="0" />
-              <span className="text-[11px] font-semibold text-slate-500">{unit}</span>
+              <span className="text-[11px] font-semibold text-ink-3">{unit}</span>
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Expected by</label>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase mb-1">Expected by</label>
             <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} className={inputCls} />
           </div>
         </div>
@@ -222,30 +223,30 @@ export const RequestQuotationModal: React.FC<RequestQuotationModalProps> = ({ co
           onSelect={(party) => setVendorName(party ? party.name : '')}
           onFreeTextChange={(value) => setVendorName(value)}
         />
-        <p className="mt-1 text-[11px] text-slate-500">Leave blank to request a quote from any/all vendors.</p>
+        <p className="mt-1 text-[11px] text-ink-3">Leave blank to request a quote from any/all vendors.</p>
       </ModalSection>
 
       <ModalSection title="MOQs to quote">
         <div className="flex flex-col gap-2">
           {moqs.map((m, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <input value={m} onChange={(e) => setMoq(i, e.target.value)} inputMode="decimal" className={`${inputCls} w-40`} placeholder={`MOQ ${i + 1} (e.g. 100)`} />
-              <span className="text-[11px] font-semibold text-slate-500">{unit}</span>
-              <button type="button" onClick={() => removeMoq(i)} disabled={moqs.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove MOQ"><Trash2 className="h-4 w-4" /></button>
+            <div key={`moq-${i}`} className="flex items-center gap-1.5">
+              <input value={m} onChange={(e) => setMoq(i, e.target.value)} inputMode="decimal" className={`${inputCls} w-40`} placeholder={`MOQ ${i + 1} (e.g. 100)`} aria-label={`MOQ ${i + 1}`} />
+              <span className="text-[11px] font-semibold text-ink-3">{unit}</span>
+              <button type="button" onClick={() => removeMoq(i)} disabled={moqs.length === 1} className="text-ink-4 hover:text-err disabled:opacity-30" aria-label="Remove MOQ"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
-        <button type="button" onClick={addMoq} className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+        <button type="button" onClick={addMoq} className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border text-ink-2 text-xs font-semibold hover:bg-surface-3">
           <Plus className="h-3.5 w-3.5" /> Add MOQ
         </button>
-        <p className="mt-1 text-[11px] text-slate-500">Enter the order quantities to get quoted. Prices are entered by Procurement when the vendor responds (Record Quote).</p>
+        <p className="mt-1 text-[11px] text-ink-3">Enter the order quantities to get quoted. Prices are entered by Procurement when the vendor responds (Record Quote).</p>
       </ModalSection>
 
       <ModalSection title="Additional notes">
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Anything the vendor should know (specs, packing, delivery terms…)" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full rounded-lg border border-border px-3 py-2 text-sm" placeholder="Anything the vendor should know (specs, packing, delivery terms…)" aria-label="Additional notes" />
       </ModalSection>
 
-      {err && <p className="text-[12px] text-red-600">{err}</p>}
+      {err && <p className="text-[12px] text-err">{err}</p>}
     </ProcModalShell>
   );
 };

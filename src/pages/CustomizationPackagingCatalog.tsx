@@ -8,6 +8,8 @@ import {
   type CustomizationPackagingRow,
   type CustomizationPackagingSpecs,
 } from '../services/customizationPackagingCatalog.service';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
 
 const emptySpecs = (): CustomizationPackagingSpecs => ({
   skuVol: '',
@@ -128,72 +130,72 @@ export default function CustomizationPackagingCatalog() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-surface-2 p-6">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Website customization packaging</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="text-2xl font-bold text-ink">Website customization packaging</h1>
+            <p className="mt-1 text-sm text-ink-2">
               Presets shown on the public <strong>/customize</strong> packaging step. Active rows are exposed at{' '}
-              <code className="rounded bg-gray-200 px-1 text-xs">GET /customization-packaging-options/public</code>.
+              <code className="rounded bg-surface-3 px-1 text-xs">GET /customization-packaging-options/public</code>.
             </p>
           </div>
           <button
             type="button"
             onClick={openCreate}
-            className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+            className="rounded-lg bg-warn px-4 py-2 text-sm font-semibold text-white hover:bg-warn"
           >
             Add option
           </button>
         </div>
 
         {loading ? (
-          <p className="text-gray-500">Loading…</p>
+          <TableSkeleton rows={6} cols={7} />
         ) : rows.length === 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p className="font-semibold text-amber-900">No rows in the database yet</p>
-            <p className="mt-2 text-amber-900/90">
+          <div className="rounded-xl border border-warn bg-warn-soft p-4 text-sm text-warn">
+            <p className="font-semibold text-warn">No rows in the database yet</p>
+            <p className="mt-2 text-warn/90">
               The public <strong>/customize</strong> page loads presets only from this table. If it is empty, visitors
               only see <strong>Custom</strong> packaging until you add rows here or restart the API (defaults are inserted
               when the table is empty).
             </p>
-            <p className="mt-2 text-amber-900/90">
+            <p className="mt-2 text-warn/90">
               <strong>Fix:</strong> restart the API (it auto-inserts defaults when the table is empty) or run your
               database seed, then refresh this page.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-border bg-surface shadow-sm">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Sort</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Option ID</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Title</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">SKU</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Custom</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Active</th>
-                  <th className="px-4 py-3 font-semibold text-gray-700">Actions</th>
+              <thead className="sticky top-0 z-20 border-b border-border bg-surface-2">
+                <tr className="[&_th]:bg-surface-2">
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Sort</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Option ID</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Title</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">SKU</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Custom</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Active</th>
+                  <th scope="col" className="px-4 py-3 font-semibold text-ink-2">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-hairline">
                 {rows.map((r) => (
-                  <tr key={r.dbId} className="hover:bg-gray-50/80">
-                    <td className="px-4 py-3 text-gray-600">{r.sortOrder}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-800">{r.id}</td>
-                    <td className="px-4 py-3 text-gray-900">{r.title}</td>
-                    <td className="px-4 py-3 text-gray-600">{r.skuCode || '—'}</td>
+                  <tr key={r.dbId} className="hover:bg-surface-2/80">
+                    <td className="px-4 py-3 text-ink-2">{r.sortOrder}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-ink">{r.id}</td>
+                    <td className="px-4 py-3 text-ink">{r.title}</td>
+                    <td className="px-4 py-3 text-ink-2">{r.skuCode || '—'}</td>
                     <td className="px-4 py-3">{r.custom ? 'Yes' : '—'}</td>
                     <td className="px-4 py-3">{r.active ? 'Yes' : 'No'}</td>
                     <td className="px-4 py-3 space-x-2">
                       <button
                         type="button"
                         onClick={() => openEdit(r)}
-                        className="text-orange-600 hover:underline"
+                        className="text-warn hover:underline"
                       >
                         Edit
                       </button>
-                      <button type="button" onClick={() => void remove(r)} className="text-red-600 hover:underline">
+                      <button type="button" onClick={() => void remove(r)} className="text-err hover:underline">
                         Delete
                       </button>
                     </td>
@@ -206,47 +208,47 @@ export default function CustomizationPackagingCatalog() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-bold text-gray-900">{editing ? 'Edit option' : 'New option'}</h2>
+        <ModalOverlay onClose={() => setModalOpen(false)} z="z-50" dismissable={false} backdrop="default">
+          <div role="dialog" aria-modal="true" aria-label={editing ? 'Edit option' : 'New option'} onClick={(e) => e.stopPropagation()} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-ink">{editing ? 'Edit option' : 'New option'}</h2>
             <div className="mt-4 space-y-3">
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Option ID (slug, stored as packagingType)
                 <input
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.optionId}
                   onChange={(e) => setForm((f) => ({ ...f, optionId: e.target.value }))}
                   disabled={Boolean(editing)}
                 />
               </label>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Title
                 <input
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 />
               </label>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Subtitle
                 <input
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.subtitle}
                   onChange={(e) => setForm((f) => ({ ...f, subtitle: e.target.value }))}
                 />
               </label>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Review label
                 <input
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.reviewLabel}
                   onChange={(e) => setForm((f) => ({ ...f, reviewLabel: e.target.value }))}
                 />
               </label>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 SKU code
                 <input
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.skuCode}
                   onChange={(e) => setForm((f) => ({ ...f, skuCode: e.target.value }))}
                 />
@@ -269,16 +271,16 @@ export default function CustomizationPackagingCatalog() {
                   Active
                 </label>
               </div>
-              <label className="block text-xs font-semibold text-gray-600">
+              <label className="block text-xs font-semibold text-ink-2">
                 Sort order
                 <input
                   type="number"
-                  className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-border px-2 py-1.5 text-sm"
                   value={form.sortOrder}
                   onChange={(e) => setForm((f) => ({ ...f, sortOrder: Number(e.target.value) || 0 }))}
                 />
               </label>
-              <p className="text-xs font-semibold text-gray-700">Specs</p>
+              <p className="text-xs font-semibold text-ink-2">Specs</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(
                   [
@@ -293,10 +295,10 @@ export default function CustomizationPackagingCatalog() {
                     ['capColor', 'Cap color'],
                   ] as const
                 ).map(([key, label]) => (
-                  <label key={key} className="block text-[11px] font-medium text-gray-600">
+                  <label key={key} className="block text-[11px] font-medium text-ink-2">
                     {label}
                     <input
-                      className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      className="mt-0.5 w-full rounded border border-border px-2 py-1 text-sm"
                       value={String(form.specs[key] ?? '')}
                       onChange={(e) =>
                         setForm((f) => ({
@@ -307,11 +309,11 @@ export default function CustomizationPackagingCatalog() {
                     />
                   </label>
                 ))}
-                <label className="block text-[11px] font-medium text-gray-600">
+                <label className="block text-[11px] font-medium text-ink-2">
                   MOQ (number)
                   <input
                     type="number"
-                    className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                    className="mt-0.5 w-full rounded border border-border px-2 py-1 text-sm"
                     value={form.specs.moq}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -327,7 +329,7 @@ export default function CustomizationPackagingCatalog() {
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
+                className="rounded-lg border border-border px-4 py-2 text-sm"
               >
                 Cancel
               </button>
@@ -335,13 +337,13 @@ export default function CustomizationPackagingCatalog() {
                 type="button"
                 onClick={() => void save()}
                 disabled={!form.optionId.trim() || !form.title.trim()}
-                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-warn px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Save
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

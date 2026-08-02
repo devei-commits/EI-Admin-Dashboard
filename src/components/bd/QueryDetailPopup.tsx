@@ -16,8 +16,8 @@ import { QUERY_STATUS_CONFIG, formatDMY } from '../../constants/bd';
 import { StatusPill, SourceTag, SlaCell, RelatedCell, ReadField } from './bdQueueBits';
 
 const ESCALATION_DEPTS = ['Operations', 'Production', 'Quality', 'Finance / Accounts', 'Logistics', 'Management'];
-const inputCls = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-blue-500';
-const labelCls = 'text-[10px] font-semibold uppercase tracking-wide text-slate-500';
+const inputCls = 'mt-1 w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-blue-500';
+const labelCls = 'text-[10px] font-semibold uppercase tracking-wide text-ink-3';
 
 type Mode = null | 'respond' | 'escalate';
 
@@ -63,33 +63,33 @@ export const QueryDetailPopup: React.FC<QueryDetailPopupProps> = ({ query, onClo
     <ProcModalShell
       eyebrow={`Query · ${row.code}`}
       title={<span className="inline-flex items-center gap-2">{row.subject || 'Customer Query'} <StatusPill cfg={cfg} /></span>}
-      subtitle={<span className="text-xs text-slate-500">{row.client.displayCode} · {row.client.name}</span>}
+      subtitle={<span className="text-xs text-ink-3">{row.client.displayCode} · {row.client.name}</span>}
       width="max-w-2xl"
       onClose={onClose}
       footer={
         mode ? (
           <>
-            <button onClick={() => setMode(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white">Back</button>
+            <button onClick={() => setMode(null)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface">Back</button>
             {mode === 'respond' && (
               <>
                 <button onClick={() => submitRespond(true)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"><FileText size={14} /> Save draft</button>
-                <button onClick={() => submitRespond(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Record response</button>
+                <button onClick={() => submitRespond(false)} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Record response</button>
               </>
             )}
             {mode === 'escalate' && (
-              <button onClick={submitEscalate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-4 py-2 text-sm font-bold text-white hover:bg-orange-700 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />} Escalate</button>
+              <button onClick={submitEscalate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-warn px-4 py-2 text-sm font-bold text-white hover:bg-warn disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />} Escalate</button>
             )}
           </>
         ) : (
           <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
-              {!isClosed && <button onClick={() => { setMode('respond'); setText(row.response || ''); }} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700"><Send size={14} /> Respond</button>}
-              {!isClosed && <button onClick={() => setMode('escalate')} className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-50"><ArrowUpRight size={14} /> Escalate</button>}
-              {!isClosed && row.status !== 'under_review' && <button onClick={() => run({ action: 'status', status: 'under_review' }, 'Marked under review')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"><Eye size={14} /> Under review</button>}
+              {!isClosed && <button onClick={() => { setMode('respond'); setText(row.response || ''); }} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-bold text-white hover:bg-brand"><Send size={14} /> Respond</button>}
+              {!isClosed && <button onClick={() => setMode('escalate')} className="inline-flex items-center gap-1.5 rounded-lg border border-warn px-3 py-2 text-sm font-semibold text-warn hover:bg-warn-soft"><ArrowUpRight size={14} /> Escalate</button>}
+              {!isClosed && row.status !== 'under_review' && <button onClick={() => run({ action: 'status', status: 'under_review' }, 'Marked under review')} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-3"><Eye size={14} /> Under review</button>}
             </div>
             <div className="flex gap-2">
-              {!isClosed && <button onClick={() => run({ action: 'resolve' }, 'Resolved')} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50"><CheckCircle2 size={14} /> Resolve</button>}
-              {isClosed && <button onClick={() => run({ action: 'reopen' }, 'Reopened')} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"><RotateCcw size={14} /> Reopen</button>}
+              {!isClosed && <button onClick={() => run({ action: 'resolve' }, 'Resolved')} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-ok px-3 py-2 text-sm font-bold text-white hover:bg-ok disabled:opacity-50"><CheckCircle2 size={14} /> Resolve</button>}
+              {isClosed && <button onClick={() => run({ action: 'reopen' }, 'Reopened')} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-err px-3 py-2 text-sm font-semibold text-err hover:bg-err-soft"><RotateCcw size={14} /> Reopen</button>}
             </div>
           </div>
         )
@@ -98,15 +98,15 @@ export const QueryDetailPopup: React.FC<QueryDetailPopupProps> = ({ query, onClo
       {mode === 'respond' ? (
         <div>
           <p className={labelCls}>Response to customer</p>
-          <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Type the response…" className={inputCls} />
-          <p className="mt-1 text-[11px] text-slate-400">Stored on the query and logged to the timeline. External send (email/WhatsApp) is not wired — share the text manually.</p>
+          <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Type the response…" aria-label="Response to customer" className={inputCls} />
+          <p className="mt-1 text-[11px] text-ink-4">Stored on the query and logged to the timeline. External send (email/WhatsApp) is not wired — share the text manually.</p>
         </div>
       ) : mode === 'escalate' ? (
         <div className="space-y-3">
           <label className="block"><span className={labelCls}>Department</span>
             <select value={dept} onChange={(e) => setDept(e.target.value)} className={inputCls}>{ESCALATION_DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
           </label>
-          <label className="block"><span className={labelCls}>Person <span className="font-normal normal-case text-slate-400">(optional)</span></span>
+          <label className="block"><span className={labelCls}>Person <span className="font-normal normal-case text-ink-4">(optional)</span></span>
             <input value={toName} onChange={(e) => setToName(e.target.value)} placeholder="Who should handle this?" className={inputCls} />
           </label>
           <label className="block"><span className={labelCls}>Note</span>
@@ -123,19 +123,19 @@ export const QueryDetailPopup: React.FC<QueryDetailPopupProps> = ({ query, onClo
             <ReadField label="Related To"><RelatedCell type={row.relatedType} ref={row.relatedRef} info={row.relatedInfo} /></ReadField>
             <ReadField label="Status"><StatusPill cfg={cfg} /></ReadField>
           </div>
-          <ReadField label="Description"><p className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{row.description}</p></ReadField>
+          <ReadField label="Description"><p className="whitespace-pre-wrap rounded-lg border border-border bg-surface-2 p-3 text-sm text-ink-2">{row.description}</p></ReadField>
           {row.escalation && (
             <ReadField label="Escalation">
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+              <div className="rounded-lg border border-warn bg-warn-soft p-3 text-sm text-warn">
                 <b>{row.escalation.dept}</b>{row.escalation.toName ? ` · ${row.escalation.toName}` : ''}
-                {row.escalation.note && <p className="mt-1 whitespace-pre-wrap text-xs text-orange-700">{row.escalation.note}</p>}
-                {row.internalReply && <p className="mt-2 border-t border-orange-200 pt-2 text-xs"><span className="font-semibold">Internal reply:</span> {row.internalReply}</p>}
+                {row.escalation.note && <p className="mt-1 whitespace-pre-wrap text-xs text-warn">{row.escalation.note}</p>}
+                {row.internalReply && <p className="mt-2 border-t border-warn pt-2 text-xs"><span className="font-semibold">Internal reply:</span> {row.internalReply}</p>}
               </div>
             </ReadField>
           )}
           {row.response && (
             <ReadField label={`Response${row.respondedAt ? ` · ${formatDMY(row.respondedAt)}` : ''}`}>
-              <p className="whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700">{row.response}</p>
+              <p className="whitespace-pre-wrap rounded-lg border border-brand bg-brand-soft p-3 text-sm text-ink-2">{row.response}</p>
             </ReadField>
           )}
         </div>

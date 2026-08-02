@@ -11,8 +11,12 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { X, Package, Scissors, Trash2, Loader2, Printer } from 'lucide-react';
+import { X, Package, Scissors, Trash2, Printer } from 'lucide-react';
+import { ModalOverlay } from '../../../components/ui/ModalOverlay';
 import { fetchAvailablePacks, type WarehousePack } from '../../../services/warehousePacks.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { ErrorState } from '../../../components/ui/ErrorState';
 
 export interface TransferPickSplitItem {
   name: string;
@@ -222,41 +226,47 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
   const warehouseCount = labelPacks.filter((lp) => !lp.forTransfer).length;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="relative my-4 w-full max-w-5xl rounded-xl border border-slate-200 bg-white shadow-2xl">
+    <ModalOverlay onClose={onClose} z="z-[60]" dismissable={false} backdrop="strong" scroll align="start">
+      <div
+        className="relative my-4 w-full max-w-5xl rounded-xl border border-border bg-surface shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Pick & split transfer — ${requestNo}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
           <div className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Request No.</div>
-              <div className="font-semibold text-slate-900">{requestNo}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Request No.</div>
+              <div className="font-semibold text-ink">{requestNo}</div>
             </div>
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Item</div>
-              <div className="font-semibold text-slate-900">{item.name}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Item</div>
+              <div className="font-semibold text-ink">{item.name}</div>
             </div>
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Qty required</div>
-              <div className="font-semibold text-slate-900">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">Qty required</div>
+              <div className="font-semibold text-ink">
                 {qtyRequired.toLocaleString('en-IN')} {unit}
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close">
+          <button onClick={onClose} className="rounded-lg p-2 text-ink-3 hover:bg-surface-3" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Step 1 · Assign picker (required) */}
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-amber-50/50 px-6 py-3">
-          <label htmlFor="pick-assign-picker" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-brand-soft/50 px-6 py-3">
+          <label htmlFor="pick-assign-picker" className="text-xs font-semibold uppercase tracking-wide text-ink-2">
             1 · Assign picker *
           </label>
           <select
             id="pick-assign-picker"
             value={assignedPicker}
             onChange={(e) => onAssignPicker(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <option value="">Select picker…</option>
             {pickers.map((p) => (
@@ -266,55 +276,58 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
             ))}
           </select>
           {assignedPicker.trim() ? (
-            <span className="text-xs font-semibold text-emerald-700">✓ {assignedPicker}</span>
+            <span className="text-xs font-semibold text-ok">✓ {assignedPicker}</span>
           ) : (
-            <span className="text-xs text-amber-700">Assign a picker before picking.</span>
+            <span className="text-xs text-warn">Assign a picker before picking.</span>
           )}
         </div>
 
         <div className="space-y-4 px-6 py-5">
           {/* Available packaging */}
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">
+            <h3 className="mb-2 text-sm font-semibold text-ink">
               Available packaging{sourceLabel ? ` (source: ${sourceLabel})` : ''}
             </h3>
             {loading ? (
-              <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-6 text-sm text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading available packs…
+              <div className="rounded-lg border border-border p-4">
+                <TableSkeleton rows={5} cols={6} />
               </div>
             ) : error ? (
-              <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">{error}</p>
+              <ErrorState message={error} onRetry={() => void loadPacks()} compact className="rounded-lg border border-err-soft bg-err-soft" />
             ) : availableToShow.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
-                No available packs for this item at the source warehouse.
-              </p>
+              <EmptyState
+                icon={<Package />}
+                title="No available packs for this item at the source warehouse."
+                compact
+                className="rounded-lg border border-dashed border-border"
+              />
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Packaging No.</th>
-                      <th className="px-3 py-2 text-left">Zone</th>
-                      <th className="px-3 py-2 text-left">Rack</th>
-                      <th className="px-3 py-2 text-left">Vendor Batch</th>
-                      <th className="px-3 py-2 text-left">MFG</th>
-                      <th className="px-3 py-2 text-left">EXP</th>
-                      <th className="px-3 py-2 text-right">Qty available</th>
-                      <th className="px-3 py-2 text-right">Action</th>
+                  <thead className="sticky top-0 z-20 bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
+                    <tr className="[&_th]:bg-surface-2">
+                      <th scope="col" className="px-3 py-2 text-left">Packaging No.</th>
+                      <th scope="col" className="px-3 py-2 text-left">Zone</th>
+                      <th scope="col" className="px-3 py-2 text-left">Rack</th>
+                      <th scope="col" className="px-3 py-2 text-left">Vendor Batch</th>
+                      <th scope="col" className="px-3 py-2 text-left">MFG</th>
+                      <th scope="col" className="px-3 py-2 text-left">EXP</th>
+                      <th scope="col" className="px-3 py-2 text-right">Qty available</th>
+                      <th scope="col" className="px-3 py-2 text-right">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-hairline">
                     {availableToShow.map((p) => (
-                      <tr key={p.key} className="hover:bg-slate-50/60">
-                        <td className="px-3 py-2 font-mono text-xs font-semibold text-slate-800">
-                          {p.packagingNo ?? <span className="italic text-slate-500">Loose stock</span>}
+                      <tr key={p.key} className="hover:bg-surface-2/60">
+                        <td className="px-3 py-2 font-mono text-xs font-semibold text-ink">
+                          {p.packagingNo ?? <span className="italic text-ink-3">Loose stock</span>}
                         </td>
-                        <td className="px-3 py-2 text-slate-700">{p.zone || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{p.rack || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{p.vendorBatch || '—'}</td>
-                        <td className="px-3 py-2 text-slate-700">{fmtMonYear(p.mfgDate)}</td>
-                        <td className="px-3 py-2 text-slate-700">{fmtMonYear(p.expDate)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                        <td className="px-3 py-2 text-ink-2">{p.zone || '—'}</td>
+                        <td className="px-3 py-2 text-ink-2">{p.rack || '—'}</td>
+                        <td className="px-3 py-2 text-ink-2">{p.vendorBatch || '—'}</td>
+                        <td className="px-3 py-2 text-ink-2">{fmtMonYear(p.mfgDate)}</td>
+                        <td className="px-3 py-2 text-ink-2">{fmtMonYear(p.expDate)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-ink">
                           {remainingOf(p).toLocaleString('en-IN')} {p.unit || unit}
                         </td>
                         <td className="px-3 py-2">
@@ -322,7 +335,7 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
                             <button
                               type="button"
                               onClick={() => pick(p)}
-                              className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                              className="inline-flex items-center gap-1 rounded-md border border-ok-soft bg-ok-soft px-2 py-1 text-xs font-semibold text-ok hover:bg-ok-soft"
                             >
                               <Package className="h-3.5 w-3.5" /> Pick
                             </button>
@@ -330,7 +343,7 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
                               type="button"
                               onClick={() => openSplit(p)}
                               title="Take a specific quantity — the remainder stays with its own label"
-                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-ink-2 hover:bg-surface-2"
                             >
                               <Scissors className="h-3.5 w-3.5" /> Split
                             </button>
@@ -342,7 +355,7 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
                 </table>
               </div>
             )}
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-ink-3">
               📌 FEFO (First Expiry First Out) — earliest-expiry packs first. Pick takes what's still needed; Split
               takes a specific amount and labels the remainder. Nothing is committed until you complete the transfer.
             </p>
@@ -350,20 +363,20 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
 
           {/* Split draft */}
           {splitDraft ? (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+            <div className="rounded-xl border border-brand-soft bg-brand-soft/50 p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-slate-800">
+                <h4 className="text-sm font-semibold text-ink">
                   Split {splitDraft.source.packagingNo ?? `loose stock @ ${splitDraft.source.rack || splitDraft.source.zone || 'rack'}`} ·{' '}
                   {remainingOf(splitDraft.source)} {unit} left
                 </h4>
-                <button onClick={() => setSplitDraft(null)} className="text-slate-400 hover:text-slate-700" aria-label="Cancel split">
+                <button onClick={() => setSplitDraft(null)} className="text-ink-4 hover:text-ink-2" aria-label="Cancel split">
                   <X className="h-4 w-4" />
                 </button>
               </div>
               <div className="space-y-2">
                 <div className="flex flex-wrap items-end gap-4">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="split-take">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3" htmlFor="split-take">
                       Qty to take *
                     </label>
                     <div className="flex items-center gap-1">
@@ -380,31 +393,31 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
                               : prev,
                           )
                         }
-                        className="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        className="w-28 rounded-lg border border-border px-3 py-2 text-sm"
                       />
-                      <span className="text-sm text-slate-500">{unit}</span>
+                      <span className="text-sm text-ink-3">{unit}</span>
                     </div>
                   </div>
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-ink-2">
                     Remaining:{' '}
-                    <span className="font-semibold text-slate-900">
+                    <span className="font-semibold text-ink">
                       {round2(remainingOf(splitDraft.source) - (Number(splitDraft.take) || 0)).toLocaleString('en-IN')} {unit}
                     </span>
                   </div>
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-ink-3">
                   Two labels — <strong>{round2(Number(splitDraft.take) || 0)} {unit}</strong> for the transfer and{' '}
                   <strong>{round2(remainingOf(splitDraft.source) - (Number(splitDraft.take) || 0))} {unit}</strong> that stays
                   in the warehouse.
                 </p>
               </div>
               <div className="mt-3 flex justify-end gap-2">
-                <button onClick={() => setSplitDraft(null)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                <button onClick={() => setSplitDraft(null)} className="rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-ink-2 hover:bg-surface-2">
                   Cancel
                 </button>
                 <button
                   onClick={confirmSplit}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-press"
                 >
                   <Scissors className="h-4 w-4" /> Take {round2(Number(splitDraft.take) || 0)} {unit} → cart
                 </button>
@@ -415,42 +428,42 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
           {/* Cart */}
           <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-800">Pick List Cart (running)</h3>
-              <span className={`text-xs font-semibold ${remaining <= 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+              <h3 className="text-sm font-semibold text-ink">Pick List Cart (running)</h3>
+              <span className={`text-xs font-semibold ${remaining <= 0 ? 'text-ok' : 'text-warn'}`}>
                 Picked {pickedTotal.toLocaleString('en-IN')} / {qtyRequired.toLocaleString('en-IN')} {unit}
                 {remaining > 0 ? ` · ${remaining.toLocaleString('en-IN')} ${unit} to go` : ' · target met'}
               </span>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left">From</th>
-                    <th className="px-3 py-2 text-right">Qty picked</th>
-                    <th className="px-3 py-2 text-right">Action</th>
+                <thead className="sticky top-0 z-20 bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
+                  <tr className="[&_th]:bg-surface-2">
+                    <th scope="col" className="px-3 py-2 text-left">From</th>
+                    <th scope="col" className="px-3 py-2 text-right">Qty picked</th>
+                    <th scope="col" className="px-3 py-2 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-hairline">
                   {cart.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-3 py-6 text-center text-sm text-slate-400">
+                      <td colSpan={3} className="px-3 py-6 text-center text-sm text-ink-4">
                         Empty · click Pick on packages above to add
                       </td>
                     </tr>
                   ) : (
                     cart.map((c) => (
                       <tr key={c.id}>
-                        <td className="px-3 py-2 font-mono text-xs font-semibold text-slate-800">
+                        <td className="px-3 py-2 font-mono text-xs font-semibold text-ink">
                           {c.source.packagingNo ?? `Loose @ ${c.source.rack || c.source.zone || 'rack'}`}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                        <td className="px-3 py-2 text-right tabular-nums text-ink">
                           {c.qty.toLocaleString('en-IN')} {c.source.unit || unit}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <button
                             type="button"
                             onClick={() => removeFromCart(c.id)}
-                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                            className="inline-flex items-center gap-1 rounded-md border border-err-soft bg-err-soft px-2 py-1 text-xs font-semibold text-err hover:bg-err-soft"
                           >
                             <Trash2 className="h-3.5 w-3.5" /> Remove
                           </button>
@@ -467,25 +480,25 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
           {labelPacks.length > 0 ? (
             <div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-800">
+                <h3 className="text-sm font-semibold text-ink">
                   Labels ({labelPacks.length}){warehouseCount > 0 ? ` · ${warehouseCount} stay in warehouse` : ''}
                 </h3>
                 <button
                   type="button"
                   onClick={printLabels}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-press"
                 >
                   <Printer className="h-4 w-4" aria-hidden /> Print all {labelPacks.length}
                 </button>
               </div>
               <div ref={labelsRef} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {labelPacks.map((lp) => (
-                  <div key={lp.code} className="rounded-lg border border-slate-300 p-3">
+                  <div key={lp.code} className="rounded-lg border border-border p-3">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900">📦 {lp.code}</span>
+                      <span className="text-xs font-bold text-ink">📦 {lp.code}</span>
                       <span
                         className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                          lp.forTransfer ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                          lp.forTransfer ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'
                         }`}
                       >
                         {lp.forTransfer ? 'TRANSFER' : 'WAREHOUSE'}
@@ -494,14 +507,14 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
                     <div className="mb-2 flex justify-center">
                       <QRCodeCanvas value={lp.code} size={110} includeMargin />
                     </div>
-                    <p className="text-xs text-slate-700">
+                    <p className="text-xs text-ink-2">
                       <span className="font-semibold">Item:</span> {item.name}
                     </p>
-                    <p className="text-xs text-slate-700">
+                    <p className="text-xs text-ink-2">
                       <span className="font-semibold">Qty:</span> {lp.qty.toLocaleString('en-IN')} {lp.source.unit || unit}
                     </p>
                     {lp.source.vendorBatch ? (
-                      <p className="text-xs text-slate-700">
+                      <p className="text-xs text-ink-2">
                         <span className="font-semibold">Batch:</span> {lp.source.vendorBatch}
                       </p>
                     ) : null}
@@ -513,24 +526,24 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-6 py-4">
           {!assignedPicker.trim() ? (
-            <span className="mr-auto text-xs font-medium text-amber-700">Assign a picker (step 1) to continue.</span>
+            <span className="mr-auto text-xs font-medium text-warn">Assign a picker (step 1) to continue.</span>
           ) : null}
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2">
             Cancel
           </button>
           <button
             type="button"
             onClick={() => onNext(cart.map((c) => ({ pack: c.source, qty: c.qty })))}
             disabled={cart.length === 0 || !assignedPicker.trim()}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
           >
             Next · Complete Transfer →
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

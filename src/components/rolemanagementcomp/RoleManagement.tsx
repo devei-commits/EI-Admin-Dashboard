@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import CreateRole from './CreateRole.tsx';
 import ViewRoles from './ViewRoles.tsx';
+import { Tabs } from '../ui';
 
 const RoleManagement: React.FC = () => {
  const [activeTab, setActiveTab] = useState<'createRole' | 'viewRoles'>('createRole');
@@ -9,30 +10,14 @@ const RoleManagement: React.FC = () => {
   <div className="w-full p-2 md:p-4">
    {/* Tab Selection */}
    <div className="mb-4 md:mb-6">
-    <div className="border-b border-gray-200">
-     <nav className="flex space-x-4 md:space-x-8 overflow-x-auto">
-      <button
-       onClick={() => setActiveTab('createRole')}
-       className={`py-2 px-4 text-sm font-medium border-b-2 ${
-        activeTab === 'createRole'
-         ? 'border-blue-500 text-blue-600'
-         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-       }`}
-      >
-       Create Role
-      </button>
-      <button
-       onClick={() => setActiveTab('viewRoles')}
-       className={`py-2 px-4 text-sm font-medium border-b-2 ${
-        activeTab === 'viewRoles'
-         ? 'border-blue-500 text-blue-600'
-         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-       }`}
-      >
-       View Roles
-      </button>
-     </nav>
-    </div>
+    <Tabs<'createRole' | 'viewRoles'>
+     tabs={[
+      { key: 'createRole', label: 'Create Role' },
+      { key: 'viewRoles', label: 'View Roles' },
+     ]}
+     value={activeTab}
+     onChange={setActiveTab}
+    />
    </div>
 
    {/* Tab Content */}

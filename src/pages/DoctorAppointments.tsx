@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/apiClient';
+import { EmptyState } from '../components/ui/EmptyState';
 
 interface Appointment {
  id: number | string;
@@ -119,26 +120,26 @@ const DoctorAppointments = () => {
  const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
    case 'confirmed':
-    return 'bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-ok-soft text-ok px-2 py-1 rounded-full text-xs font-medium';
    case 'pending':
-    return 'bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-warn-soft text-warn px-2 py-1 rounded-full text-xs font-medium';
    case 'cancelled':
-    return 'bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-err-soft text-err px-2 py-1 rounded-full text-xs font-medium';
    case 'active':
-    return 'bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-brand-soft text-brand px-2 py-1 rounded-full text-xs font-medium';
    case 'inactive':
-    return 'bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-surface-3 text-ink px-2 py-1 rounded-full text-xs font-medium';
    case 'completed':
     return 'bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium';
    default:
-    return 'bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs font-medium';
+    return 'bg-surface-3 text-ink px-2 py-1 rounded-full text-xs font-medium';
   }
  };
 
  const SortButton = ({ field, children }: { field: keyof Appointment; children: React.ReactNode }) => (
   <button
    onClick={() => handleSort(field)}
-   className="flex items-center gap-1 hover:bg-gray-50 p-2 rounded transition-colors min-w-0 w-full justify-start"
+   className="flex items-center gap-1 hover:bg-surface-2 p-2 rounded transition-colors min-w-0 w-full justify-start"
   >
    <span className="truncate">{children}</span>
   <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,18 +157,18 @@ const DoctorAppointments = () => {
  );
 
  return (
-  <div className="p-4 md:p-8 bg-gray-50/50 min-h-screen">
+  <div className="p-4 md:p-8 bg-surface-2/50 min-h-screen">
    <div className="mb-6">
-    <h1 className="text-2xl md:text-3xl font-bold text-gray-800">New Appointments</h1>
-    <p className="text-gray-500 mt-1">Manage and track doctor appointments</p>
+    <h1 className="text-2xl md:text-3xl font-bold text-ink">New Appointments</h1>
+    <p className="text-ink-3 mt-1">Manage and track doctor appointments</p>
    </div>
    
-   <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-    {isLoading && <div className="px-4 pt-4 text-sm text-gray-500">Loading appointments...</div>}
-    {loadError && <div className="px-4 pt-4 text-sm text-red-600">{loadError}</div>}
+   <div className="bg-surface rounded-xl shadow-sm border border-hairline">
+    {isLoading && <div className="px-4 pt-4 text-sm text-ink-3">Loading appointments...</div>}
+    {loadError && <div className="px-4 pt-4 text-sm text-err">{loadError}</div>}
     {/* Records info */}
-    <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-     <p className="text-sm text-gray-600">
+    <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+     <p className="text-sm text-ink-2">
       Showing {startIndex + 1} to {Math.min(endIndex, totalRecords)} of {totalRecords} records
      </p>
      <div className="flex gap-2 flex-wrap justify-center sm:justify-end">
@@ -176,13 +177,13 @@ const DoctorAppointments = () => {
        disabled={currentPage === 1}
        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
         currentPage === 1
-         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-         : 'bg-gray-100 text-slate-900 hover:bg-gray-200'
+         ? 'bg-surface-3 text-ink-4 cursor-not-allowed'
+         : 'bg-surface-3 text-ink hover:bg-surface-3'
        }`}
       >
        Previous
       </button>
-      <span className="px-3 py-2 text-sm text-gray-600 flex items-center">
+      <span className="px-3 py-2 text-sm text-ink-2 flex items-center">
        Page {currentPage} of {safeTotalPages}
       </span>
       <button
@@ -190,8 +191,8 @@ const DoctorAppointments = () => {
        disabled={currentPage === safeTotalPages}
        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
         currentPage === safeTotalPages
-         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-         : 'bg-gray-100 text-slate-900 hover:bg-gray-200'
+         ? 'bg-surface-3 text-ink-4 cursor-not-allowed'
+         : 'bg-surface-3 text-ink hover:bg-surface-3'
        }`}
       >
        Next
@@ -200,57 +201,57 @@ const DoctorAppointments = () => {
     </div>
 
     {/* Table */}
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
      <div className="min-w-full">
       <table className="w-full table-auto">
-       <thead className="bg-gray-50">
-        <tr>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-15">
+       <thead className="sticky top-0 z-20 bg-surface-2">
+        <tr className="[&_th]:bg-surface-2">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-15">
           <SortButton field="id">S No</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-35">
           <SortButton field="doctorName">Doctor Name</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-27.5">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-27.5">
           <SortButton field="mobileNo">Mobile No</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-35">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-35">
           <SortButton field="clinicName">Clinic Name</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-25">
           <SortButton field="date">Date</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32.5">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-32.5">
           <SortButton field="confirmationStatus">Confirmation</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-25">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-25">
           <SortButton field="status">Status</SortButton>
          </th>
-         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-30">
+         <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-ink-3 uppercase tracking-wider min-w-30">
           <SortButton field="assignTo">Assign To</SortButton>
          </th>
         </tr>
        </thead>
-       <tbody className="bg-white divide-y divide-gray-200">
+       <tbody className="bg-surface divide-y divide-hairline">
         {currentAppointments.map((appointment) => (
-         <tr key={appointment.id} className="hover:bg-gray-50">
-          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+         <tr key={appointment.id} className="hover:bg-surface-2">
+          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-ink font-medium">
            {appointment.id}
           </td>
-          <td className="px-2 sm:px-4 py-4 text-sm font-medium text-gray-900">
+          <td className="px-2 sm:px-4 py-4 text-sm font-medium text-ink">
            <div className="max-w-35 truncate" title={appointment.doctorName}>
             {appointment.doctorName}
            </div>
           </td>
-          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-ink">
            {appointment.mobileNo}
           </td>
-          <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
+          <td className="px-2 sm:px-4 py-4 text-sm text-ink">
            <div className="max-w-35 truncate" title={appointment.clinicName}>
             {appointment.clinicName}
            </div>
           </td>
-          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-ink">
            {appointment.date}
           </td>
           <td className="px-2 sm:px-4 py-4 whitespace-nowrap">
@@ -263,7 +264,7 @@ const DoctorAppointments = () => {
             {appointment.status}
            </span>
           </td>
-          <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
+          <td className="px-2 sm:px-4 py-4 text-sm text-ink">
            <div className="max-w-30 truncate" title={appointment.assignTo}>
             {appointment.assignTo}
            </div>
@@ -272,8 +273,8 @@ const DoctorAppointments = () => {
         ))}
         {!isLoading && currentAppointments.length === 0 && (
          <tr>
-          <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
-           No appointments found.
+          <td colSpan={8} className="px-4 py-4">
+           <EmptyState title="No appointments found." />
           </td>
          </tr>
         )}

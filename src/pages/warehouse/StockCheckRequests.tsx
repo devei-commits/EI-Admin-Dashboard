@@ -9,6 +9,10 @@ import {
   mapBackendPrToRequest,
 } from '../procurement/procurementDataMappers';
 import StockCheckAuditModal from '../../components/warehouse/StockCheckAuditModal';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { ClipboardList } from 'lucide-react';
 import {
   buildWarehouseStockCheckTableRows,
   formatAssigneeShortName,
@@ -19,6 +23,7 @@ import {
   canUserPerformStockCheck,
   resolveStockCheckActorName,
 } from '../../lib/stockCheckAssigneeAccess';
+import { procBtnSecondary } from '../../components/procurement/ProcSection';
 
 const StockCheckRequests: React.FC = () => {
   const queryClient = useQueryClient();
@@ -178,25 +183,25 @@ const StockCheckRequests: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-white p-6">
+    <div className="flex-1 overflow-auto bg-surface p-6">
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Stock Check Requests</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight">Stock Check Requests</h1>
+          <p className="text-sm text-ink-3 mt-1">
             Verify physical qty for procurement requests. Gaps are notified to Procurement only — inventory updates
             after Procurement approves the gap.
           </p>
         </div>
 
         {formError ? (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
+          <p className="text-xs text-err bg-err-soft border border-err/40 rounded-lg px-3 py-2" role="alert">
             {formError}
           </p>
         ) : null}
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
-            <p className="text-[11px] text-slate-500 tabular-nums">
+        <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-surface-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] text-ink-3 tabular-nums">
               {procurementLoading
                 ? 'Loading stock-check requests…'
                 : `${tableRows.length} stock-check line${tableRows.length === 1 ? '' : 's'}`}
@@ -205,74 +210,79 @@ const StockCheckRequests: React.FC = () => {
               type="button"
               onClick={() => void refetchProcurementRequests()}
               disabled={procurementLoading}
-              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+              className={procBtnSecondary}
             >
               Refresh
             </button>
           </div>
           {procurementError ? (
-            <div className="px-6 py-10 text-sm text-center">
-              <p className="text-red-700 font-medium">Could not load stock-check requests.</p>
-              <p className="text-slate-500 mt-1">
-                {procurementErrorDetail instanceof Error
+            <ErrorState
+              title="Could not load stock-check requests."
+              message={
+                procurementErrorDetail instanceof Error
                   ? procurementErrorDetail.message
-                  : 'Please try again.'}
-              </p>
-            </div>
+                  : 'Please try again.'
+              }
+              onRetry={() => void refetchProcurementRequests()}
+            />
           ) : procurementLoading ? (
-            <div className="px-6 py-10 text-sm text-slate-500 text-center">Loading stock-check requests…</div>
-          ) : tableRows.length === 0 ? (
-            <div className="px-6 py-10 text-sm text-slate-500 text-center">
-              No stock-check requests yet. Raise one from Procurement → Requests → Stock Check.
+            <div className="p-4">
+              <TableSkeleton rows={8} cols={6} />
             </div>
+          ) : tableRows.length === 0 ? (
+            <EmptyState
+              icon={<ClipboardList />}
+              title="No stock-check requests yet."
+              description="Raise one from Procurement → Requests → Stock Check."
+            />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-[10px] tracking-wide text-slate-500 border-b border-slate-200 bg-slate-50">
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Req Date</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Audit #</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">WH</th>
-                    <th className="px-4 py-2 font-semibold min-w-[10rem]">Item</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Source Dept</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Priority</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Assign</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Target Date</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">SLA</th>
-                    <th className="px-4 py-2 font-semibold whitespace-nowrap">Action</th>
+                <thead className="sticky top-0 z-20">
+                  <tr className="text-left text-[10px] tracking-wide text-ink-3 border-b border-border bg-surface-2 [&_th]:bg-surface-2">
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Req Date</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Audit #</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">WH</th>
+                    <th scope="col" className="px-4 py-2 font-semibold min-w-[10rem]">Item</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Source Dept</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Priority</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Assign</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Target Date</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">SLA</th>
+                    <th scope="col" className="px-4 py-2 font-semibold whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
-                    <tr key={row.lineKey} className="border-b border-slate-100 hover:bg-slate-50/80">
-                      <td className="px-4 py-3 align-top whitespace-nowrap text-slate-800 tabular-nums">
+                    <tr key={row.lineKey} className="border-b border-hairline hover:bg-surface-2/80">
+                      <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2 tabular-nums">
                         {row.reqDateDisplay}
                       </td>
-                      <td className="px-4 py-3 align-top whitespace-nowrap font-mono text-[11px] font-semibold text-slate-800">
+                      <td className="px-4 py-3 align-top whitespace-nowrap font-mono text-[11px] font-semibold text-ink-2">
                         {row.auditRef}
                       </td>
-                      <td className="px-4 py-3 align-top whitespace-nowrap font-semibold text-slate-800">
+                      <td className="px-4 py-3 align-top whitespace-nowrap font-semibold text-ink-2">
                         {row.warehouse}
                       </td>
                       <td className="px-4 py-3 align-top min-w-[9rem]">
-                        <p className="font-semibold text-slate-900 leading-snug">{row.itemName}</p>
-                        <p className="text-[11px] text-slate-500 font-mono mt-0.5">{row.itemCode}</p>
+                        <p className="font-semibold text-ink leading-snug">{row.itemName}</p>
+                        <p className="text-[11px] text-ink-3 font-mono mt-0.5">{row.itemCode}</p>
                       </td>
-                      <td className="px-4 py-3 align-top whitespace-nowrap text-slate-700">{row.sourceDept}</td>
+                      <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2">{row.sourceDept}</td>
                       <td className={`px-4 py-3 align-top whitespace-nowrap text-[11px] tracking-wide ${row.priorityClass}`}>
                         {row.priorityDisplay}
                       </td>
                       <td className="px-4 py-3 align-top whitespace-nowrap">
                         {row.isCompleted ? (
-                          <span className="text-slate-700">{row.assignDisplay}</span>
+                          <span className="text-ink-2">{row.assignDisplay}</span>
                         ) : (
-                          <label className="inline-flex items-center gap-0.5 text-slate-800">
+                          <label className="inline-flex items-center gap-0.5 text-ink-2">
                             <span className="sr-only">Assign checker for {row.itemName}</span>
                             <select
                               value={row.assignedTo}
                               disabled={assignSavingId === row.requestId}
                               onChange={(e) => void handleQuickAssign(row, e.target.value)}
-                              className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-400 rounded disabled:opacity-60 max-w-[6.5rem] truncate"
+                              className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-ink-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-border rounded disabled:opacity-60 max-w-[6.5rem] truncate"
                             >
                               <option value="">Open</option>
                               {assigneeSuggestions.map((name) => (
@@ -287,13 +297,13 @@ const StockCheckRequests: React.FC = () => {
                                 <option value={row.assignedTo}>{row.assignDisplay}</option>
                               ) : null}
                             </select>
-                            <span className="text-slate-500 text-[10px] leading-none" aria-hidden="true">
+                            <span className="text-ink-3 text-[10px] leading-none" aria-hidden="true">
                               ▾
                             </span>
                           </label>
                         )}
                       </td>
-                      <td className="px-4 py-3 align-top whitespace-nowrap text-slate-800 tabular-nums">
+                      <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2 tabular-nums">
                         {row.targetDateDisplay}
                       </td>
                       <td className={`px-4 py-3 align-top whitespace-nowrap text-[11px] ${warehouseStockCheckSlaClass(row.slaTone)}`}>
@@ -306,7 +316,7 @@ const StockCheckRequests: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openTableRow(row)}
-                          className="text-[11px] font-semibold text-slate-800 hover:text-slate-950 hover:underline"
+                          className="text-[11px] font-semibold text-ink-2 hover:text-ink hover:underline"
                         >
                           {row.isCompleted
                             ? row.actionLabel

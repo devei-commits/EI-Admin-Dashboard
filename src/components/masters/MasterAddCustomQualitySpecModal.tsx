@@ -132,7 +132,7 @@ export function MasterAddCustomQualitySpecModal({
   const showOptions = dataType === 'select' || outputType === 'select';
   const showUnit = NUMBER_TYPES.includes(dataType);
   const modalInputCls =
-    'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+    'w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]';
   const specDataType = showUnit && unit.trim() ? `${dataType}|${unit.trim()}` : dataType;
   const parsedOptions = optionsText
     .split(',')
@@ -205,7 +205,7 @@ export function MasterAddCustomQualitySpecModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            className="px-4 py-2 border border-border text-ink-2 rounded-lg text-sm font-medium hover:bg-surface-3 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -213,7 +213,7 @@ export function MasterAddCustomQualitySpecModal({
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+            className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-press disabled:opacity-50"
           >
             {saving ? 'Saving…' : isEditing ? 'Update QC spec' : 'Save QC spec'}
           </button>
@@ -222,8 +222,8 @@ export function MasterAddCustomQualitySpecModal({
     >
       <div className="space-y-4">
         <div>
-          <label htmlFor="mqc-name" className="block text-sm font-medium text-gray-700 mb-1">
-            Parameter / Field name <span className="text-red-600">*</span>
+          <label htmlFor="mqc-name" className="block text-sm font-medium text-ink-2 mb-1">
+            Parameter / Field name <span className="text-err">*</span>
           </label>
           <input
             id="mqc-name"
@@ -234,18 +234,18 @@ export function MasterAddCustomQualitySpecModal({
               if (error) setError('');
             }}
             placeholder="e.g. Sodium Lauryl Sulphate Limit"
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           />
         </div>
         <div>
-          <label htmlFor="mqc-type" className="block text-sm font-medium text-gray-700 mb-1">
-            Data type / Input method <span className="text-red-600">*</span>
+          <label htmlFor="mqc-type" className="block text-sm font-medium text-ink-2 mb-1">
+            Data type / Input method <span className="text-err">*</span>
           </label>
           <select
             id="mqc-type"
             value={dataType}
             onChange={(e) => handleDataTypeChange(e.target.value as MasterQualitySpecDataType)}
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           >
             {MASTER_QUALITY_SPEC_TYPE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -256,7 +256,7 @@ export function MasterAddCustomQualitySpecModal({
         </div>
         {showOptions ? (
           <div>
-            <label htmlFor="mqc-options" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-options" className="block text-sm font-medium text-ink-2 mb-1">
               Dropdown options (comma-separated)
             </label>
             <input
@@ -265,19 +265,19 @@ export function MasterAddCustomQualitySpecModal({
               value={optionsText}
               onChange={(e) => setOptionsText(e.target.value)}
               placeholder="Option A, Option B, Option C"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
         ) : null}
         <div>
-          <label htmlFor="mqc-mand" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="mqc-mand" className="block text-sm font-medium text-ink-2 mb-1">
             Mandatory?
           </label>
           <select
             id="mqc-mand"
             value={mandatory ? 'true' : 'false'}
             onChange={(e) => setMandatory(e.target.value === 'true')}
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           >
             <option value="false">No · Optional</option>
             <option value="true">Yes · Mandatory</option>
@@ -285,7 +285,7 @@ export function MasterAddCustomQualitySpecModal({
         </div>
         {showUnit ? (
           <div>
-            <label htmlFor="mqc-unit" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-unit" className="block text-sm font-medium text-ink-2 mb-1">
               Unit (mm / kg / Nm / % etc)
             </label>
             <input
@@ -293,19 +293,19 @@ export function MasterAddCustomQualitySpecModal({
               type="text"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
         ) : null}
         <div>
-          <label htmlFor="mqc-output-type" className="block text-sm font-medium text-gray-700 mb-1">
-            GRN output field / Input type <span className="text-red-600">*</span>
+          <label htmlFor="mqc-output-type" className="block text-sm font-medium text-ink-2 mb-1">
+            GRN output field / Input type <span className="text-err">*</span>
           </label>
           <select
             id="mqc-output-type"
             value={outputType}
             onChange={(e) => setOutputType(e.target.value as GrnQualitySpecOutputType)}
-            className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
           >
             {GRN_OUTPUT_TYPE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -313,14 +313,14 @@ export function MasterAddCustomQualitySpecModal({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-ink-3">
             How warehouse staff enter measured results during GRN QC (saved on the master for later use).
           </p>
         </div>
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">QC Spec details</p>
+        <div className="rounded-lg border border-dashed border-border bg-surface-3 p-3 space-y-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-3">QC Spec details</p>
           <div>
-            <label htmlFor="mqc-spec" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-spec" className="block text-sm font-medium text-ink-2 mb-1">
               Spec / Limit
             </label>
             <QualitySpecLimitInput
@@ -334,7 +334,7 @@ export function MasterAddCustomQualitySpecModal({
             />
           </div>
           <div>
-            <label htmlFor="mqc-tol" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-tol" className="block text-sm font-medium text-ink-2 mb-1">
               Tolerance
             </label>
             <input
@@ -343,11 +343,11 @@ export function MasterAddCustomQualitySpecModal({
               value={tolerance}
               onChange={(e) => setTolerance(e.target.value)}
               placeholder="e.g. ±0.5 or ±5%"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
           <div>
-            <label htmlFor="mqc-method" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-method" className="block text-sm font-medium text-ink-2 mb-1">
               Test Method
             </label>
             <input
@@ -356,12 +356,12 @@ export function MasterAddCustomQualitySpecModal({
               value={method}
               onChange={(e) => setMethod(e.target.value)}
               placeholder="e.g. pH meter @25°C"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="mqc-freq" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="mqc-freq" className="block text-sm font-medium text-ink-2 mb-1">
                 Frequency
               </label>
               <input
@@ -370,11 +370,11 @@ export function MasterAddCustomQualitySpecModal({
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value)}
                 placeholder="e.g. Per lot"
-                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
               />
             </div>
             <div>
-              <label htmlFor="mqc-sample" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="mqc-sample" className="block text-sm font-medium text-ink-2 mb-1">
                 Sample size
               </label>
               <input
@@ -383,12 +383,12 @@ export function MasterAddCustomQualitySpecModal({
                 value={sample}
                 onChange={(e) => setSample(e.target.value)}
                 placeholder="e.g. 10/lot"
-                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
               />
             </div>
           </div>
           <div>
-            <label htmlFor="mqc-accept" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="mqc-accept" className="block text-sm font-medium text-ink-2 mb-1">
               Acceptance
             </label>
             <input
@@ -397,19 +397,19 @@ export function MasterAddCustomQualitySpecModal({
               value={acceptance}
               onChange={(e) => setAcceptance(e.target.value)}
               placeholder="e.g. Within range"
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
             />
           </div>
           {!isEditing && !hideScopeSelector ? (
             <div>
-              <label htmlFor="mqc-scope" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="mqc-scope" className="block text-sm font-medium text-ink-2 mb-1">
                 Add to group
               </label>
               <select
                 id="mqc-scope"
                 value={scope}
                 onChange={(e) => setScope(e.target.value as QualitySpecAddScope)}
-                className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
               >
                 <option value="category">Category (all of {categoryScopeLabel || 'this category'})</option>
                 {allowSubCategoryScope ? (
@@ -428,7 +428,7 @@ export function MasterAddCustomQualitySpecModal({
           ) : null}
         </div>
         {error ? (
-          <p className="text-xs text-red-600" role="alert">
+          <p className="text-xs text-err" role="alert">
             {error}
           </p>
         ) : null}

@@ -54,10 +54,10 @@ export function PrTeamAssignPicker({
 
   const results = useMemo(() => filterStaffPool(staffPool, query), [staffPool, query]);
   const isRm = teamKey === 'rm_team';
-  const borderAccent = isRm ? 'border-indigo-200' : 'border-violet-200';
-  const bgAccent = isRm ? 'bg-indigo-50/40' : 'bg-violet-50/40';
-  const ringAccent = isRm ? 'focus:ring-indigo-400' : 'focus:ring-violet-400';
-  const hoverAccent = isRm ? 'hover:bg-indigo-50' : 'hover:bg-violet-50';
+  const borderAccent = isRm ? 'border-brand-soft' : 'border-brand-soft';
+  const bgAccent = isRm ? 'bg-brand-soft' : 'bg-brand-soft';
+  const ringAccent = isRm ? 'focus:ring-[color:var(--ring)]' : 'focus:ring-[color:var(--ring)]';
+  const hoverAccent = isRm ? 'hover:bg-brand-soft' : 'hover:bg-brand-soft';
 
   useEffect(() => {
     let cancelled = false;
@@ -89,11 +89,11 @@ export function PrTeamAssignPicker({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 id={`${fieldId}-heading`} className="text-sm font-bold text-gray-900">
+          <h3 id={`${fieldId}-heading`} className="text-sm font-bold text-ink">
             <span aria-hidden="true">{emoji} </span>
             {label}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-ink-3 mt-0.5">
             {slot?.user_id ? 'Assigned — only this person can sign for this team' : 'Open — any PR approver may sign'}
           </p>
         </div>
@@ -106,23 +106,23 @@ export function PrTeamAssignPicker({
               setQuery('');
               setOpen(false);
             }}
-            className="shrink-0 text-xs font-semibold text-gray-600 hover:text-gray-900 underline-offset-2 hover:underline disabled:opacity-50"
+            className="shrink-0 text-xs font-semibold text-ink-3 hover:text-ink underline-offset-2 hover:underline disabled:opacity-50"
           >
             Set open
           </button>
         ) : (
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-400">Open</span>
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-ink-4">Open</span>
         )}
       </div>
 
       {slot?.user_id ? (
-        <div className="rounded-lg border border-white bg-white px-3 py-2.5 shadow-sm">
-          <p className="text-sm font-semibold text-gray-900">{slot.display_name}</p>
-          {slot.role_name ? <p className="text-xs text-gray-500 mt-0.5">{slot.role_name}</p> : null}
+        <div className="rounded-lg border border-white bg-surface px-3 py-2.5 shadow-sm">
+          <p className="text-sm font-semibold text-ink">{slot.display_name}</p>
+          {slot.role_name ? <p className="text-xs text-ink-3 mt-0.5">{slot.role_name}</p> : null}
         </div>
       ) : (
         <div className="space-y-2">
-          <label htmlFor={fieldId} className="block text-xs font-medium text-gray-700">
+          <label htmlFor={fieldId} className="block text-xs font-medium text-ink-2">
             Search team member
           </label>
           <input
@@ -137,23 +137,23 @@ export function PrTeamAssignPicker({
               setQuery(e.target.value);
               setOpen(true);
             }}
-            className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 ${ringAccent} disabled:opacity-60`}
+            className={`w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 ${ringAccent} disabled:opacity-60`}
             autoComplete="off"
           />
           {open ? (
             <ul
               role="listbox"
               aria-label={`${label} suggestions`}
-              className="w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-md text-sm"
+              className="w-full max-h-48 overflow-y-auto bg-surface border border-border rounded-lg shadow-md text-sm"
             >
               {staffLoading ? (
-                <li className="px-3 py-2 text-gray-500">Loading team members…</li>
+                <li className="px-3 py-2 text-ink-3">Loading team members…</li>
               ) : staffLoadError ? (
-                <li className="px-3 py-2 text-red-600" role="alert">
+                <li className="px-3 py-2 text-err" role="alert">
                   {staffLoadError}
                 </li>
               ) : results.length === 0 ? (
-                <li className="px-3 py-2 text-gray-500">
+                <li className="px-3 py-2 text-ink-3">
                   {query.trim() ? 'No matches' : 'No internal team members found'}
                 </li>
               ) : (
@@ -170,8 +170,8 @@ export function PrTeamAssignPicker({
                         setOpen(false);
                       }}
                     >
-                      <span className="font-medium text-gray-900">{u.display_name}</span>
-                      <span className="block text-xs text-gray-500 truncate">
+                      <span className="font-medium text-ink">{u.display_name}</span>
+                      <span className="block text-xs text-ink-3 truncate">
                         {[u.role_name, u.email].filter(Boolean).join(' · ')}
                       </span>
                     </button>

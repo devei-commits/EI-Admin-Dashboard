@@ -23,23 +23,23 @@ const BDDashboardShell: React.FC<BDDashboardShellProps> = ({
   activeTab, onTabChange, counts, subtitle, liveSyncTime, refreshing, onRefresh, children,
 }) => {
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-surface-2">
       <BDSidebar activeTab={activeTab} counts={counts} onNavigate={onTabChange} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky header */}
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-border bg-surface/90 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-4">
                 BD Management
               </p>
-              <h1 className="truncate text-lg font-bold text-slate-800">{activeTab}</h1>
-              {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+              <h1 className="truncate text-lg font-bold text-ink">{activeTab}</h1>
+              {subtitle && <p className="text-xs text-ink-3">{subtitle}</p>}
             </div>
             <div className="flex items-center gap-3">
               {liveSyncTime && (
-                <span className="hidden sm:inline text-[11px] text-slate-400">
+                <span className="hidden sm:inline text-[11px] text-ink-4">
                   Synced {liveSyncTime}
                 </span>
               )}
@@ -47,7 +47,8 @@ const BDDashboardShell: React.FC<BDDashboardShellProps> = ({
                 <button
                   onClick={onRefresh}
                   title="Refresh"
-                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                  aria-label="Refresh"
+                  className="rounded-lg border border-border p-2 text-ink-3 hover:bg-surface-3"
                 >
                   <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
                 </button>

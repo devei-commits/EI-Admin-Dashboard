@@ -99,8 +99,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
  return (
   <div className="space-y-6">
    <div>
-    <h2 className="text-3xl font-bold text-gray-900 mb-2">Settings</h2>
-    <p className="text-gray-600">
+    <h2 className="text-3xl font-bold text-ink mb-2">Settings</h2>
+    <p className="text-ink-2">
      {currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN' 
       ? 'Configure system settings and user preferences'
       : 'Configure your preferences and workflow settings'}
@@ -108,7 +108,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
    </div>
 
    <Tabs defaultValue="general" className="space-y-6">
-    <TabsList className="bg-white border">
+    <TabsList className="bg-surface border">
      {showGeneralTab && (
       <TabsTrigger value="general" className="flex items-center gap-2">
        <Settings className="h-4 w-4" />
@@ -152,14 +152,14 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="general">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Globe className="h-5 w-5 text-blue-600" />
+        <Globe className="h-5 w-5 text-brand" />
         General Settings
        </h3>
        
        <div className="space-y-6">
         {/* Profile Section */}
-        <div className="p-4 bg-gray-50 rounded-lg">
-         <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+        <div className="p-4 bg-surface-2 rounded-lg">
+         <h4 className="font-medium text-ink mb-4 flex items-center gap-2">
           <User className="h-4 w-4" />
           Profile Information
          </h4>
@@ -179,7 +179,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
             id="email" 
             defaultValue={currentUser?.email || ''} 
             disabled 
-            className="mt-1 bg-gray-100" 
+            className="mt-1 bg-surface-3" 
            />
           </div>
           <div>
@@ -197,7 +197,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
             id="role" 
             defaultValue={currentRole || 'Not assigned'} 
             disabled 
-            className="mt-1 bg-gray-100" 
+            className="mt-1 bg-surface-3" 
            />
           </div>
          </div>
@@ -273,15 +273,15 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="notifications">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Bell className="h-5 w-5 text-blue-600" />
+        <Bell className="h-5 w-5 text-brand" />
         Notification Preferences
        </h3>
        
        <div className="space-y-6">
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Email Notifications</Label>
-          <p className="text-sm text-gray-500">Receive notifications via email</p>
+          <p className="text-sm text-ink-3">Receive notifications via email</p>
          </div>
          <Switch
           checked={settings.emailNotifications}
@@ -290,10 +290,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Push Notifications</Label>
-          <p className="text-sm text-gray-500">Receive browser push notifications</p>
+          <p className="text-sm text-ink-3">Receive browser push notifications</p>
          </div>
          <Switch
           checked={settings.pushNotifications}
@@ -302,10 +302,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Task Reminders</Label>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-3">
            {permissions.canManageTasks 
             ? 'Get reminded about upcoming task deadlines and assignments'
             : 'Get reminded about your upcoming task deadlines'}
@@ -318,10 +318,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Status Updates</Label>
-          <p className="text-sm text-gray-500">Notify when PIS status changes</p>
+          <p className="text-sm text-ink-3">Notify when PIS status changes</p>
          </div>
          <Switch
           checked={settings.statusUpdates}
@@ -331,10 +331,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
         </div>
 
         {permissions.canManageTasks && (
-         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+         <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
           <div className="space-y-0.5">
            <Label className="text-base">Assignment Notifications</Label>
-           <p className="text-sm text-gray-500">Notify when tasks are assigned to your team</p>
+           <p className="text-sm text-ink-3">Notify when tasks are assigned to your team</p>
           </div>
           <Switch
            checked={settings.assignmentNotifications || false}
@@ -344,10 +344,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          </div>
         )}
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Weekly Digest</Label>
-          <p className="text-sm text-gray-500">Receive a weekly summary of activities</p>
+          <p className="text-sm text-ink-3">Receive a weekly summary of activities</p>
          </div>
          <Switch
           checked={settings.weeklyDigest}
@@ -365,12 +365,12 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="display">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Palette className="h-5 w-5 text-blue-600" />
+        <Palette className="h-5 w-5 text-brand" />
         Display Settings
        </h3>
        
        <div className="space-y-6">
-        <div className="p-4 bg-gray-50 rounded-lg">
+        <div className="p-4 bg-surface-2 rounded-lg">
          <Label className="text-base mb-4 block">Theme</Label>
          <div className="flex gap-4">
           <button
@@ -378,8 +378,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            disabled={!permissions.canViewSettings}
            className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
             settings.theme === 'light' 
-             ? 'border-blue-500 bg-blue-50' 
-             : 'border-gray-200 hover:border-gray-300'
+             ? 'border-brand bg-brand-soft' 
+             : 'border-border hover:border-border'
            } ${!permissions.canViewSettings ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
            <Sun className="h-5 w-5" />
@@ -390,8 +390,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            disabled={!permissions.canViewSettings}
            className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 transition-all ${
             settings.theme === 'dark' 
-             ? 'border-blue-500 bg-blue-50' 
-             : 'border-gray-200 hover:border-gray-300'
+             ? 'border-brand bg-brand-soft' 
+             : 'border-border hover:border-border'
            } ${!permissions.canViewSettings ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
            <Moon className="h-5 w-5" />
@@ -400,10 +400,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          </div>
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Compact Mode</Label>
-          <p className="text-sm text-gray-500">Use a more condensed layout</p>
+          <p className="text-sm text-ink-3">Use a more condensed layout</p>
          </div>
          <Switch
           checked={settings.compactMode}
@@ -412,10 +412,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Show Animations</Label>
-          <p className="text-sm text-gray-500">Enable UI animations and transitions</p>
+          <p className="text-sm text-ink-3">Enable UI animations and transitions</p>
          </div>
          <Switch
           checked={settings.showAnimations}
@@ -433,15 +433,15 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="privacy">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Shield className="h-5 w-5 text-blue-600" />
+        <Shield className="h-5 w-5 text-brand" />
         Privacy & Security
        </h3>
        
        <div className="space-y-6">
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Profile Visibility</Label>
-          <p className="text-sm text-gray-500">Allow other users to see your profile</p>
+          <p className="text-sm text-ink-3">Allow other users to see your profile</p>
          </div>
          <Switch
           checked={settings.profileVisible}
@@ -450,10 +450,10 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
          <div className="space-y-0.5">
           <Label className="text-base">Activity Visibility</Label>
-          <p className="text-sm text-gray-500">Show your recent activity to others</p>
+          <p className="text-sm text-ink-3">Show your recent activity to others</p>
          </div>
          <Switch
           checked={settings.activityVisible}
@@ -462,13 +462,13 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
          />
         </div>
 
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg border border-border">
          <div className="space-y-0.5">
           <Label className="text-base flex items-center gap-2">
-           <Lock className="h-4 w-4 text-slate-800" />
+           <Lock className="h-4 w-4 text-ink" />
            Two-Factor Authentication
           </Label>
-          <p className="text-sm text-slate-900">Add an extra layer of security to your account</p>
+          <p className="text-sm text-ink">Add an extra layer of security to your account</p>
          </div>
          <Switch
           checked={settings.twoFactorAuth}
@@ -478,15 +478,15 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
         </div>
 
         {(currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN' || currentRole === 'CLIENT') && (
-         <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-          <h4 className="font-medium text-red-900 mb-2">Danger Zone</h4>
-          <p className="text-sm text-red-700 mb-3">
+         <div className="p-4 bg-err-soft rounded-lg border border-err">
+          <h4 className="font-medium text-err mb-2">Danger Zone</h4>
+          <p className="text-sm text-err mb-3">
            These actions are irreversible. Please proceed with caution.
           </p>
           <div className="flex gap-3">
            <Button 
             variant="outline" 
-            className="text-red-600 border-red-300 hover:bg-red-50"
+            className="text-err border-err hover:bg-err-soft"
             disabled={!permissions.canViewSettings}
            >
             Export My Data
@@ -494,7 +494,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            {currentRole !== 'CLIENT' && (
             <Button 
              variant="destructive" 
-             className="bg-red-600 hover:bg-red-700"
+             className="bg-err hover:bg-err"
              disabled={!permissions.canViewSettings}
             >
              Delete Account
@@ -513,17 +513,17 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="workflow">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Workflow className="h-5 w-5 text-blue-600" />
+        <Workflow className="h-5 w-5 text-brand" />
         Workflow Settings
        </h3>
        
        <div className="space-y-6">
         {permissions.canManageTasks && (
          <>
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-surface-2 rounded-lg">
            <div className="space-y-0.5">
             <Label className="text-base">Auto-Assign Tasks</Label>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-3">
              Automatically assign new tasks to team members based on workload
             </p>
            </div>
@@ -534,7 +534,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            />
           </div>
 
-          <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="p-4 bg-surface-2 rounded-lg">
            <Label className="text-base mb-2 block">Default Task Assignee</Label>
            <Select 
             value={settings.defaultAssignee} 
@@ -556,8 +556,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
         )}
 
         {permissions.canAssignTerminate && (
-         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <h4 className="font-medium text-blue-900 mb-4 flex items-center gap-2">
+         <div className="p-4 bg-brand-soft rounded-lg border border-brand">
+          <h4 className="font-medium text-brand mb-4 flex items-center gap-2">
            <FileText className="h-4 w-4" />
            PIS Management
           </h4>
@@ -565,7 +565,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Auto-Advance Stages</Label>
-             <p className="text-sm text-blue-700">Automatically move PIS to next stage when all checks are complete</p>
+             <p className="text-sm text-brand">Automatically move PIS to next stage when all checks are complete</p>
             </div>
             <Switch
              checked={settings.autoAdvanceStages || false}
@@ -576,7 +576,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Require Approval for Termination</Label>
-             <p className="text-sm text-blue-700">Require confirmation before terminating PIS</p>
+             <p className="text-sm text-brand">Require confirmation before terminating PIS</p>
             </div>
             <Switch
              checked={settings.requireTerminationApproval !== false}
@@ -636,14 +636,14 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
      <TabsContent value="system">
       <Card className="p-6">
        <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-        <Server className="h-5 w-5 text-blue-600" />
+        <Server className="h-5 w-5 text-brand" />
         System Settings
        </h3>
        
        <div className="space-y-6">
         {/* Security Settings */}
-        <div className="p-4 bg-gray-50 rounded-lg">
-         <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+        <div className="p-4 bg-surface-2 rounded-lg">
+         <h4 className="font-medium text-ink mb-4 flex items-center gap-2">
           <Shield className="h-4 w-4" />
           Security Configuration
          </h4>
@@ -658,7 +658,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
             max={480}
             disabled={!permissions.canManageUsers}
            />
-           <p className="text-sm text-gray-500">Users will be logged out after this period of inactivity</p>
+           <p className="text-sm text-ink-3">Users will be logged out after this period of inactivity</p>
           </div>
           <div className="space-y-2">
            <Label>Max Login Attempts</Label>
@@ -670,12 +670,12 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
             max={10}
             disabled={!permissions.canManageUsers}
            />
-           <p className="text-sm text-gray-500">Account will be locked after this many failed login attempts</p>
+           <p className="text-sm text-ink-3">Account will be locked after this many failed login attempts</p>
           </div>
           <div className="flex items-center justify-between">
            <div className="space-y-0.5">
             <Label className="text-base">Enable Audit Logging</Label>
-            <p className="text-sm text-gray-500">Log all system activities for compliance and security</p>
+            <p className="text-sm text-ink-3">Log all system activities for compliance and security</p>
            </div>
            <Switch
             checked={settings.enableAuditLog}
@@ -688,8 +688,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
 
         {/* User Management */}
         {permissions.canManageUsers && (
-         <div className="p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+         <div className="p-4 bg-surface-2 rounded-lg">
+          <h4 className="font-medium text-ink mb-4 flex items-center gap-2">
            <Users className="h-4 w-4" />
            User Management
           </h4>
@@ -697,7 +697,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Allow User Self-Registration</Label>
-             <p className="text-sm text-gray-500">Allow new users to register themselves</p>
+             <p className="text-sm text-ink-3">Allow new users to register themselves</p>
             </div>
             <Switch
              checked={settings.allowSelfRegistration || false}
@@ -707,7 +707,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Require Email Verification</Label>
-             <p className="text-sm text-gray-500">Require users to verify their email before activation</p>
+             <p className="text-sm text-ink-3">Require users to verify their email before activation</p>
             </div>
             <Switch
              checked={settings.requireEmailVerification !== false}
@@ -717,7 +717,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Default User Role</Label>
-             <p className="text-sm text-gray-500">Default role assigned to new users</p>
+             <p className="text-sm text-ink-3">Default role assigned to new users</p>
             </div>
             <Select 
              value={settings.defaultUserRole || 'BD_STAFF'} 
@@ -741,8 +741,8 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
 
         {/* Database & Backup */}
         {currentRole === 'SUPER_ADMIN' && (
-         <div className="p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+         <div className="p-4 bg-surface-2 rounded-lg">
+          <h4 className="font-medium text-ink mb-4 flex items-center gap-2">
            <Database className="h-4 w-4" />
            Database & Backup
           </h4>
@@ -750,7 +750,7 @@ export function SettingsView({ currentRole }: SettingsViewProps) {
            <div className="flex items-center justify-between">
             <div className="space-y-0.5">
              <Label className="text-base">Auto Backup</Label>
-             <p className="text-sm text-gray-500">Automatically backup database daily</p>
+             <p className="text-sm text-ink-3">Automatically backup database daily</p>
             </div>
             <Switch
              checked={settings.autoBackup !== false}

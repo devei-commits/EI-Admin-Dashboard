@@ -17,19 +17,19 @@ const InboundQcQueue: React.FC = () => {
   const queue = useMemo(() => filterInboundQcQueue(grns), [grns]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6 sm:p-8">
+    <div className="flex-1 overflow-y-auto bg-surface-2 p-6 sm:p-8">
       <div className="max-w-6xl mx-auto space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">
             Order Management / Quality
           </p>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">Inbound QC Queue</h1>
-          <p className="text-sm text-slate-600 mt-2">
+          <h1 className="text-2xl font-bold text-ink mt-1">Inbound QC Queue</h1>
+          <p className="text-sm text-ink-2 mt-2">
             GRNs sent from warehouse via Send to QC — complete inspection in Order Management.
           </p>
         </div>
         {loading ? (
-          <p className="text-sm text-slate-500">Loading queue…</p>
+          <p className="text-sm text-ink-3">Loading queue…</p>
         ) : (
           <QualityGrnQueueTable
             grns={queue}

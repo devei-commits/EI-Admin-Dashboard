@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, X } from 'lucide-react';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { procBtnPrimary, procBtnSecondary, procInputClass, procSelectClass, procChipClass } from '../components/procurement/ProcSection';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../context/ToastContext';
 import { parseMoqInput } from '../utils/moqQuantity';
@@ -32,6 +34,8 @@ import {
 import { fetchVendorClients, fetchVendorClientById } from '../services/vendorClient.service';
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import { Pagination } from '../components/ui/Pagination';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
   formatStagedPaymentTermsSummary,
@@ -226,9 +230,9 @@ const ItemsList: React.FC = () => {
     const t = new Date(updatedAt).getTime();
     if (Number.isNaN(t)) return null;
     const days = Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
-    if (days <= 30) return { label: `FRESH · ${days}d`, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-    if (days <= 90) return { label: `${days}d`, cls: 'bg-amber-50 text-amber-700 border-amber-200' };
-    return { label: `STALE · ${days}d`, cls: 'bg-rose-50 text-rose-700 border-rose-200' };
+    if (days <= 30) return { label: `FRESH · ${days}d`, cls: 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30' };
+    if (days <= 90) return { label: `${days}d`, cls: 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30' };
+    return { label: `STALE · ${days}d`, cls: 'bg-err-soft text-err border-[color:var(--st-red-fg)]/30' };
   };
 
   const formatDate = (d?: string | null): string => {
@@ -283,13 +287,13 @@ const ItemsList: React.FC = () => {
         {fresh && (
           <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${fresh.cls}`}>{fresh.label}</span>
         )}
-        <span className="text-[10.5px] text-gray-400 whitespace-nowrap">{formatDate(item.updatedAt)}</span>
+        <span className="text-[10.5px] text-ink-4 whitespace-nowrap">{formatDate(item.updatedAt)}</span>
         {canWorkflow && prev && (
           <button
             type="button"
             disabled={busy}
             onClick={() => handleApprovalTransition(item, 'reject')}
-            className="px-2 py-0.5 rounded border border-gray-300 bg-white text-[10px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            className="px-2 py-0.5 rounded border border-border bg-surface text-[10px] font-semibold text-ink-3 hover:bg-surface-2 disabled:opacity-50"
           >
             ← {prev}
           </button>
@@ -299,7 +303,7 @@ const ItemsList: React.FC = () => {
             type="button"
             disabled={busy}
             onClick={() => handleApprovalTransition(item, 'advance')}
-            className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-semibold hover:bg-slate-800 disabled:opacity-50"
+            className="px-2 py-0.5 rounded bg-brand text-white text-[10px] font-semibold hover:bg-brand-press disabled:opacity-50"
           >
             {next === 'Active' ? 'Approve → Active' : `→ ${next}`}
           </button>
@@ -779,12 +783,12 @@ const ItemsList: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] font-['Plus_Jakarta_Sans',sans-serif]">
-      <div className="px-6 md:px-10 py-8 max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-canvas">
+      <div className="px-6 md:px-10 py-5 max-w-6xl mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h4 className="text-lg font-bold text-gray-900 mb-1">Price Lists</h4>
-            <p className="text-sm text-gray-500">
+            <h4 className="text-lg font-bold text-ink mb-1">Price Lists</h4>
+            <p className="text-sm text-ink-3">
               Vendor MOQ-tiered pricing for raw materials and packaging; client MOQ-tiered pricing for finished products (PR).
             </p>
           </div>
@@ -807,7 +811,7 @@ const ItemsList: React.FC = () => {
               type="button"
               disabled={importingCategoriesExcel || importingVendorExcel}
               onClick={() => masterCategoriesFileRef.current?.click()}
-              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className={procBtnSecondary}
             >
               {importingCategoriesExcel ? 'Updating…' : 'Update RM/PM categories (Excel)'}
             </button>
@@ -815,44 +819,56 @@ const ItemsList: React.FC = () => {
               type="button"
               disabled={importingVendorExcel || importingCategoriesExcel}
               onClick={() => vendorPricingFileRef.current?.click()}
-              className="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900 disabled:opacity-50"
+              className={procBtnSecondary}
             >
               {importingVendorExcel ? 'Importing…' : 'Import vendor pricing (Excel)'}
             </button>
-            <p className="text-[11px] text-gray-400 max-w-sm text-right">
+            <p className="text-[11px] text-ink-4 max-w-sm text-right">
               Same workbook for both. Category update uses SKU + Category / Sub-Category. Pricing import also needs Primary Vendor and Price/Unit.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-teal-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">RM Price Lists</div>
-            <div className="text-2xl font-extrabold text-teal-600">{stats.rmWithTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Items with tiered pricing</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">RM Price Lists</div>
+              <div className="text-lg font-bold text-brand">{stats.rmWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Items with tiered pricing</div>
+            </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-violet-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">PM Price Lists</div>
-            <div className="text-2xl font-extrabold text-violet-600">{stats.pmWithTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Items with MOQ tiers</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PM Price Lists</div>
+              <div className="text-lg font-bold text-brand">{stats.pmWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Items with MOQ tiers</div>
+            </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-amber-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">PR client price lists</div>
-            <div className="text-2xl font-extrabold text-amber-600">{stats.prWithTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">Products with client tiers</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-warn" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">PR client price lists</div>
+              <div className="text-lg font-bold text-warn">{stats.prWithTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">Products with client tiers</div>
+            </div>
           </div>
-          <div className="bg-white border border-gray-200 rounded-lg p-4 border-l-4 border-l-blue-500">
-            <div className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wide mb-1">MOQ Tiers</div>
-            <div className="text-2xl font-extrabold text-blue-600">{stats.totalTiers}</div>
-            <div className="text-[11px] text-gray-400 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="h-1 bg-brand" />
+            <div className="px-3 py-2.5">
+              <div className="text-[10.5px] font-bold text-ink-4 uppercase tracking-wide mb-1">MOQ Tiers</div>
+              <div className="text-lg font-bold text-brand">{stats.totalTiers}</div>
+              <div className="text-[11px] text-ink-4 mt-1">All MOQ price breaks ({stats.totalRateRows} rate rows)</div>
+            </div>
           </div>
         </div>
 
         {/* Row 1 — title · category tabs · primary action */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-sm font-bold text-gray-900">Price Lists</h2>
-            <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
+            <h2 className="text-sm font-bold text-ink">Price Lists</h2>
+            <div className="flex gap-0.5 bg-surface-3 p-0.5 rounded-lg">
               {(['rm', 'pm', 'pr'] as const).map((tab) => (
                 <button
                   key={tab}
@@ -863,7 +879,7 @@ const ItemsList: React.FC = () => {
                     setListPage(1);
                   }}
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                    activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    activeTab === tab ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'
                   }`}
                 >
                   {tab === 'rm' ? 'RM' : tab === 'pm' ? 'PM' : 'PR Sell'}
@@ -873,7 +889,7 @@ const ItemsList: React.FC = () => {
           </div>
           <button
             onClick={openAddPriceList}
-            className="px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold whitespace-nowrap"
+            className={procBtnPrimary}
           >
             + New Price List
           </button>
@@ -894,18 +910,14 @@ const ItemsList: React.FC = () => {
                   setStatusTab(s);
                   setListPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold tracking-wide flex items-center gap-1.5 transition-colors ${
-                  active
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
+                className={procChipClass(active)}
               >
                 <span>
                   {emoji} {label}
                 </span>
                 <span
                   className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    active ? 'bg-surface/20 text-white' : 'bg-surface-3 text-ink-3'
                   }`}
                 >
                   {count}
@@ -918,7 +930,7 @@ const ItemsList: React.FC = () => {
         {/* Row 3 — search · party filter · sort */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px] max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4 pointer-events-none" />
             <input
               type="search"
               value={listSearchQuery}
@@ -928,14 +940,14 @@ const ItemsList: React.FC = () => {
                   ? 'Search product code, name, or client…'
                   : 'Search item code, name, or vendor…'
               }
-              className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className={`${procInputClass} pl-9 pr-9`}
               aria-label="Search items list"
             />
             {listSearchQuery ? (
               <button
                 type="button"
                 onClick={() => setListSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-ink-4 hover:text-ink-2 hover:bg-surface-3"
                 aria-label="Clear search"
               >
                 <X className="w-4 h-4" />
@@ -949,7 +961,7 @@ const ItemsList: React.FC = () => {
               aria-label="Filter by vendor"
               value={vendorFilterId}
               onChange={(e) => setVendorFilterId(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 bg-white min-w-[180px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className={`${procSelectClass} min-w-[180px]`}
             >
               <option value="">All vendors</option>
               {vendors.map((v) => (
@@ -974,7 +986,7 @@ const ItemsList: React.FC = () => {
           <button
             type="button"
             onClick={() => setSortAsc((v) => !v)}
-            className="ml-auto px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+            className={`${procBtnSecondary} ml-auto whitespace-nowrap`}
             title="Sort by item code"
           >
             Sort · Item Code {sortAsc ? '↑' : '↓'}
@@ -982,24 +994,24 @@ const ItemsList: React.FC = () => {
         </div>
 
         {vendorFilterId && (activeTab === 'rm' || activeTab === 'pm') ? (
-          <p className="text-[11px] text-amber-800 -mt-1">
+          <p className="text-[11px] text-warn -mt-1">
             Showing only items with a rate for this vendor. Choose &quot;All vendors&quot; for every RM/PM line.
           </p>
         ) : null}
         {clientFilterId && activeTab === 'pr' ? (
-          <p className="text-[11px] text-amber-800 -mt-1">
+          <p className="text-[11px] text-warn -mt-1">
             Showing only products with a client price list for this client. Choose &quot;All clients&quot; for every product.
           </p>
         ) : null}
         {listSearchDebounced.trim() && !loading ? (
-          <p className="text-xs text-gray-500 -mt-1">
+          <p className="text-xs text-ink-3 -mt-1">
             {totalListItems} {activeTab === 'pr' ? 'product' : 'item'}
             {totalListItems !== 1 ? 's' : ''} match &quot;{listSearchDebounced.trim()}&quot;
           </p>
         ) : null}
 
         {loading ? (
-          <div className="py-12 text-center text-gray-500">Loading…</div>
+          <TableSkeleton rows={8} cols={5} className="py-4" />
         ) : (
           <div id="pl-list-body" className="space-y-2.5">
             {filteredPageItems.map((item) => {
@@ -1010,26 +1022,26 @@ const ItemsList: React.FC = () => {
               const listOnlyLabel = isPr ? 'no client pricing tiers' : 'no vendor tiers';
               if (!hasTiers) {
                 return (
-                  <div key={item.code} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <div key={item.code} className="bg-surface border border-border rounded-lg overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
-                          className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                          className={`font-mono text-[10.5px] ${isRm ? 'text-brand' : isPm ? 'text-brand' : 'text-warn'}`}
                         >
                           {item.code}
                         </span>
-                        <span className="text-sm font-bold text-gray-900">{item.name}</span>
-                        <span className="font-mono text-xs font-bold text-amber-600">
+                        <span className="text-sm font-bold text-ink">{item.name}</span>
+                        <span className="font-mono text-xs font-bold text-warn">
                           {item.pricePerUnit < 1 ? formatPrice(item.pricePerUnit) : formatPrice(item.pricePerUnit)}
                           {isRm ? '/KG' : isPm ? '/pc' : ' MRP'}
                         </span>
-                        <span className="text-[11px] text-gray-400">— List price only, {listOnlyLabel}</span>
+                        <span className="text-[11px] text-ink-4">— List price only, {listOnlyLabel}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {renderApprovalStrip(item)}
                         <button
                           onClick={() => openAddTier(item)}
-                          className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
+                          className="px-2.5 py-1 rounded-md border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2"
                         >
                           + Add Tiers
                         </button>
@@ -1041,27 +1053,27 @@ const ItemsList: React.FC = () => {
               return (
                 <div
                   key={item.code}
-                  className={`bg-white border rounded-lg overflow-hidden ${
-                    isRm ? 'border-teal-100' : isPm ? 'border-violet-100' : 'border-amber-100'
+                  className={`bg-surface border rounded-lg overflow-hidden ${
+                    isRm ? 'border-brand-soft' : isPm ? 'border-brand-soft' : 'border-[color:var(--st-amber-fg)]/30'
                   }`}
                 >
                   <div
                     className={`px-4 py-3 border-b flex items-center justify-between ${
                       isRm
-                        ? 'bg-green-50 border-green-200'
+                        ? 'bg-ok-soft border-[color:var(--st-green-fg)]/30'
                         : isPm
-                          ? 'bg-violet-50 border-violet-200'
-                          : 'bg-amber-50 border-amber-200'
+                          ? 'bg-brand-soft border-brand-soft'
+                          : 'bg-warn-soft border-[color:var(--st-amber-fg)]/30'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <span
-                        className={`font-mono text-[10.5px] ${isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'}`}
+                        className={`font-mono text-[10.5px] ${isRm ? 'text-brand' : isPm ? 'text-brand' : 'text-warn'}`}
                       >
                         {item.code}
                       </span>
-                      <span className="text-sm font-bold text-gray-900">{item.name}</span>
-                      <span className="font-mono text-[11px] text-gray-400">
+                      <span className="text-sm font-bold text-ink">{item.name}</span>
+                      <span className="font-mono text-[11px] text-ink-4">
                         {isRm
                           ? `${item.uom ?? 'KG'} · GST ${item.gst ?? 0}%`
                           : isPm
@@ -1073,7 +1085,7 @@ const ItemsList: React.FC = () => {
                       {renderApprovalStrip(item)}
                       <button
                         onClick={() => openAddTier(item)}
-                        className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50"
+                        className="px-2.5 py-1 rounded-md border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2"
                       >
                         + Tier
                       </button>
@@ -1082,31 +1094,31 @@ const ItemsList: React.FC = () => {
                   {item.vendorRates?.map((rate) => {
                     const isClientRate = rate.party_type === 'client';
                     return (
-                      <div key={rate.id} className="px-4 py-3 border-b border-gray-50 last:border-b-0">
+                      <div key={rate.id} className="px-4 py-3 border-b border-hairline last:border-b-0">
                         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                           <div>
-                            <span className={`text-[10px] font-bold uppercase text-gray-400 mr-1.5`}>
+                            <span className={`text-[10px] font-bold uppercase text-ink-4 mr-1.5`}>
                               {isClientRate ? 'Client' : 'Vendor'}
                             </span>
-                            <span className={`text-xs font-bold ${isClientRate ? 'text-amber-700' : 'text-blue-600'}`}>
+                            <span className={`text-xs font-bold ${isClientRate ? 'text-warn' : 'text-brand'}`}>
                               {rate.vendor_name ?? (isClientRate ? 'Client' : 'Vendor')}
                             </span>
                             {rate.vendor_code && (
-                              <span className="text-[10.5px] text-gray-400 ml-1.5">({rate.vendor_code})</span>
+                              <span className="text-[10.5px] text-ink-4 ml-1.5">({rate.vendor_code})</span>
                             )}
                             {rate.payment_terms && formatStagedPaymentTermsSummary(rate.payment_terms) ? (
-                              <span className="text-[10.5px] text-gray-500 ml-1.5">
+                              <span className="text-[10.5px] text-ink-3 ml-1.5">
                                 · {formatStagedPaymentTermsSummary(rate.payment_terms)}
                               </span>
                             ) : null}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-400">{rate.currency}</span>
+                            <span className="text-[11px] text-ink-4">{rate.currency}</span>
                             {item.itemsListId != null && (
                               <button
                                 type="button"
                                 onClick={() => openViewRate(item, rate)}
-                                className="px-2 py-1 rounded border border-gray-300 bg-white text-[10.5px] font-semibold text-gray-600 hover:bg-gray-50"
+                                className="px-2 py-1 rounded border border-border bg-surface text-[10.5px] font-semibold text-ink-3 hover:bg-surface-2"
                               >
                                 👁 View / Edit
                               </button>
@@ -1114,18 +1126,18 @@ const ItemsList: React.FC = () => {
                           </div>
                         </div>
                         <table className="w-full text-sm border-collapse mt-2">
-                          <thead>
-                            <tr className="border-b border-gray-100">
-                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                          <thead className="sticky top-0 z-20">
+                            <tr className="[&_th]:bg-surface-2 border-b border-hairline">
+                              <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">
                                 MOQ {isRm ? '(KG)' : isPm ? '(pcs)' : '(units)'}
                               </th>
-                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">
+                              <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">
                                 Price {isRm ? '/ KG' : isPm ? '/ pc' : '/ unit'}
                               </th>
-                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Valid Till</th>
-                              <th className="text-left py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Note</th>
+                              <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Valid Till</th>
+                              <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Note</th>
                               {item.itemsListId != null && (
-                                <th className="text-right py-1.5 px-2 text-[10px] font-bold text-gray-400 uppercase">Actions</th>
+                                <th scope="col" className="text-right py-1.5 px-2 text-[10px] font-bold text-ink-4 uppercase">Actions</th>
                               )}
                             </tr>
                           </thead>
@@ -1133,35 +1145,35 @@ const ItemsList: React.FC = () => {
                             {rate.tiers?.map((t, ti) => (
                               <tr
                                 key={t.id}
-                                className={`border-b border-gray-50 ${ti === 0 ? (isPr ? 'bg-amber-50/50' : 'bg-green-50/50') : ''}`}
+                                className={`border-b border-hairline ${ti === 0 ? (isPr ? 'bg-warn-soft' : 'bg-ok-soft') : ''}`}
                               >
                                 <td className="py-1.5 px-2">
                                   <span
                                     className={`font-mono text-xs font-bold ${
-                                      isRm ? 'text-teal-600' : isPm ? 'text-violet-600' : 'text-amber-600'
+                                      isRm ? 'text-brand' : isPm ? 'text-brand' : 'text-warn'
                                     }`}
                                   >
                                     {t.moq_min === 1 && t.moq_max == null ? 'List price' : `${t.moq_min}+`}
                                   </span>
                                 </td>
-                                <td className="py-1.5 px-2 font-mono text-sm font-bold text-amber-600">
+                                <td className="py-1.5 px-2 font-mono text-sm font-bold text-warn">
                                   {formatPrice(t.price_per_unit)}
                                 </td>
-                                <td className="py-1.5 px-2 text-xs text-gray-700">{t.valid_till ?? '—'}</td>
-                                <td className="py-1.5 px-2 text-[11px] text-gray-400">{t.note ?? ''}</td>
+                                <td className="py-1.5 px-2 text-xs text-ink-2">{t.valid_till ?? '—'}</td>
+                                <td className="py-1.5 px-2 text-[11px] text-ink-4">{t.note ?? ''}</td>
                                 {item.itemsListId != null && (
                                   <td className="py-1.5 px-2 text-right">
                                     <button
                                       type="button"
                                       onClick={() => openEditTier(item, rate.id, t)}
-                                      className="text-[10.5px] text-teal-600 hover:underline mr-2"
+                                      className="text-[10.5px] text-brand hover:underline mr-2"
                                     >
                                       Edit
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => deleteTierFromRow(item, rate.id, t)}
-                                      className="text-[10.5px] text-red-600 hover:underline"
+                                      className="text-[10.5px] text-err hover:underline"
                                     >
                                       Delete
                                     </button>
@@ -1178,17 +1190,19 @@ const ItemsList: React.FC = () => {
               );
             })}
             {filteredPageItems.length === 0 && (
-              <p className="text-gray-500 py-8 text-center">
-                {listSearchDebounced.trim()
-                  ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
-                  : activeTab === 'pr'
-                    ? clientFilterId
-                      ? 'No products with client pricing for the selected client.'
-                      : 'No products in catalogue.'
-                    : vendorFilterId
-                      ? 'No items with rates for the selected vendor.'
-                      : 'No items in this tab.'}
-              </p>
+              <EmptyState
+                title={
+                  listSearchDebounced.trim()
+                    ? `No ${activeTab === 'pr' ? 'products' : 'items'} match "${listSearchDebounced.trim()}".`
+                    : activeTab === 'pr'
+                      ? clientFilterId
+                        ? 'No products with client pricing for the selected client.'
+                        : 'No products in catalogue.'
+                      : vendorFilterId
+                        ? 'No items with rates for the selected vendor.'
+                        : 'No items in this tab.'
+                }
+              />
             )}
           </div>
         )}
@@ -1206,13 +1220,13 @@ const ItemsList: React.FC = () => {
       </div>
 
       {showAddTierModal && (tierTarget || addPriceListMode) && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4">
-            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-900">
+        <ModalOverlay onClose={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-2xl my-4" role="dialog" aria-modal="true" aria-labelledby="add-tier-modal-title" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
+              <span id="add-tier-modal-title" className="text-sm font-bold text-ink">
                 {addPriceListMode && !tierTarget ? 'Add Price List — Select Item' : `Add Price Tier — ${tierTarget?.name ?? ''}`}
               </span>
-              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">
+              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">
                 X
               </button>
             </div>
@@ -1221,41 +1235,42 @@ const ItemsList: React.FC = () => {
               {/* Item selector — shown when Add Price List mode and no item selected yet */}
               {addPriceListMode && !tierTarget && (
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">
                     Select RM, PM, or Product *
                   </label>
                   <input
                     type="text"
                     placeholder="Search by name or code…"
+                    aria-label="Search by name or code"
                     value={itemSearchQuery}
                     onChange={(e) => setItemSearchQuery(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm mb-2"
+                    className="w-full px-2.5 py-2 border border-border rounded-lg text-sm mb-2"
                     autoFocus
                   />
-                  <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  <div className="max-h-56 overflow-y-auto border border-border rounded-lg divide-y divide-hairline">
                     {loadingCombined ? (
-                      <div className="px-3 py-4 text-xs text-gray-400 text-center">Loading RM, PM &amp; products…</div>
+                      <div className="px-3 py-4 text-xs text-ink-4 text-center">Loading RM, PM &amp; products…</div>
                     ) : filteredItemsForSelection.length === 0 ? (
-                      <div className="px-3 py-4 text-xs text-gray-400 text-center">No items found</div>
+                      <div className="px-3 py-4 text-xs text-ink-4 text-center">No items found</div>
                     ) : (
                       filteredItemsForSelection.slice(0, 80).map((item) => (
                         <button
                           key={item.type === 'PR' ? `PR-${item.product_id}` : item.code}
                           type="button"
                           onClick={() => selectItemForPriceList(item)}
-                          className="w-full text-left px-3 py-2.5 hover:bg-teal-50 transition-colors flex items-center justify-between gap-2"
+                          className="w-full text-left px-3 py-2.5 hover:bg-brand-soft transition-colors flex items-center justify-between gap-2"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`font-mono text-[10.5px] shrink-0 ${item.type === 'RM' ? 'text-teal-600' : item.type === 'PM' ? 'text-violet-600' : 'text-amber-600'}`}>{item.code}</span>
-                            <span className="text-sm font-medium text-gray-900 truncate">{item.name}</span>
-                            <span className="text-[10px] text-gray-400 shrink-0">({item.type})</span>
+                            <span className={`font-mono text-[10.5px] shrink-0 ${item.type === 'RM' ? 'text-brand' : item.type === 'PM' ? 'text-brand' : 'text-warn'}`}>{item.code}</span>
+                            <span className="text-sm font-medium text-ink truncate">{item.name}</span>
+                            <span className="text-[10px] text-ink-4 shrink-0">({item.type})</span>
                           </div>
                           {item.vendorRates && item.vendorRates.length > 0 ? (
-                            <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">
+                            <span className="text-[10px] font-semibold text-warn bg-warn-soft px-1.5 py-0.5 rounded shrink-0">
                               {item.vendorRates.length} vendor{item.vendorRates.length > 1 ? 's' : ''}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-gray-400 shrink-0">No pricing</span>
+                            <span className="text-[10px] text-ink-4 shrink-0">No pricing</span>
                           )}
                         </button>
                       ))
@@ -1266,14 +1281,14 @@ const ItemsList: React.FC = () => {
 
               {/* Selected item chip in Add Price List mode */}
               {addPriceListMode && tierTarget && (
-                <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
-                  <span className={`font-mono text-[10.5px] ${tierTarget.type === 'RM' ? 'text-teal-600' : tierTarget.type === 'PM' ? 'text-violet-600' : 'text-amber-600'}`}>{tierTarget.code}</span>
-                  <span className="text-sm font-bold text-gray-900">{tierTarget.name}</span>
-                  <span className="text-[10px] text-gray-500">({tierTarget.type})</span>
+                <div className="flex items-center gap-2 bg-brand-soft border border-brand-soft rounded-lg px-3 py-2">
+                  <span className={`font-mono text-[10.5px] ${tierTarget.type === 'RM' ? 'text-brand' : tierTarget.type === 'PM' ? 'text-brand' : 'text-warn'}`}>{tierTarget.code}</span>
+                  <span className="text-sm font-bold text-ink">{tierTarget.name}</span>
+                  <span className="text-[10px] text-ink-3">({tierTarget.type})</span>
                   <button
                     type="button"
                     onClick={() => { setTierTarget(null); setResolvedItemsListId(null); }}
-                    className="ml-auto text-xs text-gray-500 hover:text-gray-700 underline"
+                    className="ml-auto text-xs text-ink-3 hover:text-ink-2 underline"
                   >
                     Change
                   </button>
@@ -1284,7 +1299,7 @@ const ItemsList: React.FC = () => {
               {tierTarget && (<>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">
                     {tierTarget.type === 'PR' ? 'Client *' : 'Vendor *'}
                   </label>
                   {tierTarget.type === 'PR' ? (
@@ -1309,7 +1324,7 @@ const ItemsList: React.FC = () => {
                     />
                   )}
                   {availableParties.length === 0 && tierTarget.vendorRates?.length ? (
-                    <p className="text-xs text-amber-600 mt-1">
+                    <p className="text-xs text-warn mt-1">
                       {tierTarget.type === 'PR'
                         ? 'All clients already have pricing for this product'
                         : 'All vendors have rates for this item'}
@@ -1317,72 +1332,73 @@ const ItemsList: React.FC = () => {
                   ) : null}
                 </div>
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Currency</label>
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Currency</label>
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm">
                     <option value="INR">INR</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                   </select>
                 </div>
                 <div className="col-span-2 space-y-2">
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">
                     Payment terms (% of order value)
                   </label>
-                  <p className="text-[11px] text-gray-500 mb-2">
+                  <p className="text-[11px] text-ink-3 mb-2">
                     Advance (on order), pre-shipment, and post-shipment must total at most 100%. These apply to website checkout and My Orders.
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <div>
-                      <span className="text-[10px] font-semibold text-gray-500">Advance %</span>
-                      <input type="number" min={0} max={100} value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                      <span className="text-[10px] font-semibold text-ink-3">Advance %</span>
+                      <input type="number" min={0} max={100} value={advancePctStr} onChange={(e) => setAdvancePctStr(e.target.value)} aria-label="Advance %" className="w-full px-2 py-1.5 border border-border rounded-lg text-sm font-mono" placeholder="0" />
                     </div>
                     <div>
-                      <span className="text-[10px] font-semibold text-gray-500">Pre-shipment %</span>
-                      <input type="number" min={0} max={100} value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                      <span className="text-[10px] font-semibold text-ink-3">Pre-shipment %</span>
+                      <input type="number" min={0} max={100} value={preShipmentPctStr} onChange={(e) => setPreShipmentPctStr(e.target.value)} aria-label="Pre-shipment %" className="w-full px-2 py-1.5 border border-border rounded-lg text-sm font-mono" placeholder="0" />
                     </div>
                     <div>
-                      <span className="text-[10px] font-semibold text-gray-500">Post-shipment %</span>
-                      <input type="number" min={0} max={100} value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                      <span className="text-[10px] font-semibold text-ink-3">Post-shipment %</span>
+                      <input type="number" min={0} max={100} value={postShipmentPctStr} onChange={(e) => setPostShipmentPctStr(e.target.value)} aria-label="Post-shipment %" className="w-full px-2 py-1.5 border border-border rounded-lg text-sm font-mono" placeholder="0" />
                     </div>
                     <div>
-                      <span className="text-[10px] font-semibold text-gray-500">Credit days</span>
-                      <input type="number" min={0} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" placeholder="0" />
+                      <span className="text-[10px] font-semibold text-ink-3">Credit days</span>
+                      <input type="number" min={0} value={creditDaysStr} onChange={(e) => setCreditDaysStr(e.target.value)} aria-label="Credit days" className="w-full px-2 py-1.5 border border-border rounded-lg text-sm font-mono" placeholder="0" />
                     </div>
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Lead time (days)</label>
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Lead time (days)</label>
                   <input
                     type="number"
                     min={0}
                     value={leadTimeDays}
                     onChange={(e) => setLeadTimeDays(e.target.value)}
-                    className="w-full max-w-xs px-2.5 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full max-w-xs px-2.5 py-2 border border-border rounded-lg text-sm"
                     placeholder="0"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">
+                  <p className="text-[10px] text-ink-3 mt-1">
                     Applies to this {tierTarget.type === 'PR' ? 'client' : 'vendor'} rate (all tiers added below).
                   </p>
                 </div>
               </div>
               <div>
-                <div className="text-[11px] font-bold text-gray-500 uppercase mb-2">Price Tiers</div>
+                <div className="text-[11px] font-bold text-ink-3 uppercase mb-2">Price Tiers</div>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left py-1.5 px-2 text-[10.5px] font-bold text-gray-500">MOQ</th>
-                      <th className="text-left py-1.5 px-2 text-[10.5px] font-bold text-gray-500">Price</th>
-                      <th className="text-left py-1.5 px-2 text-[10.5px] font-bold text-gray-500">Valid Till</th>
-                      <th className="text-left py-1.5 px-2 text-[10.5px] font-bold text-gray-500">Note</th>
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&_th]:bg-surface-3 bg-surface-3 border-b border-border">
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">MOQ</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">Price</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">Valid Till</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10.5px] font-bold text-ink-3">Note</th>
                     </tr>
                   </thead>
                   <tbody>
                     {priceTiers.map((t, idx) => (
-                      <tr key={t.id} className="border-b border-gray-100">
+                      <tr key={t.id} className="border-b border-hairline">
                         <td className="p-1">
                           <input
                             type="number"
                             placeholder={idx === 0 ? '1' : 'MOQ'}
+                            aria-label={`Tier ${idx + 1} MOQ`}
                             value={t.moq}
                             onChange={(e) => setPriceTiers((prev) => prev.map((r, i) => (i === idx ? { ...r, moq: e.target.value } : r)))}
                             className="w-full px-2 py-1 border rounded text-xs font-mono"
@@ -1392,6 +1408,7 @@ const ItemsList: React.FC = () => {
                           <input
                             type="number"
                             step="0.01"
+                            aria-label={`Tier ${idx + 1} price`}
                             value={t.price}
                             onChange={(e) => setPriceTiers((prev) => prev.map((r, i) => (i === idx ? { ...r, price: e.target.value } : r)))}
                             className="w-full px-2 py-1 border rounded text-xs font-mono"
@@ -1400,6 +1417,7 @@ const ItemsList: React.FC = () => {
                         <td className="p-1">
                           <input
                             type="date"
+                            aria-label={`Tier ${idx + 1} valid till`}
                             value={t.validTill}
                             onChange={(e) => setPriceTiers((prev) => prev.map((r, i) => (i === idx ? { ...r, validTill: e.target.value } : r)))}
                             className="w-full px-2 py-1 border rounded text-xs"
@@ -1409,6 +1427,7 @@ const ItemsList: React.FC = () => {
                           <input
                             type="text"
                             placeholder="Note"
+                            aria-label={`Tier ${idx + 1} note`}
                             value={t.note}
                             onChange={(e) => setPriceTiers((prev) => prev.map((r, i) => (i === idx ? { ...r, note: e.target.value } : r)))}
                             className="w-full px-2 py-1 border rounded text-xs"
@@ -1421,73 +1440,73 @@ const ItemsList: React.FC = () => {
               </div>
               </>)}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-end">
-              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">
+            <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-end">
+              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">
                 Cancel
               </button>
               {tierTarget && (
                 <button
                   onClick={handleSaveTiers}
                   disabled={submittingTiers || !selectedParty}
-                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50"
                 >
                   {submittingTiers ? 'Saving…' : 'Save Tiers'}
                 </button>
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit vendor rate modal */}
       {editingRate && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
-            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-900">
+        <ModalOverlay onClose={() => setEditingRate(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-rate-modal-title" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
+              <span id="edit-rate-modal-title" className="text-sm font-bold text-ink">
                 Edit rate —{' '}
                 {editingRate.rate.party_type === 'client' ? 'Client' : 'Vendor'}:{' '}
                 {editingRate.rate.vendor_name ?? '—'} · {editingRate.item.name}
               </span>
-              <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
+              <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">×</button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Currency</label>
-                <select value={editRateCurrency} onChange={(e) => setEditRateCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm">
+                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Currency</label>
+                <select value={editRateCurrency} onChange={(e) => setEditRateCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm">
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Payment terms (%)</label>
+                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Payment terms (%)</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <input type="number" min={0} max={100} value={editAdvancePct} onChange={(e) => setEditAdvancePct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Advance" />
-                  <input type="number" min={0} max={100} value={editPreShipmentPct} onChange={(e) => setEditPreShipmentPct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Pre-shipment" />
-                  <input type="number" min={0} max={100} value={editPostShipmentPct} onChange={(e) => setEditPostShipmentPct(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Post-shipment" />
-                  <input type="number" min={0} value={editCreditDays} onChange={(e) => setEditCreditDays(e.target.value)} className="px-2 py-1.5 border rounded text-sm" placeholder="Credit days" />
+                  <input type="number" min={0} max={100} value={editAdvancePct} onChange={(e) => setEditAdvancePct(e.target.value)} aria-label="Advance" className="px-2 py-1.5 border rounded text-sm" placeholder="Advance" />
+                  <input type="number" min={0} max={100} value={editPreShipmentPct} onChange={(e) => setEditPreShipmentPct(e.target.value)} aria-label="Pre-shipment" className="px-2 py-1.5 border rounded text-sm" placeholder="Pre-shipment" />
+                  <input type="number" min={0} max={100} value={editPostShipmentPct} onChange={(e) => setEditPostShipmentPct(e.target.value)} aria-label="Post-shipment" className="px-2 py-1.5 border rounded text-sm" placeholder="Post-shipment" />
+                  <input type="number" min={0} value={editCreditDays} onChange={(e) => setEditCreditDays(e.target.value)} aria-label="Credit days" className="px-2 py-1.5 border rounded text-sm" placeholder="Credit days" />
                 </div>
               </div>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-between">
+            <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-between">
               <button
                 type="button"
                 onClick={handleDeleteRate}
                 disabled={submittingEditRate}
-                className="px-3 py-2 rounded-lg border border-red-300 bg-white text-red-600 text-xs font-bold hover:bg-red-50 disabled:opacity-50"
+                className="px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-bold hover:bg-err-soft disabled:opacity-50"
               >
                 Delete rate & tiers
               </button>
               <div className="flex gap-2">
-                <button onClick={() => setEditingRate(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleUpdateRate} disabled={submittingEditRate} className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50">
+                <button onClick={() => setEditingRate(null)} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">Cancel</button>
+                <button onClick={handleUpdateRate} disabled={submittingEditRate} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50">
                   {submittingEditRate ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* View price list modal (read-only card → Edit) */}
@@ -1497,132 +1516,132 @@ const ItemsList: React.FC = () => {
         const paymentLabel = formatStagedPaymentTermsSummary(rate.payment_terms) || '—';
         const tiers = rate.tiers ?? [];
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+          <ModalOverlay onClose={() => setViewingRate(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+            <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="view-rate-modal-title" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-hairline flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-gray-900">
-                    {item.name} <span className="font-mono text-[11px] text-gray-400">· {item.code}</span>
+                  <div id="view-rate-modal-title" className="text-sm font-bold text-ink">
+                    {item.name} <span className="font-mono text-[11px] text-ink-4">· {item.code}</span>
                   </div>
-                  <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
-                    <span className="font-semibold text-blue-600">{rate.vendor_name ?? '—'}</span>
+                  <div className="text-[11px] text-ink-3 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-brand">{rate.vendor_name ?? '—'}</span>
                     <span className={`px-1.5 py-0.5 rounded-full border text-[9px] font-bold ${masterApprovalStatusBadgeClass(item.status)}`}>
                       {normalizeMasterApprovalStatus(item.status).toUpperCase()}
                     </span>
                   </div>
                 </div>
-                <button onClick={() => setViewingRate(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 shrink-0">×</button>
+                <button onClick={() => setViewingRate(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3 shrink-0">×</button>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <h4 className="text-[10.5px] font-bold text-gray-500 uppercase mb-2">Terms</h4>
+                  <h4 className="text-[10.5px] font-bold text-ink-3 uppercase mb-2">Terms</h4>
                   <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-                    <div className="flex justify-between gap-2"><dt className="text-gray-500">payment</dt><dd className="font-semibold text-gray-900 text-right">{paymentLabel}</dd></div>
-                    <div className="flex justify-between gap-2"><dt className="text-gray-500">credit</dt><dd className="font-semibold text-gray-900 text-right">{parsed?.credit_days ?? 0} days</dd></div>
-                    <div className="flex justify-between gap-2"><dt className="text-gray-500">currency</dt><dd className="font-semibold text-gray-900 text-right">{rate.currency || 'INR'}</dd></div>
-                    <div className="flex justify-between gap-2"><dt className="text-gray-500">gst</dt><dd className="font-semibold text-gray-900 text-right">{item.gst ?? 0}%</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-ink-3">payment</dt><dd className="font-semibold text-ink text-right">{paymentLabel}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-ink-3">credit</dt><dd className="font-semibold text-ink text-right">{parsed?.credit_days ?? 0} days</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-ink-3">currency</dt><dd className="font-semibold text-ink text-right">{rate.currency || 'INR'}</dd></div>
+                    <div className="flex justify-between gap-2"><dt className="text-ink-3">gst</dt><dd className="font-semibold text-ink text-right">{item.gst ?? 0}%</dd></div>
                   </dl>
                 </div>
                 <div>
-                  <h4 className="text-[10.5px] font-bold text-gray-500 uppercase mb-2">
+                  <h4 className="text-[10.5px] font-bold text-ink-3 uppercase mb-2">
                     Tier pricing ({tiers.length} tier{tiers.length !== 1 ? 's' : ''})
                   </h4>
                   {tiers.length === 0 ? (
-                    <p className="text-[11px] text-gray-400">No tiers yet.</p>
+                    <p className="text-[11px] text-ink-4">No tiers yet.</p>
                   ) : (
                     <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-[10px] text-gray-400 text-left">
-                          <th className="py-1 font-semibold">Tier</th>
-                          <th className="py-1 font-semibold">MOQ</th>
-                          <th className="py-1 font-semibold">Price</th>
-                          <th className="py-1 font-semibold">Lead</th>
-                          <th className="py-1 font-semibold">Valid till</th>
+                      <thead className="sticky top-0 z-20">
+                        <tr className="[&_th]:bg-surface-2 text-[10px] text-ink-4 text-left">
+                          <th scope="col" className="py-1 font-semibold">Tier</th>
+                          <th scope="col" className="py-1 font-semibold">MOQ</th>
+                          <th scope="col" className="py-1 font-semibold">Price</th>
+                          <th scope="col" className="py-1 font-semibold">Lead</th>
+                          <th scope="col" className="py-1 font-semibold">Valid till</th>
                         </tr>
                       </thead>
                       <tbody>
                         {tiers.map((t, i) => (
-                          <tr key={t.id} className="border-t border-gray-50">
-                            <td className="py-1.5 font-semibold text-gray-800">Tier {i + 1}</td>
-                            <td className="py-1.5 text-gray-700 tabular-nums">{t.moq_min}</td>
-                            <td className="py-1.5 font-mono text-gray-900">{formatPrice(t.price_per_unit)}</td>
-                            <td className="py-1.5 text-gray-600">{rate.lead_time_days != null ? `${rate.lead_time_days}d` : '—'}</td>
-                            <td className="py-1.5 text-gray-600">{t.valid_till ? formatDate(t.valid_till) : '—'}</td>
+                          <tr key={t.id} className="border-t border-hairline">
+                            <td className="py-1.5 font-semibold text-ink">Tier {i + 1}</td>
+                            <td className="py-1.5 text-ink-2 tabular-nums">{t.moq_min}</td>
+                            <td className="py-1.5 font-mono text-ink">{formatPrice(t.price_per_unit)}</td>
+                            <td className="py-1.5 text-ink-3">{rate.lead_time_days != null ? `${rate.lead_time_days}d` : '—'}</td>
+                            <td className="py-1.5 text-ink-3">{t.valid_till ? formatDate(t.valid_till) : '—'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-400">Updated {updatedAgoLabel(item.updatedAt)}</p>
+                <p className="text-[11px] text-ink-4">Updated {updatedAgoLabel(item.updatedAt)}</p>
               </div>
-              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-end">
-                <button onClick={() => setViewingRate(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Close</button>
+              <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-end">
+                <button onClick={() => setViewingRate(null)} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">Close</button>
                 <button
                   onClick={() => {
                     setViewingRate(null);
                     openEditRate(item, rate);
                   }}
-                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                  className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold"
                 >
                   ✏ Edit
                 </button>
               </div>
             </div>
-          </div>
+          </ModalOverlay>
         );
       })()}
 
       {/* Edit tier modal */}
       {editingTier && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md my-4">
-            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-900">Edit tier — {editingTier.item.name}</span>
-              <button onClick={() => setEditingTier(null)} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">×</button>
+        <ModalOverlay onClose={() => setEditingTier(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
+          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-tier-modal-title" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
+              <span id="edit-tier-modal-title" className="text-sm font-bold text-ink">Edit tier — {editingTier.item.name}</span>
+              <button onClick={() => setEditingTier(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">×</button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">MOQ min</label>
-                  <input type="number" min={1} value={editTierMoqMin} onChange={(e) => setEditTierMoqMin(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">MOQ min</label>
+                  <input type="number" min={1} value={editTierMoqMin} onChange={(e) => setEditTierMoqMin(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
                 </div>
                 <div>
-                  <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">MOQ max (optional)</label>
-                  <input type="number" min={1} value={editTierMoqMax} onChange={(e) => setEditTierMoqMax(e.target.value)} placeholder="—" className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">MOQ max (optional)</label>
+                  <input type="number" min={1} value={editTierMoqMax} onChange={(e) => setEditTierMoqMax(e.target.value)} placeholder="—" className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
                 </div>
               </div>
               <div>
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Price per unit</label>
-                <input type="number" step="0.01" value={editTierPrice} onChange={(e) => setEditTierPrice(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Price per unit</label>
+                <input type="number" step="0.01" value={editTierPrice} onChange={(e) => setEditTierPrice(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
               </div>
               <div>
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Valid till</label>
-                <input type="date" value={editTierValidTill} onChange={(e) => setEditTierValidTill(e.target.value)} className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Valid till</label>
+                <input type="date" value={editTierValidTill} onChange={(e) => setEditTierValidTill(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm" />
               </div>
               <div>
-                <label className="block text-[10.5px] font-bold text-gray-500 uppercase mb-1">Note</label>
-                <input type="text" value={editTierNote} onChange={(e) => setEditTierNote(e.target.value)} placeholder="Optional" className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" />
+                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Note</label>
+                <input type="text" value={editTierNote} onChange={(e) => setEditTierNote(e.target.value)} placeholder="Optional" className="w-full px-2.5 py-2 border border-border rounded-lg text-sm" />
               </div>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex gap-2 justify-between">
+            <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-between">
               <button
                 type="button"
                 onClick={handleDeleteTier}
                 disabled={submittingEditTier}
-                className="px-3 py-2 rounded-lg border border-red-300 bg-white text-red-600 text-xs font-bold hover:bg-red-50 disabled:opacity-50"
+                className="px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-bold hover:bg-err-soft disabled:opacity-50"
               >
                 Delete tier
               </button>
               <div className="flex gap-2">
-                <button onClick={() => setEditingTier(null)} className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleUpdateTier} disabled={submittingEditTier} className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50">
+                <button onClick={() => setEditingTier(null)} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">Cancel</button>
+                <button onClick={handleUpdateTier} disabled={submittingEditTier} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50">
                   {submittingEditTier ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

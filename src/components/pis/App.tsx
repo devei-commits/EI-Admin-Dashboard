@@ -250,7 +250,7 @@ function AppContent() {
  };
 
  return (
-  <div className="flex min-h-screen bg-gray-50">
+  <div className="flex min-h-screen bg-surface-2">
    <Sidebar
     currentRole={currentRole}
     activeView={activeView}
@@ -272,9 +272,9 @@ function AppContent() {
      </div>
     </main>
 
-    <footer className="bg-white/80 backdrop-blur-sm border-t border-gray-100 py-5 px-4 sm:px-6 md:px-8 text-center shadow-sm">
-     <p className="text-xs sm:text-sm text-gray-500">
-      Copyright © <span className="font-semibold text-gray-700">ESTHETIC INSIGHTS</span> 2024 | PIS Workflow Management System v1.0
+    <footer className="bg-surface/80 backdrop-blur-sm border-t border-hairline py-5 px-4 sm:px-6 md:px-8 text-center shadow-sm">
+     <p className="text-xs sm:text-sm text-ink-3">
+      Copyright © <span className="font-semibold text-ink-2">ESTHETIC INSIGHTS</span> 2024 | PIS Workflow Management System v1.0
      </p>
     </footer>
    </div>

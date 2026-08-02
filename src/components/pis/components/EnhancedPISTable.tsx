@@ -20,6 +20,7 @@ import {
 import { cn } from './ui/utils';
 import { toast } from 'sonner';
 import { usePIS } from '../context/PISContext';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface EnhancedPISTableProps {
  data: PISRecord[];
@@ -163,19 +164,19 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
  const getStatusBadge = (status: string) => {
   const variants: Record<string, string> = {
    // Yellow - In Progress / Undergoing
-   IN_PROGRESS: 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500 border border-yellow-500',
-   PENDING: 'bg-yellow-400 text-yellow-900 hover:bg-yellow-500 border border-yellow-500',
-   ON_HOLD: 'bg-amber-400 text-amber-900 hover:bg-slate-800 border border-slate-800',
+   IN_PROGRESS: 'bg-yellow-400 text-warn hover:bg-warn border border-warn',
+   PENDING: 'bg-yellow-400 text-warn hover:bg-warn border border-warn',
+   ON_HOLD: 'bg-amber-400 text-warn hover:bg-ink border border-slate-800',
    // Green - Done / Approved
-   APPROVED: 'bg-green-500 text-white hover:bg-green-600 border border-green-600',
-   COMPLETED: 'bg-green-500 text-white hover:bg-green-600 border border-green-600',
+   APPROVED: 'bg-ok text-white hover:bg-ok border border-ok',
+   COMPLETED: 'bg-ok text-white hover:bg-ok border border-ok',
    // Red - Rejected / Not Approved
-   REJECTED: 'bg-red-500 text-white hover:bg-red-600 border border-red-600',
-   TERMINATED: 'bg-red-500 text-white hover:bg-red-600 border border-red-600',
+   REJECTED: 'bg-err text-white hover:bg-err border border-err',
+   TERMINATED: 'bg-err text-white hover:bg-err border border-err',
   };
   
   return (
-   <Badge className={cn('font-medium shadow-sm', variants[status] || 'bg-gray-100 text-gray-800')}>
+   <Badge className={cn('font-medium shadow-sm', variants[status] || 'bg-surface-3 text-ink')}>
     {status.replace('_', ' ')}
    </Badge>
   );
@@ -197,7 +198,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
 
   if (daysToDue < 0) {
    return (
-    <Badge className="bg-red-100 text-red-700 border-0">
+    <Badge className="bg-err-soft text-err border-0">
      Overdue {Math.abs(daysToDue)}d
     </Badge>
    );
@@ -205,7 +206,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
 
   if (daysToDue === 0) {
    return (
-    <Badge className="bg-gray-100 text-slate-900 border-0">
+    <Badge className="bg-surface-3 text-ink border-0">
      Due today
     </Badge>
    );
@@ -213,14 +214,14 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
 
   if (daysToDue <= 2) {
    return (
-    <Badge className="bg-gray-100 text-slate-900 border-0">
+    <Badge className="bg-surface-3 text-ink border-0">
      Due {daysToDue}d
     </Badge>
    );
   }
 
   return (
-   <Badge className="bg-gray-100 text-gray-700 border-0">
+   <Badge className="bg-surface-3 text-ink-2 border-0">
     Due {daysToDue}d
    </Badge>
   );
@@ -231,7 +232,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
    {/* Search and Export */}
    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center sm:justify-between">
     <div className="relative flex-1 w-full sm:max-w-md">
-     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-4" />
      <Input
       placeholder={currentRole === 'CLIENT' 
        ? "Quick search PIS Code, Formulation..." 
@@ -261,7 +262,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
       variant="outline" 
       size="icon"
       onClick={() => setAutoRefreshEnabled(!isAutoRefreshEnabled)}
-      className={cn(!isAutoRefreshEnabled && "bg-yellow-50 border-yellow-300")}
+      className={cn(!isAutoRefreshEnabled && "bg-warn-soft border-warn")}
       title={isAutoRefreshEnabled ? "Pause auto-refresh" : "Resume auto-refresh"}
      >
       {isAutoRefreshEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -275,7 +276,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
    </div>
 
    {/* Table */}
-   <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+   <div className="border rounded-lg overflow-hidden bg-surface shadow-sm">
     <div className="overflow-x-auto">
      <Table>
       <TableHeader>
@@ -342,12 +343,12 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
       <TableBody>
        {paginatedData.length === 0 ? (
         <TableRow>
-         <TableCell colSpan={23} className="text-center py-12 text-gray-500">
-          <div className="flex flex-col items-center gap-2">
-           <Search className="h-12 w-12 text-gray-300" />
-           <p>No PIS records found</p>
-           <p className="text-sm">Try adjusting your search or filters</p>
-          </div>
+         <TableCell colSpan={23} className="text-center">
+          <EmptyState
+           icon={<Search />}
+           title="No PIS records found"
+           description="Try adjusting your search or filters"
+          />
          </TableCell>
         </TableRow>
        ) : (
@@ -355,14 +356,14 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
          // Row background colors based on status
          const rowBgColor = 
           pis.status === 'COMPLETED' || pis.status === 'APPROVED'
-           ? 'bg-green-50 hover:bg-green-100 border-l-4 border-l-green-500'
+           ? 'bg-ok-soft hover:bg-ok-soft border-l-4 border-l-green-500'
            : pis.status === 'REJECTED' || pis.status === 'TERMINATED'
-            ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500'
+            ? 'bg-err-soft hover:bg-err-soft border-l-4 border-l-red-500'
             : pis.status === 'IN_PROGRESS' || pis.status === 'PENDING'
-             ? 'bg-yellow-50 hover:bg-yellow-100 border-l-4 border-l-yellow-500'
+             ? 'bg-warn-soft hover:bg-warn-soft border-l-4 border-l-yellow-500'
              : pis.status === 'ON_HOLD'
-              ? 'bg-gray-50 hover:bg-gray-100 border-l-4 border-l-amber-500'
-              : 'hover:bg-gray-50';
+              ? 'bg-surface-2 hover:bg-surface-3 border-l-4 border-l-amber-500'
+              : 'hover:bg-surface-2';
          
          return (
           <TableRow key={pis.id} className={cn(rowBgColor, 'transition-colors')}>
@@ -370,7 +371,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="font-medium">
             <button
              onClick={() => onViewDetails(pis)}
-             className="text-blue-600 hover:text-blue-800 hover:underline text-left transition-colors"
+             className="text-brand hover:text-brand hover:underline text-left transition-colors"
             >
              {pis.pisCode}
             </button>
@@ -381,7 +382,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.m1 ? "bg-green-500" : "bg-gray-100"
+             pis.m1 ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.m1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -389,7 +390,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.v1 ? "bg-green-500" : "bg-gray-100"
+             pis.v1 ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.v1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -397,7 +398,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.rdO1 ? "bg-green-500" : "bg-gray-100"
+             pis.rdO1 ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.rdO1 && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -405,7 +406,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.regulatory ? "bg-green-500" : "bg-gray-100"
+             pis.regulatory ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.regulatory && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -413,7 +414,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.inventory ? "bg-green-500" : "bg-gray-100"
+             pis.inventory ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.inventory && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -422,7 +423,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
              "inline-flex items-center justify-center w-10 h-8 rounded",
-             pis.sop ? "bg-green-500" : "bg-gray-100"
+             pis.sop ? "bg-ok" : "bg-surface-3"
             )}>
              {pis.sop && <span className="text-white text-sm font-bold">Yes</span>}
             </div>
@@ -430,7 +431,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
            <TableCell className="text-center">
             <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.ac ? "bg-green-500" : "bg-gray-100"
+            pis.ac ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.ac && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -438,7 +439,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.oc ? "bg-green-500" : "bg-gray-100"
+            pis.oc ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.oc && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -446,7 +447,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.mop ? "bg-green-500" : "bg-gray-100"
+            pis.mop ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.mop && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -454,7 +455,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.coa ? "bg-green-500" : "bg-gray-100"
+            pis.coa ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.coa && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -462,7 +463,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.pre ? "bg-green-500" : "bg-gray-100"
+            pis.pre ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.pre && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -470,7 +471,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.stabilityMatch ? "bg-green-500" : "bg-gray-100"
+            pis.stabilityMatch ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.stabilityMatch && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -478,7 +479,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.prs ? "bg-green-500" : "bg-gray-100"
+            pis.prs ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.prs && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -486,7 +487,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
           <TableCell className="text-center">
            <div className={cn(
             "inline-flex items-center justify-center w-10 h-8 rounded",
-            pis.sensory ? "bg-green-500" : "bg-gray-100"
+            pis.sensory ? "bg-ok" : "bg-surface-3"
            )}>
             {pis.sensory && <span className="text-white text-sm font-bold">Yes</span>}
            </div>
@@ -538,7 +539,7 @@ export function EnhancedPISTable({ data, currentRole, onViewDetails, onEditPIS }
 
    {/* Pagination */}
    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-2">
-    <div className="text-sm text-gray-600 sm:whitespace-nowrap">
+    <div className="text-sm text-ink-2 sm:whitespace-nowrap">
      Showing {paginatedData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
      {Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} entries
      {searchTerm && ` (filtered from ${data.length} total)`}

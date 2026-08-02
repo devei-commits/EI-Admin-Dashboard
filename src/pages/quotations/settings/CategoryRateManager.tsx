@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Plus, Trash2, Save } from 'lucide-react';
 import { fetchCategoryRates, upsertCategoryRate, deleteCategoryRate } from '../../../services/quotations.service';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
 import type { CategoryRate } from '../../../services/quotations.service';
 
 interface DraftRow {
@@ -75,43 +76,44 @@ export default function CategoryRateManager() {
     setRows(prev => [...prev, { category: '', wastage_pct: '3.0', notes: '', isNew: true }]);
   };
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading category rates…</div>;
+  if (loading) return <div className="p-6"><TableSkeleton rows={5} cols={3} /></div>;
 
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-gray-900 mb-1">Per-Category RM Wastage Rates</h3>
-        <p className="text-sm text-gray-500 mb-4">
+        <h3 className="text-base font-semibold text-ink mb-1">Per-Category RM Wastage Rates</h3>
+        <p className="text-sm text-ink-3 mb-4">
           Wastage % applied per raw material category, blended by pct w/w.
           Falls back to the global RM wastage setting when a category has no entry.
         </p>
       </div>
 
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
+      <div className="rounded-lg border border-border overflow-hidden">
         <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Category</th>
-              <th className="px-4 py-2 text-center font-medium text-gray-600">Wastage %</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">Notes</th>
-              <th className="px-4 py-2"></th>
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-ink-2">Category</th>
+              <th scope="col" className="px-4 py-2 text-center font-medium text-ink-2">Wastage %</th>
+              <th scope="col" className="px-4 py-2 text-left font-medium text-ink-2">Notes</th>
+              <th scope="col" className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={row.id ?? `new-${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <tr key={row.id ?? `new-${i}`} className={i % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
                 <td className="px-4 py-2">
                   {row.isNew ? (
                     <input
                       type="text"
-                      className="border border-gray-300 rounded px-2 py-1 text-sm w-40 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      aria-label="Category"
+                      className="border border-border rounded px-2 py-1 text-sm w-40 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       value={row.category}
                       onChange={e => update(i, 'category', e.target.value)}
                       placeholder="e.g. Emollient"
                       autoFocus
                     />
                   ) : (
-                    <span className="font-medium text-gray-800">{row.category}</span>
+                    <span className="font-medium text-ink">{row.category}</span>
                   )}
                 </td>
                 <td className="px-4 py-2 text-center">
@@ -121,18 +123,20 @@ export default function CategoryRateManager() {
                       step="0.1"
                       min="0"
                       max="100"
-                      className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      aria-label="Wastage %"
+                      className="w-20 border border-border rounded px-2 py-1 text-sm text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       value={row.wastage_pct}
                       onChange={e => update(i, 'wastage_pct', e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') save(i); }}
                     />
-                    <span className="text-gray-400 text-xs">%</span>
+                    <span className="text-ink-4 text-xs">%</span>
                   </div>
                 </td>
                 <td className="px-4 py-2">
                   <input
                     type="text"
-                    className="border border-gray-300 rounded px-2 py-1 text-sm w-48 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    aria-label="Optional note"
+                    className="border border-border rounded px-2 py-1 text-sm w-48 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     value={row.notes}
                     onChange={e => update(i, 'notes', e.target.value)}
                     placeholder="Optional note"
@@ -144,7 +148,7 @@ export default function CategoryRateManager() {
                     <button
                       onClick={() => save(i)}
                       disabled={!!row.saving}
-                      className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-brand text-white rounded hover:bg-brand disabled:opacity-40"
                     >
                       <Save className="h-3 w-3" />
                       {row.saving ? 'Saving…' : 'Save'}
@@ -152,8 +156,9 @@ export default function CategoryRateManager() {
                     <button
                       onClick={() => del(i)}
                       disabled={deleting === row.id}
-                      className="p-1 text-red-500 hover:text-red-700 disabled:opacity-40"
+                      className="p-1 text-err hover:text-err disabled:opacity-40"
                       title="Delete"
+                      aria-label="Delete"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -167,7 +172,7 @@ export default function CategoryRateManager() {
 
       <button
         onClick={addRow}
-        className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+        className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-border rounded-lg text-ink-2 hover:bg-surface-2 hover:border-gray-400"
       >
         <Plus className="h-4 w-4" />
         Add Category

@@ -20,8 +20,8 @@ import {
 } from '../../lib/inboundGrnReceiptMeta';
 
 const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100';
-const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500';
+  'w-full rounded-lg border border-border px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3';
+const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3';
 
 export interface GrnConfirmReceiptSectionProps {
   value: InboundGrnReceiptMeta;
@@ -97,13 +97,13 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
       <div className="flex flex-wrap items-center gap-2">
         {photos.map((src, i) => (
           <div key={i} className="relative">
-            <img src={src} alt={`${field} ${i + 1}`} className="h-16 w-16 rounded-lg border border-slate-200 object-cover" />
+            <img src={src} alt={`${field} ${i + 1}`} className="h-16 w-16 rounded-lg border border-border object-cover" />
             {!disabled ? (
               <button
                 type="button"
                 onClick={() => removePhoto(field, i)}
                 aria-label="Remove photo"
-                className="absolute -right-1.5 -top-1.5 rounded-full bg-slate-900 p-0.5 text-white hover:bg-slate-700"
+                className="absolute -right-1.5 -top-1.5 rounded-full bg-ink p-0.5 text-white hover:bg-ink-2"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -115,32 +115,32 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
             type="button"
             disabled={busyField === field}
             onClick={() => inputRef.current?.click()}
-            className="inline-flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 disabled:opacity-60"
+            className="inline-flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-border text-ink-3 hover:bg-surface-2 disabled:opacity-60"
           >
             <Camera className="h-4 w-4" aria-hidden />
             <span className="text-[10px]">{busyField === field ? '…' : addLabel}</span>
           </button>
         ) : null}
       </div>
-      <span className="mt-1 block text-xs text-slate-500">
+      <span className="mt-1 block text-xs text-ink-3">
         {photos.length > 0 ? `${photos.length} photo${photos.length === 1 ? '' : 's'} stored` : 'No photos yet'}
       </span>
     </div>
   );
 
   return (
-    <section className="rounded-xl border border-slate-200 p-4">
+    <section className="rounded-xl border border-border p-4">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-800">1 · Confirm Receipt</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-ink">1 · Confirm Receipt</h3>
+        <p className="mt-1 text-xs text-ink-3">
           Record physical receipt of the goods at the dock. Take vehicle photos + doc checklist. Assign
           this GRN to a specific person or leave Open.
         </p>
       </div>
 
       {/* Assignment */}
-      <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+      <div className="mb-4 rounded-lg border border-border bg-surface-2/60 p-3">
+        <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink-2">
           <UserRound className="h-4 w-4" aria-hidden /> Assign to Person (for next steps)
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -183,7 +183,7 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
             </div>
           ) : null}
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">
+        <p className="mt-2 text-[11px] text-ink-3">
           Open = any WH team member picks up · faster · shared responsibility. Specific = accountable
           single owner · action buttons enabled only for that person's login.
         </p>
@@ -279,14 +279,14 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
           {GRN_RECEIPT_CHECKLIST_ITEMS.map((item) => (
             <label
               key={item.key}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-ink-2 hover:bg-surface-2"
             >
               <input
                 type="checkbox"
                 checked={!!(value.checklist ?? {})[item.key]}
                 disabled={disabled}
                 onChange={() => toggleChecklist(item.key)}
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-border"
               />
               {item.label}
             </label>

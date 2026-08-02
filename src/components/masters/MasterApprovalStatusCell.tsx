@@ -85,7 +85,7 @@ export function MasterApprovalStatusCell({
         disabled={busy}
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => void applyStatus(e.target.value)}
-        className="min-w-0 max-w-full px-1.5 py-0.5 text-[10px] font-medium border border-gray-200 rounded-md bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+        className="min-w-0 max-w-full px-1.5 py-0.5 text-[10px] font-medium border border-border rounded-md bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
       >
         {MASTER_APPROVAL_STATUSES.map((opt) => (
           <option key={opt} value={opt}>
@@ -101,7 +101,7 @@ export function MasterApprovalStatusCell({
             e.stopPropagation();
             void advance();
           }}
-          className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-teal-600 text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60 whitespace-nowrap"
+          className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-brand text-white hover:bg-brand-press focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60 whitespace-nowrap"
         >
           {busy ? 'Saving…' : `→ ${next}`}
         </button>

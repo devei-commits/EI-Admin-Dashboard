@@ -72,7 +72,7 @@ function TrackRow({
   return (
     <div className="flex items-center gap-1.5">
       {showLabel ? (
-        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 w-6">{meta.label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-ink-3 w-6">{meta.label}</span>
       ) : null}
       <span
         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${prTrackStatusBadgeClass(state.status)}`}
@@ -95,7 +95,7 @@ function TrackRow({
             void run(next);
           }}
           className={`px-2 py-0.5 text-[10px] font-semibold rounded-md text-white disabled:opacity-60 whitespace-nowrap ${
-            next === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-teal-600 hover:bg-teal-700'
+            next === 'approve' ? 'bg-ok hover:bg-ok' : 'bg-brand hover:bg-brand-press'
           }`}
         >
           {busy ? '…' : ACTION_LABEL[next](track)}
@@ -109,8 +109,9 @@ function TrackRow({
             e.stopPropagation();
             void run('revert');
           }}
-          className="px-1.5 py-0.5 text-[10px] font-medium rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+          className="px-1.5 py-0.5 text-[10px] font-medium rounded-md border border-border text-ink-3 hover:bg-surface-3 disabled:opacity-60"
           title={`Revert ${meta.label} one step`}
+          aria-label={`Revert ${meta.label} one step`}
         >
           ↩
         </button>

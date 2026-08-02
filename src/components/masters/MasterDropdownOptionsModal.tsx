@@ -41,21 +41,21 @@ export function MasterDropdownOptionsModal({
         <button
           type="button"
           onClick={onClose}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+          className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-press"
         >
           Done
         </button>
       }
     >
-      <p className="text-xs text-gray-600 mb-3">
+      <p className="text-xs text-ink-3 mb-3">
         Built-in options cannot be removed. Custom options are saved for this browser and apply to all{' '}
         {fieldLabel} dropdowns in master forms.
       </p>
-      <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+      <div className="max-h-60 overflow-y-auto border border-border rounded-lg divide-y divide-hairline">
         {baseOptions.map((opt) => (
           <div key={`base-${opt}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
             <span>{opt}</span>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Built-in</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-ink-4">Built-in</span>
           </div>
         ))}
         {customOptions.map((opt) => (
@@ -64,19 +64,20 @@ export function MasterDropdownOptionsModal({
             <button
               type="button"
               onClick={() => removeOption(fieldLabel, opt)}
-              className="text-xs font-medium text-red-600 hover:text-red-700"
+              className="text-xs font-medium text-err hover:text-err"
             >
               Remove
             </button>
           </div>
         ))}
         {baseOptions.length === 0 && customOptions.length === 0 ? (
-          <p className="px-3 py-4 text-sm text-gray-500">No options yet.</p>
+          <p className="px-3 py-4 text-sm text-ink-3">No options yet.</p>
         ) : null}
       </div>
       <div className="mt-4 flex gap-2">
         <input
           type="text"
+          aria-label="Type new option…"
           value={newOption}
           onChange={(e) => {
             setNewOption(e.target.value);
@@ -89,18 +90,18 @@ export function MasterDropdownOptionsModal({
             }
           }}
           placeholder="Type new option…"
-          className="flex-1 p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         />
         <button
           type="button"
           onClick={handleAdd}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+          className="px-3 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-3"
         >
           + Add
         </button>
       </div>
       {error ? (
-        <p className="mt-2 text-xs text-red-600" role="alert">
+        <p className="mt-2 text-xs text-err" role="alert">
           {error}
         </p>
       ) : null}

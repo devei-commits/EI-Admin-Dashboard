@@ -22,36 +22,36 @@ export function DateRangeFilterInputs({
 
   return (
     <div
-      className={`flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 ${className}`}
+      className={`flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 ${className}`}
     >
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 shrink-0">
-        <Calendar size={14} className="text-gray-400" aria-hidden />
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-2 shrink-0">
+        <Calendar size={14} className="text-ink-4" aria-hidden />
         <span>{dateFieldLabel}</span>
       </div>
-      <label className="flex flex-col gap-0.5 text-[10px] font-medium text-gray-500">
+      <label className="flex flex-col gap-0.5 text-[10px] font-medium text-ink-3">
         From
         <input
           type="date"
           value={value.from}
           onChange={(e) => onChange({ ...value, from: e.target.value })}
-          className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[140px]"
+          className="px-2 py-1.5 border border-border rounded-lg text-sm bg-surface min-w-[140px]"
           aria-label={`${dateFieldLabel} from`}
         />
       </label>
-      <label className="flex flex-col gap-0.5 text-[10px] font-medium text-gray-500">
+      <label className="flex flex-col gap-0.5 text-[10px] font-medium text-ink-3">
         To
         <input
           type="date"
           value={value.to}
           onChange={(e) => onChange({ ...value, to: e.target.value })}
-          className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white min-w-[140px]"
+          className="px-2 py-1.5 border border-border rounded-lg text-sm bg-surface min-w-[140px]"
           aria-label={`${dateFieldLabel} to`}
         />
       </label>
       {active && summary ? (
-        <span className="text-[11px] text-indigo-700 font-medium pb-1.5">{summary}</span>
+        <span className="text-[11px] text-brand font-medium pb-1.5">{summary}</span>
       ) : (
-        <span className="text-[10px] text-gray-400 pb-1.5 max-w-[200px] leading-snug">
+        <span className="text-[10px] text-ink-4 pb-1.5 max-w-[200px] leading-snug">
           From only = that day · Both = range · To only = until date
         </span>
       )}
@@ -59,7 +59,7 @@ export function DateRangeFilterInputs({
         <button
           type="button"
           onClick={() => onChange({ from: '', to: '' })}
-          className="text-[11px] font-semibold text-gray-600 hover:text-gray-900 underline pb-1.5 ml-auto"
+          className="text-[11px] font-semibold text-ink-2 hover:text-ink underline pb-1.5 ml-auto"
         >
           Clear dates
         </button>

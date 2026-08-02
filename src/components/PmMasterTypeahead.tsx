@@ -99,6 +99,7 @@ export default function PmMasterTypeahead({
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-label={placeholder}
         autoComplete="off"
         disabled={disabled || loading}
         placeholder={loading ? 'Loading pack materials…' : placeholder}
@@ -106,13 +107,13 @@ export default function PmMasterTypeahead({
         onChange={(e) => onInputChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+        className="w-full px-2 py-1.5 border border-border rounded text-sm"
       />
       {showList ? (
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg"
+          className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-md border border-border bg-surface py-1 text-sm shadow-lg"
         >
           {suggestions.map((opt, idx) => (
             <li
@@ -121,10 +122,10 @@ export default function PmMasterTypeahead({
               aria-selected={idx === activeIndex}
               className={`cursor-pointer px-2 py-1.5 ${
                 opt.disabled
-                  ? 'cursor-not-allowed text-slate-400'
+                  ? 'cursor-not-allowed text-ink-4'
                   : idx === activeIndex
-                    ? 'bg-blue-50 text-blue-900'
-                    : 'text-slate-800 hover:bg-slate-50'
+                    ? 'bg-brand-soft text-brand'
+                    : 'text-ink hover:bg-surface-3'
               }`}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -133,13 +134,13 @@ export default function PmMasterTypeahead({
               onMouseEnter={() => setActiveIndex(idx)}
             >
               {opt.label}
-              {opt.disabled ? <span className="ml-1 text-[10px] text-slate-400">(already added)</span> : null}
+              {opt.disabled ? <span className="ml-1 text-[10px] text-ink-4">(already added)</span> : null}
             </li>
           ))}
         </ul>
       ) : null}
       {open && !loading && value.trim() && suggestions.length === 0 ? (
-        <p className="absolute z-30 mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-500 shadow">
+        <p className="absolute z-30 mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink-3 shadow">
           No match — text will be saved as manual PM description.
         </p>
       ) : null}

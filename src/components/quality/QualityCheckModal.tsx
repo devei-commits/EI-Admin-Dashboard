@@ -36,6 +36,7 @@ import QualityCheckAttachmentsSection from './QualityCheckAttachmentsSection';
 import ThirdPartyTestModal from './ThirdPartyTestModal';
 import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
 import { extractThirdPartyPoRef, type ThirdPartyReleasePayload } from '../../lib/thirdPartyLabTest';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 type QualityCheckModalProps = {
   row: QualityOrderManagementRow;
@@ -184,18 +185,20 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
   }, [assigneeOptions, qcBy]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm p-3 sm:p-6">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default" className="p-3 sm:p-6">
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"
+        className="bg-surface rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="qc-check-title"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="sticky top-0 z-10 bg-surface border-b border-border px-5 py-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="qc-check-title" className="text-lg font-bold text-slate-900">
+            <h2 id="qc-check-title" className="text-lg font-bold text-ink">
               {grnInput ? buildQualityCheckHeaderTitle(grnInput) : row.itemName}
             </h2>
-            <p className="text-xs text-slate-600 mt-1">
+            <p className="text-xs text-ink-2 mt-1">
               {grnInput ? buildQualityCheckHeaderSubtitle(grnInput) : row.grnSourceNo}
             </p>
             {readOnly ? (
@@ -218,7 +221,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+              className="p-2 rounded-lg hover:bg-surface-3 text-ink-2"
               aria-label="Close QC check"
             >
               <X className="w-5 h-5" />
@@ -226,47 +229,47 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/80">
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-surface-2/80">
           {loading ? (
-            <p className="text-sm text-slate-500">Loading QC checklist from master…</p>
+            <p className="text-sm text-ink-3">Loading QC checklist from master…</p>
           ) : loadError ? (
             <p className="text-sm text-rose-700" role="alert">
               {loadError}
             </p>
           ) : (
             <>
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900 mb-3">📦 Source &amp; item details (read-only)</h3>
+              <section className="rounded-xl border border-border bg-surface p-4">
+                <h3 className="text-sm font-bold text-ink mb-3">📦 Source &amp; item details (read-only)</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
                   <div>
-                    <p className="text-slate-500">Item Code</p>
-                    <p className="font-mono font-semibold text-slate-900">{row.itemCode}</p>
+                    <p className="text-ink-3">Item Code</p>
+                    <p className="font-mono font-semibold text-ink">{row.itemCode}</p>
                   </div>
                   <div className="sm:col-span-2">
-                    <p className="text-slate-500">Item Name</p>
-                    <p className="font-semibold text-slate-900">{row.itemName}</p>
+                    <p className="text-ink-3">Item Name</p>
+                    <p className="font-semibold text-ink">{row.itemName}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500">Category × Section</p>
-                    <p className="font-semibold text-slate-900">{grnInput ? buildQualityCheckCategorySection(grnInput) : '—'}</p>
+                    <p className="text-ink-3">Category × Section</p>
+                    <p className="font-semibold text-ink">{grnInput ? buildQualityCheckCategorySection(grnInput) : '—'}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500">GRN #</p>
+                    <p className="text-ink-3">GRN #</p>
                     <p className="font-mono font-semibold text-teal-800">{displayInboundGrnNo(grn?.grnNo ?? row.grnSourceNo)}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500">Qty in Q</p>
-                    <p className="font-semibold text-slate-900">{row.qtyInQ}</p>
+                    <p className="text-ink-3">Qty in Q</p>
+                    <p className="font-semibold text-ink">{row.qtyInQ}</p>
                   </div>
                   <div className="sm:col-span-2">
-                    <p className="text-slate-500">Vendor</p>
-                    <p className="font-semibold text-slate-900">{grn?.vendor || '—'}</p>
+                    <p className="text-ink-3">Vendor</p>
+                    <p className="font-semibold text-ink">{grn?.vendor || '—'}</p>
                   </div>
                 </div>
               </section>
 
-              <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900">🔄 QC status &amp; assignment</h3>
+              <section className="rounded-xl border border-border bg-surface p-4 space-y-4">
+                <h3 className="text-sm font-bold text-ink">🔄 QC status &amp; assignment</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {WORKFLOW_STAGES.map((stage) => {
                     const st = workflow[stage];
@@ -274,26 +277,26 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                       <div
                         key={stage}
                         className={`rounded-lg border px-3 py-2 ${
-                          st.active ? 'border-teal-300 bg-teal-50' : 'border-slate-200 bg-slate-50'
+                          st.active ? 'border-teal-300 bg-teal-50' : 'border-border bg-surface-2'
                         }`}
                       >
-                        <p className={`text-[10px] font-bold tracking-wide ${st.active ? 'text-teal-800' : 'text-slate-500'}`}>
+                        <p className={`text-[10px] font-bold tracking-wide ${st.active ? 'text-teal-800' : 'text-ink-3'}`}>
                           {stage}
                         </p>
-                        <p className="text-[11px] text-slate-700 mt-1">{st.detail ?? (st.active ? '—' : '— pending')}</p>
+                        <p className="text-[11px] text-ink-2 mt-1">{st.detail ?? (st.active ? '—' : '— pending')}</p>
                       </div>
                     );
                   })}
                 </div>
-                <div className="grid sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                <div className="grid sm:grid-cols-3 gap-4 pt-2 border-t border-hairline">
                   <label className="block text-xs">
-                    <span className="font-semibold text-slate-700">QC Assignee</span>
+                    <span className="font-semibold text-ink-2">QC Assignee</span>
                     <span className="mt-1 inline-flex items-center gap-0.5 w-full">
                       <select
                         value={assignedTo}
                         disabled={inputsDisabled}
                         onChange={(e) => setAssignedTo(e.target.value)}
-                        className="w-full mt-1 border border-slate-300 rounded-lg px-2 py-2 text-xs bg-white"
+                        className="w-full mt-1 border border-border rounded-lg px-2 py-2 text-xs bg-surface"
                       >
                         <option value="">Open</option>
                         {assigneeOptions.map((name) => (
@@ -305,12 +308,12 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     </span>
                   </label>
                   <label className="block text-xs">
-                    <span className="font-semibold text-slate-700">QC Approver</span>
+                    <span className="font-semibold text-ink-2">QC Approver</span>
                     <select
                       value={qcBy}
                       disabled={inputsDisabled}
                       onChange={(e) => setQcBy(e.target.value)}
-                      className="w-full mt-1 border border-slate-300 rounded-lg px-2 py-2 text-xs bg-white"
+                      className="w-full mt-1 border border-border rounded-lg px-2 py-2 text-xs bg-surface"
                     >
                       <option value="">Select approver…</option>
                       {approverOptions.map((name) => (
@@ -321,15 +324,15 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     </select>
                   </label>
                   <div className="text-xs">
-                    <p className="font-semibold text-slate-700">Expected Completion</p>
-                    <p className="mt-2 text-slate-800">📅 {grnInput ? buildExpectedQcCompletion(grnInput) : '—'}</p>
+                    <p className="font-semibold text-ink-2">Expected Completion</p>
+                    <p className="mt-2 text-ink">📅 {grnInput ? buildExpectedQcCompletion(grnInput) : '—'}</p>
                   </div>
                 </div>
               </section>
 
-              <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
-                  <h3 className="text-sm font-bold text-slate-900">
+              <section className="rounded-xl border border-border bg-surface overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-surface-2">
+                  <h3 className="text-sm font-bold text-ink">
                     📋 Quality checklist
                   </h3>
                   {qcLine?.testsSource === 'default-inbound' && (
@@ -338,30 +341,30 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     </p>
                   )}
                   {qcLine?.testsSource === 'master' && qcLine.tests.length === 0 && qcLine.masterId != null && (
-                    <p className="text-[11px] text-amber-800 mt-1">
+                    <p className="text-[11px] text-warn mt-1">
                       No QC parameters configured on this item&apos;s master. Add specs under {qcLine.masterType === 'PM' ? 'Packaging' : 'Raw Material'} → GRN Quality Checks.
                     </p>
                   )}
                 </div>
                 {!qcLine || qcLine.tests.length === 0 ? (
-                  <p className="px-4 py-6 text-sm text-slate-500">
+                  <p className="px-4 py-6 text-sm text-ink-3">
                     {qcLine?.masterId != null
                       ? 'No checklist rows to complete for this item.'
                       : 'No QC parameters loaded for this line.'}
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                          <th className="px-3 py-2 w-8">#</th>
-                          <th className="px-3 py-2 min-w-[8rem]">Parameter</th>
-                          <th className="px-3 py-2 min-w-[8rem]">Spec (from master)</th>
-                          <th className="px-3 py-2 min-w-[7rem]">Method</th>
-                          <th className="px-3 py-2 w-16">Mandatory</th>
-                          <th className="px-3 py-2 min-w-[9rem]">Entry / Result</th>
-                          <th className="px-3 py-2 w-24">Pass/Fail (auto)</th>
-                          <th className="px-3 py-2 min-w-[8rem]">3rd-party?</th>
+                      <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
+                        <tr className="text-left text-[10px] uppercase tracking-wide text-ink-3 bg-surface-2 border-b border-border">
+                          <th scope="col" className="px-3 py-2 w-8">#</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">Parameter</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">Spec (from master)</th>
+                          <th scope="col" className="px-3 py-2 min-w-[7rem]">Method</th>
+                          <th scope="col" className="px-3 py-2 w-16">Mandatory</th>
+                          <th scope="col" className="px-3 py-2 min-w-[9rem]">Entry / Result</th>
+                          <th scope="col" className="px-3 py-2 w-24">Pass/Fail (auto)</th>
+                          <th scope="col" className="px-3 py-2 min-w-[8rem]">3rd-party?</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -369,11 +372,11 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                           const verdict = buildChecklistVerdict(test);
                           const thirdPartyAction = resolveThirdPartyQcAction(test);
                           return (
-                            <tr key={`${test.specId}-${testIdx}`} className="border-b border-slate-100 align-top">
-                              <td className="px-3 py-3 text-slate-500 tabular-nums">{testIdx + 1}</td>
-                              <td className="px-3 py-3 font-semibold text-slate-900">{test.parameter}</td>
-                              <td className="px-3 py-3 text-slate-700">{test.specLimit || '—'}</td>
-                              <td className="px-3 py-3 text-slate-600">{test.method || '—'}</td>
+                            <tr key={`${test.specId}-${testIdx}`} className="border-b border-hairline align-top">
+                              <td className="px-3 py-3 text-ink-3 tabular-nums">{testIdx + 1}</td>
+                              <td className="px-3 py-3 font-semibold text-ink">{test.parameter}</td>
+                              <td className="px-3 py-3 text-ink-2">{test.specLimit || '—'}</td>
+                              <td className="px-3 py-3 text-ink-2">{test.method || '—'}</td>
                               <td className="px-3 py-3 text-center">{test.mandatory ? '✓' : '—'}</td>
                               <td className="px-3 py-3">
                                 <GrnQcResultInput
@@ -391,10 +394,10 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                               <td
                                 className={`px-3 py-3 font-bold whitespace-nowrap ${
                                   verdict.tone === 'pass'
-                                    ? 'text-emerald-700'
+                                    ? 'text-ok'
                                     : verdict.tone === 'fail'
                                       ? 'text-rose-700'
-                                      : 'text-amber-700'
+                                      : 'text-warn'
                                 }`}
                               >
                                 {verdict.label}
@@ -403,7 +406,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                                 {thirdPartyAction ? (
                                   thirdPartyAction.mode === 'trigger' ? (
                                     readOnly ? (
-                                      <span className="text-[11px] text-slate-500">—</span>
+                                      <span className="text-[11px] text-ink-3">—</span>
                                     ) : (
                                       <button
                                         type="button"
@@ -438,7 +441,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     </table>
                   </div>
                 )}
-                <p className="px-4 py-3 text-[11px] text-slate-600 border-t border-slate-100 bg-slate-50">
+                <p className="px-4 py-3 text-[11px] text-ink-2 border-t border-hairline bg-surface-2">
                   {buildChecklistProgressMessage(qcSpecs)}
                 </p>
               </section>
@@ -454,15 +457,15 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
               ) : null}
 
               {!readOnly ? (
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-bold text-slate-900 mb-3">✅ Decision</h3>
+              <section className="rounded-xl border border-border bg-surface p-4">
+                <h3 className="text-sm font-bold text-ink mb-3">✅ Decision</h3>
                 {saveError ? (
                   <p className="text-xs text-rose-700 mb-3" role="alert">
                     {saveError}
                   </p>
                 ) : null}
                 {blockers.length > 0 && derivedStatus !== 'Rejected' ? (
-                  <ul className="text-[11px] text-amber-800 mb-3 list-disc pl-4 space-y-1">
+                  <ul className="text-[11px] text-warn mb-3 list-disc pl-4 space-y-1">
                     {blockers.map((b) => (
                       <li key={b}>{b}</li>
                     ))}
@@ -473,7 +476,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     type="button"
                     disabled={!canComplete || saving}
                     onClick={() => void persist({ complete: true })}
-                    className="px-4 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800 disabled:opacity-40"
+                    className="px-4 py-2 rounded-lg bg-ok text-white text-xs font-bold hover:bg-emerald-800 disabled:opacity-40"
                   >
                     ✓ Complete QC (move to APPROVED)
                   </button>
@@ -481,7 +484,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
                     type="button"
                     disabled={saving || !qcSpecs}
                     onClick={() => void persist({})}
-                    className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
+                    className="px-4 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink hover:bg-surface-2 disabled:opacity-40"
                   >
                     📝 Save Progress
                   </button>
@@ -519,7 +522,7 @@ const QualityCheckModal: React.FC<QualityCheckModalProps> = ({
           onReleasedToTracking={onThirdPartyReleased}
         />
       ) : null}
-    </div>
+    </ModalOverlay>
   );
 };
 

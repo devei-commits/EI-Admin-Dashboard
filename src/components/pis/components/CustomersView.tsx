@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { UserRole, Customer } from '../types/pis';
 import { usePIS } from '../context/PISContext';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface CustomersViewProps {
  currentRole: UserRole;
@@ -116,9 +117,9 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
 
  const getStatusBadge = (status: Customer['status']) => {
   const styles = {
-   ACTIVE: 'bg-green-100 text-green-800',
-   INACTIVE: 'bg-gray-100 text-gray-800',
-   PROSPECT: 'bg-blue-100 text-blue-800',
+   ACTIVE: 'bg-ok-soft text-ok',
+   INACTIVE: 'bg-surface-3 text-ink',
+   PROSPECT: 'bg-brand-soft text-brand',
   };
   return <Badge className={styles[status]}>{status}</Badge>;
  };
@@ -126,7 +127,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
  const getCategoryBadge = (category: Customer['category']) => {
   const styles = {
    ENTERPRISE: 'bg-purple-100 text-purple-800',
-   SMB: 'bg-gray-100 text-amber-800',
+   SMB: 'bg-surface-3 text-warn',
    STARTUP: 'bg-teal-100 text-teal-800',
   };
   return <Badge variant="outline" className={styles[category]}>{category}</Badge>;
@@ -137,8 +138,8 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
    {/* Header */}
    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
-     <h2 className="text-3xl font-bold text-gray-900">Customer Management</h2>
-     <p className="text-gray-600">Manage customer information and relationships</p>
+     <h2 className="text-3xl font-bold text-ink">Customer Management</h2>
+     <p className="text-ink-2">Manage customer information and relationships</p>
     </div>
     {permissions.canManageCustomers && (
      <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2">
@@ -152,33 +153,33 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-blue-100 rounded-lg">
-       <Users className="h-5 w-5 text-blue-600" />
+      <div className="p-2 bg-brand-soft rounded-lg">
+       <Users className="h-5 w-5 text-brand" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Total Customers</p>
+       <p className="text-sm text-ink-3">Total Customers</p>
        <p className="text-2xl font-bold">{stats.total}</p>
       </div>
      </div>
     </Card>
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-green-100 rounded-lg">
-       <Users className="h-5 w-5 text-green-600" />
+      <div className="p-2 bg-ok-soft rounded-lg">
+       <Users className="h-5 w-5 text-ok" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Active</p>
+       <p className="text-sm text-ink-3">Active</p>
        <p className="text-2xl font-bold">{stats.active}</p>
       </div>
      </div>
     </Card>
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-blue-100 rounded-lg">
-       <Users className="h-5 w-5 text-blue-600" />
+      <div className="p-2 bg-brand-soft rounded-lg">
+       <Users className="h-5 w-5 text-brand" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Prospects</p>
+       <p className="text-sm text-ink-3">Prospects</p>
        <p className="text-2xl font-bold">{stats.prospect}</p>
       </div>
      </div>
@@ -189,7 +190,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
        <Building2 className="h-5 w-5 text-purple-600" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Total PIS</p>
+       <p className="text-sm text-ink-3">Total PIS</p>
        <p className="text-2xl font-bold">{stats.totalPIS}</p>
       </div>
      </div>
@@ -201,7 +202,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
     <div className="flex flex-col md:flex-row gap-4">
      <div className="flex-1">
       <div className="relative">
-       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-4" />
        <Input
         placeholder="Search customers..."
         value={searchQuery}
@@ -265,11 +266,11 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
      </TableHeader>
      <TableBody>
       {filteredCustomers.map((customer) => (
-       <TableRow key={customer.id} className="hover:bg-gray-50">
+       <TableRow key={customer.id} className="hover:bg-surface-2">
         <TableCell>
          <div>
-          <p className="font-medium text-gray-900">{customer.name}</p>
-          <p className="text-sm text-gray-500">{customer.company}</p>
+          <p className="font-medium text-ink">{customer.name}</p>
+          <p className="text-sm text-ink-3">{customer.company}</p>
          </div>
         </TableCell>
         <TableCell>
@@ -278,7 +279,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
            <Mail className="h-3 w-3" />
            {customer.email}
           </p>
-          <p className="text-sm flex items-center gap-1 text-gray-500">
+          <p className="text-sm flex items-center gap-1 text-ink-3">
            <Phone className="h-3 w-3" />
            {customer.phone}
           </p>
@@ -306,7 +307,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
               Edit
              </DropdownMenuItem>
              <DropdownMenuItem 
-              className="text-red-600"
+              className="text-err"
               onClick={() => handleDeleteCustomer(customer.id)}
              >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -323,9 +324,7 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
     </Table>
     
     {filteredCustomers.length === 0 && (
-     <div className="p-8 text-center text-gray-500">
-      No customers found matching your criteria
-     </div>
+     <EmptyState icon={<Users />} title="No customers found matching your criteria" />
     )}
    </Card>
 
@@ -414,48 +413,48 @@ export function CustomersView({ currentRole }: CustomersViewProps) {
      </DialogHeader>
      {selectedCustomer && (
       <div className="space-y-4 py-4">
-       <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-        <div className="h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center">
-         <Users className="h-8 w-8 text-blue-600" />
+       <div className="flex items-center gap-4 p-4 bg-surface-2 rounded-lg">
+        <div className="h-16 w-16 bg-brand-soft rounded-full flex items-center justify-center">
+         <Users className="h-8 w-8 text-brand" />
         </div>
         <div>
          <h3 className="text-lg font-semibold">{selectedCustomer.name}</h3>
-         <p className="text-gray-600">{selectedCustomer.company}</p>
+         <p className="text-ink-2">{selectedCustomer.company}</p>
         </div>
        </div>
 
        <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-         <p className="text-sm text-gray-500">Status</p>
+         <p className="text-sm text-ink-3">Status</p>
          {getStatusBadge(selectedCustomer.status)}
         </div>
         <div className="space-y-1">
-         <p className="text-sm text-gray-500">Category</p>
+         <p className="text-sm text-ink-3">Category</p>
          {getCategoryBadge(selectedCustomer.category)}
         </div>
        </div>
 
        <div className="space-y-3">
         <div className="flex items-center gap-2">
-         <Mail className="h-4 w-4 text-gray-400" />
+         <Mail className="h-4 w-4 text-ink-4" />
          <span>{selectedCustomer.email}</span>
         </div>
         <div className="flex items-center gap-2">
-         <Phone className="h-4 w-4 text-gray-400" />
+         <Phone className="h-4 w-4 text-ink-4" />
          <span>{selectedCustomer.phone}</span>
         </div>
         <div className="flex items-center gap-2">
-         <MapPin className="h-4 w-4 text-gray-400" />
+         <MapPin className="h-4 w-4 text-ink-4" />
          <span>{selectedCustomer.address}</span>
         </div>
        </div>
 
-       <div className="p-4 bg-blue-50 rounded-lg">
-        <p className="text-sm text-blue-600">Total PIS Records</p>
-        <p className="text-3xl font-bold text-blue-900">{selectedCustomer.totalPIS}</p>
+       <div className="p-4 bg-brand-soft rounded-lg">
+        <p className="text-sm text-brand">Total PIS Records</p>
+        <p className="text-3xl font-bold text-brand">{selectedCustomer.totalPIS}</p>
        </div>
 
-       <p className="text-sm text-gray-500">
+       <p className="text-sm text-ink-3">
         Customer since: {selectedCustomer.createdAt.toLocaleDateString()}
        </p>
       </div>

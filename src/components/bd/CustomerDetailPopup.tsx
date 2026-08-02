@@ -5,7 +5,9 @@
  * grievance) and the History button hand off to the parent.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, BookText, CalendarPlus, HelpCircle, Flag } from 'lucide-react';
+import { BookText, CalendarPlus, HelpCircle, Flag } from 'lucide-react';
+import { CardSkeleton } from '../ui/Skeleton';
+import { ErrorState } from '../ui/ErrorState';
 import { ProcModalShell, ModalSection } from '../procurement/ProcModalShell';
 import { useToast } from '../../context/ToastContext';
 import { fetchBdCustomerDetail, updateBdProfile } from '../../services/bd.service';
@@ -26,14 +28,14 @@ export interface CustomerDetailPopupProps {
 
 function Kpi({ label, value, tone = 'slate', sub }: { label: string; value: string; tone?: string; sub?: string }) {
   const toneClass: Record<string, string> = {
-    slate: 'text-slate-800', green: 'text-green-600', red: 'text-red-600',
-    blue: 'text-blue-600', violet: 'text-violet-600', amber: 'text-amber-600',
+    slate: 'text-ink', green: 'text-ok', red: 'text-err',
+    blue: 'text-brand', violet: 'text-violet-600', amber: 'text-warn',
   };
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+    <div className="rounded-xl border border-border bg-surface p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">{label}</p>
       <p className={`mt-1 text-lg font-bold tabular-nums ${toneClass[tone] ?? toneClass.slate}`}>{value}</p>
-      {sub && <p className="text-[10px] text-slate-400">{sub}</p>}
+      {sub && <p className="text-[10px] text-ink-4">{sub}</p>}
     </div>
   );
 }
@@ -41,8 +43,8 @@ function Kpi({ label, value, tone = 'slate', sub }: { label: string; value: stri
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-sm text-slate-700">{value || '—'}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">{label}</p>
+      <p className="text-sm text-ink-2">{value || '—'}</p>
     </div>
   );
 }
@@ -117,12 +119,12 @@ export const CustomerDetailPopup: React.FC<CustomerDetailPopupProps> = ({ code, 
       onClose={onClose}
       footer={
         <div className="flex w-full items-center justify-between">
-          <button onClick={() => onOpenTimeline(code)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white">
+          <button onClick={() => onOpenTimeline(code)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface">
             <BookText size={14} /> History & Comments
           </button>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Close</button>
-            <button onClick={save} disabled={saving || loading} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface">Close</button>
+            <button onClick={save} disabled={saving || loading} className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand disabled:opacity-50">
               {saving ? 'Saving…' : 'Save BD Profile'}
             </button>
           </div>
@@ -130,9 +132,9 @@ export const CustomerDetailPopup: React.FC<CustomerDetailPopupProps> = ({ code, 
       }
     >
       {loading ? (
-        <div className="flex items-center justify-center py-12"><Loader2 size={20} className="mr-2 animate-spin text-blue-500" /><span className="text-sm text-slate-500">Loading…</span></div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : error || !detail ? (
-        <div className="py-10 text-center"><p className="mb-3 text-sm text-red-500">{error || 'Not found'}</p><button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry</button></div>
+        <ErrorState message={error || 'Not found'} onRetry={() => void load()} />
       ) : (
         <div className="space-y-4">
           {/* KPI tiles */}
@@ -166,41 +168,41 @@ export const CustomerDetailPopup: React.FC<CustomerDetailPopupProps> = ({ code, 
           <ModalSection title="BD profile">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Tier (override)</span>
-                <select value={tier} onChange={(e) => setTier(e.target.value as ClientTier | '')} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Tier (override)</span>
+                <select value={tier} onChange={(e) => setTier(e.target.value as ClientTier | '')} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
                   <option value="">Auto ({TIER_CONFIG[detail.tier].label})</option>
                   {TIER_ORDER.map((t) => <option key={t} value={t}>{TIER_CONFIG[t].label}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Lifecycle (override)</span>
-                <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value as ClientLifecycle | '')} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Lifecycle (override)</span>
+                <select value={lifecycle} onChange={(e) => setLifecycle(e.target.value as ClientLifecycle | '')} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500">
                   <option value="">Auto ({LIFECYCLE_CONFIG[detail.lifecycle].label})</option>
                   {(Object.keys(LIFECYCLE_CONFIG) as ClientLifecycle[]).map((l) => <option key={l} value={l}>{LIFECYCLE_CONFIG[l].label}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Credit Limit (₹)</span>
-                <input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} placeholder="—" className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Credit Limit (₹)</span>
+                <input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)} placeholder="—" className="mt-1 w-full rounded-lg border border-border px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
               </label>
               <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Onboarded Date</span>
-                <input type="date" value={onboardedDate} onChange={(e) => setOnboardedDate(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Onboarded Date</span>
+                <input type="date" value={onboardedDate} onChange={(e) => setOnboardedDate(e.target.value)} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
               </label>
               <Info label="BD POC" value={detail.bdPoc.name} />
             </div>
             <label className="mt-3 block">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Notes</span>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-4">Notes</span>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-border px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500" />
             </label>
           </ModalSection>
 
           {/* Initiate actions */}
           <ModalSection title="Initiate">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => onAction('meeting', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"><CalendarPlus size={14} /> Meeting</button>
-              <button onClick={() => onAction('query', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"><HelpCircle size={14} /> Query</button>
-              <button onClick={() => onAction('grievance', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"><Flag size={14} /> Grievance</button>
+              <button onClick={() => onAction('meeting', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand-soft px-3 py-2 text-sm font-semibold text-brand hover:bg-brand-soft"><CalendarPlus size={14} /> Meeting</button>
+              <button onClick={() => onAction('query', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-warn bg-warn-soft px-3 py-2 text-sm font-semibold text-warn hover:bg-warn-soft"><HelpCircle size={14} /> Query</button>
+              <button onClick={() => onAction('grievance', code, detail.name)} className="inline-flex items-center gap-1.5 rounded-lg border border-err bg-err-soft px-3 py-2 text-sm font-semibold text-err hover:bg-err-soft"><Flag size={14} /> Grievance</button>
             </div>
           </ModalSection>
         </div>

@@ -13,18 +13,18 @@ export interface ComingSoonViewProps {
 }
 
 export const ComingSoonView: React.FC<ComingSoonViewProps> = ({ title, phase, icon: Icon, bullets }) => (
-  <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-slate-200">
-      <Icon size={26} className="text-slate-400" />
+  <div className="mx-auto max-w-xl rounded-2xl border border-dashed border-border bg-surface px-6 py-12 text-center">
+    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 ring-1 ring-border">
+      <Icon size={26} className="text-ink-4" />
     </div>
-    <h3 className="mt-3 text-lg font-bold text-slate-800">{title}</h3>
-    <span className="mt-2 inline-block rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+    <h3 className="mt-3 text-lg font-bold text-ink">{title}</h3>
+    <span className="mt-2 inline-block rounded-full bg-warn-soft px-3 py-1 text-[11px] font-semibold text-warn ring-1 ring-amber-200">
       Arriving in {phase}
     </span>
-    <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left text-sm text-slate-500">
+    <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left text-sm text-ink-3">
       {bullets.map((b) => (
         <li key={b} className="flex items-start gap-2">
-          <span className="mt-1 text-slate-300">•</span>
+          <span className="mt-1 text-ink-4">•</span>
           <span>{b}</span>
         </li>
       ))}

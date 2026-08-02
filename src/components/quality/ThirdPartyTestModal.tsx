@@ -257,27 +257,27 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
       </PopupSection>
 
       <PopupSection title="🏢 Lab vendor selection (from price list)">
-        <p className="text-[10px] text-slate-500 mb-2">
+        <p className="text-[10px] text-ink-3 mb-2">
           Lab vendors filtered to Masters with category Lab / Testing or 3rd-party-lab, with accreditation
           matching the required test method ({test.method || 'external'}).
         </p>
         {vendorsLoading ? (
-          <p className="text-xs text-slate-500">Loading lab vendors…</p>
+          <p className="text-xs text-ink-3">Loading lab vendors…</p>
         ) : vendors.length === 0 ? (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-warn bg-warn-soft border border-warn rounded-lg px-3 py-2">
             No matching lab vendors in Masters. Add vendors under category Lab / Testing with NABL accreditation.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                  <th className="px-3 py-2 w-10">Pick</th>
-                  <th className="px-3 py-2">Lab Vendor</th>
-                  <th className="px-3 py-2">Tier</th>
-                  <th className="px-3 py-2">Price / sample</th>
-                  <th className="px-3 py-2">Lead Time</th>
-                  <th className="px-3 py-2">Last used</th>
+              <thead className="sticky top-0 z-20">
+                <tr className="text-left text-[10px] uppercase tracking-wide text-ink-3 bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                  <th scope="col" className="px-3 py-2 w-10">Pick</th>
+                  <th scope="col" className="px-3 py-2">Lab Vendor</th>
+                  <th scope="col" className="px-3 py-2">Tier</th>
+                  <th scope="col" className="px-3 py-2">Price / sample</th>
+                  <th scope="col" className="px-3 py-2">Lead Time</th>
+                  <th scope="col" className="px-3 py-2">Last used</th>
                 </tr>
               </thead>
               <tbody>
@@ -286,7 +286,7 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
                   return (
                     <tr
                       key={vendor.id}
-                      className={`border-b border-slate-100 cursor-pointer ${picked ? 'bg-violet-50' : 'hover:bg-slate-50'}`}
+                      className={`border-b border-hairline cursor-pointer ${picked ? 'bg-violet-50' : 'hover:bg-surface-2'}`}
                       onClick={() => !released && setSelectedVendorId(vendor.id)}
                     >
                       <td className="px-3 py-2.5 text-center">
@@ -300,15 +300,15 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
                         />
                       </td>
                       <td className="px-3 py-2.5">
-                        <p className="font-semibold text-slate-900">{vendor.name}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">
+                        <p className="font-semibold text-ink">{vendor.name}</p>
+                        <p className="text-[10px] text-ink-3 font-mono">
                           {vendor.vendorCode} · {vendor.accreditation}
                         </p>
                       </td>
-                      <td className="px-3 py-2.5 text-slate-700">{vendor.tier}</td>
-                      <td className="px-3 py-2.5 font-semibold text-slate-900">{formatInr(vendor.pricePerSample)}</td>
-                      <td className="px-3 py-2.5 text-slate-700">{vendor.leadTimeDays}d</td>
-                      <td className="px-3 py-2.5 text-slate-600">{formatThirdPartyDate(vendor.lastUsed)}</td>
+                      <td className="px-3 py-2.5 text-ink-2">{vendor.tier}</td>
+                      <td className="px-3 py-2.5 font-semibold text-ink">{formatInr(vendor.pricePerSample)}</td>
+                      <td className="px-3 py-2.5 text-ink-2">{vendor.leadTimeDays}d</td>
+                      <td className="px-3 py-2.5 text-ink-2">{formatThirdPartyDate(vendor.lastUsed)}</td>
                     </tr>
                   );
                 })}
@@ -321,7 +321,7 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
       <PopupSection title="📦 Order details">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <label className="block text-xs sm:col-span-2">
-            <span className="font-semibold text-slate-700">Qty to ship to lab</span>
+            <span className="font-semibold text-ink-2">Qty to ship to lab</span>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <input
                 type="number"
@@ -329,28 +329,29 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
                 value={sampleQty}
                 disabled={released}
                 onChange={(e) => setSampleQty(Math.max(1, Number(e.target.value) || 1))}
-                className="w-24 rounded border border-slate-300 px-2 py-1.5 text-xs"
+                className="w-24 rounded border border-border px-2 py-1.5 text-xs"
               />
-              <span className="text-slate-500">samples</span>
+              <span className="text-ink-3">samples</span>
             </div>
             <input
               type="text"
               value={sampleNote}
               disabled={released}
               onChange={(e) => setSampleNote(e.target.value)}
-              className="mt-1.5 w-full rounded border border-slate-300 px-2 py-1.5 text-[11px] text-slate-700"
+              className="mt-1.5 w-full rounded border border-border px-2 py-1.5 text-[11px] text-ink-2"
               placeholder="e.g. 100 g each from drum 1 & 4"
+              aria-label="Sample note"
             />
           </label>
           <StatCell label="Price / unit (from list)" value={formatInr(pricePerSample)} />
           <StatCell label="Total Value" value={`${formatInr(totalValue)} + GST`} />
           <label className="block text-xs">
-            <span className="font-semibold text-slate-700">Payment Terms</span>
+            <span className="font-semibold text-ink-2">Payment Terms</span>
             <select
               value={paymentTerms}
               disabled={released}
               onChange={(e) => setPaymentTerms(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs bg-white"
+              className="mt-1 w-full rounded border border-border px-2 py-1.5 text-xs bg-surface"
             >
               {PAYMENT_TERM_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
@@ -362,22 +363,22 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
           <StatCell label="Testing Lead Time" value={`${leadTimeDays} days`} />
           <StatCell label="Expected Report" value={formatThirdPartyDate(expectedReportIso)} />
           <label className="block text-xs">
-            <span className="font-semibold text-slate-700">Sample Pickup Date</span>
+            <span className="font-semibold text-ink-2">Sample Pickup Date</span>
             <input
               type="date"
               value={pickupDate}
               disabled={released}
               onChange={(e) => setPickupDate(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs"
+              className="mt-1 w-full rounded border border-border px-2 py-1.5 text-xs"
             />
           </label>
           <label className="block text-xs">
-            <span className="font-semibold text-slate-700">Urgency</span>
+            <span className="font-semibold text-ink-2">Urgency</span>
             <select
               value={urgency}
               disabled={released}
               onChange={(e) => setUrgency(e.target.value as (typeof URGENCY_OPTIONS)[number])}
-              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs bg-white"
+              className="mt-1 w-full rounded border border-border px-2 py-1.5 text-xs bg-surface"
             >
               {URGENCY_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>
@@ -392,25 +393,25 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
       <PopupSection title="4B.2 PO format preview (generated on Release)">
         <ThirdPartyPoPdfPreview poInput={poInput} />
         <details className="mt-2">
-          <summary className="text-[10px] text-slate-500 cursor-pointer select-none">Plain-text summary</summary>
-          <pre className="whitespace-pre-wrap text-[10px] leading-relaxed font-mono bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-800 max-h-40 overflow-y-auto mt-1">
+          <summary className="text-[10px] text-ink-3 cursor-pointer select-none">Plain-text summary</summary>
+          <pre className="whitespace-pre-wrap text-[10px] leading-relaxed font-mono bg-surface-2 border border-border rounded-lg p-3 text-ink max-h-40 overflow-y-auto mt-1">
             {poPreview}
           </pre>
         </details>
       </PopupSection>
 
-      <div className="mt-4 pt-4 border-t border-slate-200 flex flex-wrap justify-end gap-2">
+      <div className="mt-4 pt-4 border-t border-border flex flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={handleDownloadPdf}
-          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink hover:bg-surface-2"
         >
           💾 Save as PDF
         </button>
         <button
           type="button"
           onClick={handleEmailVendor}
-          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 hover:bg-slate-50"
+          className="px-3 py-1.5 rounded-lg border border-border bg-surface text-xs font-semibold text-ink hover:bg-surface-2"
         >
           📧 Email to Vendor
         </button>
@@ -424,7 +425,7 @@ const ThirdPartyTestModal: React.FC<ThirdPartyTestModalProps> = ({
             {releasing ? 'Releasing…' : '✓ Release PO & Move to Tracking'}
           </button>
         ) : (
-          <span className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+          <span className="px-3 py-1.5 rounded-lg bg-ok-soft border border-ok text-ok text-xs font-semibold">
             ✓ PO released — awaiting lab report (test #{testIndex + 1})
           </span>
         )}

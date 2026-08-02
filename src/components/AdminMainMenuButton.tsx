@@ -13,7 +13,7 @@ const AdminMainMenuButton = ({ className = '' }: Props) => {
   return (
     <button
       type="button"
-      className={`p-2 rounded-lg hover:bg-gray-100 transition-colors shrink-0 text-gray-700 ${className}`}
+      className={`p-2 rounded-lg hover:bg-surface-3 transition-colors shrink-0 text-ink-2 ${className}`}
       onClick={toggle}
       aria-label={open ? 'Close main menu' : 'Open main menu'}
       aria-expanded={open}

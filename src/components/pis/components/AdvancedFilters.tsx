@@ -77,7 +77,7 @@ export function AdvancedFilters({ filters, onFilterChange, customers, currentRol
    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
      <div className="flex items-center gap-2 flex-wrap">
-      <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+      <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-ink-2" />
       <h3 className="font-medium text-sm sm:text-base">Advanced Filters</h3>
       {activeFilterCount > 0 && (
        <Badge variant="secondary" className="text-xs">{activeFilterCount} active</Badge>
@@ -210,7 +210,7 @@ export function AdvancedFilters({ filters, onFilterChange, customers, currentRol
        id="showCompleted"
        checked={filters.showCompleted}
        onChange={(e) => updateFilter('showCompleted', e.target.checked)}
-       className="rounded border-gray-300"
+       className="rounded border-border"
       />
       <Label htmlFor="showCompleted" className="cursor-pointer">
        Include Completed/Terminated PIS

@@ -6,19 +6,21 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Plus, Trash2, Clock, CheckCircle2, ShoppingCart, GitCompare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader, SearchInput, Pagination, ConfirmDialog, StatCard, selectClassName } from '../../components/ui';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem, QuoteStats } from '../../services/quotations.service';
 import { statusBadge, STATUS_META } from './quoteStatus';
 import QuotationsNav from './QuotationsNav';
 
 const SCOPE_META: Record<string, { label: string; cls: string }> = {
-  full: { label: 'Full', cls: 'bg-slate-100 text-slate-700' },
-  rm_only: { label: 'RM Only', cls: 'bg-amber-100 text-amber-700' },
+  full: { label: 'Full', cls: 'bg-surface-3 text-ink-2' },
+  rm_only: { label: 'RM Only', cls: 'bg-warn-soft text-warn' },
   pm_only: { label: 'PM Only', cls: 'bg-violet-100 text-violet-700' },
 };
 const CAT_META: Record<string, { label: string; cls: string }> = {
-  pre_production: { label: 'Pre-Prod', cls: 'bg-blue-50 text-blue-600' },
-  post_production: { label: 'Post-Prod', cls: 'bg-emerald-50 text-emerald-700' },
+  pre_production: { label: 'Pre-Prod', cls: 'bg-brand-soft text-brand' },
+  post_production: { label: 'Post-Prod', cls: 'bg-ok-soft text-ok' },
 };
 
 const PAGE_SIZE = 20;
@@ -85,7 +87,7 @@ export default function QuotationsList() {
         subtitle="BOM-driven price & timeline quotes"
         icon={<FileText className="w-6 h-6" />}
         actions={
-          <button onClick={() => navigate('/quotations/new')} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold">
+          <button onClick={() => navigate('/quotations/new')} className="inline-flex items-center gap-2 px-4 py-2 bg-surface text-ink rounded-lg hover:bg-surface-3 transition-all text-sm font-semibold">
             <Plus className="w-4 h-4" /> New Quote
           </button>
         }
@@ -104,7 +106,7 @@ export default function QuotationsList() {
           <button
             key={key}
             onClick={() => setCatFilter(key)}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${catFilter === key ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${catFilter === key ? 'bg-ink text-white' : 'bg-surface-3 text-ink-2 hover:bg-surface-3'}`}
           >
             {label}
           </button>
@@ -112,104 +114,89 @@ export default function QuotationsList() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={stats?.total ?? '—'} iconBgClass="bg-slate-100" iconColorClass="text-slate-700" />
-        <StatCard icon={<Clock className="w-5 h-5" />} title="Pending Approval" value={stats?.by_status?.pending_approval ?? 0} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
-        <StatCard icon={<CheckCircle2 className="w-5 h-5" />} title="Accepted" value={stats?.by_status?.accepted ?? 0} iconBgClass="bg-emerald-100" iconColorClass="text-emerald-600" />
+        <StatCard icon={<FileText className="w-5 h-5" />} title="Total Quotes" value={stats?.total ?? '—'} iconBgClass="bg-surface-3" iconColorClass="text-ink-2" />
+        <StatCard icon={<Clock className="w-5 h-5" />} title="Pending Approval" value={stats?.by_status?.pending_approval ?? 0} iconBgClass="bg-warn-soft" iconColorClass="text-warn" />
+        <StatCard icon={<CheckCircle2 className="w-5 h-5" />} title="Accepted" value={stats?.by_status?.accepted ?? 0} iconBgClass="bg-ok-soft" iconColorClass="text-ok" />
         <StatCard icon={<ShoppingCart className="w-5 h-5" />} title="Converted to SO" value={stats?.converted ?? 0} iconBgClass="bg-violet-100" iconColorClass="text-violet-600" />
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+      <div className="bg-surface rounded-lg shadow-sm border border-hairline">
+        <div className="p-4 border-b border-hairline flex items-center gap-3 flex-wrap">
           <SearchInput value={search} onChange={setSearch} placeholder="Search by ref, name, customer, or BOM…" className="max-w-md flex-1" />
           <select className={`${selectClassName} w-auto`} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All statuses</option>
             {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           {selected.size >= 2 && (
-            <button onClick={() => navigate(`/quotations/compare?ids=${[...selected].join(',')}`)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">
+            <button onClick={() => navigate(`/quotations/compare?ids=${[...selected].join(',')}`)} className="inline-flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink">
               <GitCompare className="w-4 h-4" /> Compare ({selected.size})
             </button>
           )}
-          <button onClick={exportCsv} className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200" title="Export CSV">
+          <button onClick={exportCsv} className="inline-flex items-center gap-2 px-4 py-2 bg-surface-3 text-ink-2 rounded-lg text-sm font-medium hover:bg-surface-3" title="Export CSV">
             <Download className="w-4 h-4" /> Export
           </button>
         </div>
 
         {loading ? (
-          <div className="divide-y divide-gray-50 animate-pulse">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
-                <div className="w-4 h-4 bg-gray-100 rounded" />
-                <div className="h-3 bg-gray-100 rounded w-20" />
-                <div className="h-3 bg-gray-100 rounded flex-1 max-w-[14rem]" />
-                <div className="h-5 bg-gray-100 rounded-full w-24" />
-                <div className="h-3 bg-gray-100 rounded w-24" />
-                <div className="h-3 bg-gray-100 rounded w-16 ml-auto" />
-              </div>
-            ))}
+          <div className="p-4">
+            <TableSkeleton rows={6} cols={6} />
           </div>
         ) : displayQuotes.length === 0 ? (
-          <div className="p-16 text-center">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-slate-50 flex items-center justify-center">
-              <FileText className="w-7 h-7 text-slate-300" />
-            </div>
-            <p className="text-slate-700 font-semibold">
-              {catFilter === 'needs_actuals' ? 'All post-production quotes have actuals entered.' : (search || statusFilter ? 'No quotes match your filters.' : 'No quotes yet')}
-            </p>
-            <p className="text-gray-400 text-sm mt-1">
-              {catFilter === 'needs_actuals' ? 'Nothing pending — great job!' : (search || statusFilter ? 'Try clearing the search or status filter.' : 'Generate your first BOM-driven quote.')}
-            </p>
-            {!search && !statusFilter && catFilter !== 'needs_actuals' && (
-              <button onClick={() => navigate('/quotations/new')} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900">
+          <EmptyState
+            icon={<FileText />}
+            title={catFilter === 'needs_actuals' ? 'All post-production quotes have actuals entered.' : (search || statusFilter ? 'No quotes match your filters.' : 'No quotes yet')}
+            description={catFilter === 'needs_actuals' ? 'Nothing pending — great job!' : (search || statusFilter ? 'Try clearing the search or status filter.' : 'Generate your first BOM-driven quote.')}
+            action={!search && !statusFilter && catFilter !== 'needs_actuals' ? (
+              <button onClick={() => navigate('/quotations/new')} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink">
                 <Plus className="w-4 h-4" /> New Quote
               </button>
-            )}
-          </div>
+            ) : undefined}
+          />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/50">
-                  <th className="py-3 px-4 w-8"></th><th className="py-3 px-4">Ref</th><th className="py-3 px-4">Type</th><th className="py-3 px-4">Name</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4">BOM</th><th className="py-3 px-4 text-right">Headline ₹</th><th className="py-3 px-4">MOQ</th>
-                  <th className="py-3 px-4">Created</th><th className="py-3 px-4"></th>
+              <thead className="sticky top-0 z-20">
+                <tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline bg-surface-2/50 [&_th]:bg-surface-2">
+                  <th scope="col" className="py-3 px-4 w-8"></th><th scope="col" className="py-3 px-4">Ref</th><th scope="col" className="py-3 px-4">Type</th><th scope="col" className="py-3 px-4">Name</th><th scope="col" className="py-3 px-4">Status</th><th scope="col" className="py-3 px-4">Customer</th>
+                  <th scope="col" className="py-3 px-4">BOM</th><th scope="col" className="py-3 px-4 text-right">Headline ₹</th><th scope="col" className="py-3 px-4">MOQ</th>
+                  <th scope="col" className="py-3 px-4">Created</th><th scope="col" className="py-3 px-4"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-hairline">
                 {displayQuotes.map((q) => (
-                  <tr key={q.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
+                  <tr key={q.id} className="hover:bg-surface-2/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
                     <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)} disabled={!selected.has(q.id) && selected.size >= 4} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" />
+                      <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)} disabled={!selected.has(q.id) && selected.size >= 4} className="rounded border-border text-ink focus:ring-border" />
                     </td>
-                    <td className="py-3 px-4 font-medium text-slate-900">{q.quote_ref}</td>
+                    <td className="py-3 px-4 font-medium text-ink">{q.quote_ref}</td>
                     <td className="py-3 px-4">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${(SCOPE_META[q.quote_type || 'full'] || SCOPE_META.full).cls}`}>{(SCOPE_META[q.quote_type || 'full'] || SCOPE_META.full).label}</span>
                       {q.quote_category === 'post_production' && (
                         <>
                           <span className={`ml-1 text-xs font-semibold px-2 py-0.5 rounded-full ${CAT_META.post_production.cls}`}>{CAT_META.post_production.label}</span>
                           {q.actuals_count != null && q.actuals_count > 0 && (
-                            <span className="ml-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">✓</span>
+                            <span className="ml-1 text-xs font-semibold text-ok bg-ok-soft px-1.5 py-0.5 rounded-full">✓</span>
                           )}
                         </>
                       )}
-                      {q.job_ref && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[10rem]" title={q.job_ref}>{q.job_ref}</p>}
+                      {q.job_ref && <p className="text-xs text-ink-4 mt-0.5 truncate max-w-[10rem]" title={q.job_ref}>{q.job_ref}</p>}
                     </td>
-                    <td className="py-3 px-4 text-gray-700 max-w-[16rem] truncate">{q.quote_name}</td>
+                    <td className="py-3 px-4 text-ink-2 max-w-[16rem] truncate">{q.quote_name}</td>
                     <td className="py-3 px-4">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span>
-                      {q.sales_order_ref && <span className="block text-xs text-emerald-600 mt-0.5">→ {q.sales_order_ref}</span>}
+                      {q.sales_order_ref && <span className="block text-xs text-ok mt-0.5">→ {q.sales_order_ref}</span>}
                     </td>
-                    <td className="py-3 px-4 text-gray-600">{q.customer_name || '—'}</td>
+                    <td className="py-3 px-4 text-ink-2">{q.customer_name || '—'}</td>
                     <td className="py-3 px-4">
                       {q.bom_code ? (
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/quotations/bom/${q.bom_code}`); }} className="text-slate-600 hover:text-slate-900 hover:underline text-sm font-medium">{q.bom_code}</button>
-                      ) : <span className="text-gray-400">—</span>}
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/quotations/bom/${q.bom_code}`); }} className="text-ink-2 hover:text-ink hover:underline text-sm font-medium">{q.bom_code}</button>
+                      ) : <span className="text-ink-4">—</span>}
                     </td>
-                    <td className="py-3 px-4 text-right text-slate-900 font-semibold">{q.headline_sell != null ? Number(q.headline_sell).toFixed(2) : '—'}</td>
-                    <td className="py-3 px-4 text-gray-500">{q.headline_moq || '—'}</td>
-                    <td className="py-3 px-4 text-gray-500">{new Date(q.created_at).toLocaleDateString()}</td>
+                    <td className="py-3 px-4 text-right text-ink font-semibold">{q.headline_sell != null ? Number(q.headline_sell).toFixed(2) : '—'}</td>
+                    <td className="py-3 px-4 text-ink-3">{q.headline_moq || '—'}</td>
+                    <td className="py-3 px-4 text-ink-3">{new Date(q.created_at).toLocaleDateString()}</td>
                     <td className="py-3 px-4 text-right">
-                      <button onClick={(e) => { e.stopPropagation(); setToDelete(q); }} className="text-gray-400 hover:text-red-500 p-1" title="Delete">
+                      <button onClick={(e) => { e.stopPropagation(); setToDelete(q); }} className="text-ink-4 hover:text-err p-1" title="Delete">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
@@ -221,7 +208,7 @@ export default function QuotationsList() {
         )}
 
         {totalPages > 1 && (
-          <div className="p-4 border-t border-gray-100">
+          <div className="p-4 border-t border-hairline">
             <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={catFilter === 'needs_actuals' ? displayQuotes.length : total} itemsPerPage={PAGE_SIZE} />
           </div>
         )}

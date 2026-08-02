@@ -71,6 +71,7 @@ import { GrnPackagingListSection } from './GrnPackagingListSection';
 import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
 import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
 import { GrnQcCompleteSection } from './GrnQcCompleteSection';
+import { ModalOverlay } from '../ui/ModalOverlay';
 
 /** Workflow steps the backend's "GRN Complete" gate expects (mirrors Inbound.tsx). */
 const GRN_COMPLETE_WORKFLOW_STEPS = ['PO Received', 'Qty Check', 'QC Inspection', 'Label Generation', 'Dispatch Ready'];
@@ -171,12 +172,12 @@ const DocFileUploadCell: React.FC<DocFileUploadCellProps> = ({
       />
       {uploaded && fileName ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-emerald-700">{fileName} ✓ uploaded</span>
+          <span className="text-ok">{fileName} ✓ uploaded</span>
           {!disabled ? (
             <button
               type="button"
               onClick={onClear}
-              className="text-xs font-medium text-slate-500 underline hover:text-rose-600"
+              className="text-xs font-medium text-ink-3 underline hover:text-err"
             >
               Remove
             </button>
@@ -212,10 +213,10 @@ const DocFileUploadCell: React.FC<DocFileUploadCellProps> = ({
           }}
           className={`flex min-h-[2.25rem] w-full items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-2 text-xs transition-colors ${
             disabled
-              ? 'cursor-not-allowed border-slate-200 text-slate-400 opacity-60'
+              ? 'cursor-not-allowed border-border text-ink-4 opacity-60'
               : dragActive
-                ? 'cursor-copy border-emerald-400 bg-emerald-50 text-emerald-800'
-                : 'cursor-pointer border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
+                ? 'cursor-copy border-ok bg-ok-soft text-ok'
+                : 'cursor-pointer border-border text-ink-2 hover:border-border hover:bg-surface-2'
           }`}
         >
           <button
@@ -225,11 +226,11 @@ const DocFileUploadCell: React.FC<DocFileUploadCellProps> = ({
               e.stopPropagation();
               openFilePicker();
             }}
-            className="text-xs font-semibold text-slate-800 underline-offset-2 hover:underline disabled:no-underline disabled:text-slate-400"
+            className="text-xs font-semibold text-ink underline-offset-2 hover:underline disabled:no-underline disabled:text-ink-4"
           >
             Choose file
           </button>
-          <span className="text-xs font-normal text-slate-500">· drag &amp; drop</span>
+          <span className="text-xs font-normal text-ink-3">· drag &amp; drop</span>
         </div>
       )}
     </div>
@@ -882,21 +883,22 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="strong" scroll align="start">
       <div
-        className="relative my-4 w-full max-w-5xl rounded-xl bg-white shadow-2xl border border-slate-200"
+        className="relative my-4 w-full max-w-5xl rounded-xl bg-surface shadow-2xl border border-border"
         role="dialog"
         aria-modal="true"
         aria-labelledby="grn-copy-receipt-title"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-4 rounded-t-xl">
+        <div className="sticky top-0 z-10 border-b border-border bg-surface px-6 py-4 rounded-t-xl">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 id="grn-copy-receipt-title" className="text-lg font-bold text-slate-900">
+              <h2 id="grn-copy-receipt-title" className="text-lg font-bold text-ink">
                 {mode === 'confirm-receipt' ? '✓ Confirm Receipt — ' : '📋 '}
                 GRN Copy — {displayGrnNo(headerView.titleGrnNo)} {headerView.itemTitle}
               </h2>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-ink-2">
                 {[headerView.shipmentBatchRef, headerView.poNo, headerView.vendorLine, headerView.warehouseCode, headerView.warehouseName]
                   .filter(Boolean)
                   .join(' · ')}
@@ -907,7 +909,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2"
                 >
                   Done
                 </button>
@@ -917,7 +919,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   disabled={generating}
                   onClick={() => void handleMismatchQuarantine()}
-                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-err px-4 py-2 text-sm font-semibold text-white hover:bg-err disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {generating ? 'Processing…' : 'Report Mismatch & Send to QC'}
                 </button>
@@ -927,7 +929,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 hidden={!!previewLabels || currentStep !== 5}
                 disabled={!receiptChecksPass || generating || !!previewLabels || currentStep !== 5}
                 onClick={() => void handleGenerateLabels()}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   receiptChecksPass
                     ? undefined
@@ -941,7 +943,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                className="rounded-lg p-2 text-ink-3 hover:bg-surface-3 hover:text-ink"
                 aria-label="Close"
               >
                 <X className="h-5 w-5" />
@@ -957,7 +959,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
 
         {previewLabels ? (
           <div className="space-y-4 px-6 py-5">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div className="rounded-xl border border-ok bg-ok-soft px-4 py-3 text-sm text-ok">
               <strong>
                 {previewLabels.length} label{previewLabels.length === 1 ? '' : 's'} generated.
               </strong>{' '}
@@ -975,51 +977,51 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         ) : (
         <div className="space-y-6 px-6 py-5">
           {currentStep === 5 && hasExistingLabels ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div className="rounded-xl border border-ok bg-ok-soft px-4 py-3 text-sm text-ok">
               <strong>{existingLabels.length} QR label{existingLabels.length === 1 ? '' : 's'} already on file</strong> for this GRN.
               Upload receipt documents and shipment photos below. The button stays disabled until those checks pass; then you can{' '}
               <strong>Regenerate Labels</strong> or save draft and continue to QC / assign rack.
             </div>
           ) : currentStep === 5 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div className="rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-ink-2">
               No QR labels on this GRN yet. Complete documents, pack counts, and shipment photos — then <strong>Generate Labels</strong> will enable.
             </div>
           ) : null}
 
-          <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">📦 GRN header (auto from system)</h3>
-            <div className="overflow-x-auto">
+          <section className="rounded-xl border border-border bg-surface-2/60 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-ink">📦 GRN header (auto from system)</h3>
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-hairline">
                   <tr>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">GRN No</td>
-                    <td className="py-2 pr-8 font-semibold text-slate-900">{displayGrnNo(headerFields.grnNo)}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Shipment Date</td>
-                    <td className="py-2 font-semibold text-slate-900">{headerFields.shipmentDate}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">GRN No</td>
+                    <td className="py-2 pr-8 font-semibold text-ink">{displayGrnNo(headerFields.grnNo)}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Shipment Date</td>
+                    <td className="py-2 font-semibold text-ink">{headerFields.shipmentDate}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Received Date</td>
-                    <td className="py-2 pr-8 font-semibold text-slate-900">{headerFields.receivedDateTime}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">GRN Generated Date</td>
-                    <td className="py-2 font-semibold text-slate-900">{headerFields.generatedDateTime}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Received Date</td>
+                    <td className="py-2 pr-8 font-semibold text-ink">{headerFields.receivedDateTime}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">GRN Generated Date</td>
+                    <td className="py-2 font-semibold text-ink">{headerFields.generatedDateTime}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Item</td>
-                    <td className="py-2 pr-8 font-semibold text-slate-900">{headerFields.itemLine}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">PO Number</td>
-                    <td className="py-2 font-semibold text-slate-900">{headerFields.poNumber}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Item</td>
+                    <td className="py-2 pr-8 font-semibold text-ink">{headerFields.itemLine}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">PO Number</td>
+                    <td className="py-2 font-semibold text-ink">{headerFields.poNumber}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">PO Qty</td>
-                    <td className="py-2 pr-8 font-semibold text-slate-900">{headerFields.poQty}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Shipped Qty</td>
-                    <td className="py-2 font-semibold text-slate-900">{headerFields.shippedQty}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">PO Qty</td>
+                    <td className="py-2 pr-8 font-semibold text-ink">{headerFields.poQty}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Shipped Qty</td>
+                    <td className="py-2 font-semibold text-ink">{headerFields.shippedQty}</td>
                   </tr>
                   <tr>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Per Unit Price</td>
-                    <td className="py-2 pr-8 font-semibold text-slate-900">{headerFields.unitPrice}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-600 whitespace-nowrap">Vendor</td>
-                    <td className="py-2 font-semibold text-slate-900">{headerFields.vendorLine}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Per Unit Price</td>
+                    <td className="py-2 pr-8 font-semibold text-ink">{headerFields.unitPrice}</td>
+                    <td className="py-2 pr-4 font-medium text-ink-2 whitespace-nowrap">Vendor</td>
+                    <td className="py-2 font-semibold text-ink">{headerFields.vendorLine}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1113,7 +1115,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7) : s))}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2"
                 >
                   ← Back
                 </button>
@@ -1121,23 +1123,23 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {currentStep === 1 && receiptMeta.confirmedAt ? (
-                <span className="text-xs font-semibold text-emerald-700">✓ Receipt confirmed</span>
+                <span className="text-xs font-semibold text-ok">✓ Receipt confirmed</span>
               ) : null}
               {currentStep === 2 && detailsMeta.confirmedAt ? (
-                <span className="text-xs font-semibold text-emerald-700">✓ Details saved</span>
+                <span className="text-xs font-semibold text-ok">✓ Details saved</span>
               ) : null}
               {currentStep === 3 && batchesMeta.confirmedAt ? (
-                <span className="text-xs font-semibold text-emerald-700">✓ Batches saved</span>
+                <span className="text-xs font-semibold text-ok">✓ Batches saved</span>
               ) : null}
               {currentStep === 4 && packagingMeta.confirmedAt ? (
-                <span className="text-xs font-semibold text-emerald-700">✓ Packaging saved</span>
+                <span className="text-xs font-semibold text-ok">✓ Packaging saved</span>
               ) : null}
               {!docsLocked ? (
                 <button
                   type="button"
                   onClick={() => void handleSaveDraft()}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2 disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Save draft'}
                 </button>
@@ -1147,7 +1149,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   onClick={() => void handleConfirmReceipt()}
                   disabled={confirmingReceipt}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmingReceipt
                     ? 'Confirming…'
@@ -1161,7 +1163,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   onClick={() => void handleConfirmDetails()}
                   disabled={confirmingDetails}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmingDetails
                     ? 'Saving…'
@@ -1175,7 +1177,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   onClick={() => void handleConfirmBatches()}
                   disabled={confirmingBatches}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmingBatches
                     ? 'Saving…'
@@ -1189,7 +1191,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   onClick={() => void handleConfirmPackaging()}
                   disabled={confirmingPackaging}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {confirmingPackaging
                     ? 'Saving…'
@@ -1202,7 +1204,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentStep(6)}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok"
                 >
                   Continue · Quarantine → QC
                 </button>
@@ -1212,7 +1214,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   type="button"
                   onClick={() => void handleSendToQc()}
                   disabled={sendingToQc}
-                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-press disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {sendingToQc ? 'Sending…' : qcSentAt ? 'Re-send to QC' : 'Send to Quarantine → QC'}
                 </button>
@@ -1223,7 +1225,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                     type="button"
                     onClick={() => void handleQcReject()}
                     disabled={decidingQc || !qcSpecs}
-                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-err px-4 py-2 text-sm font-semibold text-white hover:bg-err disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {decidingQc ? 'Working…' : '❌ Reject → Vendor Return'}
                   </button>
@@ -1231,7 +1233,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                     type="button"
                     onClick={() => void handleQcAccept()}
                     disabled={decidingQc || !qcSpecs}
-                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {decidingQc ? 'Working…' : '✅ Accept → Complete GRN'}
                   </button>
@@ -1241,7 +1243,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentStep((s) => (s < 7 ? ((s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7) : s))}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2"
                 >
                   Next →
                 </button>
@@ -1251,7 +1253,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 

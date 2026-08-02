@@ -3,7 +3,7 @@
  * calculator. Live 7-band pricing & timeline, blended-SG auto-compute with
  * manual fallback, full config panel, and save.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Calculator, ArrowLeft, Save, AlertTriangle, Loader2, FlaskConical, Package, X, Search, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -295,14 +295,14 @@ export default function QuoteBuilder() {
         icon={<Calculator className="w-6 h-6" />}
         actions={
           <>
-            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
-            <button disabled={!result || (result?.bands?.length ?? 0) === 0} onClick={() => setSaveOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-800 rounded-lg hover:bg-gray-100 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-4 h-4" /> {id ? 'Update Quote' : 'Save Quote'}</button>
+            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 transition-all text-sm font-medium"><ArrowLeft className="w-4 h-4" /> Back</button>
+            <button disabled={!result || (result?.bands?.length ?? 0) === 0} onClick={() => setSaveOpen(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-surface text-ink rounded-lg hover:bg-surface-3 transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-4 h-4" /> {id ? 'Update Quote' : 'Save Quote'}</button>
           </>
         }
       />
 
       {loadingFromQuote && (
-        <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100 text-blue-700 text-sm">
+        <div className="flex items-center gap-3 p-4 bg-brand-soft rounded-lg border border-brand text-brand text-sm">
           <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
           <span>Loading pre-production quote data…</span>
         </div>
@@ -311,10 +311,10 @@ export default function QuoteBuilder() {
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* LEFT: config */}
         <div className="w-full lg:w-80 lg:shrink-0 space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
-            <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+          <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5 space-y-4">
+            <div className="flex gap-1 p-1 bg-surface-3 rounded-lg">
               {(['bom', 'adhoc'] as const).map((m) => (
-                <button key={m} onClick={() => { setMode(m); setResult(null); }} className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500'}`}>
+                <button key={m} onClick={() => { setMode(m); setResult(null); }} className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-all ${mode === m ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}>
                   {m === 'bom' ? 'From BOM' : 'Adhoc'}
                 </button>
               ))}
@@ -324,23 +324,23 @@ export default function QuoteBuilder() {
               <div className="relative">
                 <FormField label="BOM" required>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4" />
                     <input className={`${inputClassName} pl-9`} placeholder={selectedBom ? `${selectedBom.bomCode} — ${selectedBom.name}` : 'Search BOM…'} value={bomSearch} onChange={(e) => { setBomSearch(e.target.value); setBomOpen(true); }} onFocus={() => setBomOpen(true)} />
                   </div>
                 </FormField>
                 {bomOpen && bomResults.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-auto">
+                  <div className="absolute z-20 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg max-h-64 overflow-auto">
                     {bomResults.map((b) => (
-                      <button key={b.id} onClick={() => { setSelectedBom(b); setBomOpen(false); setBomSearch(''); }} className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm border-b border-gray-50 last:border-0">
-                        <span className="font-medium text-slate-900">{b.bomCode}</span><span className="text-gray-500"> — {b.name}</span>{b.packSize && <span className="text-gray-400 text-xs ml-1">({b.packSize})</span>}
+                      <button key={b.id} onClick={() => { setSelectedBom(b); setBomOpen(false); setBomSearch(''); }} className="w-full text-left px-4 py-2.5 hover:bg-surface-2 text-sm border-b border-gray-50 last:border-0">
+                        <span className="font-medium text-ink">{b.bomCode}</span><span className="text-ink-3"> — {b.name}</span>{b.packSize && <span className="text-ink-4 text-xs ml-1">({b.packSize})</span>}
                       </button>
                     ))}
                   </div>
                 )}
                 {selectedBom && (
-                  <div className="mt-2 flex items-center gap-2 text-sm bg-slate-50 rounded-lg px-3 py-2">
-                    <Package className="w-4 h-4 text-slate-500" /><span className="font-medium text-slate-900">{selectedBom.bomCode}</span><span className="text-gray-500 truncate">{selectedBom.name}</span>
-                    <button onClick={() => { setSelectedBom(null); setResult(null); }} className="ml-auto text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                  <div className="mt-2 flex items-center gap-2 text-sm bg-surface-2 rounded-lg px-3 py-2">
+                    <Package className="w-4 h-4 text-ink-3" /><span className="font-medium text-ink">{selectedBom.bomCode}</span><span className="text-ink-3 truncate">{selectedBom.name}</span>
+                    <button onClick={() => { setSelectedBom(null); setResult(null); }} aria-label="Clear selected BOM" className="ml-auto text-ink-4 hover:text-err"><X className="w-4 h-4" /></button>
                   </div>
                 )}
               </div>
@@ -354,22 +354,22 @@ export default function QuoteBuilder() {
               </select>
             </FormField>
             <FormField label="Quote Scope">
-              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+              <div className="flex gap-1 p-1 bg-surface-3 rounded-lg">
                 {([['full', 'Full (RM + PM)'], ['rm_only', 'RM / Filling Only'], ['pm_only', 'PM Only']] as const).map(([s, label]) => (
-                  <button key={s} onClick={() => setQuoteScope(s)} className={`flex-1 py-1 rounded-md text-xs font-medium transition-all text-center ${quoteScope === s ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500'}`}>
+                  <button key={s} onClick={() => setQuoteScope(s)} className={`flex-1 py-1 rounded-md text-xs font-medium transition-all text-center ${quoteScope === s ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}>
                     {label}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-ink-4 mt-1">
                 {quoteScope === 'rm_only' ? 'PM cost excluded — use when client supplies their own packaging.' : quoteScope === 'pm_only' ? 'RM & filling excluded — use when quoting packaging supply only.' : 'Full product + packaging quotation.'}
               </p>
             </FormField>
             {mode === 'bom' && (
               <FormField label="Pricing Source">
-                <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                <div className="flex gap-1 p-1 bg-surface-3 rounded-lg">
                   {(['master', 'vendor'] as const).map((s) => (
-                    <button key={s} onClick={() => setPricingSource(s)} className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${pricingSource === s ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500'}`}>
+                    <button key={s} onClick={() => setPricingSource(s)} className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-all ${pricingSource === s ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}>
                       {s === 'master' ? 'Master price' : 'Cheapest vendor'}
                     </button>
                   ))}
@@ -378,27 +378,27 @@ export default function QuoteBuilder() {
             )}
           </div>
 
-          {quoteScope !== 'pm_only' && <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
+          {quoteScope !== 'pm_only' && <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{quoteScope === 'rm_only' ? 'Filling Config' : 'Packaging'}</h3>
-              {mode === 'bom' && result?.auto_detected && <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">auto-detected from BOM</span>}
+              <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">{quoteScope === 'rm_only' ? 'Filling Config' : 'Packaging'}</h3>
+              {mode === 'bom' && result?.auto_detected && <span className="text-xs text-ok bg-ok-soft px-2 py-0.5 rounded-full">auto-detected from BOM</span>}
             </div>
             <FormField label="Packaging Type"><select className={selectClassName} value={packagingType} onChange={(e) => { setPackagingType(e.target.value); lastAutoDetect.current = ''; }}>{PACKAGING_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></FormField>
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Volume Bracket"><select className={selectClassName} value={volumeKey} onChange={(e) => setVolumeKey(e.target.value)}>{volKeyOptions.map((v) => <option key={v} value={v}>{v} ML</option>)}</select></FormField>
               <FormField label="Fill Volume (ML)"><input className={inputClassName} type="number" placeholder="auto" value={volumeMl} onChange={(e) => setVolumeMl(e.target.value)} /></FormField>
             </div>
-            {quoteScope !== 'rm_only' && <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={monocarton} onChange={(e) => setMonocarton(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Includes monocarton</label>}
+            {quoteScope !== 'rm_only' && <label className="flex items-center gap-2 text-sm text-ink-2"><input type="checkbox" checked={monocarton} onChange={(e) => setMonocarton(e.target.checked)} className="rounded border-border text-ink focus:ring-border" /> Includes monocarton</label>}
           </div>}
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Commercials</h3>
+          <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Commercials</h3>
             <div className="grid grid-cols-2 gap-3">
               {quoteScope !== 'pm_only' && <FormField label="RM Wastage %"><input className={inputClassName} type="number" value={rmWastagePct} onChange={(e) => setRmWastagePct(e.target.value)} /></FormField>}
               {quoteScope !== 'rm_only' && <FormField label="PM Wastage %"><input className={inputClassName} type="number" value={pmWastagePct} onChange={(e) => setPmWastagePct(e.target.value)} /></FormField>}
               {quoteScope !== 'pm_only' && <FormField label="Batch Yield %">
                 <input className={inputClassName} type="number" step="0.1" min="50" max="100" value={batchYieldPct} onChange={(e) => setBatchYieldPct(e.target.value)} />
-                <p className="text-xs text-gray-400 mt-1">{'<'}100% increases RM cost proportionally.</p>
+                <p className="text-xs text-ink-4 mt-1">{'<'}100% increases RM cost proportionally.</p>
               </FormField>}
               {quoteScope !== 'pm_only' && <FormField label="RM Logistics ₹/kg"><input className={inputClassName} type="number" value={rmLogistics} onChange={(e) => setRmLogistics(e.target.value)} /></FormField>}
               {quoteScope !== 'rm_only' && <FormField label="PM Logistics ₹/unit"><input className={inputClassName} type="number" value={pmLogistics} onChange={(e) => setPmLogistics(e.target.value)} /></FormField>}
@@ -409,7 +409,7 @@ export default function QuoteBuilder() {
               <FormField label="Annual Rate %"><input className={inputClassName} type="number" value={annualRatePct} onChange={(e) => setAnnualRatePct(e.target.value)} /></FormField>
               <FormField label="Target Price ₹"><input className={inputClassName} type="number" placeholder="optional" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} /></FormField>
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={useBatchLead} onChange={(e) => setUseBatchLead(e.target.checked)} className="rounded border-gray-300 text-slate-800 focus:ring-slate-800" /> Use batch procurement lead times</label>
+            <label className="flex items-center gap-2 text-sm text-ink-2"><input type="checkbox" checked={useBatchLead} onChange={(e) => setUseBatchLead(e.target.checked)} className="rounded border-border text-ink focus:ring-border" /> Use batch procurement lead times</label>
           </div>
         </div>
 
@@ -426,7 +426,7 @@ export default function QuoteBuilder() {
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={r.price_per_kg} onChange={(e) => setRm(i, 'price_per_kg', e.target.value)} /></td>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-16 text-right`} type="number" step="0.001" placeholder="opt" value={r.specific_gravity} onChange={(e) => setRm(i, 'specific_gravity', e.target.value)} /></td>
                     <td className="p-1"><select className={`${selectClassName} py-1 px-2`} value={r.category} onChange={(e) => setRm(i, 'category', e.target.value)}>{RM_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></td>
-                    <td className="p-1 text-right"><button onClick={() => setAdhocRm((p) => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                    <td className="p-1 text-right"><button onClick={() => setAdhocRm((p) => p.filter((_, j) => j !== i))} aria-label="Remove RM line" className="text-ink-4 hover:text-err p-1"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocRm((p) => [...p, emptyRm()])} span={7} label="Add RM line" />
@@ -440,7 +440,7 @@ export default function QuoteBuilder() {
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-14 text-right`} type="number" value={p.qty_per_unit} onChange={(e) => setPm(i, 'qty_per_unit', e.target.value)} /></td>
                     <td className="p-1"><input className={`${inputClassName} py-1 px-2 w-20 text-right`} type="number" value={p.price_per_pc} onChange={(e) => setPm(i, 'price_per_pc', e.target.value)} /></td>
                     <td className="p-1"><select className={`${selectClassName} py-1 px-2`} value={p.material} onChange={(e) => setPm(i, 'material', e.target.value)}>{PM_MATERIALS.map((m) => <option key={m}>{m}</option>)}</select></td>
-                    <td className="p-1 text-right"><button onClick={() => setAdhocPm((prev) => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button></td>
+                    <td className="p-1 text-right"><button onClick={() => setAdhocPm((prev) => prev.filter((_, j) => j !== i))} aria-label="Remove PM line" className="text-ink-4 hover:text-err p-1"><Trash2 className="w-4 h-4" /></button></td>
                   </tr>
                 ))}
                 <AddRow onClick={() => setAdhocPm((p) => [...p, emptyPm()])} span={6} label="Add PM line" />
@@ -449,31 +449,31 @@ export default function QuoteBuilder() {
           )}
 
           {!hasInput && mode === 'bom' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-12 text-center"><Calculator className="w-10 h-10 mx-auto text-gray-300 mb-3" /><p className="text-gray-500 font-medium">Select a BOM to generate a quote.</p></div>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-12 text-center"><Calculator className="w-10 h-10 mx-auto text-ink-4 mb-3" /><p className="text-ink-3 font-medium">Select a BOM to generate a quote.</p></div>
           )}
 
           {hasInput && (
             <>
               {sg && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-                  <div className="flex items-center gap-2 mb-2"><FlaskConical className="w-4 h-4 text-slate-600" /><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Formula Specific Gravity</h3></div>
+                <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+                  <div className="flex items-center gap-2 mb-2"><FlaskConical className="w-4 h-4 text-ink-2" /><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Formula Specific Gravity</h3></div>
                   {sg.sg_complete ? (
-                    <p className="text-sm text-gray-600">Auto-computed blended SG: <span className="font-semibold text-emerald-700">{sg.blended_sg}</span></p>
+                    <p className="text-sm text-ink-2">Auto-computed blended SG: <span className="font-semibold text-ok">{sg.blended_sg}</span></p>
                   ) : (
                     <div className="space-y-3">
-                      <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{sg.missing_sg_lines.length} ingredient(s) missing SG ({sg.sg_known_pct}% known). {mode === 'adhoc' ? 'Fill the SG column above, or' : 'Enter values below, or'} set a manual blended SG.</span></div>
+                      <div className="flex items-start gap-2 text-sm text-warn bg-warn-soft rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><span>{sg.missing_sg_lines.length} ingredient(s) missing SG ({sg.sg_known_pct}% known). {mode === 'adhoc' ? 'Fill the SG column above, or' : 'Enter values below, or'} set a manual blended SG.</span></div>
                       {mode === 'bom' && (
                         <>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {sg.missing_sg_lines.map((l) => (
                               <div key={l.rm_code} className="flex items-center gap-2">
-                                <span className="text-sm text-gray-600 flex-1 truncate" title={l.name}>{l.name} <span className="text-gray-400">({l.pct_w_w}%)</span></span>
+                                <span className="text-sm text-ink-2 flex-1 truncate" title={l.name}>{l.name} <span className="text-ink-4">({l.pct_w_w}%)</span></span>
                                 <input className={`${inputClassName} w-24`} type="number" step="0.001" placeholder="SG" value={sgOverrides[l.rm_code] ?? ''} onChange={(e) => setSgOverrides((p) => ({ ...p, [l.rm_code]: e.target.value }))} />
                               </div>
                             ))}
                           </div>
                           {sg.missing_sg_lines.some((l) => l.raw_material_id != null) && (
-                            <button onClick={saveSgToMaster} disabled={savingSg} className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-medium disabled:opacity-50">
+                            <button onClick={saveSgToMaster} disabled={savingSg} className="inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink font-medium disabled:opacity-50">
                               {savingSg && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save entered SG values to RM master
                             </button>
                           )}
@@ -481,42 +481,42 @@ export default function QuoteBuilder() {
                       )}
                     </div>
                   )}
-                  <div className="mt-3 flex items-center gap-2"><span className="text-xs text-gray-500">Manual blended SG override:</span><input className={`${inputClassName} w-28`} type="number" step="0.001" placeholder="optional" value={sgManual} onChange={(e) => setSgManual(e.target.value)} /></div>
+                  <div className="mt-3 flex items-center gap-2"><span className="text-xs text-ink-3">Manual blended SG override:</span><input className={`${inputClassName} w-28`} type="number" step="0.001" placeholder="optional" value={sgManual} onChange={(e) => setSgManual(e.target.value)} /></div>
                 </div>
               )}
 
               {result && result.warnings.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm mb-1"><AlertTriangle className="w-4 h-4" /> Warnings</div>
-                  <ul className="list-disc list-inside text-sm text-amber-700 space-y-0.5">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                <div className="bg-warn-soft border border-warn rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-warn font-semibold text-sm mb-1"><AlertTriangle className="w-4 h-4" /> Warnings</div>
+                  <ul className="list-disc list-inside text-sm text-warn space-y-0.5">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
                 </div>
               )}
               {priceWarnings.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="bg-warn-soft border border-warn rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span className="text-sm font-semibold text-amber-800">Price changes detected since this quote was saved</span>
+                    <AlertTriangle className="w-4 h-4 text-warn shrink-0" />
+                    <span className="text-sm font-semibold text-warn">Price changes detected since this quote was saved</span>
                   </div>
                   <ul className="space-y-1 ml-6">
                     {priceWarnings.map((w, i) => (
-                      <li key={i} className="text-xs text-amber-700">
+                      <li key={i} className="text-xs text-warn">
                         <span className="font-medium">{w.name}</span> ({w.type}): was ₹{w.was.toFixed(2)} → now ₹{w.now.toFixed(2)}
-                        <span className={`ml-1 font-semibold ${w.pct_change > 0 ? 'text-red-600' : 'text-emerald-600'}`}>({w.pct_change > 0 ? '+' : ''}{w.pct_change.toFixed(1)}%)</span>
+                        <span className={`ml-1 font-semibold ${w.pct_change > 0 ? 'text-err' : 'text-ok'}`}>({w.pct_change > 0 ? '+' : ''}{w.pct_change.toFixed(1)}%)</span>
                       </li>
                     ))}
                   </ul>
-                  <p className="text-xs text-amber-600 mt-2 ml-6">Recalculate to use current prices, then save a new version.</p>
+                  <p className="text-xs text-warn mt-2 ml-6">Recalculate to use current prices, then save a new version.</p>
                 </div>
               )}
-              {calcError && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">{calcError}</div>}
+              {calcError && <div className="bg-err-soft border border-err rounded-lg p-4 text-sm text-err">{calcError}</div>}
 
-              <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3>
-                  {calcLoading && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
+              <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-hairline">
+                  <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Pricing — 7 MOQ Bands</h3>
+                  {calcLoading && <Loader2 className="w-4 h-4 text-ink-4 animate-spin" />}
                   {result && (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-gray-400">{result.product_type} · OH: {result.overhead_category}</span>
+                      <span className="text-xs text-ink-4">{result.product_type} · OH: {result.overhead_category}</span>
                       {result.effective_rm_wastage_pct != null && result.effective_rm_wastage_pct !== Number(rmWastagePct) && (
                         <span className="text-xs bg-violet-50 text-violet-700 px-2.5 py-1 rounded-full font-medium">
                           Blended RM Wastage: {result.effective_rm_wastage_pct.toFixed(1)}%
@@ -525,17 +525,17 @@ export default function QuoteBuilder() {
                     </div>
                   )}
                 </div>
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">RM</th><th className="py-3 px-3 text-right">PM</th><th className="py-3 px-3 text-right">Conv.</th><th className="py-3 px-3 text-right">OH</th><th className="py-3 px-3 text-right">Cost</th><th className="py-3 px-3 text-right">Markup</th><th className="py-3 px-3 text-right">Margin</th><th className="py-3 px-4 text-right">Sell ₹</th>{result && result.bands[0]?.target > 0 && <th className="py-3 px-3 text-right">Gap</th>}
+                    <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">
+                      <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">RM</th><th scope="col" className="py-3 px-3 text-right">PM</th><th scope="col" className="py-3 px-3 text-right">Conv.</th><th scope="col" className="py-3 px-3 text-right">OH</th><th scope="col" className="py-3 px-3 text-right">Cost</th><th scope="col" className="py-3 px-3 text-right">Markup</th><th scope="col" className="py-3 px-3 text-right">Margin</th><th scope="col" className="py-3 px-4 text-right">Sell ₹</th>{result && result.bands[0]?.target > 0 && <th scope="col" className="py-3 px-3 text-right">Gap</th>}
                     </tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-hairline">
                       {result?.bands.map((b) => (
-                        <tr key={b.moqv} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-4 font-medium text-slate-900">{b.moq}</td>
-                          <td className="py-2.5 px-3 text-right text-gray-600">{f2(b.rm)}</td><td className="py-2.5 px-3 text-right text-gray-600">{f2(b.pm)}</td><td className="py-2.5 px-3 text-right text-gray-600">{f2(b.conversion)}</td><td className="py-2.5 px-3 text-right text-gray-600">{f2(b.overhead)}</td><td className="py-2.5 px-3 text-right text-gray-700">{f2(b.total_cost)}</td><td className="py-2.5 px-3 text-right text-gray-500">{pct1(b.markup_pct)}</td><td className="py-2.5 px-3 text-right text-gray-500">{pct1(b.gross_margin_pct)}</td><td className="py-2.5 px-4 text-right font-semibold text-slate-900">{f2(b.sell_price)}</td>
-                          {b.target > 0 && <td className={`py-2.5 px-3 text-right ${b.gap <= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{f2(b.gap)}</td>}
+                        <tr key={b.moqv} className="hover:bg-surface-2/50">
+                          <td className="py-2.5 px-4 font-medium text-ink">{b.moq}</td>
+                          <td className="py-2.5 px-3 text-right text-ink-2">{f2(b.rm)}</td><td className="py-2.5 px-3 text-right text-ink-2">{f2(b.pm)}</td><td className="py-2.5 px-3 text-right text-ink-2">{f2(b.conversion)}</td><td className="py-2.5 px-3 text-right text-ink-2">{f2(b.overhead)}</td><td className="py-2.5 px-3 text-right text-ink-2">{f2(b.total_cost)}</td><td className="py-2.5 px-3 text-right text-ink-3">{pct1(b.markup_pct)}</td><td className="py-2.5 px-3 text-right text-ink-3">{pct1(b.gross_margin_pct)}</td><td className="py-2.5 px-4 text-right font-semibold text-ink">{f2(b.sell_price)}</td>
+                          {b.target > 0 && <td className={`py-2.5 px-3 text-right ${b.gap <= 0 ? 'text-ok' : 'text-err'}`}>{f2(b.gap)}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -543,17 +543,17 @@ export default function QuoteBuilder() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
-                <div className="overflow-x-auto">
+              <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Delivery Timeline (days)</h3></div>
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-sm">
-                    <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Procurement</th><th className="py-3 px-3 text-right">Manufacturing</th><th className="py-3 px-3 text-right">QC</th><th className="py-3 px-3 text-right">Dispatch</th><th className="py-3 px-3 text-right">Total</th><th className="py-3 px-4 text-right">Weeks</th>
+                    <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">
+                      <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Procurement</th><th scope="col" className="py-3 px-3 text-right">Manufacturing</th><th scope="col" className="py-3 px-3 text-right">QC</th><th scope="col" className="py-3 px-3 text-right">Dispatch</th><th scope="col" className="py-3 px-3 text-right">Total</th><th scope="col" className="py-3 px-4 text-right">Weeks</th>
                     </tr></thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-hairline">
                       {result?.bands.map((b) => (
-                        <tr key={b.moqv} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-4 font-medium text-slate-900">{b.moq}</td><td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.procurement}</td><td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.manufacturing}</td><td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.qc}</td><td className="py-2.5 px-3 text-right text-gray-600">{b.timeline.dispatch}</td><td className="py-2.5 px-3 text-right text-gray-700 font-medium">{b.timeline.total}</td><td className="py-2.5 px-4 text-right font-semibold text-slate-900">{b.timeline.weeks}w</td>
+                        <tr key={b.moqv} className="hover:bg-surface-2/50">
+                          <td className="py-2.5 px-4 font-medium text-ink">{b.moq}</td><td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.procurement}</td><td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.manufacturing}</td><td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.qc}</td><td className="py-2.5 px-3 text-right text-ink-2">{b.timeline.dispatch}</td><td className="py-2.5 px-3 text-right text-ink-2 font-medium">{b.timeline.total}</td><td className="py-2.5 px-4 text-right font-semibold text-ink">{b.timeline.weeks}w</td>
                         </tr>
                       ))}
                     </tbody>
@@ -562,24 +562,24 @@ export default function QuoteBuilder() {
               </div>
 
               {result && result.target_calc && result.target_calc.length > 0 && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Target-Price Solver</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Blended RM cost/kg (landed) needed to hit ₹{Number(targetPrice).toFixed(2)} — green = achievable at current RM price.</p>
+                <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                  <div className="px-5 py-3 border-b border-hairline">
+                    <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Target-Price Solver</h3>
+                    <p className="text-xs text-ink-4 mt-0.5">Blended RM cost/kg (landed) needed to hit ₹{Number(targetPrice).toFixed(2)} — green = achievable at current RM price.</p>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-sm">
-                      <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                        <th className="py-3 px-4">MOQ</th><th className="py-3 px-3 text-right">Required RM ₹/kg</th><th className="py-3 px-3 text-right">Current RM ₹/kg</th><th className="py-3 px-3 text-right">Headroom</th><th className="py-3 px-4">Feasible</th>
+                      <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline whitespace-nowrap [&_th]:bg-surface-2">
+                        <th scope="col" className="py-3 px-4">MOQ</th><th scope="col" className="py-3 px-3 text-right">Required RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Current RM ₹/kg</th><th scope="col" className="py-3 px-3 text-right">Headroom</th><th scope="col" className="py-3 px-4">Feasible</th>
                       </tr></thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-hairline">
                         {result.target_calc.map((t) => (
-                          <tr key={t.moq} className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-4 font-medium text-slate-900">{t.moq}</td>
-                            <td className="py-2.5 px-3 text-right text-gray-700">{f2(t.required_rm_kg_landed)}</td>
-                            <td className="py-2.5 px-3 text-right text-gray-500">{f2(t.current_rm_kg_landed)}</td>
-                            <td className={`py-2.5 px-3 text-right font-medium ${t.gap >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{t.gap >= 0 ? '+' : ''}{f2(t.gap)}</td>
-                            <td className="py-2.5 px-4">{t.feasible ? <span className="text-emerald-600 font-semibold">✓ Yes</span> : <span className="text-red-500 font-semibold">✗ No</span>}</td>
+                          <tr key={t.moq} className="hover:bg-surface-2/50">
+                            <td className="py-2.5 px-4 font-medium text-ink">{t.moq}</td>
+                            <td className="py-2.5 px-3 text-right text-ink-2">{f2(t.required_rm_kg_landed)}</td>
+                            <td className="py-2.5 px-3 text-right text-ink-3">{f2(t.current_rm_kg_landed)}</td>
+                            <td className={`py-2.5 px-3 text-right font-medium ${t.gap >= 0 ? 'text-ok' : 'text-err'}`}>{t.gap >= 0 ? '+' : ''}{f2(t.gap)}</td>
+                            <td className="py-2.5 px-4">{t.feasible ? <span className="text-ok font-semibold">✓ Yes</span> : <span className="text-err font-semibold">✗ No</span>}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -591,36 +591,36 @@ export default function QuoteBuilder() {
               {result && (mode === 'bom' ? (
                 <>
                   {/* Master price table — raw_materials.price_per_kg / pack_materials.price_per_pc */}
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                    <div className="px-5 py-3 border-b border-hairline flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Master Prices</h3>
-                        <p className="text-xs text-gray-400 mt-0.5">From <span className="font-mono">raw_materials.price_per_kg</span> / <span className="font-mono">pack_materials.price_per_pc</span> — updated via the RM/PM master records</p>
+                        <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Master Prices</h3>
+                        <p className="text-xs text-ink-4 mt-0.5">From <span className="font-mono">raw_materials.price_per_kg</span> / <span className="font-mono">pack_materials.price_per_pc</span> — updated via the RM/PM master records</p>
                       </div>
-                      {pricingSource === 'master' && <span className="px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-700 rounded-full">Active source</span>}
+                      {pricingSource === 'master' && <span className="px-2 py-1 text-xs font-semibold bg-surface-3 text-ink-2 rounded-full">Active source</span>}
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="w-full text-sm">
-                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                          <th className="py-2.5 px-4">Ingredient / Component</th>
-                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
-                          <th className="py-2.5 px-3 text-right">Master ₹</th>
-                          <th className="py-2.5 px-3 text-right">Type</th>
+                        <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline whitespace-nowrap [&_th]:bg-surface-2">
+                          <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Master ₹</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Type</th>
                         </tr></thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-hairline">
                           {result.rm_detail.map((r, i) => (
-                            <tr key={i} className={r.missing_price ? 'bg-red-50/40' : ''}>
-                              <td className="py-2 px-4 text-gray-800 truncate max-w-[22rem]" title={r.name}>{r.name}{r.missing_price && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
-                              <td className="py-2 px-3 text-right text-gray-500">{r.pct_w_w}%</td>
-                              <td className="py-2 px-3 text-right font-semibold text-slate-900">{r.db_price != null ? `₹${r.db_price.toFixed(2)}/kg` : <span className="text-gray-300">—</span>}</td>
-                              <td className="py-2 px-3 text-right"><span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded">RM</span></td>
+                            <tr key={i} className={r.missing_price ? 'bg-err-soft/40' : ''}>
+                              <td className="py-2 px-4 text-ink truncate max-w-[22rem]" title={r.name}>{r.name}{r.missing_price && <span className="text-err text-xs ml-1">(no price)</span>}</td>
+                              <td className="py-2 px-3 text-right text-ink-3">{r.pct_w_w}%</td>
+                              <td className="py-2 px-3 text-right font-semibold text-ink">{r.db_price != null ? `₹${r.db_price.toFixed(2)}/kg` : <span className="text-ink-4">—</span>}</td>
+                              <td className="py-2 px-3 text-right"><span className="text-xs text-ink-4 bg-surface-2 px-2 py-0.5 rounded">RM</span></td>
                             </tr>
                           ))}
                           {result.pm_detail.map((p, i) => (
-                            <tr key={`pm-${i}`} className={p.missing_price ? 'bg-red-50/40' : 'bg-slate-50/30'}>
-                              <td className="py-2 px-4 text-gray-700 truncate max-w-[22rem]" title={p.name}>{p.name}{p.missing_price && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
-                              <td className="py-2 px-3 text-right text-gray-500">{p.qty_per_unit} pc</td>
-                              <td className="py-2 px-3 text-right font-semibold text-slate-900">{p.db_price != null ? `₹${p.db_price.toFixed(2)}/pc` : <span className="text-gray-300">—</span>}</td>
+                            <tr key={`pm-${i}`} className={p.missing_price ? 'bg-err-soft/40' : 'bg-surface-2/30'}>
+                              <td className="py-2 px-4 text-ink-2 truncate max-w-[22rem]" title={p.name}>{p.name}{p.missing_price && <span className="text-err text-xs ml-1">(no price)</span>}</td>
+                              <td className="py-2 px-3 text-right text-ink-3">{p.qty_per_unit} pc</td>
+                              <td className="py-2 px-3 text-right font-semibold text-ink">{p.db_price != null ? `₹${p.db_price.toFixed(2)}/pc` : <span className="text-ink-4">—</span>}</td>
                               <td className="py-2 px-3 text-right"><span className="text-xs text-violet-500 bg-violet-50 px-2 py-0.5 rounded">PM</span></td>
                             </tr>
                           ))}
@@ -630,32 +630,32 @@ export default function QuoteBuilder() {
                   </div>
 
                   {/* Vendor price table — item_list_tiers.price_per_unit via item_list_vendor_rates */}
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                    <div className="px-5 py-3 border-b border-hairline flex items-center justify-between">
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Vendor / Price-List Prices</h3>
-                        <p className="text-xs text-gray-400 mt-0.5">From <span className="font-mono">item_list_tiers.price_per_unit</span> (cheapest tier) — updated via Price Lists section</p>
+                        <h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">Vendor / Price-List Prices</h3>
+                        <p className="text-xs text-ink-4 mt-0.5">From <span className="font-mono">item_list_tiers.price_per_unit</span> (cheapest tier) — updated via Price Lists section</p>
                       </div>
-                      {pricingSource === 'vendor' && <span className="px-2 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700 rounded-full">Active source</span>}
+                      {pricingSource === 'vendor' && <span className="px-2 py-1 text-xs font-semibold bg-ok-soft text-ok rounded-full">Active source</span>}
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-auto max-h-[70vh]">
                       <table className="w-full text-sm">
-                        <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-                          <th className="py-2.5 px-4">Ingredient / Component</th>
-                          <th className="py-2.5 px-3 text-right">% w/w · Qty</th>
-                          <th className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
-                          <th className="py-2.5 px-3 text-right">vs Master</th>
+                        <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline whitespace-nowrap [&_th]:bg-surface-2">
+                          <th scope="col" className="py-2.5 px-4">Ingredient / Component</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">% w/w · Qty</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">Vendor ₹ (best tier)</th>
+                          <th scope="col" className="py-2.5 px-3 text-right">vs Master</th>
                         </tr></thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-hairline">
                           {result.rm_detail.map((r, i) => {
                             const diff = r.vendor_price != null && r.db_price != null ? r.vendor_price - r.db_price : null;
                             return (
                               <tr key={i}>
-                                <td className="py-2 px-4 text-gray-800 truncate max-w-[22rem]" title={r.name}>{r.name}</td>
-                                <td className="py-2 px-3 text-right text-gray-500">{r.pct_w_w}%</td>
-                                <td className="py-2 px-3 text-right font-semibold text-emerald-700">{r.vendor_price != null ? `₹${r.vendor_price.toFixed(2)}/kg` : <span className="text-gray-300 font-normal">Not in Price Lists</span>}</td>
+                                <td className="py-2 px-4 text-ink truncate max-w-[22rem]" title={r.name}>{r.name}</td>
+                                <td className="py-2 px-3 text-right text-ink-3">{r.pct_w_w}%</td>
+                                <td className="py-2 px-3 text-right font-semibold text-ok">{r.vendor_price != null ? `₹${r.vendor_price.toFixed(2)}/kg` : <span className="text-ink-4 font-normal">Not in Price Lists</span>}</td>
                                 <td className="py-2 px-3 text-right text-xs">
-                                  {diff != null ? <span className={diff <= 0 ? 'text-emerald-600 font-medium' : 'text-red-500'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-gray-300">—</span>}
+                                  {diff != null ? <span className={diff <= 0 ? 'text-ok font-medium' : 'text-err'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-ink-4">—</span>}
                                 </td>
                               </tr>
                             );
@@ -663,12 +663,12 @@ export default function QuoteBuilder() {
                           {result.pm_detail.map((p, i) => {
                             const diff = p.vendor_price != null && p.db_price != null ? p.vendor_price - p.db_price : null;
                             return (
-                              <tr key={`pm-${i}`} className="bg-slate-50/30">
-                                <td className="py-2 px-4 text-gray-700 truncate max-w-[22rem]" title={p.name}>{p.name}</td>
-                                <td className="py-2 px-3 text-right text-gray-500">{p.qty_per_unit} pc</td>
-                                <td className="py-2 px-3 text-right font-semibold text-emerald-700">{p.vendor_price != null ? `₹${p.vendor_price.toFixed(2)}/pc` : <span className="text-gray-300 font-normal">Not in Price Lists</span>}</td>
+                              <tr key={`pm-${i}`} className="bg-surface-2/30">
+                                <td className="py-2 px-4 text-ink-2 truncate max-w-[22rem]" title={p.name}>{p.name}</td>
+                                <td className="py-2 px-3 text-right text-ink-3">{p.qty_per_unit} pc</td>
+                                <td className="py-2 px-3 text-right font-semibold text-ok">{p.vendor_price != null ? `₹${p.vendor_price.toFixed(2)}/pc` : <span className="text-ink-4 font-normal">Not in Price Lists</span>}</td>
                                 <td className="py-2 px-3 text-right text-xs">
-                                  {diff != null ? <span className={diff <= 0 ? 'text-emerald-600 font-medium' : 'text-red-500'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-gray-300">—</span>}
+                                  {diff != null ? <span className={diff <= 0 ? 'text-ok font-medium' : 'text-err'}>{diff <= 0 ? '' : '+'}{diff.toFixed(2)}</span> : <span className="text-ink-4">—</span>}
                                 </td>
                               </tr>
                             );
@@ -696,11 +696,11 @@ export default function QuoteBuilder() {
 
 function LineEditor({ title, cols, children }: { title: string; cols: string[]; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto p-2">
+    <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+      <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">{title}</h3></div>
+      <div className="overflow-auto max-h-[70vh] p-2">
         <table className="w-full text-sm min-w-[44rem]">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{cols.map((c) => <th key={c} className="px-2 py-1">{c}</th>)}<th></th></tr></thead>
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider whitespace-nowrap [&_th]:bg-surface-2">{cols.map((c) => <th scope="col" key={c} className="px-2 py-1">{c}</th>)}<th scope="col"></th></tr></thead>
           <tbody>{children}</tbody>
         </table>
       </div>
@@ -709,7 +709,7 @@ function LineEditor({ title, cols, children }: { title: string; cols: string[]; 
 }
 
 function AddRow({ onClick, span, label }: { onClick: () => void; span: number; label: string }) {
-  return <tr><td colSpan={span} className="p-1"><button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 font-medium"><Plus className="w-4 h-4" /> {label}</button></td></tr>;
+  return <tr><td colSpan={span} className="p-1"><button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-ink-2 hover:text-ink font-medium"><Plus className="w-4 h-4" /> {label}</button></td></tr>;
 }
 
 function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
@@ -717,22 +717,22 @@ function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
   rows: Array<{ name: string; qty: string; master: number | null; vendor: number | null; used: number; source: string | null; last: number; missing: boolean }>;
 }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto">
+    <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+      <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">{title}</h3></div>
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 whitespace-nowrap">
-            <th className="py-2.5 px-4">Item</th><th className="py-2.5 px-3 text-right">{qtyHeader}</th><th className="py-2.5 px-3 text-right">Master ₹</th><th className="py-2.5 px-3 text-right">Vendor ₹</th><th className="py-2.5 px-3 text-right">Used ₹</th><th className="py-2.5 px-4 text-right">{lastHeader}</th>
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline whitespace-nowrap [&_th]:bg-surface-2">
+            <th scope="col" className="py-2.5 px-4">Item</th><th scope="col" className="py-2.5 px-3 text-right">{qtyHeader}</th><th scope="col" className="py-2.5 px-3 text-right">Master ₹</th><th scope="col" className="py-2.5 px-3 text-right">Vendor ₹</th><th scope="col" className="py-2.5 px-3 text-right">Used ₹</th><th scope="col" className="py-2.5 px-4 text-right">{lastHeader}</th>
           </tr></thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-hairline">
             {rows.map((r, i) => (
-              <tr key={i} className={r.missing ? 'bg-red-50/40' : ''}>
-                <td className="py-2 px-4 text-gray-800 truncate max-w-[16rem]" title={r.name}>{r.name}{r.missing && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>
-                <td className="py-2 px-3 text-right text-gray-600">{r.qty}</td>
-                <td className={`py-2 px-3 text-right ${r.source === 'master' ? 'font-semibold text-slate-900' : 'text-gray-400'}`}>{r.master != null ? r.master.toFixed(2) : '—'}</td>
-                <td className={`py-2 px-3 text-right ${r.source === 'vendor' ? 'font-semibold text-emerald-700' : 'text-gray-400'}`}>{r.vendor != null ? r.vendor.toFixed(2) : '—'}</td>
-                <td className="py-2 px-3 text-right font-semibold text-slate-900">{r.used.toFixed(2)}</td>
-                <td className="py-2 px-4 text-right text-gray-600">{r.last.toFixed(2)}</td>
+              <tr key={i} className={r.missing ? 'bg-err-soft/40' : ''}>
+                <td className="py-2 px-4 text-ink truncate max-w-[16rem]" title={r.name}>{r.name}{r.missing && <span className="text-err text-xs ml-1">(no price)</span>}</td>
+                <td className="py-2 px-3 text-right text-ink-2">{r.qty}</td>
+                <td className={`py-2 px-3 text-right ${r.source === 'master' ? 'font-semibold text-ink' : 'text-ink-4'}`}>{r.master != null ? r.master.toFixed(2) : '—'}</td>
+                <td className={`py-2 px-3 text-right ${r.source === 'vendor' ? 'font-semibold text-ok' : 'text-ink-4'}`}>{r.vendor != null ? r.vendor.toFixed(2) : '—'}</td>
+                <td className="py-2 px-3 text-right font-semibold text-ink">{r.used.toFixed(2)}</td>
+                <td className="py-2 px-4 text-right text-ink-2">{r.last.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
@@ -744,17 +744,17 @@ function PriceBreakdown({ title, qtyHeader, lastHeader, rows }: {
 
 function BreakdownCard({ title, headers, rows }: { title: string; headers: string[]; rows: Array<Array<string | boolean>> }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">{title}</h3></div>
-      <div className="overflow-x-auto">
+    <div className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+      <div className="px-5 py-3 border-b border-hairline"><h3 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">{title}</h3></div>
+      <div className="overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">{headers.map((h, i) => <th key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
-          <tbody className="divide-y divide-gray-50">
+          <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">{headers.map((h, i) => <th scope="col" key={h} className={`py-2.5 px-4 ${i > 0 ? 'text-right' : ''}`}>{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-hairline">
             {rows.map((r, i) => {
               const missing = r[r.length - 1] === true;
               return (
-                <tr key={i} className={missing ? 'bg-red-50/40' : ''}>
-                  {r.slice(0, -1).map((c, j) => <td key={j} className={`py-2 px-4 ${j > 0 ? 'text-right text-gray-600' : 'text-gray-800 truncate max-w-[14rem]'}`} title={j === 0 ? String(c) : undefined}>{String(c)}{j === 0 && missing && <span className="text-red-500 text-xs ml-1">(no price)</span>}</td>)}
+                <tr key={i} className={missing ? 'bg-err-soft/40' : ''}>
+                  {r.slice(0, -1).map((c, j) => <td key={j} className={`py-2 px-4 ${j > 0 ? 'text-right text-ink-2' : 'text-ink truncate max-w-[14rem]'}`} title={j === 0 ? String(c) : undefined}>{String(c)}{j === 0 && missing && <span className="text-err text-xs ml-1">(no price)</span>}</td>)}
                 </tr>
               );
             })}
@@ -779,6 +779,7 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
   const [qJobRef, setQJobRef] = useState(initialJobRef || '');
   const [linkedPreId, setLinkedPreId] = useState<number | string>(initialPreQuoteId ?? '');
   const [preQuotes, setPreQuotes] = useState<quotesApi.SavedQuoteListItem[]>([]);
+  const headingId = useId();
 
   useEffect(() => {
     if (qCategory !== 'post_production') { setPreQuotes([]); return; }
@@ -804,9 +805,9 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
   };
 
   return (
-    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center p-5 border-b border-gray-200"><h2 className="text-lg font-bold text-slate-900">{editId ? 'Update Quote' : 'Save Quote'}</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button></div>
+    <div className="fixed inset-0 bg-surface/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className="bg-surface rounded-xl shadow-lg w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-border"><h2 id={headingId} className="text-lg font-bold text-ink">{editId ? 'Update Quote' : 'Save Quote'}</h2><button onClick={onClose} aria-label="Close" className="text-ink-4 hover:text-ink-2"><X className="w-5 h-5" /></button></div>
         <div className="p-5 space-y-4">
           <FormField label="Quote Name" required><input className={inputClassName} value={quoteName} onChange={(e) => setQuoteName(e.target.value)} /></FormField>
           <FormField label="Customer / Client">
@@ -814,16 +815,16 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
               <input className={inputClassName} placeholder="Search clients or type a name…" value={customerName}
                 onChange={(e) => { setCustomerName(e.target.value); setClientId(null); setClientOpen(true); }} onFocus={() => setClientOpen(true)} />
               {clientOpen && clientResults.length > 0 && (
-                <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-auto">
+                <div className="absolute z-30 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg max-h-52 overflow-auto">
                   {clientResults.map((c) => (
-                    <button key={c.id} onClick={() => { setCustomerName(c.name); setClientId(c.id); setClientOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm border-b border-gray-50 last:border-0">
-                      <span className="font-medium text-slate-900">{c.name}</span>{c.segment && <span className="text-gray-400 text-xs ml-1">· {c.segment}</span>}{c.city && <span className="text-gray-400 text-xs ml-1">· {c.city}</span>}
+                    <button key={c.id} onClick={() => { setCustomerName(c.name); setClientId(c.id); setClientOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-surface-2 text-sm border-b border-gray-50 last:border-0">
+                      <span className="font-medium text-ink">{c.name}</span>{c.segment && <span className="text-ink-4 text-xs ml-1">· {c.segment}</span>}{c.city && <span className="text-ink-4 text-xs ml-1">· {c.city}</span>}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            {clientId && <span className="text-xs text-emerald-600 mt-1 inline-block">✓ Linked to client record</span>}
+            {clientId && <span className="text-xs text-ok mt-1 inline-block">✓ Linked to client record</span>}
           </FormField>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="GST %"><input className={inputClassName} type="number" value={gst} onChange={(e) => setGst(e.target.value)} /></FormField>
@@ -849,13 +850,13 @@ function SaveQuoteModal({ result, payload, editId, initial, quoteScope, quoteCat
                   <option key={q.id} value={q.id}>{q.quote_ref} · {q.quote_name}{q.headline_sell != null ? ` (₹${Number(q.headline_sell).toFixed(2)})` : ''}</option>
                 ))}
               </select>
-              {preQuotes.length === 0 && result?.bom_code && <p className="text-xs text-gray-400 mt-1">No pre-production quotes found for BOM {result.bom_code}.</p>}
+              {preQuotes.length === 0 && result?.bom_code && <p className="text-xs text-ink-4 mt-1">No pre-production quotes found for BOM {result.bom_code}.</p>}
             </FormField>
           )}
         </div>
-        <div className="p-5 border-t border-gray-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">Cancel</button>
-          <button onClick={submit} disabled={saving || !quoteName.trim()} className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 text-sm font-semibold disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />} {editId ? 'Update' : 'Save'}</button>
+        <div className="p-5 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="px-5 py-2 bg-surface-3 text-ink-2 rounded-lg hover:bg-surface-3 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={saving || !quoteName.trim()} className="inline-flex items-center gap-2 px-5 py-2 bg-ink text-white rounded-lg hover:bg-ink text-sm font-semibold disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />} {editId ? 'Update' : 'Save'}</button>
         </div>
       </div>
     </div>

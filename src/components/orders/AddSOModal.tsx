@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { CardSkeleton } from '../ui/Skeleton';
 
 /** Default calendar days from order date to due date (business rule). */
 const LEAD_DAYS_PRODUCT = 45;
@@ -34,11 +35,11 @@ const MAX_CUSTOMER_SUGGESTIONS = 100;
 
 /** Themed suggestion panel (native <datalist> cannot be styled in most browsers). */
 const SUGGEST_LIST_BOX_CLASS =
-  'fixed z-[10000] max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg shadow-slate-900/10 ring-1 ring-slate-900/5';
+  'fixed z-[10000] max-h-60 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-[var(--e2)] ring-1 ring-black/5';
 const SUGGEST_ITEM_CLASS =
-  'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-slate-100 focus:bg-slate-100 focus:outline-none border-b border-gray-50 last:border-0';
-const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-gray-900';
-const SUGGEST_ITEM_META_CLASS = 'text-xs text-gray-500';
+  'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-3 focus:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] border-b border-hairline last:border-0';
+const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-ink';
+const SUGGEST_ITEM_META_CLASS = 'text-xs text-ink-3';
 
 type AutocompleteTarget = null | { kind: 'customer' } | { kind: 'product'; index: number };
 
@@ -582,16 +583,13 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
       <div className="p-6 max-h-[85vh] overflow-y-auto">
         {loadingData ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="animate-spin text-orange-500 mr-3" size={20} />
-            <span className="text-gray-500 text-sm">Loading form data...</span>
-          </div>
+          <CardSkeleton />
         ) : (
           <>
             {errors.length > 0 && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm font-semibold text-red-800 mb-2">Please fix the following errors:</p>
-                <ul className="list-disc list-inside text-sm text-red-700">
+              <div className="mb-4 p-4 bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded-lg">
+                <p className="text-sm font-semibold text-err mb-2">Please fix the following errors:</p>
+                <ul className="list-disc list-inside text-sm text-err">
                   {errors.map((err, idx) => <li key={idx}>{err}</li>)}
                 </ul>
               </div>
@@ -601,11 +599,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Input label="SO Number" value={soNo} readOnly disabled />
-                  <p className="text-xs text-gray-400 mt-1">Auto-generated</p>
+                  <p className="text-xs text-ink-4 mt-1">Auto-generated</p>
                 </div>
                 <div className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                    Customer<span className="text-red-500 ml-0.5">*</span>
+                  <label className="block text-sm font-semibold text-ink-2 mb-2 uppercase tracking-wide">
+                    Customer<span className="text-err ml-0.5">*</span>
                   </label>
                   <input
                     ref={customerInputRef}
@@ -613,17 +611,18 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                     onChange={(e) => handleCustomerChange(e.target.value)}
                     onFocus={() => setAutocompleteTarget({ kind: 'customer' })}
                     required
+                    aria-label="Search customer by name, code, or city"
                     placeholder="Search customer by name, code, or city"
                     autoComplete="off"
-                    className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide border-gray-200"
+                    className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent bg-surface-2 transition-all leading-normal tracking-wide border-border"
                   />
-                  <p className="text-xs text-gray-400 mt-1">Type to filter, then choose from the themed list below the field.</p>
+                  <p className="text-xs text-ink-4 mt-1">Type to filter, then choose from the themed list below the field.</p>
                 </div>
                 <Input label="Customer code" value={customerCode} readOnly disabled />
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-800">Customer details (from master)</p>
+              <div className="rounded-lg border border-border bg-surface-3 p-4 space-y-3">
+                <p className="text-sm font-semibold text-ink">Customer details (from master)</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   <Input label="Customer city" placeholder="e.g., Mumbai" value={customerCity} onChange={(e) => setCustomerCity(e.target.value)} />
                   <Input label="State / region" value={customerLocation} onChange={(e) => setCustomerLocation(e.target.value)} />
@@ -636,15 +635,16 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   <Input label="Credit limit (₹)" value={customerCreditLimit} onChange={(e) => setCustomerCreditLimit(e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Billing address</label>
+                  <label className="block text-sm font-medium text-ink-2 mb-1">Billing address</label>
                   <textarea
                     value={billingAddress}
                     onChange={(e) => setBillingAddress(e.target.value)}
                     rows={3}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-800"
+                    aria-label="Billing address"
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand"
                   />
                 </div>
-                <p className="text-xs text-slate-500">Prefilled when you pick a customer; edit as needed for this order.</p>
+                <p className="text-xs text-ink-3">Prefilled when you pick a customer; edit as needed for this order.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -669,23 +669,24 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   ]}
                 />
               </div>
-              <p className="text-xs text-gray-500 -mt-2">Due date defaults to order date + lead days; adjust if needed.</p>
+              <p className="text-xs text-ink-3 -mt-2">Due date defaults to order date + lead days; adjust if needed.</p>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Shipping address</label>
+                <label className="block text-sm font-medium text-ink-2 mb-1">Shipping address</label>
                 <textarea
                   value={shipAddress}
                   onChange={(e) => setShipAddress(e.target.value)}
                   placeholder="Enter full shipping address"
+                  aria-label="Enter full shipping address"
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-slate-800"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand"
                 />
-                <p className="text-xs text-gray-500 mt-1">Pre-filled from customer; edit if needed for this order.</p>
+                <p className="text-xs text-ink-3 mt-1">Pre-filled from customer; edit if needed for this order.</p>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-4 space-y-3">
-                <p className="text-sm font-semibold text-slate-800">Payment terms (three stages + credit days)</p>
-                <p className="text-xs text-slate-500">
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <p className="text-sm font-semibold text-ink">Payment terms (three stages + credit days)</p>
+                <p className="text-xs text-ink-3">
                   Prefilled from customer master; when you add a product, terms from that client&apos;s Items List rate apply when configured.
                   Total of the three percentages must not exceed 100%.
                 </p>
@@ -703,7 +704,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
 
               {/* Items Section */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 border-b pb-2">Order Items</h3>
+                <h3 className="text-lg font-medium text-ink border-b pb-2">Order Items</h3>
                 {items.map((item, index) => {
                   const selectedProduct = item.productName
                     ? productsByName.get(item.productName.trim())
@@ -711,10 +712,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   const packFromPr = packSizeFromProductRecord(selectedProduct);
 
                   return (
-                  <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-gray-50 relative">
+                  <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-surface-3 relative">
                     <div className="col-span-12 md:col-span-3 space-y-2">
-                      <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                        Product<span className="text-red-500 ml-0.5">*</span>
+                      <label className="block text-sm font-semibold text-ink-2 uppercase tracking-wide">
+                        Product<span className="text-err ml-0.5">*</span>
                       </label>
                       <input
                         ref={(el) => {
@@ -724,9 +725,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
                         onFocus={() => setAutocompleteTarget({ kind: 'product', index })}
                         required
+                        aria-label="Search Product (FG) by name or SKU"
                         placeholder="Search Product (FG) by name or SKU"
                         autoComplete="off"
-                        className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all leading-normal tracking-wide border-gray-200"
+                        className="w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent bg-surface-2 transition-all leading-normal tracking-wide border-border"
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2">
@@ -741,7 +743,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         required={Boolean(item.productName?.trim())}
                       />
                       {item.productName?.trim() ? (
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs text-ink-3 mt-1">
                           From PR SKU BOM net per unit{packFromPr === '0' ? ' (not set — showing 0)' : ''}.
                         </p>
                       ) : null}
@@ -760,11 +762,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value))}
                       />
                       {selectedCustomerId ? (
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs text-ink-3 mt-1">
                           {priceHints[index] || 'From client price list when configured (MOQ tier by quantity).'}
                         </p>
                       ) : (
-                        <p className="text-xs text-amber-700 mt-1">Select a customer to load price from Items List.</p>
+                        <p className="text-xs text-warn mt-1">Select a customer to load price from Items List.</p>
                       )}
                     </div>
                     <div className="col-span-6 md:col-span-2">
@@ -776,12 +778,12 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                         value={item.mrp}
                         onChange={(e) => handleItemChange(index, 'mrp', parseFloat(e.target.value) || 0)}
                       />
-                      <p className="text-xs text-slate-400 mt-1">From product master — editable</p>
+                      <p className="text-xs text-ink-4 mt-1">From product master — editable</p>
                     </div>
                     <div className="col-span-12 md:col-span-1">
                       {items.length > 1 && (
-                        <Button variant="ghost" size="sm" className="absolute top-4 right-4" onClick={() => handleRemoveItem(index)}>
-                          <Plus className="h-4 w-4 rotate-45 text-red-500" />
+                        <Button variant="ghost" size="sm" aria-label="Remove item" className="absolute top-4 right-4" onClick={() => handleRemoveItem(index)}>
+                          <Plus className="h-4 w-4 rotate-45 text-err" />
                         </Button>
                       )}
                     </div>
@@ -796,7 +798,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
           </>
         )}
       </div>
-      <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
+      <div className="flex justify-end gap-2 p-4 bg-surface-3 border-t">
         <Button variant="ghost" onClick={handleClose}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={loadingData}><Plus className="mr-2 h-4 w-4" /> Create Sale Order</Button>
       </div>

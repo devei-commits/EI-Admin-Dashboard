@@ -295,14 +295,14 @@ export function PrQualitySpecTable({
               id={`pr-qs-tab-${section.key}`}
               onClick={() => setActiveSection(section.key)}
               title={tabEditable ? undefined : 'View only — assigned to the other team'}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 ${
                 isActive
                   ? tabEditable
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-slate-500 text-white shadow-sm'
+                    ? 'bg-brand text-white shadow-sm'
+                    : 'bg-ink-3 text-white shadow-sm'
                   : tabEditable
-                    ? 'text-slate-600 bg-white border border-slate-200 hover:bg-slate-50'
-                    : 'text-slate-400 bg-slate-100 border border-slate-200'
+                    ? 'text-ink-3 bg-surface border border-border hover:bg-surface-3'
+                    : 'text-ink-4 bg-surface-3 border border-border'
               }`}
             >
               <span aria-hidden="true">{section.emoji} </span>
@@ -317,19 +317,19 @@ export function PrQualitySpecTable({
         id={`pr-qs-panel-${activeSection}`}
         role="tabpanel"
         aria-labelledby={`pr-qs-tab-${activeSection}`}
-        className="space-y-1 rounded-lg border border-slate-200 bg-slate-50/40 p-3 sm:p-4"
+        className="space-y-1 rounded-lg border border-border bg-surface-3 p-3 sm:p-4"
       >
         {!activeEditable ? (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          <p className="text-xs text-warn bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 mb-3">
             View only — this quality section is maintained by the{' '}
             {activeSection === 'bulkClearance' ? 'product (RM)' : 'packaging'} team.
           </p>
         ) : null}
-        <h4 className="text-sm font-semibold text-slate-800 mb-3">
+        <h4 className="text-sm font-semibold text-ink mb-3">
           {activeMeta.emoji} {activeMeta.title}
         </h4>
         {addError ? (
-          <p className="text-xs text-red-600 mb-3" role="alert">
+          <p className="text-xs text-err mb-3" role="alert">
             {addError}
           </p>
         ) : null}

@@ -94,9 +94,9 @@ function StageRow({
   const assignedLabel = formatStageAssigneeLabel(slot);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+    <div className="rounded-lg border border-border bg-surface p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-900">
+        <p className="text-sm font-semibold text-ink">
           <span aria-hidden="true">{emoji} </span>
           {label}
         </p>
@@ -109,20 +109,20 @@ function StageRow({
               setQuery('');
               setOpen(false);
             }}
-            className="text-xs font-semibold text-teal-700 hover:text-teal-900 focus:outline-none focus:ring-2 focus:ring-teal-400 rounded disabled:opacity-50"
+            className="text-xs font-semibold text-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] rounded disabled:opacity-50"
           >
             Set Open
           </button>
         ) : (
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Open</span>
+          <span className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Open</span>
         )}
       </div>
 
       {slot?.user_id ? (
-        <p className="text-sm text-gray-800">{assignedLabel}</p>
+        <p className="text-sm text-ink">{assignedLabel}</p>
       ) : (
         <>
-          <p className="text-xs text-gray-500">Anyone with masters approve access can act at this stage.</p>
+          <p className="text-xs text-ink-3">Anyone with masters approve access can act at this stage.</p>
           <div>
             <label className="sr-only" htmlFor={fieldId}>
               Search staff for {label}
@@ -141,23 +141,23 @@ function StageRow({
                 setQuery(e.target.value);
                 setOpen(true);
               }}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
               autoComplete="off"
             />
             {open ? (
               <ul
                 role="listbox"
                 aria-label={`${label} suggestions`}
-                className="mt-1 w-full max-h-44 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm text-sm"
+                className="mt-1 w-full max-h-44 overflow-y-auto bg-surface border border-border rounded-lg shadow-sm text-sm"
               >
                 {staffLoading ? (
-                  <li className="px-3 py-2 text-gray-500">Loading team members…</li>
+                  <li className="px-3 py-2 text-ink-3">Loading team members…</li>
                 ) : staffLoadError ? (
-                  <li className="px-3 py-2 text-red-600" role="alert">
+                  <li className="px-3 py-2 text-err" role="alert">
                     {staffLoadError}
                   </li>
                 ) : results.length === 0 ? (
-                  <li className="px-3 py-2 text-gray-500">
+                  <li className="px-3 py-2 text-ink-3">
                     {query.trim() ? 'No team members match your search' : 'No internal team members found'}
                   </li>
                 ) : (
@@ -166,7 +166,7 @@ function StageRow({
                       <button
                         type="button"
                         role="option"
-                        className="w-full text-left px-3 py-2 hover:bg-teal-50 focus:bg-teal-50 focus:outline-none"
+                        className="w-full text-left px-3 py-2 hover:bg-brand-soft focus:bg-brand-soft focus:outline-none"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                           onChange(slotFromUser(u));
@@ -174,8 +174,8 @@ function StageRow({
                           setOpen(false);
                         }}
                       >
-                        <span className="font-medium text-gray-900">{u.display_name}</span>
-                        <span className="block text-xs text-gray-500 truncate">
+                        <span className="font-medium text-ink">{u.display_name}</span>
+                        <span className="block text-xs text-ink-3 truncate">
                           {[u.role_name, u.email].filter(Boolean).join(' · ')}
                         </span>
                       </button>
@@ -280,7 +280,7 @@ export function MasterApprovalAssignModal({
               type="button"
               disabled={busy}
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+              className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
             >
               Cancel
             </button>
@@ -288,7 +288,7 @@ export function MasterApprovalAssignModal({
               type="button"
               disabled={busy}
               onClick={() => void save()}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand text-white hover:bg-brand-press focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
             >
               {busy ? 'Saving…' : 'Save both assignments'}
             </button>
@@ -326,7 +326,7 @@ export function MasterApprovalAssignModal({
             type="button"
             disabled={busy}
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+            className="px-4 py-2 text-sm font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
           >
             Cancel
           </button>
@@ -334,16 +334,16 @@ export function MasterApprovalAssignModal({
             type="button"
             disabled={busy}
             onClick={() => void save()}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-teal-600 text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-60"
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-brand text-white hover:bg-brand-press focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-60"
           >
             {busy ? 'Saving…' : '💾 Save Assignments'}
           </button>
         </>
       }
     >
-      <p className="text-sm text-gray-600 mb-4">
+      <p className="text-sm text-ink-3 mb-4">
         Assign specific people to each stage. Assigned stages are restricted to that person (admins can always act).
-        Leave a stage <span className="font-semibold text-gray-800">Open</span> only when anyone with masters approve access may act there.
+        Leave a stage <span className="font-semibold text-ink">Open</span> only when anyone with masters approve access may act there.
       </p>
       <div className="space-y-3">
         {MASTER_APPROVAL_STAGES.map((stage) => (

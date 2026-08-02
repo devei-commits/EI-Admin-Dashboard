@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { X, Prohibit, Package, ArrowsClockwise, Check } from '@phosphor-icons/react';
 import type { InventoryAuditLine } from '../../lib/inventoryAuditLines';
 import { formatDateEnInSafe } from '../../pages/procurement/procurementDataMappers';
 
@@ -27,11 +28,11 @@ function fmtGap(gap: number, unit: string): string {
 
 function statusBadgeClass(uiStatus: string): string {
   const s = uiStatus.toLowerCase();
-  if (s.includes('gap approved')) return 'bg-emerald-50 text-emerald-800 border-emerald-200';
-  if (s.includes('awaiting')) return 'bg-amber-50 text-amber-900 border-amber-200';
-  if (s === 'audited') return 'bg-teal-50 text-teal-800 border-teal-200';
-  if (s.includes('progress')) return 'bg-sky-50 text-sky-800 border-sky-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (s.includes('gap approved')) return 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30';
+  if (s.includes('awaiting')) return 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30';
+  if (s === 'audited') return 'bg-brand-soft text-brand border-brand-soft';
+  if (s.includes('progress')) return 'bg-brand-soft text-brand border-brand-soft';
+  return 'bg-surface-3 text-ink-2 border-border';
 }
 
 export function InventoryAuditDetailModal({
@@ -86,24 +87,24 @@ export function InventoryAuditDetailModal({
     >
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" aria-hidden />
       <div
-        className="relative w-full max-w-lg max-h-[90vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-hidden rounded-xl border border-border bg-surface shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="inventory-audit-detail-title"
       >
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-start justify-between gap-3">
+        <div className="px-5 py-4 border-b border-border bg-surface-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-wide">
               Inventory audit
             </p>
-            <h2 id="inventory-audit-detail-title" className="text-lg font-bold text-slate-900 mt-0.5">
+            <h2 id="inventory-audit-detail-title" className="text-lg font-bold text-ink mt-0.5">
               {line.auditRef}
             </h2>
-            <p className="text-sm text-slate-600 mt-1 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs text-slate-500">{line.itemCode}</span>
-              <span className="text-slate-400">·</span>
+            <p className="text-sm text-ink-3 mt-1 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs text-ink-3">{line.itemCode}</span>
+              <span className="text-ink-4">·</span>
               <span className="font-medium">{line.itemName}</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border border-slate-300 bg-white text-slate-700">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border border-border bg-surface text-ink-2">
                 {line.location}
               </span>
             </p>
@@ -111,36 +112,36 @@ export function InventoryAuditDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 px-2 py-1 rounded-lg border border-slate-300 text-slate-600 text-sm hover:bg-white"
+            className="shrink-0 px-2 py-1 rounded-lg border border-border text-ink-3 text-sm hover:bg-surface-3"
             aria-label="Close"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-auto px-5 py-4 space-y-4 text-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Item</p>
-              <p className="text-slate-900 font-medium">
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Item</p>
+              <p className="text-ink font-medium">
                 {line.itemCode} · {line.itemName}
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Location</p>
-              <p className="text-slate-900 font-medium">{line.location}</p>
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Location</p>
+              <p className="text-ink font-medium">{line.location}</p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Requested by</p>
-              <p className="text-slate-800">
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Requested by</p>
+              <p className="text-ink">
                 {line.requestedBy}
                 {line.requestedAt ? (
-                  <span className="text-slate-500"> on {formatDateEnInSafe(line.requestedAt)}</span>
+                  <span className="text-ink-3"> on {formatDateEnInSafe(line.requestedAt)}</span>
                 ) : null}
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Status</p>
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Status</p>
               <span
                 className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold border ${statusBadgeClass(line.uiStatus)}`}
               >
@@ -148,53 +149,53 @@ export function InventoryAuditDetailModal({
               </span>
             </div>
             <div className="sm:col-span-2">
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Audited by</p>
-              <p className="text-slate-800">
+              <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-1">Audited by</p>
+              <p className="text-ink">
                 {line.auditedBy || line.stockCheckAssignedTo}
                 {line.auditedAt ? (
-                  <span className="text-slate-500"> on {formatDateEnInSafe(line.auditedAt)}</span>
+                  <span className="text-ink-3"> on {formatDateEnInSafe(line.auditedAt)}</span>
                 ) : (
-                  <span className="text-slate-400"> — pending warehouse completion</span>
+                  <span className="text-ink-4"> — pending warehouse completion</span>
                 )}
               </p>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-3">
+          <div className="rounded-lg border border-border bg-surface-2 p-4">
+            <p className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide mb-3">
               Inventory numbers
             </p>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-xs text-slate-500">Qty @ request (system)</p>
-                <p className="text-lg font-bold text-slate-900 tabular-nums">
+                <p className="text-xs text-ink-3">Qty @ request (system)</p>
+                <p className="text-lg font-bold text-ink tabular-nums">
                   {line.systemQty != null ? line.systemQty.toLocaleString('en-IN') : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Qty @ audit (physical)</p>
-                <p className="text-lg font-bold text-slate-900 tabular-nums">
+                <p className="text-xs text-ink-3">Qty @ audit (physical)</p>
+                <p className="text-lg font-bold text-ink tabular-nums">
                   {line.physicalQty != null ? line.physicalQty.toLocaleString('en-IN') : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Consumed during audit</p>
-                <p className="text-lg font-bold text-slate-900 tabular-nums">
+                <p className="text-xs text-ink-3">Consumed during audit</p>
+                <p className="text-lg font-bold text-ink tabular-nums">
                   {consumedAtAudit != null ? fmtGap(consumedAtAudit, line.unit) : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">Gap (system − physical − consumption)</p>
+                <p className="text-xs text-ink-3">Gap (system − physical − consumption)</p>
                 <p
                   className={`text-lg font-bold tabular-nums ${
-                    line.gapQty > 0 ? 'text-amber-700' : line.gapQty < 0 ? 'text-sky-700' : 'text-slate-900'
+                    line.gapQty > 0 ? 'text-warn' : line.gapQty < 0 ? 'text-brand' : 'text-ink'
                   }`}
                 >
                   {fmtGap(line.gapQty, line.unit)}
                 </p>
               </div>
             </div>
-            <p className="text-[10px] text-slate-500 mt-2">
+            <p className="text-[10px] text-ink-3 mt-2">
               PR line qty: {fmtQty(line.requestedQty, line.unit)} · Consumed during audit = physical − system at request (default formula).
               {line.consumptionQty != null && line.consumptionQty !== 0 ? (
                 <> Window consumption: {line.consumptionQty.toLocaleString('en-IN')} {line.unit}.</>
@@ -203,22 +204,23 @@ export function InventoryAuditDetailModal({
           </div>
 
           {showReAudit ? (
-            <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3 space-y-2">
-              <p className="text-[10px] font-semibold text-sky-900 uppercase tracking-wide">Re-audit — explain why</p>
+            <div className="rounded-lg border border-brand-soft bg-brand-soft p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-brand uppercase tracking-wide">Re-audit — explain why</p>
               <textarea
                 value={reAuditComment}
                 onChange={(e) => setReAuditComment(e.target.value)}
                 rows={2}
-                className="w-full border border-sky-200 rounded-lg px-2 py-1.5 text-xs"
+                className="w-full border border-brand-soft rounded-lg px-2 py-1.5 text-xs"
                 placeholder="Required comment for warehouse…"
+                aria-label="Required comment for warehouse"
               />
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowReAudit(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button type="button" onClick={() => setShowReAudit(false)} className="px-3 py-1.5 text-xs border border-border rounded-lg">Cancel</button>
                 <button
                   type="button"
                   disabled={!reAuditComment.trim() || reAuditing}
                   onClick={() => void onReAudit?.(line, reAuditComment.trim())}
-                  className="px-3 py-1.5 text-xs font-bold bg-sky-700 text-white rounded-lg disabled:opacity-60"
+                  className="px-3 py-1.5 text-xs font-bold bg-brand text-white rounded-lg disabled:opacity-60"
                 >
                   {reAuditing ? 'Sending…' : 'Send back to Warehouse'}
                 </button>
@@ -227,22 +229,23 @@ export function InventoryAuditDetailModal({
           ) : null}
 
           {showTerminate ? (
-            <div className="rounded-lg border border-red-200 bg-red-50/60 p-3 space-y-2">
-              <p className="text-[10px] font-semibold text-red-900 uppercase tracking-wide">Terminate audit</p>
+            <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-err uppercase tracking-wide">Terminate audit</p>
               <textarea
                 value={terminateReason}
                 onChange={(e) => setTerminateReason(e.target.value)}
                 rows={2}
-                className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-xs"
+                className="w-full border border-[color:var(--st-red-fg)]/30 rounded-lg px-2 py-1.5 text-xs"
                 placeholder="Optional reason…"
+                aria-label="Termination reason"
               />
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowTerminate(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button type="button" onClick={() => setShowTerminate(false)} className="px-3 py-1.5 text-xs border border-border rounded-lg">Cancel</button>
                 <button
                   type="button"
                   disabled={terminating}
                   onClick={() => void onTerminate?.(line, terminateReason.trim())}
-                  className="px-3 py-1.5 text-xs font-bold bg-red-700 text-white rounded-lg disabled:opacity-60"
+                  className="px-3 py-1.5 text-xs font-bold bg-err text-white rounded-lg disabled:opacity-60"
                 >
                   {terminating ? 'Terminating…' : 'Terminate without action'}
                 </button>
@@ -251,28 +254,30 @@ export function InventoryAuditDetailModal({
           ) : null}
 
           {showSubmitCount ? (
-            <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 space-y-2">
-              <p className="text-[10px] font-semibold text-teal-900 uppercase tracking-wide">Submit Physical Count</p>
+            <div className="rounded-lg border border-brand-soft bg-brand-soft p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-brand uppercase tracking-wide">Submit Physical Count</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] font-semibold text-slate-600 block mb-1">Physical Qty ({line.unit})</label>
+                  <label className="text-[10px] font-semibold text-ink-3 block mb-1">Physical Qty ({line.unit})</label>
                   <input
                     type="number"
                     value={physicalQtyInput}
                     onChange={(e) => setPhysicalQtyInput(e.target.value)}
-                    className="w-full border border-teal-300 rounded-lg px-2 py-1.5 text-xs font-mono"
+                    className="w-full border border-brand-soft rounded-lg px-2 py-1.5 text-xs font-mono"
                     placeholder="0"
                     min="0"
+                    aria-label={`Physical Qty (${line.unit})`}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-slate-600 block mb-1">Counted by</label>
+                  <label className="text-[10px] font-semibold text-ink-3 block mb-1">Counted by</label>
                   <input
                     type="text"
                     value={countCompletedBy}
                     onChange={(e) => setCountCompletedBy(e.target.value)}
-                    className="w-full border border-teal-300 rounded-lg px-2 py-1.5 text-xs"
+                    className="w-full border border-brand-soft rounded-lg px-2 py-1.5 text-xs"
                     placeholder="Name"
+                    aria-label="Counted by"
                   />
                 </div>
               </div>
@@ -280,11 +285,12 @@ export function InventoryAuditDetailModal({
                 value={countRemarks}
                 onChange={(e) => setCountRemarks(e.target.value)}
                 rows={2}
-                className="w-full border border-teal-200 rounded-lg px-2 py-1.5 text-xs"
+                className="w-full border border-brand-soft rounded-lg px-2 py-1.5 text-xs"
                 placeholder="Remarks (optional)…"
+                aria-label="Remarks (optional)"
               />
               <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowSubmitCount(false)} className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">Cancel</button>
+                <button type="button" onClick={() => setShowSubmitCount(false)} className="px-3 py-1.5 text-xs border border-border rounded-lg">Cancel</button>
                 <button
                   type="button"
                   disabled={!physicalQtyInput.trim() || submittingCount}
@@ -299,7 +305,7 @@ export function InventoryAuditDetailModal({
                       setSubmittingCount(false);
                     }
                   }}
-                  className="px-3 py-1.5 text-xs font-bold bg-teal-700 text-white rounded-lg disabled:opacity-60"
+                  className="px-3 py-1.5 text-xs font-bold bg-brand text-white rounded-lg disabled:opacity-60"
                 >
                   {submittingCount ? 'Submitting…' : 'Submit Count'}
                 </button>
@@ -308,14 +314,14 @@ export function InventoryAuditDetailModal({
           ) : null}
 
           {line.remarks ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-              <p className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide mb-1">WH remarks</p>
-              <p className="text-sm text-amber-950 leading-relaxed">{line.remarks}</p>
+            <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft p-3">
+              <p className="text-[10px] font-semibold text-warn uppercase tracking-wide mb-1">WH remarks</p>
+              <p className="text-sm text-warn leading-relaxed">{line.remarks}</p>
             </div>
           ) : null}
 
           {line.gapApproved ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900">
+            <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-ok-soft p-3 text-xs text-ok">
               Gap <strong>+{line.gapQty.toLocaleString('en-IN')}</strong> approved
               {line.gapApprovedBy ? ` by ${line.gapApprovedBy}` : ''}
               {line.gapApprovedAt ? ` on ${formatDateEnInSafe(line.gapApprovedAt)}` : ''}. Request and draft PO
@@ -324,10 +330,10 @@ export function InventoryAuditDetailModal({
           ) : null}
 
           {(line.planningSoNumber || line.planningProductName) && (
-            <div className="text-xs text-slate-600">
+            <div className="text-xs text-ink-3">
               {line.planningSoNumber ? (
                 <p>
-                  <span className="font-semibold text-slate-700">SO</span> {line.planningSoNumber}
+                  <span className="font-semibold text-ink-2">SO</span> {line.planningSoNumber}
                 </p>
               ) : null}
               {line.planningProductName ? <p>{line.planningProductName}</p> : null}
@@ -335,38 +341,38 @@ export function InventoryAuditDetailModal({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-200 bg-white flex flex-wrap items-center justify-end gap-2">
+        <div className="px-5 py-3 border-t border-border bg-surface flex flex-wrap items-center justify-end gap-2">
           {canTerminate && !showTerminate ? (
             <button
               type="button"
               onClick={() => { setShowTerminate(true); setShowReAudit(false); setShowSubmitCount(false); }}
-              className="px-3 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 mr-auto"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 text-err text-sm font-semibold hover:bg-err-soft mr-auto"
             >
-              ⛔ Terminate
+              <Prohibit className="w-4 h-4" /> Terminate
             </button>
           ) : null}
           {canSubmitCount && !showSubmitCount ? (
             <button
               type="button"
               onClick={() => { setShowSubmitCount(true); setShowReAudit(false); setShowTerminate(false); }}
-              className="px-3 py-2 rounded-lg border border-teal-300 text-teal-800 text-sm font-semibold hover:bg-teal-50"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft text-brand text-sm font-semibold hover:bg-brand-soft"
             >
-              📦 Enter Physical Count
+              <Package className="w-4 h-4" /> Enter Physical Count
             </button>
           ) : null}
           {canReAudit && !showReAudit ? (
             <button
               type="button"
               onClick={() => { setShowReAudit(true); setShowTerminate(false); setShowSubmitCount(false); }}
-              className="px-3 py-2 rounded-lg border border-sky-300 text-sky-800 text-sm font-semibold hover:bg-sky-50"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-soft text-brand text-sm font-semibold hover:bg-brand-soft"
             >
-              🔁 Re-Audit
+              <ArrowsClockwise className="w-4 h-4" /> Re-Audit
             </button>
           ) : null}
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white"
+            className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3"
           >
             Close
           </button>
@@ -375,9 +381,9 @@ export function InventoryAuditDetailModal({
               type="button"
               disabled={approving}
               onClick={() => void onApproveGap(line)}
-              className="px-4 py-2 rounded-lg bg-teal-700 text-white text-sm font-bold hover:bg-teal-800 disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60"
             >
-              {approving ? 'Updating…' : `✓ Mark UPDATED — adjust SIH (+${line.gapQty.toLocaleString('en-IN')} ${line.unit})`}
+              {approving ? 'Updating…' : <><Check className="w-4 h-4" /> {`Mark UPDATED — adjust SIH (+${line.gapQty.toLocaleString('en-IN')} ${line.unit})`}</>}
             </button>
           ) : null}
         </div>

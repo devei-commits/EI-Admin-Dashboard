@@ -1,4 +1,5 @@
-import React, { ReactNode, useCallback, useEffect } from 'react';
+import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 export interface ConfirmDialogProps {
  isOpen: boolean;
@@ -42,27 +43,34 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   }
  }, [isOpen, handleKeyDown]);
 
+ const dialogRef = useRef<HTMLDivElement>(null);
+ useFocusTrap(isOpen, dialogRef);
+
  if (!isOpen) return null;
 
  const confirmStyles = {
-  danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500',
-  warning: 'bg-slate-800 text-white hover:bg-slate-800 focus:ring-slate-800',
-  info: 'bg-blue-500 text-white hover:bg-blue-600 focus:ring-blue-500',
+  danger: 'bg-[color:var(--st-red-fg)] text-white hover:brightness-95 focus-visible:ring-[color:var(--st-red-fg)]/40',
+  warning: 'bg-brand text-brand-ink hover:bg-brand-press focus-visible:ring-[color:var(--ring)]',
+  info: 'bg-brand text-brand-ink hover:bg-brand-press focus-visible:ring-[color:var(--ring)]',
  };
 
  const iconColors = {
-  danger: 'text-red-500',
-  warning: 'text-slate-700',
-  info: 'text-blue-500',
+  danger: 'text-[color:var(--st-red-fg)]',
+  warning: 'text-[color:var(--st-amber-fg)]',
+  info: 'text-brand',
  };
 
  return (
   <div
-   className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
+   className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
    onClick={onClose}
   >
    <div
-    className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 space-y-4"
+    ref={dialogRef}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="confirm-dialog-title"
+    className="bg-surface text-ink rounded-[var(--r-lg)] shadow-[var(--e3)] border border-hairline w-full max-w-md p-6 space-y-4"
     onClick={(e) => e.stopPropagation()}
    >
     <div className="flex items-start gap-3">
@@ -78,8 +86,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       )}
      </div>
      <div className="flex-1">
-      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-      <div className="text-sm text-gray-600 mt-1">{message}</div>
+      <h3 id="confirm-dialog-title" className="text-lg font-semibold text-ink">{title}</h3>
+      <div className="text-sm text-ink-2 mt-1">{message}</div>
      </div>
     </div>
 
@@ -87,18 +95,18 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
      <button
       onClick={onClose}
       disabled={isLoading}
-      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+      className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface-3 border border-hairline rounded-[var(--r-sm)] hover:bg-surface-2 transition-colors disabled:opacity-50"
      >
       {cancelText}
      </button>
      <button
       onClick={onConfirm}
       disabled={isLoading}
-      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${confirmStyles[variant]}`}
+      className={`px-4 py-2 text-sm font-medium rounded-[var(--r-sm)] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--surface)] disabled:opacity-50 disabled:cursor-not-allowed ${confirmStyles[variant]}`}
      >
       {isLoading ? (
        <span className="flex items-center gap-2">
-        <span className="inline-block">Loading...</span>
+        <span aria-hidden className="inline-block w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current animate-spin" />
         Processing...
        </span>
       ) : (

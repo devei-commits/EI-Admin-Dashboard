@@ -4,7 +4,7 @@ import {
   type MasterApprovalStatus,
 } from '../../constants/masterApprovalStatus';
 
-export type MasterApprovalStatusTabsAccent = 'teal' | 'violet' | 'blue';
+export type MasterApprovalStatusTabsAccent = 'teal' | 'violet' | 'blue' | 'brand';
 
 export type MasterApprovalStatusTabsProps = {
   value: string;
@@ -17,20 +17,22 @@ export type MasterApprovalStatusTabsProps = {
 };
 
 const ACCENT_ACTIVE: Record<MasterApprovalStatusTabsAccent, string> = {
-  teal: 'bg-teal-600 text-white border-teal-600 shadow-sm',
-  violet: 'bg-violet-600 text-white border-violet-600 shadow-sm',
-  blue: 'bg-blue-600 text-white border-blue-600 shadow-sm',
+  teal: 'bg-brand text-brand-ink border-brand shadow-[var(--e1)]',
+  violet: 'bg-brand text-brand-ink border-brand shadow-[var(--e1)]',
+  blue: 'bg-brand text-brand-ink border-brand shadow-[var(--e1)]',
+  brand: 'bg-brand text-brand-ink border-brand shadow-[var(--e1)]',
 };
 
 const ACCENT_RING: Record<MasterApprovalStatusTabsAccent, string> = {
-  teal: 'focus-visible:ring-teal-500',
-  violet: 'focus-visible:ring-violet-500',
-  blue: 'focus-visible:ring-blue-500',
+  teal: 'focus-visible:ring-[color:var(--ring)]',
+  violet: 'focus-visible:ring-[color:var(--ring)]',
+  blue: 'focus-visible:ring-[color:var(--ring)]',
+  brand: 'focus-visible:ring-[color:var(--ring)]',
 };
 
 function tabBadgeClass(statusId: string, isSelected: boolean): string {
-  if (isSelected) return 'bg-white/20 text-inherit border-white/30';
-  if (statusId === 'all') return 'bg-gray-100 text-gray-600 border-gray-200';
+  if (isSelected) return 'bg-surface/20 text-inherit border-white/30';
+  if (statusId === 'all') return 'bg-surface-3 text-ink-3 border-hairline';
   return masterApprovalStatusBadgeClass(statusId);
 }
 
@@ -59,10 +61,10 @@ export function MasterApprovalStatusTabs({
         const count = counts[tab.id] ?? 0;
         const isApprovalStatus = MASTER_APPROVAL_STATUSES.includes(tab.id as MasterApprovalStatus);
         const inactiveClass = isApprovalStatus
-          ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+          ? 'border-border bg-surface text-ink-2 hover:bg-surface-3'
           : tab.id === 'all'
-            ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50';
+            ? 'border-border bg-surface text-ink-2 hover:bg-surface-3'
+            : 'border-border bg-surface text-ink-3 hover:bg-surface-3';
 
         return (
           <button

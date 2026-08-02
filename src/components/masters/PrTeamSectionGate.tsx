@@ -17,7 +17,7 @@ export function PrTeamSectionGate({
   return (
     <div className={className}>
       {!canEdit ? (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+        <p className="text-xs text-warn bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 mb-3">
           {viewOnlyLabel}
         </p>
       ) : null}

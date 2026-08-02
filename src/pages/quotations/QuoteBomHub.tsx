@@ -7,6 +7,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Package, Plus, ArrowLeft, Trophy, ShoppingCart, IndianRupee, FileText, Target, TrendingUp, TrendingDown, Minus, FlaskConical, ClipboardCheck } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PageHeader } from '../../components/ui';
+import { CardSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import * as quotesApi from '../../services/quotations.service';
 import type { SavedQuoteListItem, BomQuoteStats, BomQuoteJob, QuoteActuals } from '../../services/quotations.service';
 import { fetchBOMs, type BOMRecord } from '../../services/bom.service';
@@ -14,13 +16,13 @@ import { statusBadge } from './quoteStatus';
 import QuotationsNav from './QuotationsNav';
 
 const SCOPE_META: Record<string, { label: string; cls: string }> = {
-  full: { label: 'Full', cls: 'bg-slate-100 text-slate-700' },
-  rm_only: { label: 'RM Only', cls: 'bg-amber-100 text-amber-700' },
+  full: { label: 'Full', cls: 'bg-surface-3 text-ink-2' },
+  rm_only: { label: 'RM Only', cls: 'bg-warn-soft text-warn' },
   pm_only: { label: 'PM Only', cls: 'bg-violet-100 text-violet-700' },
 };
 const CAT_META: Record<string, { label: string; cls: string }> = {
-  pre_production: { label: 'Pre-Prod', cls: 'bg-blue-50 text-blue-600 border border-blue-200' },
-  post_production: { label: 'Post-Prod', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  pre_production: { label: 'Pre-Prod', cls: 'bg-brand-soft text-brand border border-brand' },
+  post_production: { label: 'Post-Prod', cls: 'bg-ok-soft text-ok border border-ok' },
 };
 const money = (n: number | null | undefined) => n == null ? '—' : `₹${Number(n).toFixed(2)}`;
 const pct = (n: number | null | undefined) => n == null ? '—' : `${Math.round(Number(n) * 100)}%`;
@@ -133,9 +135,9 @@ export default function QuoteBomHub() {
         icon={<Package className="w-6 h-6" />}
         actions={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 text-sm font-medium"><ArrowLeft className="w-4 h-4" /> All Quotes</button>
-            <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 text-sm font-medium"><Plus className="w-4 h-4" /> Full</button>
-            <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm font-medium"><FlaskConical className="w-4 h-4" /> RM Only</button>
+            <button onClick={() => navigate('/quotations')} className="inline-flex items-center gap-2 px-4 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 text-sm font-medium"><ArrowLeft className="w-4 h-4" /> All Quotes</button>
+            <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-surface/10 text-white rounded-lg hover:bg-surface/20 text-sm font-medium"><Plus className="w-4 h-4" /> Full</button>
+            <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-warn text-white rounded-lg hover:bg-warn text-sm font-medium"><FlaskConical className="w-4 h-4" /> RM Only</button>
             <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=pm_only`)} className="inline-flex items-center gap-2 px-3.5 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium"><Package className="w-4 h-4" /> PM Only</button>
           </div>
         }
@@ -143,43 +145,43 @@ export default function QuoteBomHub() {
       <QuotationsNav />
 
       {loading ? (
-        <div className="animate-pulse space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-lg border border-gray-100 shadow-sm" />)}</div>
-          <div className="h-64 bg-white rounded-lg border border-gray-100 shadow-sm" />
-          <div className="h-64 bg-white rounded-lg border border-gray-100 shadow-sm" />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">{Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)}</div>
+          <CardSkeleton />
+          <CardSkeleton />
         </div>
       ) : (
         <>
           {/* KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <StatCard icon={<FileText className="w-5 h-5" />} label="Total Quotes" value={String(stats?.total ?? 0)} cls="bg-slate-100 text-slate-700" />
-            <StatCard icon={<Trophy className="w-5 h-5" />} label="Win Rate" value={pct(stats?.win_rate ?? null)} cls="bg-emerald-100 text-emerald-600" />
+            <StatCard icon={<FileText className="w-5 h-5" />} label="Total Quotes" value={String(stats?.total ?? 0)} cls="bg-surface-3 text-ink-2" />
+            <StatCard icon={<Trophy className="w-5 h-5" />} label="Win Rate" value={pct(stats?.win_rate ?? null)} cls="bg-ok-soft text-ok" />
             <StatCard icon={<ShoppingCart className="w-5 h-5" />} label="Converted to SO" value={String(stats?.converted ?? 0)} cls="bg-violet-100 text-violet-600" />
-            <StatCard icon={<IndianRupee className="w-5 h-5" />} label="Avg Sell Price" value={money(stats?.avg_price ?? null)} cls="bg-amber-100 text-amber-600" />
+            <StatCard icon={<IndianRupee className="w-5 h-5" />} label="Avg Sell Price" value={money(stats?.avg_price ?? null)} cls="bg-warn-soft text-warn" />
             {actualsAccuracy ? (
               <StatCard
                 icon={<ClipboardCheck className="w-5 h-5" />}
                 label={`Real Accuracy (${actualsAccuracy.count} run${actualsAccuracy.count !== 1 ? 's' : ''})`}
                 value={`${actualsAccuracy.avgSigned > 0 ? '+' : ''}${actualsAccuracy.avgSigned.toFixed(1)}%`}
-                cls={actualsAccuracy.avgAbs <= 5 ? 'bg-emerald-100 text-emerald-600' : actualsAccuracy.avgAbs <= 15 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}
+                cls={actualsAccuracy.avgAbs <= 5 ? 'bg-ok-soft text-ok' : actualsAccuracy.avgAbs <= 15 ? 'bg-warn-soft text-warn' : 'bg-err-soft text-err'}
               />
             ) : accuracyData ? (
               <StatCard
                 icon={accuracyData.avgDiff > 5 ? <TrendingUp className="w-5 h-5" /> : accuracyData.avgDiff < -5 ? <TrendingDown className="w-5 h-5" /> : <Target className="w-5 h-5" />}
                 label={`Quote Drift (${accuracyData.pairs} pairs)`}
                 value={`${accuracyData.avgDiff > 0 ? '+' : ''}${accuracyData.avgDiff.toFixed(1)}%`}
-                cls={Math.abs(accuracyData.avgDiff) <= 5 ? 'bg-emerald-100 text-emerald-600' : Math.abs(accuracyData.avgDiff) <= 15 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}
+                cls={Math.abs(accuracyData.avgDiff) <= 5 ? 'bg-ok-soft text-ok' : Math.abs(accuracyData.avgDiff) <= 15 ? 'bg-warn-soft text-warn' : 'bg-err-soft text-err'}
               />
             ) : (
-              <StatCard icon={<Target className="w-5 h-5" />} label="Avg Accuracy" value="No data yet" cls="bg-gray-100 text-gray-400" />
+              <StatCard icon={<Target className="w-5 h-5" />} label="Avg Accuracy" value="No data yet" cls="bg-surface-3 text-ink-4" />
             )}
           </div>
 
           {/* Price trend chart + type/client split */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Trend chart — spans 2 cols */}
-            <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Headline Sell Price — All Quotes Over Time</h3>
+            <div className="lg:col-span-2 bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-4">Headline Sell Price — All Quotes Over Time</h3>
               {hasTrend ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={trendData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -194,7 +196,7 @@ export default function QuoteBomHub() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[220px] flex flex-col items-center justify-center text-gray-300">
+                <div className="h-[220px] flex flex-col items-center justify-center text-ink-4">
                   <TrendingUp className="w-10 h-10 mb-2" />
                   <p className="text-sm">At least 2 quotes needed for trend</p>
                 </div>
@@ -204,8 +206,8 @@ export default function QuoteBomHub() {
             {/* Type split + price range + accuracy */}
             <div className="space-y-4">
               {stats && Object.keys(stats.by_type).length > 0 && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Quote Type Split</h3>
+                <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+                  <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-3">Quote Type Split</h3>
                   <div className="space-y-2">
                     {Object.entries(stats.by_type).map(([type, count]) => {
                       const total = stats.total || 1;
@@ -214,16 +216,16 @@ export default function QuoteBomHub() {
                         <div key={type}>
                           <div className="flex justify-between text-sm mb-0.5">
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>{m.label}</span>
-                            <span className="text-gray-600">{count} ({Math.round((count / total) * 100)}%)</span>
+                            <span className="text-ink-2">{count} ({Math.round((count / total) * 100)}%)</span>
                           </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full"><div className="h-full bg-slate-700 rounded-full" style={{ width: `${(count / total) * 100}%` }} /></div>
+                          <div className="h-1.5 bg-surface-3 rounded-full"><div className="h-full bg-slate-700 rounded-full" style={{ width: `${(count / total) * 100}%` }} /></div>
                         </div>
                       );
                     })}
                   </div>
                   {stats.by_category && Object.keys(stats.by_category).length > 0 && (
                     <div className="mt-4 pt-3 border-t border-gray-50">
-                      <p className="text-xs font-bold text-gray-400 uppercase mb-2">Pre vs Post</p>
+                      <p className="text-xs font-bold text-ink-4 uppercase mb-2">Pre vs Post</p>
                       <div className="flex gap-2 flex-wrap">
                         {Object.entries(stats.by_category).map(([cat, count]) => {
                           const cm = CAT_META[cat] || CAT_META.pre_production;
@@ -236,18 +238,18 @@ export default function QuoteBomHub() {
               )}
 
               {stats && (stats.min_price != null || stats.max_price != null) && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Price Range</h3>
+                <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+                  <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-3">Price Range</h3>
                   <div className="space-y-1">
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Min</span><span className="font-semibold text-slate-900">{money(stats.min_price)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Avg</span><span className="font-semibold text-slate-900">{money(stats.avg_price)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Max</span><span className="font-semibold text-slate-900">{money(stats.max_price)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-ink-4">Min</span><span className="font-semibold text-ink">{money(stats.min_price)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-ink-4">Avg</span><span className="font-semibold text-ink">{money(stats.avg_price)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-ink-4">Max</span><span className="font-semibold text-ink">{money(stats.max_price)}</span></div>
                   </div>
                   {stats.top_clients.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-50">
-                      <p className="text-xs font-bold text-gray-400 uppercase mb-1">Top Clients</p>
+                      <p className="text-xs font-bold text-ink-4 uppercase mb-1">Top Clients</p>
                       {stats.top_clients.slice(0, 3).map((c) => (
-                        <p key={c.customer_name} className="text-sm text-gray-700">{c.customer_name} <span className="text-gray-400">× {c.c}</span></p>
+                        <p key={c.customer_name} className="text-sm text-ink-2">{c.customer_name} <span className="text-ink-4">× {c.c}</span></p>
                       ))}
                     </div>
                   )}
@@ -259,18 +261,18 @@ export default function QuoteBomHub() {
                 const val = useReal ? actualsAccuracy!.avgAbs : accuracyData!.avgAbsDiff;
                 const signed = useReal ? actualsAccuracy!.avgSigned : accuracyData!.avgDiff;
                 const tier = val <= 5 ? 'emerald' : val <= 15 ? 'amber' : 'red';
-                const bgCls = tier === 'emerald' ? 'bg-emerald-50 border-emerald-200' : tier === 'amber' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
-                const textCls = tier === 'emerald' ? 'text-emerald-700' : tier === 'amber' ? 'text-amber-700' : 'text-red-700';
+                const bgCls = tier === 'emerald' ? 'bg-ok-soft border-ok' : tier === 'amber' ? 'bg-warn-soft border-warn' : 'bg-err-soft border-err';
+                const textCls = tier === 'emerald' ? 'text-ok' : tier === 'amber' ? 'text-warn' : 'text-err';
                 return (
                   <div className={`rounded-lg border p-4 ${bgCls}`}>
-                    <p className="text-xs font-bold uppercase tracking-wider mb-1 text-gray-500">
+                    <p className="text-xs font-bold uppercase tracking-wider mb-1 text-ink-3">
                       {useReal ? `Real Accuracy (${actualsAccuracy!.count} actuals)` : 'Pre→Post Accuracy (estimated)'}
                     </p>
-                    <p className="text-2xl font-bold text-slate-900">{val.toFixed(1)}% <span className="text-sm font-normal text-gray-500">avg deviation</span></p>
+                    <p className="text-2xl font-bold text-ink">{val.toFixed(1)}% <span className="text-sm font-normal text-ink-3">avg deviation</span></p>
                     <p className={`text-xs ${textCls} mt-1`}>
                       {val <= 5 ? 'Excellent — estimates closely match production.' : val <= 15 ? 'Moderate variance — review pricing assumptions.' : 'High variance — investigate cost drivers.'}
                     </p>
-                    {signed !== 0 && <p className="text-xs text-gray-500 mt-0.5">Bias: {signed > 0 ? 'over-estimating' : 'under-estimating'} by {Math.abs(signed).toFixed(1)}%</p>}
+                    {signed !== 0 && <p className="text-xs text-ink-3 mt-0.5">Bias: {signed > 0 ? 'over-estimating' : 'under-estimating'} by {Math.abs(signed).toFixed(1)}%</p>}
                   </div>
                 );
               })()}
@@ -279,8 +281,8 @@ export default function QuoteBomHub() {
 
           {/* Est vs Actual cost comparison */}
           {costComparisonData && costComparisonData.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Estimated vs Actual — Cost Per Unit (₹) — Most Recent Production Run</h3>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5">
+              <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-4">Estimated vs Actual — Cost Per Unit (₹) — Most Recent Production Run</h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={costComparisonData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }} barCategoryGap="30%">
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -297,22 +299,26 @@ export default function QuoteBomHub() {
 
           {/* Job groups */}
           {quotes.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-16 text-center">
-              <Package className="w-10 h-10 mx-auto text-gray-200 mb-3" />
-              <p className="text-gray-500 font-medium">No quotes for this BOM yet.</p>
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900"><Plus className="w-4 h-4" /> Full Quote</button>
-                <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-200"><FlaskConical className="w-4 h-4" /> RM Only</button>
-              </div>
+            <div className="bg-surface rounded-lg shadow-sm border border-hairline">
+              <EmptyState
+                icon={<Package />}
+                title="No quotes for this BOM yet."
+                action={
+                  <div className="flex items-center justify-center gap-2">
+                    <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=full`)} className="inline-flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-lg text-sm font-semibold hover:bg-ink"><Plus className="w-4 h-4" /> Full Quote</button>
+                    <button onClick={() => navigate(`/quotations/new?bomCode=${bom_code}&quoteScope=rm_only`)} className="inline-flex items-center gap-2 px-4 py-2 bg-warn-soft text-warn rounded-lg text-sm font-semibold hover:bg-amber-200"><FlaskConical className="w-4 h-4" /> RM Only</button>
+                  </div>
+                }
+              />
             </div>
           ) : (
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">Production Jobs ({jobs.length})</h3>
+              <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider px-1">Production Jobs ({jobs.length})</h3>
               {jobs.map((job, ji) => (
-                <div key={ji} className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-3 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-900">{job.job_ref || 'Ungrouped Quotes'}</span>
-                    <span className="text-xs text-gray-400">{job.quotes.length} quote{job.quotes.length !== 1 ? 's' : ''}</span>
+                <div key={ji} className="bg-surface rounded-lg shadow-sm border border-hairline overflow-hidden">
+                  <div className="px-5 py-3 border-b border-hairline bg-surface-2/60 flex items-center gap-3 flex-wrap">
+                    <span className="text-sm font-semibold text-ink">{job.job_ref || 'Ungrouped Quotes'}</span>
+                    <span className="text-xs text-ink-4">{job.quotes.length} quote{job.quotes.length !== 1 ? 's' : ''}</span>
                     {(() => {
                       const preQ = job.quotes.find(q => q.quote_category === 'pre_production');
                       if (preQ && !job.quotes.some(q => q.quote_category === 'post_production')) {
@@ -334,9 +340,9 @@ export default function QuoteBomHub() {
                       const v = variance(preQ.headline_sell, postQ.headline_sell);
                       return (
                         <div className="ml-auto flex items-center gap-2">
-                          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Pre + Post paired</span>
+                          <span className="text-xs font-semibold text-ok bg-ok-soft px-2 py-0.5 rounded-full border border-ok">Pre + Post paired</span>
                           {v && (
-                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${v.diff > 0 ? 'bg-red-50 text-red-600 border border-red-200' : v.diff < 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}`}>
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${v.diff > 0 ? 'bg-err-soft text-err border border-err' : v.diff < 0 ? 'bg-ok-soft text-ok border border-ok' : 'bg-surface-2 text-ink-3 border border-border'}`}>
                               {v.diff > 0 ? <TrendingUp className="w-3 h-3" /> : v.diff < 0 ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
                               {v.diff > 0 ? '+' : ''}{money(v.diff)} ({v.pct > 0 ? '+' : ''}{v.pct.toFixed(1)}%)
                             </span>
@@ -346,7 +352,7 @@ export default function QuoteBomHub() {
                             const tv = a.variance?.total;
                             if (!tv) return null;
                             const abs = Math.abs(tv.pct ?? 99);
-                            const cls = abs <= 5 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : abs <= 15 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-600 border-red-200';
+                            const cls = abs <= 5 ? 'bg-ok-soft text-ok border-ok' : abs <= 15 ? 'bg-warn-soft text-warn border-warn' : 'bg-err-soft text-err border-err';
                             return (
                               <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${cls}`}>
                                 <ClipboardCheck className="w-3 h-3" />
@@ -358,32 +364,32 @@ export default function QuoteBomHub() {
                       );
                     })()}
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[70vh]">
                     <table className="w-full text-sm">
-                      <thead><tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                        <th className="py-2.5 px-4">Ref</th>
-                        <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3">Type</th>
-                        <th className="py-2.5 px-4">Name</th>
-                        <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3">Customer</th>
-                        <th className="py-2.5 px-3 text-right">Sell ₹</th>
-                        <th className="py-2.5 px-3">Created</th>
+                      <thead className="sticky top-0 z-20"><tr className="text-left text-xs font-semibold text-ink-3 uppercase tracking-wider border-b border-hairline [&_th]:bg-surface-2">
+                        <th scope="col" className="py-2.5 px-4">Ref</th>
+                        <th scope="col" className="py-2.5 px-3">Category</th>
+                        <th scope="col" className="py-2.5 px-3">Type</th>
+                        <th scope="col" className="py-2.5 px-4">Name</th>
+                        <th scope="col" className="py-2.5 px-3">Status</th>
+                        <th scope="col" className="py-2.5 px-3">Customer</th>
+                        <th scope="col" className="py-2.5 px-3 text-right">Sell ₹</th>
+                        <th scope="col" className="py-2.5 px-3">Created</th>
                       </tr></thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-hairline">
                         {job.quotes.map((q) => {
                           const sm = SCOPE_META[q.quote_type || 'full'] || SCOPE_META.full;
                           const cm = CAT_META[q.quote_category || 'pre_production'] || CAT_META.pre_production;
                           return (
-                            <tr key={q.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
-                              <td className="py-2.5 px-4 font-medium text-slate-900">{q.quote_ref}</td>
+                            <tr key={q.id} className="hover:bg-surface-2/50 cursor-pointer" onClick={() => navigate(`/quotations/${q.id}`)}>
+                              <td className="py-2.5 px-4 font-medium text-ink">{q.quote_ref}</td>
                               <td className="py-2.5 px-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cm.cls}`}>{cm.label}</span></td>
                               <td className="py-2.5 px-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sm.cls}`}>{sm.label}</span></td>
-                              <td className="py-2.5 px-4 text-gray-700 truncate max-w-[16rem]">{q.quote_name}</td>
+                              <td className="py-2.5 px-4 text-ink-2 truncate max-w-[16rem]">{q.quote_name}</td>
                               <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadge(q.status).cls}`}>{statusBadge(q.status).label}</span></td>
-                              <td className="py-2.5 px-3 text-gray-500">{q.customer_name || '—'}</td>
-                              <td className="py-2.5 px-3 text-right font-semibold text-slate-900">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</td>
-                              <td className="py-2.5 px-3 text-gray-400 text-xs">{new Date(q.created_at).toLocaleDateString()}</td>
+                              <td className="py-2.5 px-3 text-ink-3">{q.customer_name || '—'}</td>
+                              <td className="py-2.5 px-3 text-right font-semibold text-ink">{q.headline_sell != null ? `₹${Number(q.headline_sell).toFixed(2)}` : '—'}</td>
+                              <td className="py-2.5 px-3 text-ink-4 text-xs">{new Date(q.created_at).toLocaleDateString()}</td>
                             </tr>
                           );
                         })}
@@ -402,9 +408,9 @@ export default function QuoteBomHub() {
 
 function StatCard({ icon, label, value, cls }: { icon: React.ReactNode; label: string; value: string; cls: string }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 flex items-center gap-4">
+    <div className="bg-surface rounded-lg shadow-sm border border-hairline p-5 flex items-center gap-4">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${cls}`}>{icon}</div>
-      <div><p className="text-xs text-gray-500 font-medium">{label}</p><p className="text-xl font-bold text-slate-900 leading-tight">{value}</p></div>
+      <div><p className="text-xs text-ink-3 font-medium">{label}</p><p className="text-xl font-bold text-ink leading-tight">{value}</p></div>
     </div>
   );
 }

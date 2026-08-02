@@ -60,11 +60,11 @@ function TeamAssignButton({
     >
       <span className="block text-[10px] font-bold uppercase tracking-wide opacity-80">{label}</span>
       {assigned ? (
-        <span className="block text-[11px] font-semibold text-gray-900 truncate" title={formatStageAssigneeLabel(slot)}>
+        <span className="block text-[11px] font-semibold text-ink truncate" title={formatStageAssigneeLabel(slot)}>
           {slot!.display_name}
         </span>
       ) : (
-        <span className="block text-[11px] text-gray-500 italic">Open</span>
+        <span className="block text-[11px] text-ink-3 italic">Open</span>
       )}
       <StatusBadge status={status} />
     </button>
@@ -81,14 +81,14 @@ function TeamAssignReadonly({
   status: PrTeamAssignStatus;
 }): JSX.Element {
   return (
-    <div className="min-w-[7rem] max-w-[10rem] text-[10px] text-gray-600">
-      <span className="block font-bold uppercase tracking-wide text-gray-400">{label}</span>
+    <div className="min-w-[7rem] max-w-[10rem] text-[10px] text-ink-3">
+      <span className="block font-bold uppercase tracking-wide text-ink-4">{label}</span>
       {slot?.user_id ? (
-        <p className="truncate font-medium text-gray-800" title={formatStageAssigneeLabel(slot)}>
+        <p className="truncate font-medium text-ink" title={formatStageAssigneeLabel(slot)}>
           {formatStageAssigneeLabel(slot)}
         </p>
       ) : (
-        <p className="text-gray-400 italic">Open</p>
+        <p className="text-ink-4 italic">Open</p>
       )}
       <StatusBadge status={status} />
     </div>
@@ -111,8 +111,8 @@ export function MasterPrTeamAssignCell({
   const label = team === 'rm_team' ? 'RM assign' : 'Pack assign';
   const accentClass =
     team === 'rm_team'
-      ? 'border-indigo-300 bg-indigo-50/60 focus:ring-indigo-400'
-      : 'border-violet-300 bg-violet-50/60 focus:ring-violet-400';
+      ? 'border-brand-soft bg-brand-soft/60 focus:ring-[color:var(--ring)]'
+      : 'border-brand-soft bg-brand-soft/60 focus:ring-[color:var(--ring)]';
   const status = getPrTeamAssignStatus(team, assignees, pending);
 
   if (!canAssign) {

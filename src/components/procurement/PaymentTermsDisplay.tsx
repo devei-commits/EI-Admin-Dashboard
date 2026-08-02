@@ -28,22 +28,22 @@ function StagedPaymentTermsTable({
   return (
     <div className={className}>
       <table
-        className={`w-full max-w-md border-collapse border border-slate-200 rounded-md overflow-hidden bg-white ${textSize}`}
+        className={`w-full max-w-md border-collapse border border-border rounded-md overflow-hidden bg-surface ${textSize}`}
       >
-        <thead>
-          <tr className="bg-slate-50 text-left text-slate-600">
-            <th className={`${cell} font-semibold border-b border-slate-200`}>Advance %</th>
-            <th className={`${cell} font-semibold border-b border-slate-200`}>Pre-ship %</th>
-            <th className={`${cell} font-semibold border-b border-slate-200`}>Post-ship %</th>
-            <th className={`${cell} font-semibold border-b border-slate-200`}>Credit days</th>
+        <thead className="sticky top-0 z-20">
+          <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
+            <th scope="col" className={`${cell} font-semibold border-b border-border`}>Advance %</th>
+            <th scope="col" className={`${cell} font-semibold border-b border-border`}>Pre-ship %</th>
+            <th scope="col" className={`${cell} font-semibold border-b border-border`}>Post-ship %</th>
+            <th scope="col" className={`${cell} font-semibold border-b border-border`}>Credit days</th>
           </tr>
         </thead>
         <tbody>
-          <tr className="text-slate-900">
-            <td className={`${cell} text-center tabular-nums border-t border-slate-100`}>{staged.advance_pct}</td>
-            <td className={`${cell} text-center tabular-nums border-t border-slate-100`}>{staged.pre_shipment_pct}</td>
-            <td className={`${cell} text-center tabular-nums border-t border-slate-100`}>{staged.post_shipment_pct}</td>
-            <td className={`${cell} text-center tabular-nums border-t border-slate-100`}>{staged.credit_days}</td>
+          <tr className="text-ink">
+            <td className={`${cell} text-center tabular-nums border-t border-hairline`}>{staged.advance_pct}</td>
+            <td className={`${cell} text-center tabular-nums border-t border-hairline`}>{staged.pre_shipment_pct}</td>
+            <td className={`${cell} text-center tabular-nums border-t border-hairline`}>{staged.post_shipment_pct}</td>
+            <td className={`${cell} text-center tabular-nums border-t border-hairline`}>{staged.credit_days}</td>
           </tr>
         </tbody>
       </table>
@@ -60,7 +60,7 @@ export function PaymentTermsDisplay({ value, compact, className = '' }: Props) {
   const textSize = compact ? 'text-[10px]' : 'text-xs';
 
   if (!raw.trim()) {
-    return <span className={`text-slate-400 ${textSize} ${className}`}>—</span>;
+    return <span className={`text-ink-4 ${textSize} ${className}`}>—</span>;
   }
 
   const fromJson = parseStagedPaymentTerms(raw);
@@ -76,7 +76,7 @@ export function PaymentTermsDisplay({ value, compact, className = '' }: Props) {
   const parsed = parsePaymentTermsString(raw);
   if (parsed.type === 'as_per_contract') {
     return (
-      <span className={`text-slate-700 ${textSize} ${className}`.trim()}>
+      <span className={`text-ink-2 ${textSize} ${className}`.trim()}>
         {formatStagedPaymentTermsSummary(raw)}
       </span>
     );

@@ -888,29 +888,29 @@ const getInitialLiveState = (): LiveProcurementState => {
 };
 
 const statusClass: Record<QuoteStatus, string> = {
-  Confirmed: 'text-emerald-700 border-emerald-300 bg-emerald-50',
-  'Not Selected': 'text-slate-700 border-slate-300 bg-slate-100',
-  'Pending Review': 'text-yellow-700 border-yellow-300 bg-yellow-50',
+  Confirmed: 'text-ok border-[color:var(--st-green-fg)]/30 bg-ok-soft',
+  'Not Selected': 'text-ink-2 border-border bg-surface-3',
+  'Pending Review': 'text-warn border-[color:var(--st-amber-fg)]/30 bg-warn-soft',
 };
 
 const requestTypeClass: Record<RequestType, string> = {
-  RM: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  PM: 'bg-violet-50 text-violet-700 border-violet-200',
+  RM: 'bg-brand-soft text-brand border-brand-soft',
+  PM: 'bg-brand-soft text-brand border-brand-soft',
 };
 
 const statusBg: Record<RequestStatus, string> = {
-  'New': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Quoted': 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  'PO Draft': 'bg-orange-50 text-orange-700 border-orange-200',
-  'PO Released': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Delivery Pending': 'bg-rose-50 text-rose-700 border-rose-200',
-  'Under GRN': 'bg-slate-50 text-slate-700 border-slate-200',
+  'New': 'bg-brand-soft text-brand border-brand-soft',
+  'Quoted': 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30',
+  'PO Draft': 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30',
+  'PO Released': 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30',
+  'Delivery Pending': 'bg-err-soft text-err border-[color:var(--st-red-fg)]/30',
+  'Under GRN': 'bg-surface-3 text-ink-2 border-border',
 };
 
 const priorityClass: Record<RequestPriority, string> = {
-  'High': 'bg-rose-50 text-rose-700 border-rose-200',
-  'Medium': 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  'Low': 'bg-slate-50 text-slate-700 border-slate-200',
+  'High': 'bg-err-soft text-err border-[color:var(--st-red-fg)]/30',
+  'Medium': 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30',
+  'Low': 'bg-surface-3 text-ink-2 border-border',
 };
 
 const Procurement: React.FC = () => {
@@ -1110,6 +1110,13 @@ const Procurement: React.FC = () => {
   const [releasePaymentDate, setReleasePaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [recordingAdvancePayment, setRecordingAdvancePayment] = useState(false);
   const [releasingPO, setReleasingPO] = useState(false);
+  const [approveDraftPOBusy, setApproveDraftPOBusy] = useState(false);
+  const [submitSplitPOBusy, setSubmitSplitPOBusy] = useState(false);
+  const [createDraftPOBusy, setCreateDraftPOBusy] = useState(false);
+  const [editRequestSaving, setEditRequestSaving] = useState(false);
+  const [releaseDraftBusy, setReleaseDraftBusy] = useState(false);
+  const [editDraftPOSaving, setEditDraftPOSaving] = useState(false);
+  const [approveCreateDraftPOBusy, setApproveCreateDraftPOBusy] = useState(false);
   const [issuedSearch, setIssuedSearch] = useState('');
   const [issuedVendorFilter, setIssuedVendorFilter] = useState('All Vendors');
   const [issuedStatusFilter, setIssuedStatusFilter] = useState<'All' | 'Released' | 'In Transit' | 'At Risk'>('All');
@@ -4455,6 +4462,9 @@ const Procurement: React.FC = () => {
     requestType: RequestType,
     preferredQuotationId?: string
   ): Promise<boolean> => {
+    if (createDraftPOBusy) return false;
+    setCreateDraftPOBusy(true);
+    try {
     const reqForAction = requests.find((r) => r.id === requestId);
     if (reqForAction && isStockCheckPendingForRequest(reqForAction)) {
       addToast('warning', 'Stock check is pending. Draft PO creation is locked until warehouse sends stock status.');
@@ -4629,9 +4639,15 @@ const Procurement: React.FC = () => {
     }));
     addToast('success', `Draft PO ${newDpoId} created for ${requestCode}`);
     return true;
+    } finally {
+      setCreateDraftPOBusy(false);
+    }
   };
 
   const approveDraftPO = async (draftPoId: string) => {
+    if (approveDraftPOBusy) return;
+    setApproveDraftPOBusy(true);
+    try {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
@@ -4711,6 +4727,9 @@ const Procurement: React.FC = () => {
     }
 
     addToast('success', `${target.dpoNumber} approved`);
+    } finally {
+      setApproveDraftPOBusy(false);
+    }
   };
 
   const openDeleteDraftPOConfirm = (draft: DraftPO): void => {
@@ -5291,6 +5310,9 @@ const Procurement: React.FC = () => {
   };
 
   const submitSplitPO = async () => {
+    if (submitSplitPOBusy) return;
+    setSubmitSplitPOBusy(true);
+    try {
     if (!splitPOTarget) return;
 
     const uniqueIndexes = Array.from(new Set(splitSelectedLineIndexes)).sort((a, b) => a - b);
@@ -5477,6 +5499,9 @@ const Procurement: React.FC = () => {
 
     addToast('success', `Split complete: ${splitPOOne.dpoNumber} and ${splitPOTwo.dpoNumber} created`);
     closeSplitPOModal();
+    } finally {
+      setSubmitSplitPOBusy(false);
+    }
   };
 
   const closeRecordQuoteModal = () => {
@@ -6098,7 +6123,7 @@ const Procurement: React.FC = () => {
     recordingAdvancePayment;
 
   return (
-    <div className="min-h-screen bg-[#F7F7F9] text-gray-900">
+    <div className="min-h-screen bg-canvas text-ink">
       <input
         ref={poExcelInputRef}
         type="file"
@@ -6295,18 +6320,18 @@ const Procurement: React.FC = () => {
               {/* Items List tier edit modal (Quotations view writes to Items List) */}
               {editItemsListLineTarget && (
                 <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center px-4">
-                  <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-200 overflow-hidden">
-                    <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
+                  <div role="dialog" aria-modal="true" aria-label="Edit vendor tier (Items List)" className="w-full max-w-2xl rounded-xl bg-surface shadow-xl border border-border overflow-hidden">
+                    <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900">Edit vendor tier (Items List)</h3>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <h3 className="text-base font-bold text-ink">Edit vendor tier (Items List)</h3>
+                        <p className="text-xs text-ink-3 mt-1">
                           {editItemsListLineTarget.vendorName} · {editItemsListLineTarget.requestType} · {editItemsListLineTarget.itemCode || '—'} {editItemsListLineTarget.itemName}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setEditItemsListLineTarget(null)}
-                        className="px-2 py-1 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                        className="px-2 py-1 rounded-md border border-border text-ink-2 hover:bg-surface-3 text-xs font-semibold"
                         disabled={editItemsListLineSaving}
                       >
                         Close
@@ -6315,19 +6340,19 @@ const Procurement: React.FC = () => {
                     <div className="p-5 space-y-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ min</label>
+                          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">MOQ min</label>
                           <input
                             value={editItemsListLineForm.moqMin}
                             onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMin: e.target.value }))}
                             type="number"
                             min={1}
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                             disabled
                           />
-                          <p className="text-[11px] text-slate-500 mt-1">MOQ min can’t be edited here. Create a new tier from Items List.</p>
+                          <p className="text-[11px] text-ink-3 mt-1">MOQ min can’t be edited here. Create a new tier from Items List.</p>
                         </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ max (optional)</label>
+                          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">MOQ max (optional)</label>
                           <input
                             value={editItemsListLineForm.moqMax}
                             onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, moqMax: e.target.value }))}
@@ -6335,43 +6360,43 @@ const Procurement: React.FC = () => {
                             min={0}
                             step="any"
                             inputMode="decimal"
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                             disabled={editItemsListLineSaving}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Price / unit (₹)</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Price / unit (₹)</label>
                         <input
                           value={editItemsListLineForm.pricePerUnit}
                           onChange={(e) => setEditItemsListLineForm((f) => ({ ...f, pricePerUnit: e.target.value }))}
                           type="number"
                           min={0}
                           step="0.01"
-                          className="w-full max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          className="w-full max-w-xs rounded-lg border border-border px-3 py-2 text-sm"
                           disabled={editItemsListLineSaving}
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                           Payment terms
                         </label>
-                        <p className="text-[11px] text-slate-500 mb-2">
+                        <p className="text-[11px] text-ink-3 mb-2">
                           Same three-way split as Items List and vendor masters (advance, pre-shipment, post-shipment, credit days).
                         </p>
-                        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+                        <div className="overflow-auto max-h-[70vh] rounded-md border border-border bg-surface">
                           <table className="w-full max-w-xl text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50 text-left text-slate-600">
-                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Advance %</th>
-                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Pre-ship %</th>
-                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Post-ship %</th>
-                                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Credit days</th>
+                            <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
+                              <tr className="bg-surface-3 text-left text-ink-3">
+                                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Advance %</th>
+                                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Pre-ship %</th>
+                                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Post-ship %</th>
+                                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Credit days</th>
                               </tr>
                             </thead>
                             <tbody>
                               <tr>
-                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                <td className="px-2 py-1.5 border-t border-hairline">
                                   <input
                                     type="number"
                                     min={0}
@@ -6380,11 +6405,11 @@ const Procurement: React.FC = () => {
                                     onChange={(e) =>
                                       setEditItemsListLineForm((f) => ({ ...f, advancePct: e.target.value }))
                                     }
-                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    className="w-full min-w-[4rem] rounded border border-border px-2 py-1 text-sm tabular-nums"
                                     disabled={editItemsListLineSaving}
                                   />
                                 </td>
-                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                <td className="px-2 py-1.5 border-t border-hairline">
                                   <input
                                     type="number"
                                     min={0}
@@ -6393,11 +6418,11 @@ const Procurement: React.FC = () => {
                                     onChange={(e) =>
                                       setEditItemsListLineForm((f) => ({ ...f, preShipmentPct: e.target.value }))
                                     }
-                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    className="w-full min-w-[4rem] rounded border border-border px-2 py-1 text-sm tabular-nums"
                                     disabled={editItemsListLineSaving}
                                   />
                                 </td>
-                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                <td className="px-2 py-1.5 border-t border-hairline">
                                   <input
                                     type="number"
                                     min={0}
@@ -6406,11 +6431,11 @@ const Procurement: React.FC = () => {
                                     onChange={(e) =>
                                       setEditItemsListLineForm((f) => ({ ...f, postShipmentPct: e.target.value }))
                                     }
-                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    className="w-full min-w-[4rem] rounded border border-border px-2 py-1 text-sm tabular-nums"
                                     disabled={editItemsListLineSaving}
                                   />
                                 </td>
-                                <td className="px-2 py-1.5 border-t border-slate-100">
+                                <td className="px-2 py-1.5 border-t border-hairline">
                                   <input
                                     type="number"
                                     min={0}
@@ -6418,7 +6443,7 @@ const Procurement: React.FC = () => {
                                     onChange={(e) =>
                                       setEditItemsListLineForm((f) => ({ ...f, creditDays: e.target.value }))
                                     }
-                                    className="w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums"
+                                    className="w-full min-w-[4rem] rounded border border-border px-2 py-1 text-sm tabular-nums"
                                     disabled={editItemsListLineSaving}
                                   />
                                 </td>
@@ -6431,7 +6456,7 @@ const Procurement: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setEditItemsListLineTarget(null)}
-                          className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold"
+                          className="px-4 py-2 rounded-lg border border-border text-ink-2 hover:bg-surface-3 text-sm font-semibold"
                           disabled={editItemsListLineSaving}
                         >
                           Cancel
@@ -6439,13 +6464,13 @@ const Procurement: React.FC = () => {
                         <button
                           type="button"
                           onClick={saveEditItemsListTier}
-                          className="px-4 py-2 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 text-sm font-semibold disabled:opacity-60"
+                          className="px-4 py-2 rounded-lg bg-brand text-white hover:bg-brand-press text-sm font-semibold disabled:opacity-60"
                           disabled={editItemsListLineSaving}
                         >
                           {editItemsListLineSaving ? 'Saving…' : 'Save'}
                         </button>
                       </div>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-ink-3">
                         This updates the existing Items List tier (no new entries created from Procurement).
                       </p>
                     </div>
@@ -6455,15 +6480,6 @@ const Procurement: React.FC = () => {
 
               {sideSection === 'Purchase Orders' && (
                 <>
-                  <div className="flex justify-end mb-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPo(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-                    >
-                      <Package className="h-4 w-4" /> New PO
-                    </button>
-                  </div>
                   {showNewPo && (
                     <NewPoModal
                       poNumber={nextSequentialDpoOrderId(purchaseOrders, draftPOs)}
@@ -6483,17 +6499,17 @@ const Procurement: React.FC = () => {
                   )}
                   {requestsPODraftNoDraftPO.length > 0 && (
                     <div className="space-y-2 mb-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO</p>
+                      <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Marked PO Draft — open PR to create Draft PO</p>
                       {requestsPODraftNoDraftPO.map((req) => (
-                        <article key={req.id} className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 flex items-center justify-between gap-4 shadow-sm">
+                        <article key={req.id} className="rounded-xl border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-5 py-4 flex items-center justify-between gap-4 shadow-[var(--e1)]">
                           <div className="flex items-center gap-3">
-                            <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">{req.code}</span>
-                            <span className="text-sm text-slate-700">No draft PO yet</span>
+                            <span className="font-mono text-sm font-bold px-2 py-0.5 rounded bg-warn-soft text-warn">{req.code}</span>
+                            <span className="text-sm text-ink-2">No draft PO yet</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setSelectedRequest(req)}
-                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition"
+                            className="px-4 py-2 rounded-lg bg-warn text-white text-sm font-semibold hover:brightness-95 transition"
                           >
                             Open PR & create Draft PO
                           </button>
@@ -6515,6 +6531,7 @@ const Procurement: React.FC = () => {
                       addToast('success', 'Shipment batch + GRN(s) created — moved to In Transit.');
                     }}
                     onOpenGrnForPo={() => applyRouteState('Procurement', 'GRN Tracker')}
+                    onNewPo={() => setShowNewPo(true)}
                     onExport={() => {
                       const cols = ['PO #', 'Vendor', 'Status', 'Value (INR)', 'Created Date', 'Payment Terms'];
                       const rows = filteredPurchaseOrderRecords.map((r) => [
@@ -6597,13 +6614,13 @@ const Procurement: React.FC = () => {
       {selectedPO && (() => {
         const po = selectedPO;
         const poStatusColor2: Record<string, string> = {
-          Shipped: 'bg-blue-100 text-blue-700 border-blue-200',
-          'Advance Paid': 'bg-orange-100 text-orange-700 border-orange-200',
-          Delivered: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-          'PO Released': 'bg-slate-100 text-slate-700 border-slate-200',
-          'Vendor Confirmed': 'bg-cyan-100 text-cyan-700 border-cyan-200',
-          'Under GRN': 'bg-violet-100 text-violet-700 border-violet-200',
-          'GRN Complete': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+          Shipped: 'bg-brand-soft text-brand border-brand-soft',
+          'Advance Paid': 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30',
+          Delivered: 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30',
+          'PO Released': 'bg-surface-3 text-ink-2 border-border',
+          'Vendor Confirmed': 'bg-brand-soft text-brand border-brand-soft',
+          'Under GRN': 'bg-brand-soft text-brand border-brand-soft',
+          'GRN Complete': 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30',
         };
 
         const data = poTrackingData ?? poTrackingForm;
@@ -6666,25 +6683,25 @@ const Procurement: React.FC = () => {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedPO(null)}>
             <div
-              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full max-w-2xl max-h-[90vh] bg-surface rounded-xl border border-brand-soft shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+              <div className="sticky top-0 z-10 bg-surface rounded-t-xl border-b border-brand-soft px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-slate-500 font-mono mb-1">{po.requestCode ?? po.id}</p>
-                  <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
+                  <p className="text-xs text-ink-3 font-mono mb-1">{po.requestCode ?? po.id}</p>
+                  <h2 className="text-lg font-bold font-archivo text-ink leading-tight">
                     {po.poNumber} – {po.vendorName}
                   </h2>
                   <div className="mt-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${poStatusColor2[po.status] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${poStatusColor2[po.status] ?? 'bg-surface-3 text-ink-3 border-border'}`}>
                       {po.status}
                     </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedPO(null)}
-                  className="text-slate-400 hover:text-slate-700 text-xl leading-none mt-1 transition-colors"
+                  className="text-ink-4 hover:text-ink-2 text-xl leading-none mt-1 transition-colors"
                   aria-label="Close"
                 >
                   ×
@@ -6693,7 +6710,7 @@ const Procurement: React.FC = () => {
 
               <div className="flex-1 px-5 py-4 space-y-5">
                 {/* PO Summary */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-sm">
+                <div className="rounded-lg border border-border bg-surface-3 divide-y divide-hairline text-sm">
                   {[
                     { label: 'PO Number', value: po.poNumber },
                     { label: 'Vendor', value: po.vendorName },
@@ -6703,8 +6720,8 @@ const Procurement: React.FC = () => {
                     { label: 'ETA', value: `${po.etaDays} days`, highlight: po.etaDays <= 3 },
                   ].map(row => (
                     <div key={row.label} className="flex items-center justify-between px-4 py-2">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className={`font-medium ${row.highlight ? 'text-rose-600' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                      <span className="text-ink-3">{row.label}</span>
+                      <span className={`font-medium ${row.highlight ? 'text-err' : row.bold ? 'text-warn font-bold' : 'text-ink'
                         }`}>{row.value}</span>
                     </div>
                   ))}
@@ -6713,11 +6730,11 @@ const Procurement: React.FC = () => {
                 {/* Items */}
                 {po.items && po.items.length > 0 && (
                   <div>
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Items ({po.itemCount})</p>
-                    <div className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+                    <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Items ({po.itemCount})</p>
+                    <div className="rounded-lg border border-border bg-surface divide-y divide-hairline">
                       {po.items.map((item, idx) => (
-                        <div key={idx} className="px-4 py-2 text-sm text-slate-800 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
+                        <div key={idx} className="px-4 py-2 text-sm text-ink flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-warn-soft text-warn text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
                           {item}
                         </div>
                       ))}
@@ -6727,22 +6744,22 @@ const Procurement: React.FC = () => {
 
                 {/* Status Timeline (from API when PO is linked to backend) */}
                 {!po.backendPoId && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <p className="text-xs text-warn bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded px-3 py-2">
                     PO not linked to backend — create and release the PO from Draft POs to see and update the status timeline.
                   </p>
                 )}
                 {/* Save request link (for existing POs released before form_data was stored) */}
                 {po.backendPoId && po.requestId && po.requestCode && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Existing PO?</p>
-                    <p className="text-xs text-slate-600 mb-2">
+                  <div className="rounded-lg border border-border bg-surface-3 p-3">
+                    <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Existing PO?</p>
+                    <p className="text-xs text-ink-3 mb-2">
                       If this PO was released before the link was saved, save the request link so &quot;Mark Delivered at WH&quot; and the timeline stay correct.
                     </p>
                     <button
                       type="button"
                       disabled={poActionBusy != null}
                       onClick={() => runPoAction('saveRequestLink', handleSaveRequestLink)}
-                      className="w-full px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-3 py-2 rounded border border-border bg-surface text-ink-2 text-xs font-semibold hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {poActionBusy === 'saveRequestLink' ? 'Saving…' : 'Save request link'}
                     </button>
@@ -6750,26 +6767,26 @@ const Procurement: React.FC = () => {
                 )}
                 {po.backendPoId && timelineSteps.length > 0 && (
                   <div>
-                    <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-3">Status Timeline (PO Released &gt; Advance Paid &gt; Vendor Confirmed &gt; Shipped &gt; Delivered &gt; Under GRN &gt; GRN Complete)</p>
+                    <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-3">Status Timeline (PO Released &gt; Advance Paid &gt; Vendor Confirmed &gt; Shipped &gt; Delivered &gt; Under GRN &gt; GRN Complete)</p>
                     <div className="relative pl-12 space-y-6">
-                      <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-200" />
+                      <div className="absolute left-4 top-0 bottom-0 w-px bg-surface-3" />
                       {timelineSteps.map((step, idx) => (
                         <div key={idx} className="relative">
-                          <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${step.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-300'
+                          <div className={`absolute -left-8 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm z-10 ${step.done ? 'bg-ok border-[color:var(--st-green-fg)]/40 text-white' : 'bg-surface border-border text-ink-4'
                             }`}>
                             {step.done ? 'Done' : ''}
                           </div>
                           <div className="pb-1">
-                            <p className={`text-sm font-bold ${step.done ? 'text-slate-900' : 'text-slate-400'}`}>{step.stage}</p>
+                            <p className={`text-sm font-bold ${step.done ? 'text-ink' : 'text-ink-4'}`}>{step.stage}</p>
                             {step.timestamp && (
-                              <p className="text-[11px] text-slate-500 mt-0.5">
+                              <p className="text-[11px] text-ink-3 mt-0.5">
                                 {(() => {
                                   const d = new Date(String(step.timestamp));
                                   return Number.isNaN(d.getTime()) ? String(step.timestamp) : d.toLocaleString('en-IN');
                                 })()}
                               </p>
                             )}
-                            {step.note && <p className="text-xs text-slate-600 mt-1 leading-relaxed">{step.note}</p>}
+                            {step.note && <p className="text-xs text-ink-3 mt-1 leading-relaxed">{step.note}</p>}
                           </div>
                         </div>
                       ))}
@@ -6820,8 +6837,8 @@ const Procurement: React.FC = () => {
 
                 {/* Update tracking form (when PO is linked to backend) */}
                 {po.backendPoId && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3">
-                    <p className="text-[10px] tracking-[0.14em] text-slate-600 uppercase font-semibold mb-2">Update status</p>
+                  <div className="rounded-lg border border-brand-soft bg-brand-soft p-4 space-y-3">
+                    <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase font-semibold mb-2">Update status</p>
                     {(() => {
                       const modalTr = (data ?? poTrackingForm) as PoTrackingRecord | undefined;
                       const modalHasVendor = hasPoTrackingTimestamp(modalTr?.vendorConfirmedAt);
@@ -6844,7 +6861,7 @@ const Procurement: React.FC = () => {
                               </span>
                             )}
                             {modalHasRejected && (
-                              <span className="px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-rose-50 text-rose-700 border-rose-200">
+                              <span className="px-2 py-0.5 rounded-full border text-[10px] font-semibold bg-err-soft text-err border-[color:var(--st-red-fg)]/30">
                                 Vendor rejected — renegotiate / reassign / cancel
                               </span>
                             )}
@@ -6855,7 +6872,7 @@ const Procurement: React.FC = () => {
                                 type="button"
                                 disabled={poActionBusy != null}
                                 onClick={() => runPoAction('vendorConfirmed', () => markIssuedPOVendorConfirmed(issuedRecordForActions))}
-                                className="px-3 py-1.5 rounded-lg border border-cyan-500 bg-cyan-600 text-white text-xs font-semibold hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-3 py-1.5 rounded-lg border border-brand bg-brand text-white text-xs font-semibold hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {poActionBusy === 'vendorConfirmed' ? 'Saving…' : 'Mark Vendor Confirmed'}
                               </button>
@@ -6865,7 +6882,7 @@ const Procurement: React.FC = () => {
                                 type="button"
                                 disabled={poActionBusy != null}
                                 onClick={() => runPoAction('vendorRejected', () => markIssuedPOVendorRejected(issuedRecordForActions))}
-                                className="px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-xs font-semibold hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-3 py-1.5 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-semibold hover:bg-err-soft disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {poActionBusy === 'vendorRejected' ? 'Saving…' : 'Mark Vendor Rejected'}
                               </button>
@@ -6875,7 +6892,7 @@ const Procurement: React.FC = () => {
                                 type="button"
                                 disabled={poActionBusy != null}
                                 onClick={() => runPoAction('shipped', () => markIssuedPOShipped(issuedRecordForActions))}
-                                className="px-3 py-1.5 rounded-lg border border-amber-500 bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-3 py-1.5 rounded-lg border border-[color:var(--st-amber-fg)]/40 bg-warn text-white text-xs font-semibold hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {poActionBusy === 'shipped' ? 'Saving…' : 'Mark In Transit'}
                               </button>
@@ -6894,36 +6911,36 @@ const Procurement: React.FC = () => {
                       { label: 'GRN Complete', at: 'grnCompleteAt', note: 'grnCompleteNote' },
                     ].map(({ label, at, note }) => (
                       <div key={at} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center text-sm">
-                        <span className="text-slate-700 font-medium">{label}</span>
+                        <span className="text-ink-2 font-medium">{label}</span>
                         <input
                           type="date"
                           value={(poTrackingForm[at as keyof PoTrackingRecord] as string) ?? ''}
                           onChange={(e) => setPoTrackingForm((f) => ({ ...f, [at]: e.target.value || undefined }))}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs"
+                          className="rounded border border-border px-2 py-1 text-xs"
                         />
                         <input
                           type="text"
                           placeholder="Note"
                           value={(poTrackingForm[note as keyof PoTrackingRecord] as string) ?? ''}
                           onChange={(e) => setPoTrackingForm((f) => ({ ...f, [note]: e.target.value || undefined }))}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs min-w-0"
+                          className="rounded border border-border px-2 py-1 text-xs min-w-0"
                         />
                       </div>
                     ))}
                     <div className="flex items-center gap-2 pt-2">
-                      <span className="text-slate-600 text-sm">LR / Tracking ref</span>
+                      <span className="text-ink-3 text-sm">LR / Tracking ref</span>
                       <input
                         type="text"
                         placeholder="e.g. LR123456"
                         value={poTrackingForm.orderTrackingRef ?? ''}
                         onChange={(e) => setPoTrackingForm((f) => ({ ...f, orderTrackingRef: e.target.value || undefined }))}
-                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+                        className="flex-1 rounded border border-border px-2 py-1 text-sm"
                       />
                     </div>
                     <button
                       disabled={poActionBusy != null}
                       onClick={() => runPoAction('saveTracking', handleSaveTracking)}
-                      className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="mt-2 w-full py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {poActionBusy === 'saveTracking' ? 'Saving…' : 'Save tracking'}
                     </button>
@@ -6932,7 +6949,7 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+              <div className="sticky bottom-0 bg-surface rounded-b-xl border-t border-brand-soft px-5 py-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -6948,21 +6965,21 @@ const Procurement: React.FC = () => {
                     });
                     if (!ok) addToast('error', 'Could not open the PDF window. Allow popups and try again.');
                   }}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition inline-flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition inline-flex items-center gap-1.5"
                 >
                   <FileText className="h-4 w-4" /> PO PDF
                 </button>
                 {po.backendPoId && (
                   <button
                     onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Tracker'); }}
-                    className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 transition"
+                    className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press transition"
                   >
                     Open GRN Monitor
                   </button>
                 )}
                 <button
                   onClick={() => setSelectedPO(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-3 text-sm font-semibold hover:bg-surface-3 transition"
                 >
                   Close
                 </button>
@@ -6990,26 +7007,26 @@ const Procurement: React.FC = () => {
           <div className="fixed inset-0 z-40 flex" onClick={() => setSelectedGrn(null)}>
             <div className="flex-1 bg-black/20" />
             <div
-              className="w-full sm:w-96 lg:w-120 max-w-[100vw] bg-white border-l border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full sm:w-96 lg:w-120 max-w-[100vw] bg-surface border-l border-brand-soft shadow-2xl overflow-y-auto flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-white border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+              <div className="sticky top-0 z-10 bg-surface border-b border-brand-soft px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-slate-500 font-mono mb-1">{grn.poRef}</p>
-                  <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
+                  <p className="text-xs text-ink-3 font-mono mb-1">{grn.poRef}</p>
+                  <h2 className="text-lg font-bold font-archivo text-ink leading-tight">
                     GRN – {grn.grnRef}
                   </h2>
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-[10px] font-semibold text-emerald-700">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-[color:var(--st-green-fg)]/30 bg-ok-soft text-[10px] font-semibold text-ok">
                       {primaryStatus}
                     </span>
-                    <span className="text-[11px] text-slate-500">QC By&nbsp;<span className="font-semibold text-slate-800">Meera QC</span></span>
+                    <span className="text-[11px] text-ink-3">QC By&nbsp;<span className="font-semibold text-ink">Meera QC</span></span>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedGrn(null)}
-                  className="text-slate-400 hover:text-slate-700 text-xl leading-none mt-1 transition-colors"
+                  className="text-ink-4 hover:text-ink-2 text-xl leading-none mt-1 transition-colors"
                   aria-label="Close"
                 >
                   ×
@@ -7018,59 +7035,59 @@ const Procurement: React.FC = () => {
 
               <div className="flex-1 px-5 py-4 space-y-5 text-sm">
                 {/* GRN Summary */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200">
+                <div className="rounded-lg border border-border bg-surface-3 divide-y divide-hairline">
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="text-slate-500">PO Number</span>
-                    <span className="font-mono text-xs text-sky-700">{grn.poRef}</span>
+                    <span className="text-ink-3">PO Number</span>
+                    <span className="font-mono text-xs text-brand">{grn.poRef}</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="text-slate-500">Vendor</span>
-                    <span className="font-medium text-slate-800">{grn.vendor}</span>
+                    <span className="text-ink-3">Vendor</span>
+                    <span className="font-medium text-ink">{grn.vendor}</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="text-slate-500">GRN Status</span>
-                    <span className="font-medium text-emerald-700">{primaryStatus}</span>
+                    <span className="text-ink-3">GRN Status</span>
+                    <span className="font-medium text-ok">{primaryStatus}</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-2">
-                    <span className="text-slate-500">QC By</span>
-                    <span className="font-medium text-slate-800">Meera QC</span>
+                    <span className="text-ink-3">QC By</span>
+                    <span className="font-medium text-ink">Meera QC</span>
                   </div>
                 </div>
 
                 {/* Items */}
                 <div>
-                  <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Items ({grn.lines.length})</p>
+                  <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Items ({grn.lines.length})</p>
                   <div className="space-y-3">
                     {grn.lines.map((line, idx) => (
                       <div
                         key={`${line.itemCode}-${idx}`}
-                        className="rounded-lg border border-slate-200 bg-white p-3"
+                        className="rounded-lg border border-border bg-surface p-3"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <p className="font-bold text-sm text-slate-900">{line.itemName}</p>
-                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                            <p className="font-bold text-sm text-ink">{line.itemName}</p>
+                            <p className="text-[10px] text-ink-3">{line.itemCode}</p>
                           </div>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700 font-semibold">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-ok-soft border border-[color:var(--st-green-fg)]/30 text-[10px] text-ok font-semibold">
                             {line.status}
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-slate-600">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-ink-3">
                           <span>
-                            Ordered: <strong className="text-slate-900">{line.orderedQty}</strong>
+                            Ordered: <strong className="text-ink">{line.orderedQty}</strong>
                           </span>
                           <span>
-                            Received: <strong className="text-slate-900">{line.receivedQty}</strong>
+                            Received: <strong className="text-ink">{line.receivedQty}</strong>
                           </span>
                           <span>
-                            QC Pass: <strong className="text-emerald-600">{line.qcPass}</strong>
+                            QC Pass: <strong className="text-ok">{line.qcPass}</strong>
                           </span>
                           <span>
-                            QC Fail: <strong className="text-rose-500">{line.qcFail}</strong>
+                            QC Fail: <strong className="text-err">{line.qcFail}</strong>
                           </span>
                           <span>
                             Received Date:{' '}
-                            <strong className="text-slate-900">
+                            <strong className="text-ink">
                               {new Date(line.receivedDate).toLocaleDateString('en-IN')}
                             </strong>
                           </span>
@@ -7082,10 +7099,10 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-white border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+              <div className="sticky bottom-0 bg-surface border-t border-brand-soft px-5 py-3 flex items-center justify-end gap-2">
                 <button
                   onClick={() => setSelectedGrn(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-3 text-sm font-semibold hover:bg-surface-3 transition"
                 >
                   Close
                 </button>
@@ -7112,18 +7129,18 @@ const Procurement: React.FC = () => {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedDraftPO(null)}>
             <div
-              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full max-w-2xl max-h-[90vh] bg-surface rounded-xl border border-brand-soft shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-blue-200 px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+              <div className="sticky top-0 z-10 bg-surface rounded-t-xl border-b border-brand-soft px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-slate-500 font-mono mb-1">{dpo.requestCode}</p>
-                  <h2 className="text-lg font-bold font-archivo text-slate-900 leading-tight">
+                  <p className="text-xs text-ink-3 font-mono mb-1">{dpo.requestCode}</p>
+                  <h2 className="text-lg font-bold font-archivo text-ink leading-tight">
                     {dpo.dpoNumber}
                   </h2>
                   <div className="mt-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${dpo.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                    <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${dpo.status === 'Approved' ? 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30' : 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30'
                       }`}>
                       {dpo.status}
                     </span>
@@ -7148,13 +7165,13 @@ const Procurement: React.FC = () => {
                       });
                       if (!ok) addToast('error', 'Could not open the PDF window. Allow popups and try again.');
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold hover:bg-surface-3"
                   >
                     <FileText className="h-3.5 w-3.5" /> PO PDF
                   </button>
                   <button
                     onClick={() => setSelectedDraftPO(null)}
-                    className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
+                    className="text-ink-4 hover:text-ink-2 text-xl leading-none transition-colors"
                     aria-label="Close"
                   >
                     ×
@@ -7164,7 +7181,7 @@ const Procurement: React.FC = () => {
 
               <div className="flex-1 px-5 py-4 space-y-5">
                 {/* DPO Summary */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-200 text-sm">
+                <div className="rounded-lg border border-border bg-surface-3 divide-y divide-hairline text-sm">
                   {(
                     [
                       { label: 'Vendor', value: dpo.vendor },
@@ -7195,16 +7212,16 @@ const Procurement: React.FC = () => {
                   ).map((row) =>
                     'paymentTerms' in row ? (
                       <div key={row.label} className="flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <span className="text-slate-500 shrink-0 pt-0.5">{row.label}</span>
+                        <span className="text-ink-3 shrink-0 pt-0.5">{row.label}</span>
                         <div className="min-w-0 w-full sm:max-w-md sm:flex-1 sm:flex sm:justify-end">
                           <PaymentTermsDisplay value={row.paymentTerms} />
                         </div>
                       </div>
                     ) : (
                       <div key={row.label} className="flex items-center justify-between px-4 py-2">
-                        <span className="text-slate-500">{row.label}</span>
+                        <span className="text-ink-3">{row.label}</span>
                         <span
-                          className={`font-medium ${row.highlight ? 'text-yellow-700' : row.bold ? 'text-yellow-700 font-bold' : 'text-slate-800'
+                          className={`font-medium ${row.highlight ? 'text-warn' : row.bold ? 'text-warn font-bold' : 'text-ink'
                             }`}
                         >
                           {row.value}
@@ -7244,11 +7261,11 @@ const Procurement: React.FC = () => {
                 {(totals && (() => {
                   const hasQuote = dpo.requestId && quotes.some((q) => q.requestId === dpo.requestId && q.status === 'Confirmed');
                   return hasQuote ? (
-                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-ok bg-ok-soft border border-[color:var(--st-green-fg)]/30 rounded-lg px-3 py-2">
                       Prices and totals from confirmed Quotation (vendor: {dpo.vendor}).
                     </p>
                   ) : pricesFromItemsList ? (
-                    <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-ok bg-ok-soft border border-[color:var(--st-green-fg)]/30 rounded-lg px-3 py-2">
                       Prices and totals from Items List (vendor: {dpo.vendor}).
                     </p>
                   ) : null;
@@ -7256,7 +7273,7 @@ const Procurement: React.FC = () => {
 
                 {/* Alert */}
                 {dpo.alertMessage && (
-                  <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${dpo.alertType === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-2 ${dpo.alertType === 'warning' ? 'bg-warn-soft text-warn border border-[color:var(--st-amber-fg)]/30' : 'bg-ok-soft text-ok border border-[color:var(--st-green-fg)]/30'
                     }`}>
                     <span>{dpo.alertType === 'warning' ? '!' : '-'}</span>
                     <span>{dpo.alertMessage}</span>
@@ -7265,24 +7282,24 @@ const Procurement: React.FC = () => {
 
                 {/* Line Items */}
                 <div>
-                  <p className="text-[10px] tracking-[0.14em] text-slate-500 uppercase mb-2">Line Items</p>
+                  <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Line Items</p>
                   <div className="space-y-2">
                     {lineItems.map((line, idx) => (
-                      <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
+                      <div key={idx} className="rounded-lg border border-border bg-surface p-3">
                         <div className="flex items-center justify-between mb-2">
                           <div>
-                            <p className="font-bold text-sm text-slate-900">{line.item}</p>
-                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                            <p className="font-bold text-sm text-ink">{line.item}</p>
+                            <p className="text-[10px] text-ink-3">{line.itemCode}</p>
                           </div>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${requestTypeClass[line.type]}`}>{line.type}</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
-                          <span>Qty: <strong className="text-yellow-700">{line.qty}</strong></span>
-                          <span>Price/unit: <strong className="text-slate-900">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN') : line.pricePerUnit}</strong></span>
-                          <span>Lead (D): <strong className="text-slate-900">{line.leadTimeDays != null ? `${line.leadTimeDays}d` : '—'}</strong></span>
-                          <span>GST: <strong className="text-slate-900">{line.gstPercent}%</strong></span>
-                          <span>GST amt: <strong className="text-slate-900">₹{line.gstAmount.toLocaleString('en-IN')}</strong></span>
-                          <span className="col-span-2">Line total: <strong className="text-slate-900">₹{line.lineTotal.toLocaleString('en-IN')}</strong></span>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink-3">
+                          <span>Qty: <strong className="text-warn">{line.qty}</strong></span>
+                          <span>Price/unit: <strong className="text-ink">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN') : line.pricePerUnit}</strong></span>
+                          <span>Lead (D): <strong className="text-ink">{line.leadTimeDays != null ? `${line.leadTimeDays}d` : '—'}</strong></span>
+                          <span>GST: <strong className="text-ink">{line.gstPercent}%</strong></span>
+                          <span>GST amt: <strong className="text-ink">₹{line.gstAmount.toLocaleString('en-IN')}</strong></span>
+                          <span className="col-span-2">Line total: <strong className="text-ink">₹{line.lineTotal.toLocaleString('en-IN')}</strong></span>
                         </div>
                       </div>
                     ))}
@@ -7290,48 +7307,49 @@ const Procurement: React.FC = () => {
                 </div>
 
                 {/* Totals */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2 text-sm">
+                <div className="rounded-lg border border-border bg-surface-3 p-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-600">Subtotal</span>
-                    <span className="font-medium text-slate-800">₹{subtotal.toLocaleString('en-IN')}</span>
+                    <span className="text-ink-3">Subtotal</span>
+                    <span className="font-medium text-ink">₹{subtotal.toLocaleString('en-IN')}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-600">GST Total</span>
-                    <span className="font-medium text-slate-800">₹{gstTotal.toLocaleString('en-IN')}</span>
+                    <span className="text-ink-3">GST Total</span>
+                    <span className="font-medium text-ink">₹{gstTotal.toLocaleString('en-IN')}</span>
                   </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                    <span className="text-yellow-700 font-bold">Grand Total</span>
-                    <span className="text-yellow-700 font-bold text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="text-warn font-bold">Grand Total</span>
+                    <span className="text-warn font-bold text-lg">₹{grandTotal.toLocaleString('en-IN')}</span>
                   </div>
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-white rounded-b-xl border-t border-blue-200 px-5 py-3 flex items-center justify-end gap-2">
+              <div className="sticky bottom-0 bg-surface rounded-b-xl border-t border-brand-soft px-5 py-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   disabled={deletingDraftPoId === dpo.id}
                   onClick={() => openDeleteDraftPOConfirm(dpo)}
-                  className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 text-err text-sm font-semibold hover:bg-err-soft transition disabled:opacity-50"
                 >
                   {deletingDraftPoId === dpo.id ? 'Deleting…' : 'Delete draft PO'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditDraftPOTarget(dpo)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                 >
                   Edit
                 </button>
                 {dpo.status === 'Pending Approval' && (
                   <button
+                    disabled={approveDraftPOBusy}
                     onClick={() => {
                       approveDraftPO(dpo.id);
                       setSelectedDraftPO(null);
                     }}
-                    className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
+                    className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Approve
+                    {approveDraftPOBusy ? 'Approving…' : 'Approve'}
                   </button>
                 )}
                 {dpo.status === 'Approved' && (
@@ -7341,7 +7359,7 @@ const Procurement: React.FC = () => {
                         onClick={() => void recordRequiredPaymentReceivedForPo(dpo.backendPoId)}
                         disabled={recordingAdvancePayment || !String(dpo.backendPoId ?? '').trim()}
                         title={!String(dpo.backendPoId ?? '').trim() ? 'Draft PO must be synced to server first' : undefined}
-                        className="px-4 py-2 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 text-sm font-semibold hover:bg-amber-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-4 py-2 rounded-lg border border-[color:var(--st-amber-fg)]/30 text-warn bg-warn-soft text-sm font-semibold hover:bg-warn-soft transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {recordingAdvancePayment ? 'Saving…' : 'Received Payment (Temp)'}
                       </button>
@@ -7350,13 +7368,13 @@ const Procurement: React.FC = () => {
                       onClick={() => {
                         openReleasePOModal(dpo.id);
                       }}
-                      className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
+                      className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition"
                     >
                       Release PO to Vendor
                     </button>
                     <button
                       onClick={() => splitDraftPO(dpo.id)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition"
+                      className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                     >
                       Split PO
                     </button>
@@ -7364,7 +7382,7 @@ const Procurement: React.FC = () => {
                 )}
                 <button
                   onClick={() => setSelectedDraftPO(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-3 text-sm font-semibold hover:bg-surface-3 transition"
                 >
                   Close
                 </button>
@@ -7385,41 +7403,41 @@ const Procurement: React.FC = () => {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeSplitPOModal}>
             <div
-              className="relative w-full max-w-3xl rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+              className="relative w-full max-w-3xl rounded-xl border border-border bg-surface shadow-2xl overflow-hidden"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-lg font-bold text-slate-900">Split PO — {splitPOTarget.dpoNumber}</h3>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface-3">
+                <h3 className="text-lg font-bold text-ink">Split PO — {splitPOTarget.dpoNumber}</h3>
                 <button
                   onClick={closeSplitPOModal}
-                  className="w-7 h-7 rounded-md border border-slate-300 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition"
+                  className="w-7 h-7 rounded-md border border-border text-ink-3 hover:text-ink-2 hover:bg-surface-3 transition"
                   aria-label="Close"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="px-5 py-4 space-y-3 bg-white">
-                <p className="text-xs text-slate-600">Select items for each split PO. Unchecked items will remain in a new separate PO.</p>
+              <div className="px-5 py-4 space-y-3 bg-surface">
+                <p className="text-xs text-ink-3">Select items for each split PO. Unchecked items will remain in a new separate PO.</p>
 
-                <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Items — Check for PO 1</label>
+                <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Items — Check for PO 1</label>
                 <div className="space-y-2">
                   {splitPOTarget.lineItems.map((line, index) => {
                     const checked = splitSelectedLineIndexes.includes(index);
                     return (
                       <label
                         key={`${line.itemCode}-${index}`}
-                        className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 cursor-pointer hover:bg-slate-100 transition"
+                        className="flex items-start gap-3 rounded-lg border border-border bg-surface-3 px-3 py-2 cursor-pointer hover:bg-surface-3 transition"
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleSplitLineSelection(index)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-400"
+                          className="mt-0.5 h-4 w-4 rounded border-border bg-surface text-ok focus:ring-[color:var(--ring)]"
                         />
                         <div className="leading-tight">
-                          <p className="text-sm font-semibold text-slate-900">{line.item}</p>
-                          <p className="text-xs text-slate-500">{line.qty} · ₹{line.lineTotal.toLocaleString('en-IN')}</p>
+                          <p className="text-sm font-semibold text-ink">{line.item}</p>
+                          <p className="text-xs text-ink-3">{line.qty} · ₹{line.lineTotal.toLocaleString('en-IN')}</p>
                         </div>
                       </label>
                     );
@@ -7427,21 +7445,21 @@ const Procurement: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                    <p className="text-[10px] tracking-widest uppercase text-emerald-700 font-semibold mb-1">
+                  <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-ok-soft px-3 py-2">
+                    <p className="text-[10px] tracking-widest uppercase text-ok font-semibold mb-1">
                       PO 1 ({splitPOTarget.dpoNumber}-S1)
                     </p>
-                    <p className="text-xs text-emerald-900">
+                    <p className="text-xs text-ok">
                       {po1PreviewItems.length > 0
                         ? po1PreviewItems.map((line) => line.item).join(', ')
                         : 'No items selected yet'}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-                    <p className="text-[10px] tracking-widest uppercase text-sky-700 font-semibold mb-1">
+                  <div className="rounded-lg border border-brand-soft bg-brand-soft px-3 py-2">
+                    <p className="text-[10px] tracking-widest uppercase text-brand font-semibold mb-1">
                       PO 2 ({splitPOTarget.dpoNumber}-S2)
                     </p>
-                    <p className="text-xs text-sky-900">
+                    <p className="text-xs text-brand">
                       {po2PreviewItems.length > 0
                         ? po2PreviewItems.map((line) => line.item).join(', ')
                         : 'No items remaining'}
@@ -7449,24 +7467,25 @@ const Procurement: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-xs text-warn">
                   Two POs will be created. You can release them independently to the same or different vendors.
                   <span className="ml-2 font-medium">({selectedCount} item(s) in PO 1, {remainingCount} item(s) in PO 2)</span>
                 </div>
               </div>
 
-              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
-                <button
-                  onClick={submitSplitPO}
-                  className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition"
-                >
-                  Split PO
-                </button>
+              <div className="px-5 py-3 border-t border-border bg-surface-3 flex items-center justify-end gap-2">
                 <button
                   onClick={closeSplitPOModal}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                  className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                 >
                   Cancel
+                </button>
+                <button
+                  disabled={submitSplitPOBusy}
+                  onClick={submitSplitPO}
+                  className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitSplitPOBusy ? 'Splitting…' : 'Split PO'}
                 </button>
               </div>
             </div>
@@ -7483,67 +7502,67 @@ const Procurement: React.FC = () => {
           }}
         >
           <div
-            className="relative my-auto flex max-h-[calc(100svh-2rem)] w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+            className="relative my-auto flex max-h-[calc(100svh-2rem)] w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {releasingPO ? (
               <div
-                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-surface/90 backdrop-blur-[1px]"
                 role="status"
                 aria-live="polite"
                 aria-busy="true"
               >
-                <Loader2 className="h-9 w-9 text-emerald-600 animate-spin" aria-hidden />
-                <p className="mt-2 text-sm font-semibold text-slate-800">Releasing PO…</p>
-                <p className="mt-1 text-[11px] text-slate-500">Please wait for the server response</p>
+                <Loader2 className="h-9 w-9 text-ok animate-spin" aria-hidden />
+                <p className="mt-2 text-sm font-semibold text-ink">Releasing PO…</p>
+                <p className="mt-1 text-[11px] text-ink-3">Please wait for the server response</p>
               </div>
             ) : null}
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
-              <h3 className="text-lg font-bold text-slate-900">Release PO — {releasePOTarget.dpoNumber}</h3>
+            <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface-3 px-5 py-3">
+              <h3 className="text-lg font-bold text-ink">Release PO — {releasePOTarget.dpoNumber}</h3>
               <button
                 type="button"
                 onClick={closeReleasePOModal}
                 disabled={releasingPO}
-                className="h-7 w-7 shrink-0 rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-7 w-7 shrink-0 rounded-md border border-border text-ink-3 transition hover:bg-surface-3 hover:text-ink-2 disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pt-4 [scrollbar-gutter:stable]">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-ok-soft px-3 py-2 text-xs text-ok">
                 You are about to release a PO to <span className="font-bold">{releasePOTarget.vendor}</span> for <span className="font-bold">₹{releasePOTarget.grandTotal.toLocaleString('en-IN')}</span>.
               </div>
 
               <div>
-                <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment terms</label>
+                <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Payment terms</label>
                 <PaymentTermsDisplay value={releasePOTarget.paymentTerms} />
               </div>
 
               {releaseDraftRequiresAdvance && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
-                  <p className="text-xs font-semibold text-slate-800">Payment transaction</p>
-                  <p className="text-[11px] text-slate-600">
+                <div className="rounded-lg border border-border bg-surface-3 px-3 py-3 space-y-3">
+                  <p className="text-xs font-semibold text-ink">Payment transaction</p>
+                  <p className="text-[11px] text-ink-3">
                     Required for advance payment terms. Record how the advance was paid — shown in Treasury with the PO.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Transaction no.</label>
+                      <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Transaction no.</label>
                       <input
                         value={releasePaymentTransactionNo}
                         onChange={(e) => setReleasePaymentTransactionNo(e.target.value)}
                         placeholder="e.g. UTR / cheque no."
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Mode of payment</label>
+                      <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Mode of payment</label>
                       <select
                         value={releasePaymentMode}
                         onChange={(e) => setReleasePaymentMode(e.target.value as ReleasePaymentMode | '')}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                       >
                         <option value="">Select mode</option>
                         {RELEASE_PAYMENT_MODES.map((m) => (
@@ -7554,12 +7573,12 @@ const Procurement: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Payment date</label>
+                      <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Payment date</label>
                       <input
                         type="date"
                         value={releasePaymentDate}
                         onChange={(e) => setReleasePaymentDate(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                       />
                     </div>
                   </div>
@@ -7567,16 +7586,16 @@ const Procurement: React.FC = () => {
               )}
 
               {releaseDraftRequiresAdvance && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-2">
+                <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-xs text-warn space-y-2">
                   <p className="font-semibold">Advance payment required</p>
                   {!releaseDraftBackendPoIdNormalized ? (
-                    <p className="text-amber-900">
+                    <p className="text-warn">
                       This draft cannot be released until the purchase order exists on the server. Create or refresh the draft PO, then try again.
                     </p>
                   ) : releaseDraftTrackingLoading ? (
-                    <p className="text-amber-800">Checking PO tracking…</p>
+                    <p className="text-warn">Checking PO tracking…</p>
                   ) : advanceRecordedForReleaseDraft ? (
-                    <div className="text-emerald-800 font-medium space-y-1">
+                    <div className="text-ok font-medium space-y-1">
                       <p>
                         Advance recorded
                         {releaseDraftTracking?.advancePaidAt
@@ -7585,7 +7604,7 @@ const Procurement: React.FC = () => {
                         . You may release the PO.
                       </p>
                       {releaseDraftTracking?.paymentTransactionNo && (
-                        <p className="text-xs text-emerald-900">
+                        <p className="text-xs text-ok">
                           Txn {releaseDraftTracking.paymentTransactionNo} · {releaseDraftTracking.paymentMode} ·{' '}
                           {releaseDraftTracking.paymentTransactionDate
                             ? new Date(releaseDraftTracking.paymentTransactionDate).toLocaleDateString('en-IN')
@@ -7595,7 +7614,7 @@ const Procurement: React.FC = () => {
                     </div>
                   ) : (
                     <>
-                      <p className="text-amber-900">
+                      <p className="text-warn">
                         These terms include an advance. Record that the advance has been received (manual step until treasury transactions are wired) before issuing
                         this PO to the vendor.
                       </p>
@@ -7603,7 +7622,7 @@ const Procurement: React.FC = () => {
                         type="button"
                         disabled={recordingAdvancePayment}
                         onClick={() => void recordAdvancePaymentForReleaseDraft()}
-                        className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-lg bg-warn text-white text-xs font-semibold hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {recordingAdvancePayment ? 'Saving…' : 'Received Payment (Temp)'}
                       </button>
@@ -7614,19 +7633,19 @@ const Procurement: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">PO Number</label>
+                  <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">PO Number</label>
                   <input
                     value={releasePOTarget.dpoNumber}
                     readOnly
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                    className="w-full rounded-lg border border-border bg-surface-3 px-3 py-2 text-sm text-ink-2"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Release Method</label>
+                  <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Release Method</label>
                   <select
                     value={releaseMethod}
                     onChange={(event) => setReleaseMethod(event.target.value as 'Email + Portal' | 'Email only' | 'Portal only' | 'WhatsApp + Email')}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
                   >
                     <option value="Email + Portal">Email + Portal</option>
                     <option value="Email only">Email only</option>
@@ -7637,19 +7656,19 @@ const Procurement: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] tracking-widest uppercase text-slate-500 mb-1">Release Notes</label>
+                <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Release Notes</label>
                 <textarea
                   value={releaseNotes}
                   onChange={(event) => setReleaseNotes(event.target.value)}
                   rows={3}
                   placeholder="e.g. Advance invoice to be raised immediately"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-2 placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:border-transparent"
                 />
               </div>
               </div>
 
               <div className="flex min-h-0 shrink-0 flex-col px-5 pb-4 pt-2">
-                <div className="flex max-h-[min(22rem,42svh)] min-h-[6.5rem] flex-col overflow-hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <div className="flex max-h-[min(22rem,42svh)] min-h-[6.5rem] flex-col overflow-hidden rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-xs text-warn">
                   <p className="mb-1 shrink-0 font-semibold">Items in this PO ({releasePOTarget.lineItems.length})</p>
                   <ul
                     className="min-h-0 flex-1 list-disc space-y-0.5 overflow-y-scroll overscroll-y-contain pl-4 pr-2 [scrollbar-gutter:stable]"
@@ -7665,7 +7684,7 @@ const Procurement: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-surface-3 px-5 py-3">
               <button
                 type="button"
                 onClick={() => void submitReleasePO()}
@@ -7681,7 +7700,7 @@ const Procurement: React.FC = () => {
                     ? 'Record advance payment before releasing'
                     : undefined
                 }
-                className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-w-[7.5rem]"
+                className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-w-[7.5rem]"
               >
                 {releasingPO ? (
                   <>
@@ -7696,7 +7715,7 @@ const Procurement: React.FC = () => {
                 type="button"
                 onClick={closeReleasePOModal}
                 disabled={releasingPO}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -7783,100 +7802,100 @@ const Procurement: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedRequest(null)}>
             {/* Modal */}
             <div
-              className="w-full max-w-2xl max-h-[90vh] bg-white rounded-xl border border-blue-200 shadow-2xl overflow-y-auto flex flex-col"
+              className="w-full max-w-2xl max-h-[90vh] bg-surface rounded-xl border border-brand-soft shadow-2xl overflow-y-auto flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="sticky top-0 z-10 rounded-t-xl bg-linear-to-r from-blue-50 via-cyan-50 to-blue-50 border-b border-blue-200 px-6 py-4">
+              <div className="sticky top-0 z-10 rounded-t-xl bg-brand-soft border-b border-brand-soft px-6 py-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0 pr-2">
-                    <h2 className="text-lg font-bold text-slate-900 leading-tight">
+                    <h2 className="text-lg font-bold text-ink leading-tight">
                       {req.code} — {(req.preferredVendor ?? '').trim() || 'No preferred vendor'}
                     </h2>
                     {(req.description?.trim() || req.items[0]) && (
-                      <p className="text-sm text-slate-600 mt-1.5 font-medium leading-snug">
+                      <p className="text-sm text-ink-3 mt-1.5 font-medium leading-snug">
                         {req.description?.trim() || req.items[0]}
                       </p>
                     )}
                   </div>
                   <button
                     onClick={() => setSelectedRequest(null)}
-                    className="text-slate-400 hover:text-slate-700 text-2xl leading-none transition-colors"
+                    className="text-ink-4 hover:text-ink-2 text-2xl leading-none transition-colors"
                     aria-label="Close"
                   >
                     ×
                   </button>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.priority === 'High' ? 'bg-red-50 text-red-700 border-red-200' :
-                    req.priority === 'Medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                      'bg-slate-50 text-slate-700 border-slate-200'
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.priority === 'High' ? 'bg-err-soft text-err border-[color:var(--st-red-fg)]/30' :
+                    req.priority === 'Medium' ? 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30' :
+                      'bg-surface-3 text-ink-2 border-border'
                     }`}>{req.priority}</span>
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.status === 'New' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                    req.status === 'Quoted' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                      req.status === 'PO Draft' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                        req.status === 'PO Released' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                          'bg-slate-50 text-slate-700 border-slate-200'
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.status === 'New' ? 'bg-brand-soft text-brand border-brand-soft' :
+                    req.status === 'Quoted' ? 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30' :
+                      req.status === 'PO Draft' ? 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30' :
+                        req.status === 'PO Released' ? 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30' :
+                          'bg-surface-3 text-ink-2 border-border'
                     }`}>{req.status}</span>
-                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.type === 'RM' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-violet-50 text-violet-700 border-violet-200'
+                  <span className={`text-xs px-2.5 py-1 rounded-md font-bold border ${req.type === 'RM' ? 'bg-brand-soft text-brand border-brand-soft' : 'bg-brand-soft text-brand border-brand-soft'
                     }`}>{req.type}</span>
                   {req.stockCheckStatus ? (
                     <span
                       className={`text-xs px-2.5 py-1 rounded-md font-bold border ${
                         isStockCheckPendingForRequest(req)
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          ? 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30'
                           : String(req.stockCheckStatus).trim().toLowerCase() === 'completed'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-sky-50 text-sky-700 border-sky-200'
+                            ? 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30'
+                            : 'bg-brand-soft text-brand border-brand-soft'
                       }`}
                     >
                       Stock Check: {req.stockCheckStatus}
                     </span>
                   ) : null}
                   {parseStockCheckOutcome(req.stockCheckNotes) === 'not_ok' ? (
-                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-err-soft text-err border-[color:var(--st-red-fg)]/30">
                       Warehouse: Not OK
                     </span>
                   ) : parseStockCheckOutcome(req.stockCheckNotes) === 'all_ok' ? (
-                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                    <span className="text-xs px-2.5 py-1 rounded-md font-bold border bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30">
                       Warehouse: All OK
                     </span>
                   ) : null}
                 </div>
               </div>
 
-              <div className="flex-1 px-6 py-5 space-y-5 bg-slate-50">
+              <div className="flex-1 px-6 py-5 space-y-5 bg-surface-3">
                 {/* Request Metadata */}
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                    <span className="text-slate-600">Request Date</span>
-                    <span className="text-slate-900 font-medium">
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-ink-3">Request Date</span>
+                    <span className="text-ink font-medium">
                       {formatDateEnInSafe(req.createdDate)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                    <span className="text-slate-600">Requested By</span>
-                    <span className="text-slate-900 font-medium">{req.requestedBy ?? 'Planning Team'}</span>
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-ink-3">Requested By</span>
+                    <span className="text-ink font-medium">{req.requestedBy ?? 'Planning Team'}</span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                    <span className="text-slate-600">Required Date</span>
-                    <span className="text-amber-600 font-bold">
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-ink-3">Required Date</span>
+                    <span className="text-warn font-bold">
                       {formatDateWithIsoWeek(req.dueDate)}
                     </span>
                     {!req.dueDate?.trim() && (
-                      <p className="text-[10px] text-slate-500 mt-0.5">
+                      <p className="text-[10px] text-ink-3 mt-0.5">
                         Not set — use <strong>Edit Request</strong> below to add a required date.
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                    <span className="text-slate-600">Source</span>
-                    <span className="text-slate-900 font-medium">{req.source ?? 'Planning Team'}</span>
+                  <div className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-ink-3">Source</span>
+                    <span className="text-ink font-medium">{req.source ?? 'Planning Team'}</span>
                   </div>
                   {req.preferredVendor && (
-                    <div className="flex items-center justify-between py-2 border-b border-slate-200">
-                      <span className="text-slate-600">Preferred vendor</span>
-                      <span className="text-slate-900 font-medium">{req.preferredVendor}</span>
+                    <div className="flex items-center justify-between py-2 border-b border-border">
+                      <span className="text-ink-3">Preferred vendor</span>
+                      <span className="text-ink font-medium">{req.preferredVendor}</span>
                     </div>
                   )}
                 </div>
@@ -7884,7 +7903,7 @@ const Procurement: React.FC = () => {
                 {/* Items Requested - Detailed */}
                 {req.itemDetails && req.itemDetails.length > 0 ? (
                   <div>
-                    <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Items Requested</h3>
+                    <h3 className="text-xs tracking-wider text-ink-3 uppercase mb-3 font-bold">Items Requested</h3>
                     <div className="space-y-4">
                       {req.itemDetails.map((item, _idx) => {
                         const itemName = item.itemName ?? '';
@@ -7911,12 +7930,12 @@ const Procurement: React.FC = () => {
                         );
                         const modalGapLineKey = `${req.id}|${item.itemCode}|modal`;
                         return (
-                          <div key={item.itemCode} className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
+                          <div key={item.itemCode} className="bg-surface rounded-lg border border-brand-soft overflow-hidden shadow-[var(--e1)]">
                             {/* Item Header */}
-                            <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
+                            <div className="px-4 py-3 bg-brand-soft border-b border-brand-soft">
                               <div className="flex items-start justify-between gap-2 mb-2">
-                                <h4 className="font-bold text-slate-900 text-sm">{item.itemName}</h4>
-                                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">{item.itemCode}</span>
+                                <h4 className="font-bold text-ink text-sm">{item.itemName}</h4>
+                                <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-3 text-ink-2">{item.itemCode}</span>
                               </div>
                             </div>
 
@@ -7924,12 +7943,12 @@ const Procurement: React.FC = () => {
                             <div className="px-4 py-3">
                               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Req Qty</p>
-                                  <p className="text-slate-900 font-bold">{item.reqQty} {item.unit}</p>
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Req Qty</p>
+                                  <p className="text-ink font-bold">{item.reqQty} {item.unit}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">MOQ</p>
-                                  <p className="text-slate-900 font-bold">
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">MOQ</p>
+                                  <p className="text-ink font-bold">
                                     {item.moq
                                       ? formatQtyWithPrimaryUnit(
                                           item.moq,
@@ -7940,33 +7959,33 @@ const Procurement: React.FC = () => {
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Pack Size</p>
-                                  <p className="text-slate-900 font-bold">{item.packSize}</p>
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Pack Size</p>
+                                  <p className="text-ink font-bold">{item.packSize}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Planned Price/Unit</p>
-                                  <p className="text-emerald-600 font-bold">₹{item.plannedPrice}/{item.unit}</p>
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Planned Price/Unit</p>
+                                  <p className="text-ok font-bold">₹{item.plannedPrice}/{item.unit}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Est. Value</p>
-                                  <p className="text-amber-600 font-bold">₹{item.estValue.toLocaleString('en-IN')}</p>
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Est. Value</p>
+                                  <p className="text-warn font-bold">₹{item.estValue.toLocaleString('en-IN')}</p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Lead (D)</p>
-                                  <p className="text-slate-900 font-bold">
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Lead (D)</p>
+                                  <p className="text-ink font-bold">
                                     {item.leadTimeDays != null && Number.isFinite(item.leadTimeDays) ? `${item.leadTimeDays}d` : '—'}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-slate-500 uppercase tracking-wide mb-1">Expected</p>
-                                  <p className="text-slate-900 font-bold">
+                                  <p className="text-ink-3 uppercase tracking-wide mb-1">Expected</p>
+                                  <p className="text-ink font-bold">
                                     {formatDateWithIsoWeek(item.expectedDate || req.dueDate)}
                                   </p>
                                 </div>
                                 {modalStockCheckGap ? (
                                   <div className="col-span-2">
-                                    <p className="text-slate-500 uppercase tracking-wide mb-1">Stock check gap</p>
-                                    <p className="text-amber-700 font-bold tabular-nums">
+                                    <p className="text-ink-3 uppercase tracking-wide mb-1">Stock check gap</p>
+                                    <p className="text-warn font-bold tabular-nums">
                                       +{modalStockCheckGap.gapQty.toLocaleString('en-IN')} {item.unit}
                                     </p>
                                   </div>
@@ -7974,8 +7993,8 @@ const Procurement: React.FC = () => {
                               </div>
 
                               {modalStockCheckGap ? (
-                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-                                  <p className="text-xs text-amber-900">
+                                <div className="mt-3 rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs text-warn">
                                     Warehouse reported a shortfall after stock check. Approve to add gap qty to this
                                     request{modalStockCheckGap.consumptionQty != null
                                       ? ` (consumption ${modalStockCheckGap.consumptionQty.toLocaleString('en-IN')} ${item.unit} in audit window)`
@@ -7983,7 +8002,7 @@ const Procurement: React.FC = () => {
                                     and set inventory to the physical count.
                                   </p>
                                   {modalStockCheckGap.gapApproved ? (
-                                    <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    <span className="text-[10px] font-bold uppercase px-2 py-1 rounded bg-ok-soft text-ok border border-[color:var(--st-green-fg)]/30">
                                       Gap approved
                                     </span>
                                   ) : modalStockCheckGap.canApprove ? (
@@ -8008,7 +8027,7 @@ const Procurement: React.FC = () => {
                                           setApprovingGapLineKey(null);
                                         }
                                       }}
-                                      className="px-3 py-1.5 rounded-lg border border-amber-400 bg-white text-amber-900 text-xs font-semibold hover:bg-amber-100 disabled:opacity-60"
+                                      className="px-3 py-1.5 rounded-lg border border-[color:var(--st-amber-fg)]/40 bg-surface text-warn text-xs font-semibold hover:bg-warn-soft disabled:opacity-60"
                                     >
                                       {approvingGapLineKey === modalGapLineKey ? 'Approving…' : 'Approve gap'}
                                     </button>
@@ -8018,24 +8037,24 @@ const Procurement: React.FC = () => {
 
                               {/* Vendor history for this RM */}
                               {(quoteHistory.length > 0 || poHistory.length > 0) && (
-                                <div className="mt-3 pt-3 border-t border-slate-200">
-                                  <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
+                                <div className="mt-3 pt-3 border-t border-border">
+                                  <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
                                   <div className="space-y-1.5 text-xs">
                                     {quoteHistory.map((e, i) => (
-                                      <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
-                                        <span className="font-medium text-slate-900">{e.vendor}</span>
-                                        <span className="text-slate-500">— Quoted</span>
-                                        {e.date && <span className="text-slate-500">{e.date}</span>}
-                                        <span className="text-emerald-600 font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
-                                        {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Confirmed</span>}
+                                      <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-2">
+                                        <span className="font-medium text-ink">{e.vendor}</span>
+                                        <span className="text-ink-3">— Quoted</span>
+                                        {e.date && <span className="text-ink-3">{e.date}</span>}
+                                        <span className="text-ok font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                        {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ok-soft text-ok">Confirmed</span>}
                                       </div>
                                     ))}
                                     {poHistory.map((e, i) => (
-                                      <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
-                                        <span className="font-medium text-slate-900">{e.vendor}</span>
-                                        <span className="text-slate-500">— PO</span>
-                                        <span className="font-mono text-slate-600">{e.poNumber}</span>
-                                        <span className="text-emerald-600 font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                      <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-2">
+                                        <span className="font-medium text-ink">{e.vendor}</span>
+                                        <span className="text-ink-3">— PO</span>
+                                        <span className="font-mono text-ink-3">{e.poNumber}</span>
+                                        <span className="text-ok font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
                                       </div>
                                     ))}
                                   </div>
@@ -8050,7 +8069,7 @@ const Procurement: React.FC = () => {
                 ) : req.items && req.items.length > 0 && (
                   /* Items Requested - Simple */
                   <div>
-                    <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Items Requested</h3>
+                    <h3 className="text-xs tracking-wider text-ink-3 uppercase mb-3 font-bold">Items Requested</h3>
                     <div className="space-y-3">
                       {req.items.map((itemName, idx) => {
                         const qty = req.quantities?.[idx] ?? 0;
@@ -8074,45 +8093,45 @@ const Procurement: React.FC = () => {
                           return { vendor: po.vendorName ?? '', poNumber: po.poNumber ?? '', rate: row?.rate ?? row?.price ?? 0 };
                         });
                         return (
-                          <div key={idx} className="bg-white border border-blue-200 rounded-lg p-4 space-y-2 shadow-sm">
+                          <div key={idx} className="bg-surface border border-brand-soft rounded-lg p-4 space-y-2 shadow-[var(--e1)]">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
-                                <p className="text-slate-900 font-semibold text-sm">{itemName}</p>
+                                <p className="text-ink font-semibold text-sm">{itemName}</p>
                                 {spec && (
-                                  <p className="text-slate-600 text-xs mt-1 wrap-break-word">{spec}</p>
+                                  <p className="text-ink-3 text-xs mt-1 wrap-break-word">{spec}</p>
                                 )}
                               </div>
-                              <span className="text-slate-900 font-bold text-sm whitespace-nowrap">₹{sub.toLocaleString('en-IN')}</span>
+                              <span className="text-ink font-bold text-sm whitespace-nowrap">₹{sub.toLocaleString('en-IN')}</span>
                             </div>
                             <div className="flex items-center gap-4 text-xs">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-slate-600">Req Qty:</span>
-                                <span className="text-slate-900 font-medium">{qty} {unit}</span>
+                                <span className="text-ink-3">Req Qty:</span>
+                                <span className="text-ink font-medium">{qty} {unit}</span>
                               </div>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-slate-600">Planned Price:</span>
-                                <span className="text-emerald-600 font-medium">₹{price.toLocaleString('en-IN')}/{unit}</span>
+                                <span className="text-ink-3">Planned Price:</span>
+                                <span className="text-ok font-medium">₹{price.toLocaleString('en-IN')}/{unit}</span>
                               </div>
                             </div>
                             {(quoteHistory.length > 0 || poHistory.length > 0) && (
-                              <div className="mt-3 pt-3 border-t border-slate-200">
-                                <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
+                              <div className="mt-3 pt-3 border-t border-border">
+                                <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-wide mb-2">Vendor history (previously used for this RM)</p>
                                 <div className="space-y-1.5 text-xs">
                                   {quoteHistory.map((e, i) => (
-                                    <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
-                                      <span className="font-medium text-slate-900">{e.vendor}</span>
-                                      <span className="text-slate-500">— Quoted</span>
-                                      {e.date && <span className="text-slate-500">{e.date}</span>}
-                                      <span className="text-emerald-600 font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
-                                      {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Confirmed</span>}
+                                    <div key={`q-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-2">
+                                      <span className="font-medium text-ink">{e.vendor}</span>
+                                      <span className="text-ink-3">— Quoted</span>
+                                      {e.date && <span className="text-ink-3">{e.date}</span>}
+                                      <span className="text-ok font-medium">₹{Number(e.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                      {e.status === 'Confirmed' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ok-soft text-ok">Confirmed</span>}
                                     </div>
                                   ))}
                                   {poHistory.map((e, i) => (
-                                    <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-700">
-                                      <span className="font-medium text-slate-900">{e.vendor}</span>
-                                      <span className="text-slate-500">— PO</span>
-                                      <span className="font-mono text-slate-600">{e.poNumber}</span>
-                                      <span className="text-emerald-600 font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
+                                    <div key={`po-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-2">
+                                      <span className="font-medium text-ink">{e.vendor}</span>
+                                      <span className="text-ink-3">— PO</span>
+                                      <span className="font-mono text-ink-3">{e.poNumber}</span>
+                                      <span className="text-ok font-medium">₹{Number(e.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/unit</span>
                                     </div>
                                   ))}
                                 </div>
@@ -8123,9 +8142,9 @@ const Procurement: React.FC = () => {
                       })}
                     </div>
                     {/* Total */}
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-sm bg-white rounded-lg p-3 shadow-sm">
-                      <span className="text-slate-600 font-medium">Total Estimated Value</span>
-                      <span className="text-slate-900 font-bold text-base">
+                    <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-sm bg-surface rounded-lg p-3 shadow-[var(--e1)]">
+                      <span className="text-ink-3 font-medium">Total Estimated Value</span>
+                      <span className="text-ink font-bold text-base">
                         ₹{req.items.reduce((sum, _, i) => {
                           const q = req.quantities?.[i] ?? 0;
                           const p = req.plannedPrices?.[i] ?? 0;
@@ -8139,31 +8158,31 @@ const Procurement: React.FC = () => {
                 {/* Stock Summary */}
                 {req.stockSummary && (
                   <div>
-                    <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Summary</h3>
-                    <div className="bg-white rounded-lg border border-blue-200 overflow-hidden shadow-sm">
+                    <h3 className="text-xs tracking-wider text-ink-3 uppercase mb-3 font-bold">Stock Summary</h3>
+                    <div className="bg-surface rounded-lg border border-brand-soft overflow-hidden shadow-[var(--e1)]">
                       {(() => {
                         const stockCheckCompleted =
                           String(req.stockCheckStatus ?? '').trim().toLowerCase() === 'completed';
                         if (!stockCheckCompleted) {
                           return [
-                            { label: 'Stock In Hand', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
-                            { label: 'Open PO Qty', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
-                            { label: 'In Transit', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
-                            { label: 'Open Orders', value: 'Pending stock check completion', color: 'text-slate-500', isPending: true },
+                            { label: 'Stock In Hand', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
+                            { label: 'Open PO Qty', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
+                            { label: 'In Transit', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
+                            { label: 'Open Orders', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
                           ];
                         }
                         const summary = requestStockSummaryByRequestId.get(req.id)
                           ?? req.stockSummary
                           ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
                         return [
-                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-emerald-600' : 'text-amber-600', isPending: false },
-                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-slate-900', isPending: false },
-                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-cyan-600' : 'text-slate-900', isPending: false },
-                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-blue-600' : 'text-slate-900', isPending: false },
+                          { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-ok' : 'text-warn', isPending: false },
+                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-ink', isPending: false },
+                          { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-brand' : 'text-ink', isPending: false },
+                          { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-brand' : 'text-ink', isPending: false },
                         ];
                       })().map((row, idx) => (
-                        <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-slate-200' : ''}`}>
-                          <span className="text-slate-600 text-sm">{row.label}</span>
+                        <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-border' : ''}`}>
+                          <span className="text-ink-3 text-sm">{row.label}</span>
                           <span className={`font-bold ${row.isPending ? 'text-sm' : 'text-lg'} ${row.color}`}>{row.value}</span>
                         </div>
                       ))}
@@ -8173,18 +8192,18 @@ const Procurement: React.FC = () => {
 
                 {/* Quotations from Items List + vendor selection for this PR */}
                 <div>
-                  <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">
+                  <h3 className="text-xs tracking-wider text-ink-3 uppercase mb-3 font-bold">
                     Quotations ({requestItemQuotes.length})
                   </h3>
                   {requestItemQuotes.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-blue-200 px-4 py-8 text-center text-sm text-slate-500">
+                    <div className="rounded-lg border border-dashed border-brand-soft px-4 py-8 text-center text-sm text-ink-3">
                       No Items List vendor rates found for this request&apos;s RM/PM items yet.
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor for this request</label>
+                          <label className="block text-xs font-semibold text-ink-3 mb-1">Preferred vendor for this request</label>
                           <select
                             value={req.preferredVendor ?? ''}
                             onChange={async (e) => {
@@ -8214,7 +8233,7 @@ const Procurement: React.FC = () => {
                               queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
                               addToast('success', 'Preferred vendor updated');
                             }}
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                            className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-surface"
                           >
                             <option value="">— Select vendor —</option>
                             {requestQuotedVendors.map((vendorName) => (
@@ -8225,33 +8244,33 @@ const Procurement: React.FC = () => {
                           </select>
                         </div>
                       </div>
-                      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border bg-surface">
                         <table className="min-w-full text-xs">
-                          <thead className="bg-slate-100 text-slate-700">
+                          <thead className="bg-surface-3 text-ink-2 sticky top-0 z-20 [&_th]:bg-surface-3">
                             <tr>
-                              <th className="px-3 py-2 text-left font-semibold">Item</th>
-                              <th className="px-3 py-2 text-left font-semibold">Vendor</th>
-                              <th className="px-3 py-2 text-right font-semibold">Price/Unit</th>
-                              <th className="px-3 py-2 text-right font-semibold">MOQ</th>
-                              <th className="px-3 py-2 text-right font-semibold">Lead (D)</th>
-                              <th className="px-3 py-2 text-left font-semibold">Terms</th>
+                              <th scope="col" className="px-3 py-2 text-left font-semibold">Item</th>
+                              <th scope="col" className="px-3 py-2 text-left font-semibold">Vendor</th>
+                              <th scope="col" className="px-3 py-2 text-right font-semibold">Price/Unit</th>
+                              <th scope="col" className="px-3 py-2 text-right font-semibold">MOQ</th>
+                              <th scope="col" className="px-3 py-2 text-right font-semibold">Lead (D)</th>
+                              <th scope="col" className="px-3 py-2 text-left font-semibold">Terms</th>
                             </tr>
                           </thead>
                           <tbody>
                             {requestItemQuotes.map((row) => (
-                              <tr key={row.key} className="border-t border-slate-100">
+                              <tr key={row.key} className="border-t border-hairline">
                                 <td className="px-3 py-2">
-                                  <div className="font-medium text-slate-900">{row.itemName}</div>
-                                  <div className="text-[10px] text-slate-500">{row.itemCode}</div>
+                                  <div className="font-medium text-ink">{row.itemName}</div>
+                                  <div className="text-[10px] text-ink-3">{row.itemCode}</div>
                                 </td>
-                                <td className="px-3 py-2 text-slate-800">{row.vendor}</td>
-                                <td className="px-3 py-2 text-right text-slate-900">₹{row.pricePerUnit.toLocaleString('en-IN')}</td>
-                                <td className="px-3 py-2 text-right text-slate-700">
+                                <td className="px-3 py-2 text-ink">{row.vendor}</td>
+                                <td className="px-3 py-2 text-right text-ink">₹{row.pricePerUnit.toLocaleString('en-IN')}</td>
+                                <td className="px-3 py-2 text-right text-ink-2">
                                   {row.moqMin}
                                   {row.moqMax != null && row.moqMax > row.moqMin ? ` - ${row.moqMax}` : '+'}
                                 </td>
-                                <td className="px-3 py-2 text-right text-slate-700">{row.leadTimeDays}d</td>
-                                <td className="px-3 py-2 text-slate-700 max-w-48 align-top">
+                                <td className="px-3 py-2 text-right text-ink-2">{row.leadTimeDays}d</td>
+                                <td className="px-3 py-2 text-ink-2 max-w-48 align-top">
                                   <PaymentTermsDisplay compact value={row.paymentTerms} />
                                 </td>
                               </tr>
@@ -8265,24 +8284,24 @@ const Procurement: React.FC = () => {
 
                 {/* Stock Check Section — editable, persisted to DB */}
                 {/* <div>
-                  <h3 className="text-xs tracking-wider text-slate-600 uppercase mb-3 font-bold">Stock Check</h3>
-                  <div className="bg-white rounded-lg border border-blue-200 p-4 space-y-3 shadow-sm">
+                  <h3 className="text-xs tracking-wider text-ink-3 uppercase mb-3 font-bold">Stock Check</h3>
+                  <div className="bg-surface rounded-lg border border-brand-soft p-4 space-y-3 shadow-[var(--e1)]">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Assigned To</label>
+                      <label className="block text-xs font-semibold text-ink-3 mb-1">Assigned To</label>
                       <input
                         type="text"
                         value={stockCheckForm.assignedTo}
                         onChange={(e) => setStockCheckForm((f) => ({ ...f, assignedTo: e.target.value }))}
                         placeholder="e.g. Anand Store"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm text-ink"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                      <label className="block text-xs font-semibold text-ink-3 mb-1">Status</label>
                       <select
                         value={stockCheckForm.status}
                         onChange={(e) => setStockCheckForm((f) => ({ ...f, status: e.target.value }))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 bg-white"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm text-ink bg-surface"
                       >
                         <option value="">— Select status —</option>
                         <option value="Pending">Pending</option>
@@ -8291,22 +8310,22 @@ const Procurement: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Due Date</label>
+                      <label className="block text-xs font-semibold text-ink-3 mb-1">Due Date</label>
                       <input
                         type="date"
                         value={stockCheckForm.dueDate}
                         onChange={(e) => setStockCheckForm((f) => ({ ...f, dueDate: e.target.value }))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm text-ink"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">Notes / Alert</label>
+                      <label className="block text-xs font-semibold text-ink-3 mb-1">Notes / Alert</label>
                       <textarea
                         value={stockCheckForm.notes}
                         onChange={(e) => setStockCheckForm((f) => ({ ...f, notes: e.target.value }))}
                         placeholder="e.g. Quarterly replenishment; SOH critically low for UV-001"
                         rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900"
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm text-ink"
                       />
                     </div>
                     <div className="pt-2">
@@ -8335,7 +8354,7 @@ const Procurement: React.FC = () => {
                             addToast('error', stockCheckErr);
                           }
                         }}
-                        className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50"
+                        className="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-press disabled:opacity-50"
                       >
                         {stockCheckSaving ? 'Saving…' : 'Save stock check'}
                       </button>
@@ -8345,14 +8364,14 @@ const Procurement: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="sticky bottom-0 rounded-b-xl bg-slate-50 border-t border-blue-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="sticky bottom-0 rounded-b-xl bg-surface-3 border-t border-brand-soft px-6 py-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setEditRequestTarget(req);
                     }}
-                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                    className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                   >
                     Edit
                   </button>
@@ -8360,7 +8379,7 @@ const Procurement: React.FC = () => {
                     type="button"
                     disabled={deletingRequestId === req.id}
                     onClick={() => openDeleteRequestConfirm(req)}
-                    className="px-4 py-2 rounded-lg border border-red-300 text-red-700 text-sm font-semibold hover:bg-red-50 transition disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 text-err text-sm font-semibold hover:bg-err-soft transition disabled:opacity-50"
                   >
                     {deletingRequestId === req.id ? 'Deleting…' : 'Delete'}
                   </button>
@@ -8370,7 +8389,7 @@ const Procurement: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => void handleStockCheckAction(req)}
-                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-100 transition"
+                    className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                   >
                     Stock Check
                   </button>
@@ -8383,7 +8402,7 @@ const Procurement: React.FC = () => {
                         req.priority === 'High' ? 'Medium' : req.priority === 'Medium' ? 'Low' : 'High'
                       );
                     }}
-                    className="px-4 py-2 rounded-lg border border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 transition"
+                    className="px-4 py-2 rounded-lg border border-brand-soft text-brand text-sm font-semibold hover:bg-brand-soft transition"
                   >
                     Priority
                   </button>
@@ -8391,7 +8410,7 @@ const Procurement: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => openReleaseToDraftPoForRequest(req)}
-                    className="px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition"
+                    className="px-4 py-2 rounded-lg border border-[color:var(--st-amber-fg)]/30 text-warn text-sm font-semibold hover:bg-warn-soft transition"
                   >
                     Release to Draft PO
                   </button>
@@ -8423,9 +8442,10 @@ const Procurement: React.FC = () => {
                           applyRouteState('Procurement', 'Purchase Orders');
                         }
                       }}
-                      className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition shadow-lg"
+                      disabled={createDraftPOBusy}
+                      className="px-4 py-2 rounded-lg bg-warn text-white text-sm font-bold hover:brightness-95 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Create Draft PO (Quick)
+                      {createDraftPOBusy ? 'Creating…' : 'Create Draft PO (Quick)'}
                     </button>
                   )}
 
@@ -8441,7 +8461,7 @@ const Procurement: React.FC = () => {
                             addToast('warning', 'Create a Draft PO from the quotation above first, then release from here.');
                           }
                         }}
-                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-lg"
+                        className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition shadow-lg"
                       >
                         Release PO ↗
                       </button>
@@ -8450,7 +8470,7 @@ const Procurement: React.FC = () => {
 
                   <button
                     onClick={() => setSelectedRequest(null)}
-                    className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-300 transition"
+                    className="px-4 py-2 rounded-lg bg-surface-3 text-ink-2 text-sm font-semibold hover:bg-surface-3 transition"
                   >
                     Close
                   </button>
@@ -8466,32 +8486,42 @@ const Procurement: React.FC = () => {
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setEditRequestTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full max-w-2xl rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-2xl rounded-xl bg-surface shadow-xl border border-border p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-slate-900">Edit Request — {editRequestTarget.code}</h3>
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-bold text-ink">Edit Request — {editRequestTarget.code}</h3>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setEditRequestTarget(null)}
+                className="text-ink-3 hover:text-ink transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Required date</label>
+                  <label className="block text-xs font-semibold text-ink-3 mb-1">Required date</label>
                   <input
                     type="date"
                     value={editRequestForm.requiredByDate}
                     onChange={(e) => setEditRequestForm((f) => ({ ...f, requiredByDate: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">
+                  <p className="text-[10px] text-ink-3 mt-1">
                     When material is needed by Planning / production. Also sets Items List tier valid-till for the preferred vendor.
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Priority</label>
+                  <label className="block text-xs font-semibold text-ink-3 mb-1">Priority</label>
                   <select
                     value={editRequestForm.priority}
                     onChange={(e) =>
                       setEditRequestForm((f) => ({ ...f, priority: e.target.value as RequestPriority }))
                     }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -8500,11 +8530,11 @@ const Procurement: React.FC = () => {
                 </div>
               </div>
               {/* <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Preferred vendor</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Preferred vendor</label>
                 <select
                   value={editRequestForm.preferredVendor}
                   onChange={(e) => setEditRequestForm((f) => ({ ...f, preferredVendor: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 >
                   <option value="">— Select vendor —</option>
                   {vendors.map((v) => (
@@ -8518,11 +8548,11 @@ const Procurement: React.FC = () => {
                 );
                 return (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Quotation to use for Draft PO</label>
+                    <label className="block text-xs font-semibold text-ink-3 mb-1">Quotation to use for Draft PO</label>
                     <select
                       value={editRequestForm.selectedQuotationId}
                       onChange={(e) => setEditRequestForm((f) => ({ ...f, selectedQuotationId: e.target.value }))}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                     >
                       <option value="">— Select quotation (order qty · price/unit) —</option>
                       {requestQuotes.map((q) => {
@@ -8537,25 +8567,25 @@ const Procurement: React.FC = () => {
                         );
                       })}
                     </select>
-                    <p className="text-xs text-slate-500 mt-1">Choose which quotation’s price to use when creating a Draft PO.</p>
+                    <p className="text-xs text-ink-3 mt-1">Choose which quotation’s price to use when creating a Draft PO.</p>
                   </div>
                 );
               })()} */}
               {/* <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Notes</label>
                 <textarea
                   value={editRequestForm.notes}
                   onChange={(e) => setEditRequestForm((f) => ({ ...f, notes: e.target.value }))}
                   rows={2}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 />
               </div> */}
               {/* <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Status</label>
                 <select
                   value={editRequestForm.status}
                   onChange={(e) => setEditRequestForm((f) => ({ ...f, status: e.target.value as RequestStatus }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 >
                   <option value="New">New</option>
                   <option value="Quoted">Quoted</option>
@@ -8567,42 +8597,42 @@ const Procurement: React.FC = () => {
               {/* Line items: editable quantities and unit */}
               {editRequestForm.items.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty, unit & planned price</label>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden overflow-x-auto">
+                  <label className="block text-xs font-semibold text-ink-3 mb-2">Line items — qty, unit & planned price</label>
+                  <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
                     <table className="w-full text-sm min-w-[36rem]">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
-                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Type</th>
-                          <th className="px-3 py-2 text-right font-semibold text-slate-700">Qty to request</th>
-                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Unit</th>
-                          <th className="px-3 py-2 text-right font-semibold text-slate-700">Price (₹/unit)</th>
+                      <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
+                        <tr className="bg-surface-3 border-b border-border">
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Item</th>
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Type</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Qty to request</th>
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Unit</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Price (₹/unit)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {editRequestForm.items.map((item, idx) => {
                           const plannedPrice = resolvePlannedUnitPrice(item);
                           return (
-                          <tr key={idx} className="border-b border-slate-100 last:border-0">
+                          <tr key={idx} className="border-b border-hairline last:border-0">
                             <td className="px-3 py-2">
-                              <span className="font-medium text-slate-900">{item.name ?? item.code ?? '—'}</span>
-                              {item.code && <span className="text-xs text-slate-500 block">{item.code}</span>}
+                              <span className="font-medium text-ink">{item.name ?? item.code ?? '—'}</span>
+                              {item.code && <span className="text-xs text-ink-3 block">{item.code}</span>}
                             </td>
-                            <td className="px-3 py-2 text-slate-700">{item.type ?? 'RM'}</td>
+                            <td className="px-3 py-2 text-ink-2">{item.type ?? 'RM'}</td>
                             <td className="px-3 py-2 text-right">
                               <input
                                 type="number"
                                 min={0}
                                 value={item.quantity_requested ?? 0}
                                 onChange={(e) => updateEditRequestItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })}
-                                className="w-24 px-2 py-1.5 rounded border border-slate-300 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                                className="w-24 px-2 py-1.5 rounded border border-border text-right text-sm focus:ring-2 focus:ring-[color:var(--ring)]"
                               />
                             </td>
                             <td className="px-3 py-2">
                               <select
                                 value={item.unit ?? 'KG'}
                                 onChange={(e) => updateEditRequestItem(idx, { unit: e.target.value })}
-                                className="w-20 px-2 py-1.5 rounded border border-slate-300 text-sm focus:ring-2 focus:ring-blue-500"
+                                className="w-20 px-2 py-1.5 rounded border border-border text-sm focus:ring-2 focus:ring-[color:var(--ring)]"
                               >
                                 {['KG', 'PCS', 'L', 'ML', 'G', 'BOX', 'CTN'].map((u) => (
                                   <option key={u} value={u}>{u}</option>
@@ -8617,7 +8647,7 @@ const Procurement: React.FC = () => {
                                 placeholder="0"
                                 value={plannedPrice > 0 ? plannedPrice : ''}
                                 onChange={(e) => updateEditRequestItemPrice(idx, e.target.value)}
-                                className="w-28 px-2 py-1.5 rounded border border-slate-300 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                                className="w-28 px-2 py-1.5 rounded border border-border text-right text-sm focus:ring-2 focus:ring-[color:var(--ring)]"
                               />
                             </td>
                           </tr>
@@ -8630,9 +8660,9 @@ const Procurement: React.FC = () => {
               )}
 
               {/* Price history: all quotations that have these items (any vendor) + POs for this request */}
-              {/* <div className="border-t border-slate-200 pt-4 mt-4">
-                <h4 className="text-sm font-bold text-slate-800 mb-2">Price history — RM/PM by vendor</h4>
-                <p className="text-xs text-slate-500 mb-3">For each RM/PM on this request: which vendors have been used historically (from quotations and POs). Use this when picking a vendor for a new quote or Draft PO.</p>
+              {/* <div className="border-t border-border pt-4 mt-4">
+                <h4 className="text-sm font-bold text-ink mb-2">Price history — RM/PM by vendor</h4>
+                <p className="text-xs text-ink-3 mb-3">For each RM/PM on this request: which vendors have been used historically (from quotations and POs). Use this when picking a vendor for a new quote or Draft PO.</p>
                 {(() => {
                   const prItemNames = new Set<string>(
                     [
@@ -8654,40 +8684,40 @@ const Procurement: React.FC = () => {
                   );
                   if (quotesForItems.length === 0 && prPOs.length === 0) {
                     return (
-                      <p className="text-xs text-slate-500 italic">No price history for these items yet. Record quotations (with or without linking to a PR) to see vendor history here.</p>
+                      <p className="text-xs text-ink-3 italic">No price history for these items yet. Record quotations (with or without linking to a PR) to see vendor history here.</p>
                     );
                   }
                   return (
                     <div className="space-y-4">
                       {quotesForItems.length > 0 && (
                         <div>
-                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">Quotations for these items ({quotesForItems.length} total, any vendor)</p>
+                          <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-wide mb-2">Quotations for these items ({quotesForItems.length} total, any vendor)</p>
                           <div className="space-y-3">
                             {quotesForItems.map((q) => (
-                              <div key={q.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-sm">
+                              <div key={q.id} className="rounded-lg border border-border bg-surface-2 p-3 text-sm">
                                 <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                                  <span className="font-semibold text-slate-900">{q.vendor}</span>
-                                  <span className="text-xs text-slate-500">{q.quotedOn || '—'}</span>
-                                  {q.requestCode && <span className="text-[10px] text-slate-500">Link: {q.requestCode}</span>}
+                                  <span className="font-semibold text-ink">{q.vendor}</span>
+                                  <span className="text-xs text-ink-3">{q.quotedOn || '—'}</span>
+                                  {q.requestCode && <span className="text-[10px] text-ink-3">Link: {q.requestCode}</span>}
                                   {q.status !== 'Pending Review' && (
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${q.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-800' :
-                                      q.status === 'Not Selected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${q.status === 'Confirmed' ? 'bg-ok-soft text-ok' :
+                                      q.status === 'Not Selected' ? 'bg-surface-3 text-ink-2' : 'bg-warn-soft text-warn'
                                       }`}>{q.status}</span>
                                   )}
                                 </div>
                                 <table className="w-full text-xs">
                                   <thead>
-                                    <tr className="text-slate-500 border-b border-slate-200">
-                                      <th className="text-left py-1 font-medium">Item</th>
-                                      <th className="text-right py-1 font-medium">Qty</th>
-                                      <th className="text-right py-1 font-medium">Price/unit</th>
+                                    <tr className="text-ink-3 border-b border-border">
+                                      <th scope="col" className="text-left py-1 font-medium">Item</th>
+                                      <th scope="col" className="text-right py-1 font-medium">Qty</th>
+                                      <th scope="col" className="text-right py-1 font-medium">Price/unit</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {q.lines?.map((line, i) => (
-                                      <tr key={i} className="border-b border-slate-100 last:border-0">
-                                        <td className="py-1 text-slate-800">{line.item}</td>
-                                        <td className="py-1 text-right text-slate-700">{line.qty}</td>
+                                      <tr key={i} className="border-b border-hairline last:border-0">
+                                        <td className="py-1 text-ink">{line.item}</td>
+                                        <td className="py-1 text-right text-ink-2">{line.qty}</td>
                                         <td className="py-1 text-right font-medium">₹{typeof line.pricePerUnit === 'number' ? line.pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : line.pricePerUnit}</td>
                                       </tr>
                                     ))}
@@ -8700,37 +8730,37 @@ const Procurement: React.FC = () => {
                       )}
                       {prPOs.length > 0 && (
                         <div>
-                          <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-2">POs for this request</p>
+                          <p className="text-[11px] font-semibold text-ink-3 uppercase tracking-wide mb-2">POs for this request</p>
                           <div className="space-y-3">
                             {prPOs.map((po) => (
-                              <div key={po.id} className="rounded-lg border border-slate-200 bg-blue-50/30 p-3 text-sm">
+                              <div key={po.id} className="rounded-lg border border-border bg-brand-soft p-3 text-sm">
                                 <div className="flex items-center justify-between gap-2 mb-2">
-                                  <span className="font-semibold text-slate-900">{po.vendorName ?? po.id}</span>
-                                  <span className="text-xs text-slate-600 font-mono">{po.poNumber}</span>
-                                  <span className="text-xs text-slate-500">{po.date || '—'}</span>
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-200 text-slate-700">{po.status ?? 'Draft'}</span>
+                                  <span className="font-semibold text-ink">{po.vendorName ?? po.id}</span>
+                                  <span className="text-xs text-ink-3 font-mono">{po.poNumber}</span>
+                                  <span className="text-xs text-ink-3">{po.date || '—'}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-surface-3 text-ink-2">{po.status ?? 'Draft'}</span>
                                 </div>
                                 {Array.isArray(po.rawItems) && po.rawItems.length > 0 ? (
                                   <table className="w-full text-xs">
                                     <thead>
-                                      <tr className="text-slate-500 border-b border-slate-200">
-                                        <th className="text-left py-1 font-medium">Item</th>
-                                        <th className="text-right py-1 font-medium">Qty</th>
-                                        <th className="text-right py-1 font-medium">Rate</th>
+                                      <tr className="text-ink-3 border-b border-border">
+                                        <th scope="col" className="text-left py-1 font-medium">Item</th>
+                                        <th scope="col" className="text-right py-1 font-medium">Qty</th>
+                                        <th scope="col" className="text-right py-1 font-medium">Rate</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {po.rawItems.map((row: { itemName?: string; name?: string; quantity?: number; rate?: number; price?: number }, i: number) => (
-                                        <tr key={i} className="border-b border-slate-100 last:border-0">
-                                          <td className="py-1 text-slate-800">{row.itemName ?? row.name ?? '—'}</td>
-                                          <td className="py-1 text-right text-slate-700">{row.quantity ?? '—'}</td>
+                                        <tr key={i} className="border-b border-hairline last:border-0">
+                                          <td className="py-1 text-ink">{row.itemName ?? row.name ?? '—'}</td>
+                                          <td className="py-1 text-right text-ink-2">{row.quantity ?? '—'}</td>
                                           <td className="py-1 text-right font-medium">₹{typeof (row.rate ?? row.price) === 'number' ? (row.rate ?? row.price)!.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : (row.rate ?? row.price ?? '—')}</td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
                                 ) : (
-                                  <p className="text-xs text-slate-500">No line detail</p>
+                                  <p className="text-xs text-ink-3">No line detail</p>
                                 )}
                               </div>
                             ))}
@@ -8742,16 +8772,20 @@ const Procurement: React.FC = () => {
                 })()}
               </div> */}
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <button
                 onClick={() => setEditRequestTarget(null)}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3"
               >
                 Cancel
               </button>
               <button
+                disabled={editRequestSaving}
                 onClick={async () => {
+                  if (editRequestSaving) return;
                   if (!editRequestTarget) return;
+                  setEditRequestSaving(true);
+                  try {
                   const payload: Parameters<typeof updateProcurementRequestApi>[1] = {
                     priority: editRequestForm.priority,
                     requiredByDate: editRequestForm.requiredByDate || null,
@@ -8840,10 +8874,13 @@ const Procurement: React.FC = () => {
                   if (syncResult.warnings.length > 0) {
                     addToast('warning', syncResult.warnings.slice(0, 2).join(' '));
                   }
+                  } finally {
+                    setEditRequestSaving(false);
+                  }
                 }}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
+                {editRequestSaving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>
@@ -9013,55 +9050,55 @@ const Procurement: React.FC = () => {
         return (
           <div className="fixed inset-0 z-60 flex items-start sm:items-center justify-center p-2 sm:p-4 overflow-y-auto" onClick={() => setReleaseToPlannedTarget(null)}>
             <div className="absolute inset-0 bg-black/40" />
-            <div className="relative w-full max-w-5xl my-2 sm:my-4 max-h-[94vh] overflow-hidden rounded-xl bg-white shadow-xl border border-slate-200 flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="relative w-full max-w-5xl my-2 sm:my-4 max-h-[94vh] overflow-hidden rounded-xl bg-surface shadow-xl border border-border flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
+                  <h2 className="text-lg font-bold text-ink">
                     PO-DRAFT-{req.code.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() || 'XXXX'}
-                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded border border-cyan-200 bg-cyan-50 text-cyan-700">
+                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded border border-brand-soft bg-brand-soft text-brand">
                       {releaseToPlannedForm.vendor || req.preferredVendor || 'Unassigned'}
                     </span>
-                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700">
+                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded border border-[color:var(--st-amber-fg)]/30 bg-warn-soft text-warn">
                       DRAFT
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-600 mt-0.5">
+                  <p className="text-xs text-ink-3 mt-0.5">
                     Draft PO · Vendor payment splits in Draft controls; Treasury advance type below if used.
                   </p>
                 </div>
-                <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Close</button>
+                <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-3 py-1.5 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3">Close</button>
               </div>
               <div className="flex-1 overflow-auto p-3 sm:p-5 space-y-5">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm w-full">
-                  <h3 className="font-bold text-slate-900 text-sm mb-1">PO lines</h3>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Set <span className="font-semibold text-slate-700">release qty</span> per line (≤ open request). What you do not put on this draft stays open on the procurement request. Adjust pricing via vendor and MOQ slab below.
+                <div className="rounded-xl border border-border bg-surface p-4 shadow-[var(--e1)] w-full">
+                  <h3 className="font-bold text-ink text-sm mb-1">PO lines</h3>
+                  <p className="text-xs text-ink-3 mb-3">
+                    Set <span className="font-semibold text-ink-2">release qty</span> per line (≤ open request). What you do not put on this draft stays open on the procurement request. Adjust pricing via vendor and MOQ slab below.
                   </p>
-                  <div className="border-t border-slate-200 my-3" />
-                  <div className="overflow-x-auto w-full">
+                  <div className="border-t border-border my-3" />
+                  <div className="overflow-auto max-h-[70vh] w-full">
                     <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-2 pr-3 font-medium">Item</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">MOQ</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">Qty</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">Unit</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">Unit ₹</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">Line ₹</th>
-                          <th className="text-right py-2 font-medium whitespace-nowrap">Lead</th>
+                      <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
+                        <tr className="text-ink-3 border-b border-border">
+                          <th scope="col" className="text-left py-2 pr-3 font-medium">Item</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">MOQ</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">Qty</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">Unit</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">Unit ₹</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">Line ₹</th>
+                          <th scope="col" className="text-right py-2 font-medium whitespace-nowrap">Lead</th>
                         </tr>
                       </thead>
                       <tbody>
                         {lineItemsForModal.map((ln, i) => (
-                          <tr key={`${ln.itemCode}-${i}`} className="border-b border-slate-100">
+                          <tr key={`${ln.itemCode}-${i}`} className="border-b border-hairline">
                             <td className="py-2 pr-2 align-top">
-                              <div className="font-medium text-slate-900 leading-5 break-words">{ln.itemName}</div>
-                              <div className="text-[10px] text-slate-500 font-mono truncate">{ln.itemCode}</div>
+                              <div className="font-medium text-ink leading-5 break-words">{ln.itemName}</div>
+                              <div className="text-[10px] text-ink-3 font-mono truncate">{ln.itemCode}</div>
                             </td>
-                            <td className="py-2 text-right text-slate-800 whitespace-nowrap align-top tabular-nums">
+                            <td className="py-2 text-right text-ink whitespace-nowrap align-top tabular-nums">
                               {ln.moq != null && Number(ln.moq) > 0 ? Number(ln.moq).toLocaleString('en-IN') : '—'}
                             </td>
-                            <td className="py-2 text-right text-slate-900 font-medium whitespace-nowrap align-top tabular-nums">
+                            <td className="py-2 text-right text-ink font-medium whitespace-nowrap align-top tabular-nums">
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -9075,58 +9112,58 @@ const Procurement: React.FC = () => {
                                     return base.map((row, ri) => (ri === i ? { ...row, qty: next } : row));
                                   });
                                 }}
-                                className="w-24 rounded border border-slate-300 px-1.5 py-1 text-right text-xs tabular-nums"
+                                className="w-24 rounded border border-border px-1.5 py-1 text-right text-xs tabular-nums"
                               />
-                              <div className="text-[10px] text-slate-400 mt-0.5">
+                              <div className="text-[10px] text-ink-4 mt-0.5">
                                 open: {Number(ln.originalQty).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                               </div>
                             </td>
-                            <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.unit}</td>
-                            <td className="py-2 text-right text-slate-900 whitespace-nowrap align-top tabular-nums">
+                            <td className="py-2 text-right text-ink-2 whitespace-nowrap align-top">{ln.unit}</td>
+                            <td className="py-2 text-right text-ink whitespace-nowrap align-top tabular-nums">
                               ₹{Number(ln.unitPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </td>
                             <td className="py-2 text-right font-medium whitespace-nowrap align-top tabular-nums">
                               ₹{((ln.qty * ln.unitPrice) * 1.18).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                             </td>
-                            <td className="py-2 text-right text-slate-700 whitespace-nowrap align-top">{ln.leadDays}d</td>
+                            <td className="py-2 text-right text-ink-2 whitespace-nowrap align-top">{ln.leadDays}d</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  {lineItemsForModal.length === 0 && <p className="text-xs text-slate-500 py-3">No request line items found.</p>}
+                  {lineItemsForModal.length === 0 && <p className="text-xs text-ink-3 py-3">No request line items found.</p>}
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3 w-full">
-                  <h3 className="font-bold text-slate-900 text-sm">Draft controls</h3>
-                  <p className="text-xs text-slate-500">Select vendor and MOQ slab to apply Items List rates; payment terms apply to the draft PO.</p>
-                  <div className="border-t border-slate-200 pt-3 space-y-2">
+                <div className="rounded-xl border border-border bg-surface p-4 shadow-[var(--e1)] space-y-3 w-full">
+                  <h3 className="font-bold text-ink text-sm">Draft controls</h3>
+                  <p className="text-xs text-ink-3">Select vendor and MOQ slab to apply Items List rates; payment terms apply to the draft PO.</p>
+                  <div className="border-t border-border pt-3 space-y-2">
                     <div>
-                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor payment terms</span>
+                      <span className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Vendor payment terms</span>
                       <PaymentTermsDisplay value={releaseModalVendorTerms} />
                     </div>
                     <div className="flex items-center justify-between text-xs py-1">
-                      <span className="text-slate-500">Subtotal (ex GST)</span>
-                      <span className="text-slate-900 font-medium tabular-nums">
+                      <span className="text-ink-3">Subtotal (ex GST)</span>
+                      <span className="text-ink font-medium tabular-nums">
                         ₹{releaseModalSubtotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs py-1">
-                      <span className="text-slate-500">GST (18%)</span>
-                      <span className="text-slate-800 font-medium tabular-nums">
+                      <span className="text-ink-3">GST (18%)</span>
+                      <span className="text-ink font-medium tabular-nums">
                         ₹{releaseModalGstTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-xs py-1 border-t border-slate-100 pt-2">
-                      <span className="text-slate-600 font-semibold">Total (incl. GST)</span>
-                      <span className="text-slate-900 font-bold tabular-nums">
+                    <div className="flex items-center justify-between text-xs py-1 border-t border-hairline pt-2">
+                      <span className="text-ink-3 font-semibold">Total (incl. GST)</span>
+                      <span className="text-ink font-bold tabular-nums">
                         ₹{releaseModalGrand.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>
-                  <div className="border-t border-slate-200 my-3" />
+                  <div className="border-t border-border my-3" />
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Vendor</label>
                         <select
                           value={releaseToPlannedForm.vendor}
                           onChange={(e) => {
@@ -9164,7 +9201,7 @@ const Procurement: React.FC = () => {
                               });
                             });
                           }}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                         >
                           <option value="">— Select —</option>
                           {uniqueVendors.map((v) => (
@@ -9173,7 +9210,7 @@ const Procurement: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">MOQ slab</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">MOQ slab</label>
                         <select
                           value={releaseToPlannedForm.moqDisplay}
                           onChange={(e) => {
@@ -9209,7 +9246,7 @@ const Procurement: React.FC = () => {
                               return next;
                             });
                           }}
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                         >
                           <option value="">— Select slab —</option>
                           {vendorSlabs.filter((s) => s.vendor === releaseToPlannedForm.vendor).map((s, i) => {
@@ -9224,7 +9261,7 @@ const Procurement: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Payment terms (type)</label>
                         <select
                           value={releaseToPlannedForm.paymentTermsType}
                           onChange={(e) =>
@@ -9233,7 +9270,7 @@ const Procurement: React.FC = () => {
                               paymentTermsType: e.target.value as PaymentTermsStructuredType,
                             }))
                           }
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                         >
                           {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -9241,11 +9278,11 @@ const Procurement: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-slate-500 mt-1">Advance % drives Treasury on draft release.</p>
+                        <p className="text-[10px] text-ink-3 mt-1">Advance % drives Treasury on draft release.</p>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time (max line)</label>
-                        <div className="py-1.5 text-sm font-medium text-slate-800">
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Lead time (max line)</label>
+                        <div className="py-1.5 text-sm font-medium text-ink">
                           {(lineItemsForModal.length
                             ? Math.max(...lineItemsForModal.map((ln) => Number(ln.leadDays) || 0))
                             : 0)} days
@@ -9254,21 +9291,21 @@ const Procurement: React.FC = () => {
                     </div>
                     {paymentTermsTypeRequiresAdvancePercent(releaseToPlannedForm.paymentTermsType) && (
                       <div className="mb-3">
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Advance %</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Advance %</label>
                         <input
                           type="number"
                           min={1}
                           max={99}
                           value={releaseToPlannedForm.advancePercent}
                           onChange={(e) => setReleaseToPlannedForm((f) => ({ ...f, advancePercent: e.target.value }))}
-                          className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full max-w-xs rounded-lg border border-border px-2 py-1.5 text-sm"
                         />
                       </div>
                     )}
-                    <div className="border-t border-slate-200 my-3" />
+                    <div className="border-t border-border my-3" />
                     {/* PO type (Flowchart §5) + live approval-route preview (Sub-flow E) */}
                     <div className="mb-3">
-                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">PO type</label>
+                      <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">PO type</label>
                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                         {PO_TYPE_ORDER.map((t) => {
                           const cfg = PO_TYPE_CONFIG[t];
@@ -9282,7 +9319,7 @@ const Procurement: React.FC = () => {
                               className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold text-left transition ${
                                 active
                                   ? `${cfg.bg} ${cfg.text} ${cfg.border} ring-1 ring-inset ring-current`
-                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                  : 'bg-surface text-ink-3 border-border hover:border-border'
                               }`}
                             >
                               {cfg.label}
@@ -9294,7 +9331,7 @@ const Procurement: React.FC = () => {
                         const route = resolvePoApprovalRoute(releasePoType, releaseModalGrand);
                         const isCfo = route.finalApprover === 'cfo';
                         return (
-                          <div className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${isCfo ? 'border-orange-200 bg-orange-50 text-orange-800' : 'border-blue-200 bg-blue-50 text-blue-800'}`}>
+                          <div className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${isCfo ? 'border-[color:var(--st-amber-fg)]/30 bg-warn-soft text-warn' : 'border-brand-soft bg-brand-soft text-brand'}`}>
                             <span className="font-bold">Approval route: </span>
                             {route.twoStep ? 'Procurement Head → ' : ''}{poApproverRoleLabel(route.finalApprover)}
                             {route.deviationFlag ? ' · deviation-flagged' : ''}
@@ -9303,47 +9340,51 @@ const Procurement: React.FC = () => {
                         );
                       })()}
                     </div>
-                    <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-                      <h3 className="font-bold text-slate-900 text-sm mb-2">Notes</h3>
+                    <div className="border border-border rounded-lg p-3 bg-surface-3">
+                      <h3 className="font-bold text-ink text-sm mb-2">Notes</h3>
                       <textarea
                         value={releaseToPlannedNotes}
                         onChange={(e) => setReleaseToPlannedNotes(e.target.value)}
                         rows={3}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                        className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-surface"
                         placeholder="Add draft notes..."
                       />
                     </div>
-                    <h3 className="font-bold text-slate-900 text-sm mb-2">Previous purchases</h3>
+                    <h3 className="font-bold text-ink text-sm mb-2">Previous purchases</h3>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-1 font-medium">Date</th>
-                          <th className="text-left py-1 font-medium">Vendor</th>
-                          <th className="text-right py-1 font-medium">Qty</th>
-                          <th className="text-right py-1 font-medium">Unit ₹</th>
+                        <tr className="text-ink-3 border-b border-border">
+                          <th scope="col" className="text-left py-1 font-medium">Date</th>
+                          <th scope="col" className="text-left py-1 font-medium">Vendor</th>
+                          <th scope="col" className="text-right py-1 font-medium">Qty</th>
+                          <th scope="col" className="text-right py-1 font-medium">Unit ₹</th>
                         </tr>
                       </thead>
                       <tbody>
                         {previousPurchases.map((r, i) => (
-                          <tr key={i} className="border-b border-slate-100">
-                            <td className="py-1.5 text-slate-700">{r.date ? new Date(r.date + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
-                            <td className="py-1.5 text-slate-700">{r.vendor}</td>
-                            <td className="py-1.5 text-right text-slate-700">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
+                          <tr key={i} className="border-b border-hairline">
+                            <td className="py-1.5 text-ink-2">{r.date ? new Date(r.date + 'Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+                            <td className="py-1.5 text-ink-2">{r.vendor}</td>
+                            <td className="py-1.5 text-right text-ink-2">{r.qty} <span className="text-ink-3">{r.unit}</span></td>
                             <td className="py-1.5 text-right font-medium">₹{r.unitPrice.toLocaleString('en-IN')}</td>
                           </tr>
                         ))}
-                        {previousPurchases.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-slate-500 text-xs">No previous purchases for this item.</td></tr>}
+                        {previousPurchases.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-ink-3 text-xs">No previous purchases for this item.</td></tr>}
                       </tbody>
                     </table>
                 </div>
               </div>
-              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                <p className="text-xs text-slate-500">Release triggers treasury if advance terms are selected.</p>
+              <div className="px-5 py-3 border-t border-border bg-surface-3 flex items-center justify-between">
+                <p className="text-xs text-ink-3">Release triggers treasury if advance terms are selected.</p>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+                  <button type="button" onClick={() => setReleaseToPlannedTarget(null)} className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3">Cancel</button>
                   <button
                     type="button"
+                    disabled={releaseDraftBusy}
                     onClick={async () => {
+                      if (releaseDraftBusy) return;
+                      setReleaseDraftBusy(true);
+                      try {
                       const linesForCreate = lineItemsForModal.filter(
                         (ln) => (Number(ln.qty) || 0) > 0 && (Number(ln.unitPrice) || 0) > 0
                       );
@@ -9581,10 +9622,13 @@ const Procurement: React.FC = () => {
                       setTimeout(() => {
                         applyRouteState('Procurement', 'Purchase Orders');
                       }, 500);
+                      } finally {
+                        setReleaseDraftBusy(false);
+                      }
                     }}
-                    className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-bold hover:bg-amber-600"
+                    className="px-4 py-2 rounded-lg bg-warn text-white text-sm font-bold hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Release Draft
+                    {releaseDraftBusy ? 'Releasing…' : 'Release Draft'}
                   </button>
                 </div>
               </div>
@@ -9598,13 +9642,23 @@ const Procurement: React.FC = () => {
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setEditDraftPOTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full max-w-lg rounded-xl bg-white shadow-xl border border-slate-200 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-lg rounded-xl bg-surface shadow-xl border border-border p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-slate-900">Edit Draft PO — {editDraftPOTarget.dpoNumber}</h3>
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-bold text-ink">Edit Draft PO — {editDraftPOTarget.dpoNumber}</h3>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setEditDraftPOTarget(null)}
+                className="text-ink-3 hover:text-ink transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Vendor</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Vendor</label>
                 <select
                   value={editDraftPOForm.vendor}
                   onChange={(e) => {
@@ -9617,7 +9671,7 @@ const Procurement: React.FC = () => {
                       paymentTerms: fromMaster || f.paymentTerms,
                     }));
                   }}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 >
                   <option value="">— Select vendor —</option>
                   {vendors.map((v) => (
@@ -9626,48 +9680,48 @@ const Procurement: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Payment terms</label>
-                <p className="text-[11px] text-slate-500 mb-2">From vendor master (edit in Masters → Vendors).</p>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Payment terms</label>
+                <p className="text-[11px] text-ink-3 mb-2">From vendor master (edit in Masters → Vendors).</p>
                 <PaymentTermsDisplay value={editDraftPOForm.paymentTerms} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Expected delivery</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Expected delivery</label>
                 <input
                   type="date"
                   value={editDraftPOForm.expectedDelivery}
                   onChange={(e) => setEditDraftPOForm((f) => ({ ...f, expectedDelivery: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Delivery address</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Delivery address</label>
                 <textarea
                   value={editDraftPOForm.deliveryAddress}
                   onChange={(e) => setEditDraftPOForm((f) => ({ ...f, deliveryAddress: e.target.value }))}
                   rows={2}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <span className="block text-xs font-semibold text-slate-600 mb-2">Line items — qty &amp; price/unit</span>
-                <div className="rounded-lg border border-slate-200 overflow-hidden">
+                <span className="block text-xs font-semibold text-ink-3 mb-2">Line items — qty &amp; price/unit</span>
+                <div className="rounded-lg border border-border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 text-left text-[11px] tracking-wide text-slate-500 border-b border-slate-200">
-                        <th className="px-2 py-2 font-semibold">Item</th>
-                        <th className="px-2 py-2 font-semibold text-right w-24">Qty</th>
-                        <th className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
-                        <th className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                      <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
+                        <th scope="col" className="px-2 py-2 font-semibold">Item</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-24">Qty</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Line total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {editDraftPOForm.lineItems.map((line, idx) => (
-                        <tr key={idx} className="border-b border-slate-100 last:border-0">
+                        <tr key={idx} className="border-b border-hairline last:border-0">
                           <td className="px-2 py-2 align-top">
-                            <p className="font-medium text-slate-800 leading-snug">{line.item}</p>
-                            <p className="text-[10px] text-slate-500">{line.itemCode}</p>
+                            <p className="font-medium text-ink leading-snug">{line.item}</p>
+                            <p className="text-[10px] text-ink-3">{line.itemCode}</p>
                             {line.leadTimeDays != null ? (
-                              <p className="text-[10px] text-slate-500 mt-0.5">Lead {line.leadTimeDays}d · GST {line.gstPercent ?? 18}%</p>
+                              <p className="text-[10px] text-ink-3 mt-0.5">Lead {line.leadTimeDays}d · GST {line.gstPercent ?? 18}%</p>
                             ) : null}
                           </td>
                           <td className="px-2 py-2 text-right align-top">
@@ -9682,7 +9736,7 @@ const Procurement: React.FC = () => {
                                 );
                                 setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
                               }}
-                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                              className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
                             />
                           </td>
                           <td className="px-2 py-2 text-right align-top">
@@ -9699,10 +9753,10 @@ const Procurement: React.FC = () => {
                                 );
                                 setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
                               }}
-                              className="w-full rounded border border-slate-300 px-2 py-1 text-right tabular-nums"
+                              className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
                             />
                           </td>
-                          <td className="px-2 py-2 text-right align-top tabular-nums text-slate-800 font-medium whitespace-nowrap">
+                          <td className="px-2 py-2 text-right align-top tabular-nums text-ink font-medium whitespace-nowrap">
                             ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                           </td>
                         </tr>
@@ -9715,13 +9769,17 @@ const Procurement: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setEditDraftPOTarget(null)}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3"
               >
                 Cancel
               </button>
               <button
+                disabled={editDraftPOSaving}
                 onClick={async () => {
+                  if (editDraftPOSaving) return;
                   if (!editDraftPOTarget) return;
+                  setEditDraftPOSaving(true);
+                  try {
                   const d = editDraftPOTarget;
                   const form = editDraftPOForm;
                   const backendRequestId = resolveBackendProcurementRequestId(d);
@@ -9849,10 +9907,13 @@ const Procurement: React.FC = () => {
                   void invalidatePurchaseOrdersQueries();
                   setEditDraftPOTarget(null);
                   addToast('success', `Draft PO ${d.dpoNumber} updated`);
+                  } finally {
+                    setEditDraftPOSaving(false);
+                  }
                 }}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
+                {editDraftPOSaving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>
@@ -9880,10 +9941,10 @@ const Procurement: React.FC = () => {
 
         const statusPillClass =
           effectiveStatus === 'Completed'
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+            ? 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30'
             : effectiveStatus === 'In Progress'
-              ? 'bg-sky-50 text-sky-700 border-sky-300'
-              : 'bg-amber-50 text-amber-700 border-amber-300';
+              ? 'bg-brand-soft text-brand border-brand-soft'
+              : 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30';
 
         const notesOutcome = parseStockCheckOutcome(req.stockCheckNotes);
         const notesLines = parseStockCheckNotesLines(req.stockCheckNotes);
@@ -9957,16 +10018,16 @@ const Procurement: React.FC = () => {
           >
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
             <div
-              className="relative w-full max-w-xl max-h-[90vh] bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
+              className="relative w-full max-w-xl max-h-[90vh] bg-surface rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="shrink-0 border-b border-slate-200 px-5 py-4 bg-slate-50">
+              <div className="shrink-0 border-b border-border px-5 py-4 bg-surface-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-300 bg-white font-mono text-[11px] text-slate-700">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-border bg-surface font-mono text-[11px] text-ink-2">
                       {scId}
                     </span>
-                    <h2 className="text-sm font-semibold text-slate-900">
+                    <h2 className="text-sm font-semibold text-ink">
                       Stock Check {selectedStockCheckItemName ? `· ${selectedStockCheckItemName}` : ''}
                     </h2>
                   </div>
@@ -9976,7 +10037,7 @@ const Procurement: React.FC = () => {
                         setSelectedStockCheckRequest(null);
                         setSelectedStockCheckItemName(null);
                       }}
-                      className="text-slate-400 hover:text-slate-700 text-xl leading-none transition-colors"
+                      className="text-ink-4 hover:text-ink-2 text-xl leading-none transition-colors"
                       aria-label="Close"
                     >
                       ×
@@ -9985,22 +10046,22 @@ const Procurement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50">
-                <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2 text-sm">
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-surface-3">
+                <div className="rounded-lg border border-border bg-surface p-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Assigned To</span>
-                    <span className="text-slate-900 font-semibold">{assignedTo}</span>
+                    <span className="text-ink-3">Assigned To</span>
+                    <span className="text-ink font-semibold">{assignedTo}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Created</span>
-                    <span className="text-slate-900 font-semibold">{createdDate}</span>
+                    <span className="text-ink-3">Created</span>
+                    <span className="text-ink font-semibold">{createdDate}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Due Date</span>
-                    <span className="text-slate-900 font-semibold">{dueDate}</span>
+                    <span className="text-ink-3">Due Date</span>
+                    <span className="text-ink font-semibold">{dueDate}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500">Status</span>
+                    <span className="text-ink-3">Status</span>
                     <span className={`px-2 py-0.5 rounded-full border text-xs font-semibold ${statusPillClass}`}>
                       {effectiveStatus}
                     </span>
@@ -10011,62 +10072,62 @@ const Procurement: React.FC = () => {
                   {renderedItems.map((item, idx) => (
                       <div
                         key={`${item.itemCode}-${idx}`}
-                        className="rounded-lg border border-slate-200 bg-white overflow-hidden"
+                        className="rounded-lg border border-border bg-surface overflow-hidden"
                       >
-                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                        <div className="px-4 py-3 border-b border-border bg-surface-3">
                           <div className="flex items-center gap-2">
-                            <p className="text-slate-900 font-semibold text-sm">{item.itemName}</p>
-                            <span className="text-[10px] text-slate-500 font-mono">{item.itemCode}</span>
+                            <p className="text-ink font-semibold text-sm">{item.itemName}</p>
+                            <span className="text-[10px] text-ink-3 font-mono">{item.itemCode}</span>
                             {!item.fromWarehouse && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">No warehouse match</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-warn-soft text-warn">No warehouse match</span>
                             )}
                           </div>
                         </div>
                         <div className="px-4 py-3 space-y-2 text-sm">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Zone / Rack</span>
-                            <span className="text-slate-900 font-semibold">{item.zoneRack}</span>
+                            <span className="text-ink-3">Zone / Rack</span>
+                            <span className="text-ink font-semibold">{item.zoneRack}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Requested Qty</span>
-                            <span className="text-slate-800 font-semibold">{item.requestedQty ?? '—'} {item.whUnit || ''}</span>
+                            <span className="text-ink-3">Requested Qty</span>
+                            <span className="text-ink font-semibold">{item.requestedQty ?? '—'} {item.whUnit || ''}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Stock in hand (from DB)</span>
-                            <span className="text-emerald-700 font-bold">
+                            <span className="text-ink-3">Stock in hand (from DB)</span>
+                            <span className="text-ok font-bold">
                               {item.systemQty != null ? `${item.systemQty} ${item.whUnit || ''}` : '—'}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Physical Qty (count)</span>
-                            <span className="text-sky-700 font-bold">
+                            <span className="text-ink-3">Physical Qty (count)</span>
+                            <span className="text-brand font-bold">
                               {item.physicalQty != null ? `${item.physicalQty} ${item.whUnit || ''}` : '—'}
                             </span>
                           </div>
                           {item.batchCode && (
-                            <div className="pt-2 border-t border-slate-200 mt-2">
-                              <p className="text-[10px] tracking-wide text-slate-500 uppercase mb-1">Batch</p>
-                              <span className="text-xs font-mono text-slate-700">{item.batchCode}</span>
+                            <div className="pt-2 border-t border-border mt-2">
+                              <p className="text-[10px] tracking-wide text-ink-3 uppercase mb-1">Batch</p>
+                              <span className="text-xs font-mono text-ink-2">{item.batchCode}</span>
                             </div>
                           )}
                         </div>
                       </div>
                     ))}
 
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  <div className="rounded-lg border border-[color:var(--st-green-fg)]/30 bg-ok-soft px-3 py-2 text-xs text-ok">
                     Request-scoped view: stock/check values are shown for this PR request only.
                     {notesOutcome == null ? ' Waiting for warehouse completion.' : ` Outcome: ${notesOutcome === 'all_ok' ? 'All OK' : 'Not OK'}.`}
                   </div>
                 </>
               </div>
 
-              <div className="shrink-0 bg-white border-t border-slate-200 px-4 py-3 flex justify-end">
+              <div className="shrink-0 bg-surface border-t border-border px-4 py-3 flex justify-end">
                 <button
                   onClick={() => {
                     setSelectedStockCheckRequest(null);
                     setSelectedStockCheckItemName(null);
                   }}
-                  className="px-4 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold bg-white hover:bg-slate-100 transition"
+                  className="px-4 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold bg-surface hover:bg-surface-3 transition"
                 >
                   Close
                 </button>
@@ -10108,18 +10169,18 @@ const Procurement: React.FC = () => {
 
 
       {showRecordQuoteModal && (
-        <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6">
-          <div className="my-auto flex w-full max-w-5xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
+        <div className="fixed inset-0 z-60 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-6" onClick={closeRecordQuoteModal}>
+          <div className="my-auto flex w-full max-w-5xl max-h-[calc(100dvh-2rem)] flex-col rounded-2xl bg-surface shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-hairline px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">
+                <h2 className="text-lg font-semibold text-ink">
                   {recordQuoteForm.planningQuotationAskId
                     ? 'Record quote for Planning ask'
                     : recordQuoteForm.procurementRequestId
                       ? 'Add quotation for request'
                       : 'Record Vendor Quotation'}
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-ink-3 mt-1">
                   {recordQuoteForm.planningQuotationAskId
                     ? 'Saves vendor rates to Items List only. No procurement request is created; Planning adds a PR manually after rates exist.'
                     : recordQuoteForm.procurementRequestId
@@ -10131,7 +10192,7 @@ const Procurement: React.FC = () => {
                 type="button"
                 disabled={recordQuoteSaving}
                 onClick={closeRecordQuoteModal}
-                className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                className="rounded-full border border-border px-2 py-1 text-xs text-ink-3 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 Close
               </button>
@@ -10139,16 +10200,16 @@ const Procurement: React.FC = () => {
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
             {(rawMaterialsListForQuoteError || packMaterialsListForQuoteError) && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              <div className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2 text-xs text-warn">
                 <p className="font-semibold">Could not load RM/PM master lists</p>
-                <p className="mt-1 text-amber-900/90">
+                <p className="mt-1 text-warn">
                   Your role must allow reading Raw Materials and Pack Materials (or Sales / Purchase / Order Management). Ask an admin to add the right module to your role, then reopen this modal.
                 </p>
               </div>
             )}
 
             <div>
-              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wide mb-2 flex items-center justify-between">
                 <span>Quote lines</span>
                 <button
                   type="button"
@@ -10172,19 +10233,19 @@ const Procurement: React.FC = () => {
                     ]);
                     setRecordQuoteLineSearch((prev) => ({ ...prev, [nextIndex]: '' }));
                   }}
-                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-100"
+                  className="px-2 py-1 rounded bg-surface-3 text-ink-2 text-xs font-medium hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-surface-3"
                 >
                   + Add line
                 </button>
               </h3>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="bg-slate-50 px-4 py-2 flex text-[11px] font-semibold text-slate-600">
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-surface-3 px-4 py-2 flex text-[11px] font-semibold text-ink-3">
                   <div className="flex-1 min-w-[200px]">ITEM (RM/PM from masters)</div>
                   <div className="w-24 text-right">MOQ</div>
                   <div className="w-28 text-right">PRICE / UNIT</div>
                   <div className="w-16" />
                 </div>
-                <div className="max-h-[min(20rem,42vh)] overflow-auto divide-y divide-slate-100">
+                <div className="max-h-[min(20rem,42vh)] overflow-auto divide-y divide-hairline">
                   {recordQuoteLines.map((line, idx) => {
                     const lineItemValue =
                       line.raw_material_id != null
@@ -10205,7 +10266,7 @@ const Procurement: React.FC = () => {
                             onBlur={(e) => handleRecordQuoteLineItemBlur(idx, line.index, e.target.value)}
                             placeholder="Type code, INCI, name, SKU, or rm-12 / pm-34"
                             disabled={recordQuoteSaving}
-                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm text-slate-800 bg-white disabled:bg-slate-50 disabled:text-slate-500"
+                            className="w-full border border-border rounded px-2 py-1.5 text-sm text-ink bg-surface disabled:bg-surface-3 disabled:text-ink-3"
                           />
                           <datalist id={`quote-line-item-options-${line.index}`}>
                             {datalistOptions.map((opt) => (
@@ -10213,7 +10274,7 @@ const Procurement: React.FC = () => {
                             ))}
                           </datalist>
                           {line.name && (
-                            <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                            <p className="text-[10px] text-ink-3 mt-0.5 truncate">
                               {line.itemId && `${line.itemId} · `}{line.name} ({line.uom})
                             </p>
                           )}
@@ -10228,7 +10289,7 @@ const Procurement: React.FC = () => {
                             value={line.orderQty}
                             onChange={handleRecordQuoteLineChange(idx, 'orderQty')}
                             disabled={recordQuoteSaving}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
+                            className="w-full border border-border rounded px-1 py-0.5 text-right disabled:bg-surface-3"
                           />
                         </div>
                         <div className="w-28 text-right pl-1">
@@ -10237,7 +10298,7 @@ const Procurement: React.FC = () => {
                             value={line.pricePerUnit}
                             onChange={handleRecordQuoteLineChange(idx, 'pricePerUnit')}
                             disabled={recordQuoteSaving}
-                            className="w-full border border-slate-300 rounded px-1 py-0.5 text-right disabled:bg-slate-50"
+                            className="w-full border border-border rounded px-1 py-0.5 text-right disabled:bg-surface-3"
                           />
                         </div>
                         <div className="w-16 shrink-0">
@@ -10252,7 +10313,7 @@ const Procurement: React.FC = () => {
                                 return next;
                               });
                             }}
-                            className="text-slate-400 hover:text-red-600 text-sm disabled:opacity-40 disabled:pointer-events-none"
+                            className="text-ink-4 hover:text-err text-sm disabled:opacity-40 disabled:pointer-events-none"
                             title="Remove line"
                           >
                             ×
@@ -10262,7 +10323,7 @@ const Procurement: React.FC = () => {
                     );
                   })}
                   {recordQuoteLines.length === 0 && (
-                    <div className="px-4 py-6 text-center text-xs text-slate-500">
+                    <div className="px-4 py-6 text-center text-xs text-ink-3">
                       Click &quot;+ Add line&quot; then select an item from Raw materials or Pack materials.
                     </div>
                   )}
@@ -10271,14 +10332,14 @@ const Procurement: React.FC = () => {
             </div>
 
             <div className="text-sm">
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Vendor</label>
+              <label className="block text-xs font-semibold text-ink-3 mb-1">Vendor</label>
               <select
                 value={recordQuoteForm.vendorId}
                 onChange={(e) => {
                   setRecordQuoteForm((f) => ({ ...f, vendorId: e.target.value }));
                 }}
                 disabled={recordQuoteSaving}
-                className="w-full max-w-md border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
+                className="w-full max-w-md border border-border rounded-lg px-2 py-1.5 text-sm disabled:bg-surface-3"
               >
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -10286,46 +10347,46 @@ const Procurement: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <p className="text-[11px] text-slate-500 mt-1">Enter item names and prices from the vendor’s quote.</p>
+              <p className="text-[11px] text-ink-3 mt-1">Enter item names and prices from the vendor’s quote.</p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Quote Date</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Quote Date</label>
                 <input
                   type="date"
                   value={recordQuoteForm.quoteDate}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, quoteDate: e.target.value }))}
                   disabled={recordQuoteSaving}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-sm disabled:bg-surface-3"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Valid Till</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Valid Till</label>
                 <input
                   type="date"
                   value={recordQuoteForm.validTill}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, validTill: e.target.value }))}
                   disabled={recordQuoteSaving}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-sm disabled:bg-surface-3"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Lead Time (days)</label>
+                <label className="block text-xs font-semibold text-ink-3 mb-1">Lead Time (days)</label>
                 <input
                   type="number"
                   min={0}
                   value={recordQuoteForm.leadTimeDays}
                   onChange={(e) => setRecordQuoteForm((f) => ({ ...f, leadTimeDays: e.target.value }))}
                   disabled={recordQuoteSaving}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-sm disabled:bg-surface-3"
                 />
               </div>
             </div>
 
             <div className="text-sm">
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Payment terms (from vendor master)</label>
-              <p className="text-[11px] text-slate-500 mb-2">
+              <label className="block text-xs font-semibold text-ink-3 mb-1">Payment terms (from vendor master)</label>
+              <p className="text-[11px] text-ink-3 mb-2">
                 The three-way split (advance, before dispatch / pre-shipment, after delivery / post-shipment) comes from the vendor record. Update it in Masters → Vendors if needed.
               </p>
               <PaymentTermsDisplay
@@ -10334,19 +10395,19 @@ const Procurement: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Internal Notes</label>
+              <label className="block text-xs font-semibold text-ink-3 mb-1">Internal Notes</label>
               <textarea
                 value={recordQuoteForm.notes}
                 onChange={(e) => setRecordQuoteForm((f) => ({ ...f, notes: e.target.value }))}
                 disabled={recordQuoteSaving}
-                className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-slate-50"
+                className="w-full border border-border rounded-lg px-2 py-1.5 text-sm disabled:bg-surface-3"
                 rows={2}
               />
             </div>
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
-              <p className="text-[11px] text-slate-500">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-surface px-6 py-4">
+              <p className="text-[11px] text-ink-3">
                 New quotes are saved with default status for internal tracking.
               </p>
               <div className="flex gap-2">
@@ -10354,7 +10415,7 @@ const Procurement: React.FC = () => {
                   type="button"
                   disabled={recordQuoteSaving}
                   onClick={closeRecordQuoteModal}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 rounded-lg border border-border text-sm text-ink-2 bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
@@ -10581,7 +10642,7 @@ const Procurement: React.FC = () => {
                       setRecordQuoteSaving(false);
                     }
                   }}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-yellow-500 text-white text-sm font-semibold hover:bg-yellow-600 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-yellow-500"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-warn text-white text-sm font-semibold hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:brightness-95"
                 >
                   {recordQuoteSaving ? (
                     <>
@@ -10603,8 +10664,8 @@ const Procurement: React.FC = () => {
       )}
 
       {showCreatePoFromQuoteModal && createPoFromQuoteState && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl p-6 space-y-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40" onClick={() => setShowCreatePoFromQuoteModal(false)}>
+          <div className="w-full max-w-3xl rounded-2xl bg-surface shadow-xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             {(() => {
               const selectedQuote = quotes.find((q) => q.id === createPoFromQuoteState.quoteId);
               const backendPr =
@@ -10650,8 +10711,8 @@ const Procurement: React.FC = () => {
                 <>
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-semibold text-slate-900">Create Draft PO from Quote</h2>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <h2 className="text-lg font-semibold text-ink">Create Draft PO from Quote</h2>
+                      <p className="text-xs text-ink-3 mt-1">
                         Pick the procurement request item this quotation is for. One draft PO will be created per
                         item/vendor.
                       </p>
@@ -10659,21 +10720,21 @@ const Procurement: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowCreatePoFromQuoteModal(false)}
-                      className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                      className="rounded-full border border-border px-2 py-1 text-xs text-ink-3 hover:bg-surface-3"
                     >
                       Close
                     </button>
                   </div>
 
                   {!selectedQuote ? (
-                    <p className="text-sm text-rose-600">
+                    <p className="text-sm text-err">
                       Unable to load quote. Please refresh the page and try again.
                     </p>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 mb-1">
+                          <label className="block text-xs font-semibold text-ink-3 mb-1">
                             Procurement Request (link PO to)
                           </label>
                           <select
@@ -10683,7 +10744,7 @@ const Procurement: React.FC = () => {
                                 prev ? { ...prev, requestId: e.target.value, itemKey: undefined } : prev
                               )
                             }
-                            className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                            className="w-full border border-border rounded-lg px-2 py-1.5 text-sm"
                           >
                             {requests.map((r) => (
                               <option key={r.id} value={r.id}>
@@ -10693,15 +10754,15 @@ const Procurement: React.FC = () => {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 mb-1">Vendor</label>
-                          <p className="text-sm font-medium text-slate-900">
-                            {selectedQuote.vendor} <span className="text-xs text-slate-500">(from quotation)</span>
+                          <label className="block text-xs font-semibold text-ink-3 mb-1">Vendor</label>
+                          <p className="text-sm font-medium text-ink">
+                            {selectedQuote.vendor} <span className="text-xs text-ink-3">(from quotation)</span>
                           </p>
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1">Item</label>
+                        <label className="block text-xs font-semibold text-ink-3 mb-1">Item</label>
                         <select
                           value={createPoFromQuoteState.itemKey ?? (selectedItem?.code ?? selectedItem?.name ?? '')}
                           onChange={(e) =>
@@ -10709,7 +10770,7 @@ const Procurement: React.FC = () => {
                               prev ? { ...prev, itemKey: e.target.value } : prev
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
+                          className="w-full border border-border rounded-lg px-2 py-1.5 text-sm"
                         >
                           {matchingItems.map((it) => (
                             <option key={it.code ?? it.name} value={it.code ?? it.name}>
@@ -10720,16 +10781,16 @@ const Procurement: React.FC = () => {
                           ))}
                         </select>
                         {!matchingItems.length && (
-                          <p className="mt-1 text-[11px] text-rose-600">
+                          <p className="mt-1 text-[11px] text-err">
                             No items on this request match the lines in this quotation.
                           </p>
                         )}
                       </div>
 
                       {selectedItem && selectedLine && (
-                        <div className="mt-2 border border-slate-200 rounded-xl p-4 text-sm bg-slate-50">
-                          <p className="text-xs font-semibold text-slate-500 mb-2">Calculation</p>
-                          <p className="text-sm text-slate-800">
+                        <div className="mt-2 border border-border rounded-xl p-4 text-sm bg-surface-3">
+                          <p className="text-xs font-semibold text-ink-3 mb-2">Calculation</p>
+                          <p className="text-sm text-ink">
                             <span className="font-medium">
                               {selectedItem.name ?? selectedItem.code ?? 'Item'}
                             </span>{' '}
@@ -10738,13 +10799,13 @@ const Procurement: React.FC = () => {
                               {qtyNeeded} {unit}
                             </span>
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <p className="text-sm text-ink">
                             Vendor price from quotation:{' '}
                             <span className="font-mono font-semibold">
                               ₹{pricePerUnit.toLocaleString('en-IN', { maximumFractionDigits: 2 })} / {unit}
                             </span>
                           </p>
-                          <p className="mt-2 text-sm text-slate-900">
+                          <p className="mt-2 text-sm text-ink">
                             Line subtotal:{' '}
                             <span className="font-mono font-semibold">
                               ₹{subtotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -10758,7 +10819,7 @@ const Procurement: React.FC = () => {
                       )}
 
                       <div className="flex justify-between items-center pt-2">
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-ink-3">
                           One Draft PO will be created for this item and vendor. You can edit or split it later from the
                           Draft POs tab.
                         </p>
@@ -10766,15 +10827,18 @@ const Procurement: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setShowCreatePoFromQuoteModal(false)}
-                            className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 bg-white"
+                            className="px-4 py-2 rounded-lg border border-border text-sm text-ink-2 bg-surface"
                           >
                             Cancel
                           </button>
                           <button
                             type="button"
-                            disabled={!matchingItems.length || !selectedItem || !selectedLine}
+                            disabled={approveCreateDraftPOBusy || !matchingItems.length || !selectedItem || !selectedLine}
                             onClick={async () => {
+                              if (approveCreateDraftPOBusy) return;
                               if (!selectedQuote || !backendPr || !selectedItem || !selectedLine) return;
+                              setApproveCreateDraftPOBusy(true);
+                              try {
 
                               const lineLeadDays = resolveDraftLineLeadTimeDays({
                                 prLine: selectedItem,
@@ -10909,10 +10973,13 @@ const Procurement: React.FC = () => {
                               setTimeout(() => {
                                 applyRouteState('Procurement', 'Purchase Orders');
                               }, 500);
+                              } finally {
+                                setApproveCreateDraftPOBusy(false);
+                              }
                             }}
-                            className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-60"
+                            className="px-4 py-2 rounded-lg bg-warn text-white text-sm font-semibold hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
-                            Approve & Create Draft PO
+                            {approveCreateDraftPOBusy ? 'Creating…' : 'Approve & Create Draft PO'}
                           </button>
                         </div>
                       </div>

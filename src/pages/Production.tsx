@@ -5,11 +5,11 @@
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import eiLogo from '../assets/logo/eilogofull.svg';
 import { useSearchParams } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
+import { NavSidebar } from '../components/ui/NavSidebar';
 import {
-  ChevronLeft, ChevronRight, Plus, Calendar, FlaskConical, Package,
+  Plus, Calendar, FlaskConical, Package,
   Wrench, Users, Menu, X, Check, AlertTriangle, Printer,
   ClipboardList, Link2, Scale, Microscope, Zap, Info, Factory,
   Settings, Activity, Eye, CheckCircle2, ArrowRight, Send,
@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { StatusBadge } from '../components/ui/StatusBadge';
 import {
   fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
   fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
@@ -152,6 +154,10 @@ import {
 } from '../lib/productionVesselSplit';
 import { BatchesView } from '../components/production/BatchesView';
 import { DispensingTrayView } from '../components/production/DispensingTrayView';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Tabs } from '../components/ui/Tabs';
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -283,27 +289,27 @@ function ScheduleYieldContextBanner({ batch }: { batch: Batch }) {
   const fgY = batch.fgYield != null ? Number(batch.fgYield) : NaN;
   const hasFg = Number.isFinite(fgY) && fgY > 0;
   return (
-    <div className="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-3.5 mb-4 text-[11px] text-slate-700">
-      <div className="font-bold text-indigo-900 uppercase tracking-wider text-[10px] mb-1.5">Bulk &amp; BPR yields (for scheduling)</div>
+    <div className="rounded-xl border border-brand-soft/80 bg-brand-soft/50 p-3.5 mb-4 text-[11px] text-ink-2">
+      <div className="font-bold text-brand uppercase tracking-wider text-[10px] mb-1.5">Bulk &amp; BPR yields (for scheduling)</div>
       <p className="mb-2">
-        <span className="text-slate-500">Planned batch size:</span>{' '}
+        <span className="text-ink-3">Planned batch size:</span>{' '}
         <b>{plannedKg} KG</b>
         {hasBulk ? (
           <>
             {' · '}
-            <span className="text-slate-500">Actual bulk (BMR QC):</span>{' '}
-            <b className="text-indigo-800">{formatYieldKg(bulk)} KG</b>
-            {!bmrCleared && <span className="text-amber-700 font-medium"> (recorded; BMR not cleared yet)</span>}
+            <span className="text-ink-3">Actual bulk (BMR QC):</span>{' '}
+            <b className="text-brand">{formatYieldKg(bulk)} KG</b>
+            {!bmrCleared && <span className="text-warn font-medium"> (recorded; BMR not cleared yet)</span>}
           </>
         ) : (
           <>
             {' · '}
-            <span className="text-amber-800 font-medium">No bulk yield yet — fill/pack capacity below still uses order-based unit split until BMR bulk QC records actual KG.</span>
+            <span className="text-warn font-medium">No bulk yield yet — fill/pack capacity below still uses order-based unit split until BMR bulk QC records actual KG.</span>
           </>
         )}
       </p>
       {(hasFill || hasFg) && (
-        <p className="text-slate-600 border-t border-indigo-100/80 pt-2 mt-2">
+        <p className="text-ink-2 border-t border-brand-soft/80 pt-2 mt-2">
           {hasFill && (
             <span className="mr-3">
               Fill QC yield: <b>{formatYieldUnits(fillY)}</b> units
@@ -597,11 +603,11 @@ function BatchProcessLoader({ label, batchNo }: { label: string; batchNo?: strin
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="bg-white rounded-xl shadow-xl px-8 py-6 flex flex-col items-center gap-3 max-w-sm mx-4">
-        <Loader2 className="h-10 w-10 text-orange-500 animate-spin" aria-hidden />
-        <p className="text-sm font-semibold text-slate-800 text-center">{label}</p>
-        {batchNo ? <p className="text-xs font-mono text-slate-500">{batchNo}</p> : null}
-        <p className="text-[11px] text-slate-400">Please wait for the server response</p>
+      <div className="bg-surface rounded-xl shadow-xl px-8 py-6 flex flex-col items-center gap-3 max-w-sm mx-4">
+        <Loader2 className="h-10 w-10 text-brand animate-spin" aria-hidden />
+        <p className="text-sm font-semibold text-ink text-center">{label}</p>
+        {batchNo ? <p className="text-xs font-mono text-ink-3">{batchNo}</p> : null}
+        <p className="text-[11px] text-ink-4">Please wait for the server response</p>
       </div>
     </div>
   );
@@ -610,14 +616,14 @@ function BatchProcessLoader({ label, batchNo }: { label: string; batchNo?: strin
 function ModalSavingOverlay({ label }: { label: string }) {
   return (
     <div
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-white/90 backdrop-blur-[1px]"
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-surface/90 backdrop-blur-[1px]"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <Loader2 className="h-9 w-9 text-orange-500 animate-spin" aria-hidden />
-      <p className="mt-2 text-sm font-semibold text-slate-800">{label}</p>
-      <p className="mt-1 text-[11px] text-slate-500">Please wait for the server response</p>
+      <Loader2 className="h-9 w-9 text-brand animate-spin" aria-hidden />
+      <p className="mt-2 text-sm font-semibold text-ink">{label}</p>
+      <p className="mt-1 text-[11px] text-ink-3">Please wait for the server response</p>
     </div>
   );
 }
@@ -1000,12 +1006,12 @@ function pipelineIndex(status: string, pipeline: PipelineStep[]): number {
 const isEquipFreeOnDate = isEquipFreeOnDateLib;
 
 const batchColorMap: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  teal: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', dot: 'bg-teal-500' },
-  amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
-  purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', dot: 'bg-purple-500' },
-  blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500' },
-  red: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', dot: 'bg-red-500' },
-  green: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  teal: { bg: 'bg-brand-soft', border: 'border-brand-soft', text: 'text-brand', dot: 'bg-brand' },
+  amber: { bg: 'bg-warn-soft', border: 'border-warn-soft', text: 'text-warn', dot: 'bg-warn' },
+  purple: { bg: 'bg-brand-soft', border: 'border-brand-soft', text: 'text-brand', dot: 'bg-brand' },
+  blue: { bg: 'bg-brand-soft', border: 'border-brand-soft', text: 'text-brand', dot: 'bg-brand' },
+  red: { bg: 'bg-err-soft', border: 'border-err-soft', text: 'text-err', dot: 'bg-err' },
+  green: { bg: 'bg-ok-soft', border: 'border-ok-soft', text: 'text-ok', dot: 'bg-ok' },
 };
 
 const bmrStatusLabel: Record<BMRStatus, string> = {
@@ -1100,7 +1106,17 @@ function defaultState(): ProductionState {
 /* ──────────────── SHARED UI COMPONENTS ─────────────────────── */
 
 function Badge({ className, children }: { className: string; children: React.ReactNode }) {
-  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap leading-none inline-flex items-center gap-1 ${className}`}>{children}</span>;
+  // Thin wrapper over the shared ui StatusBadge (size="sm"). Color comes via className,
+  // so an empty colorMap suppresses the shared neutral fallback.
+  return (
+    <StatusBadge
+      status=""
+      colorMap={{ '': '' }}
+      label={children}
+      size="sm"
+      className={`whitespace-nowrap leading-none ${className}`}
+    />
+  );
 }
 
 function Modal({
@@ -1121,51 +1137,43 @@ function Modal({
   const w = size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : 'max-w-lg';
   const dismiss = disableDismiss ? undefined : onClose;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={dismiss}>
-      <div className={`bg-white rounded-2xl shadow-2xl w-full ${w} my-4 border border-gray-100`} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll dismissable={!disableDismiss} className="pt-10">
+      <div className={`bg-surface rounded-2xl shadow-2xl w-full ${w} my-4 border border-hairline`} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"generic-modal-title"}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
-            <h2 className="text-sm font-bold text-gray-900 tracking-tight">{title}</h2>
-            {subtitle && <p className="text-[11px] text-gray-400 mt-0.5">{subtitle}</p>}
+            <h2 className="text-sm font-bold text-ink tracking-tight" id="generic-modal-title">{title}</h2>
+            {subtitle && <p className="text-[11px] text-ink-4 mt-0.5">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={dismiss}
             disabled={disableDismiss}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            className="p-1.5 rounded-lg hover:bg-surface-3 text-ink-4 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            aria-label="Close"
           >
             <X size={16} />
           </button>
         </div>
         <div className="relative px-6 py-5 max-h-[75vh] overflow-y-auto">{children}</div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
 function TabBar({ tabs, active, onChange }: { tabs: { key: string; label: string; icon?: React.ReactNode }[]; active: string; onChange: (k: string) => void }) {
-  return (
-    <div className="flex gap-0.5 border-b border-gray-100 mb-5">
-      {tabs.map(t => (
-        <button key={t.key} onClick={() => onChange(t.key)}
-          className={`flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold border-b-2 transition-colors ${active === t.key ? 'border-orange-500 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-          {t.icon && <span className={active === t.key ? 'text-orange-500' : 'text-gray-400'}>{t.icon}</span>}
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
+  // Thin wrapper over the shared ui Tabs (folds the module's inline underline tab-bar).
+  return <Tabs tabs={tabs} value={active} onChange={onChange} className="mb-5" />;
 }
 
 function Tip({ color = 'blue', icon, children }: { color?: string; icon?: React.ReactNode; children: React.ReactNode }) {
   const cm: Record<string, string> = {
-    orange: 'bg-orange-50 border-orange-100 text-orange-800',
-    teal: 'bg-teal-50 border-teal-100 text-teal-800',
-    amber: 'bg-amber-50 border-amber-100 text-amber-800',
-    blue: 'bg-blue-50 border-blue-100 text-blue-800',
-    red: 'bg-red-50 border-red-100 text-red-800',
-    green: 'bg-emerald-50 border-emerald-100 text-emerald-800',
-    purple: 'bg-purple-50 border-purple-100 text-purple-800',
+    orange: 'bg-brand-soft border-brand-soft text-brand',
+    teal: 'bg-brand-soft border-brand-soft text-brand',
+    amber: 'bg-warn-soft border-warn-soft text-warn',
+    blue: 'bg-brand-soft border-brand-soft text-brand',
+    red: 'bg-err-soft border-err-soft text-err',
+    green: 'bg-ok-soft border-ok-soft text-ok',
+    purple: 'bg-brand-soft border-brand-soft text-brand',
   };
   return (
     <div className={`flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border text-[11px] leading-relaxed mb-4 ${cm[color] || cm.blue}`}>
@@ -1184,14 +1192,14 @@ function PipelineStrip({ pipeline, currentStatus, failed }: { pipeline: Pipeline
         const isFailed = failed && state === 'active';
         return (
           <div key={p.key} className="flex items-center gap-0.5">
-            <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center border ${isFailed ? 'bg-red-100 border-red-300 text-red-600' :
-              state === 'done' ? 'bg-emerald-100 border-emerald-300 text-emerald-600' :
-                state === 'active' ? 'bg-orange-100 border-orange-300 text-orange-600' :
-                  'bg-gray-50 border-gray-200 text-gray-300'
+            <div className={`w-5.5 h-5.5 rounded-full flex items-center justify-center border ${isFailed ? 'bg-err-soft border-err-soft text-err' :
+              state === 'done' ? 'bg-ok-soft border-ok-soft text-ok' :
+                state === 'active' ? 'bg-brand-soft border-brand-soft text-brand' :
+                  'bg-surface-2 border-border text-ink-4'
               }`} title={isFailed ? `${p.label} (Failed)` : p.label}>
               {isFailed ? <X size={10} strokeWidth={3} /> : state === 'done' ? <Check size={10} strokeWidth={3} /> : state === 'active' ? p.icon : <CircleDot size={8} />}
             </div>
-            {i < pipeline.length - 1 && <div className={`w-2.5 h-px ${i < idx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
+            {i < pipeline.length - 1 && <div className={`w-2.5 h-px ${i < idx ? 'bg-ok' : 'bg-surface-3'}`} />}
           </div>
         );
       })}
@@ -1231,7 +1239,7 @@ function PipelineStripWithLabels({ pipeline, currentStatus, failed, title = 'BMR
   const stepNum = idx < 0 ? 0 : idx + 1;
   return (
     <div className="mb-[18px] overflow-x-auto pb-1">
-      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">{title} — Step {stepNum} of {pipeline.length}</div>
+      <div className="text-[10px] font-bold text-ink-3 uppercase tracking-wider mb-1.5">{title} — Step {stepNum} of {pipeline.length}</div>
       <div className="flex items-center gap-0 flex-wrap">
         {pipeline.map((p, i) => {
           const state = i < idx ? 'done' : i === idx ? 'active' : 'pending';
@@ -1239,10 +1247,10 @@ function PipelineStripWithLabels({ pipeline, currentStatus, failed, title = 'BMR
           const label = BATCH_LIFECYCLE_LABELS[p.key] ?? BMR_PIPELINE_LABELS[p.key] ?? p.label;
           return (
             <div key={p.key} className="flex items-center shrink-0">
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded whitespace-nowrap ${isFailed ? 'bg-red-100 text-red-700 border border-red-200' : state === 'done' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : state === 'active' ? 'bg-orange-100 text-orange-700 border border-orange-200 ring-1 ring-orange-200' : 'bg-gray-50 text-gray-400 border border-gray-200'}`}>
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded whitespace-nowrap ${isFailed ? 'bg-err-soft text-err border border-err-soft' : state === 'done' ? 'bg-ok-soft text-ok border border-ok-soft' : state === 'active' ? 'bg-brand-soft text-brand border border-brand-soft ring-1 ring-brand' : 'bg-surface-2 text-ink-4 border border-border'}`}>
                 {label}
               </span>
-              {i < pipeline.length - 1 && <span className="text-gray-300 mx-0.5 font-bold">›</span>}
+              {i < pipeline.length - 1 && <span className="text-ink-4 mx-0.5 font-bold">›</span>}
             </div>
           );
         })}
@@ -1251,8 +1259,8 @@ function PipelineStripWithLabels({ pipeline, currentStatus, failed, title = 'BMR
   );
 }
 
-const INP = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-300 transition-colors';
-const LBL = 'block text-[11px] font-semibold text-gray-500 mb-1 tracking-wide';
+const INP = 'w-full border border-border rounded-lg px-3 py-2 text-sm text-ink bg-surface focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand-soft transition-colors';
+const LBL = 'block text-[11px] font-semibold text-ink-3 mb-1 tracking-wide';
 
 /* ──────────────── CONFIRM BATCH MODAL ──────────────────────── */
 
@@ -1329,20 +1337,20 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
         <>
           <Tip color="teal" icon={<Factory size={14} />}>Mark <b>all possible vessels, lines &amp; tanks</b> for this batch. During scheduling, the system will pick available ones. Capacity filter: {form.batchSize} KG - Filling: {form.fillingType.toUpperCase()}</Tip>
           <div className="mb-5">
-            <SectionLabel icon={<FlaskConical size={13} />} color="text-teal-600">Manufacturing Vessels</SectionLabel>
+            <SectionLabel icon={<FlaskConical size={13} />} color="text-brand">Manufacturing Vessels</SectionLabel>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {equipment.manufacturing.filter(e => e.type !== 'support').map(e => {
                 const ok = e.cap >= form.batchSize;
                 const checked = form.compatibleVessels.includes(e.id) || (form.compatibleVessels.length === 0 && ok);
                 return (
-                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-emerald-300 bg-emerald-50/60' : 'border-gray-200 bg-white hover:bg-gray-50') : 'border-red-200 bg-red-50/50 opacity-50 cursor-not-allowed'}`}>
-                    <input type="checkbox" className="mt-0.5 accent-emerald-500" checked={ok && checked} disabled={!ok}
+                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-ok-soft bg-ok-soft/60' : 'border-border bg-surface hover:bg-surface-2') : 'border-err-soft bg-err-soft/50 opacity-50 cursor-not-allowed'}`}>
+                    <input type="checkbox" className="mt-0.5 accent-ok" checked={ok && checked} disabled={!ok}
                       onChange={() => ok && setForm(f => ({ ...f, compatibleVessels: toggle(f.compatibleVessels, e.id) }))} />
                     <div>
-                      <div className="text-xs font-bold text-gray-800">{e.id} <span className="text-gray-400">({e.cap}L)</span></div>
-                      <div className="text-[10px] text-gray-500">{e.name}</div>
-                      <div className="text-[10px] text-gray-400">{e.homogenizer ? 'Homogenizer' : 'No homogenizer'} - {e.processType.join(', ').toUpperCase()}</div>
-                      {!ok && <div className="text-[10px] text-red-500 font-semibold mt-0.5 flex items-center gap-0.5"><X size={10} /> {e.cap}L &lt; {form.batchSize} KG</div>}
+                      <div className="text-xs font-bold text-ink">{e.id} <span className="text-ink-4">({e.cap}L)</span></div>
+                      <div className="text-[10px] text-ink-3">{e.name}</div>
+                      <div className="text-[10px] text-ink-4">{e.homogenizer ? 'Homogenizer' : 'No homogenizer'} - {e.processType.join(', ').toUpperCase()}</div>
+                      {!ok && <div className="text-[10px] text-err font-semibold mt-0.5 flex items-center gap-0.5"><X size={10} /> {e.cap}L &lt; {form.batchSize} KG</div>}
                     </div>
                   </label>
                 );
@@ -1350,34 +1358,34 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             </div>
           </div>
           <div className="mb-5">
-            <SectionLabel icon={<Cylinder size={13} />} color="text-blue-600">Supporting Tanks</SectionLabel>
+            <SectionLabel icon={<Cylinder size={13} />} color="text-brand">Supporting Tanks</SectionLabel>
             <div className="grid grid-cols-3 gap-2">
               {equipment.manufacturing.filter(e => e.type === 'support').map(e => {
                 const checked = form.supportingTanks.includes(e.id);
                 return (
-                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-blue-300 bg-blue-50/60' : 'border-gray-200'}`}>
-                    <input type="checkbox" className="accent-blue-500" checked={checked}
+                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-brand-soft bg-brand-soft/60' : 'border-border'}`}>
+                    <input type="checkbox" className="accent-brand" checked={checked}
                       onChange={() => setForm(f => ({ ...f, supportingTanks: toggle(f.supportingTanks, e.id) }))} />
-                    <span className="text-xs font-semibold">{e.id} <span className="text-gray-400">{e.cap}L</span></span>
+                    <span className="text-xs font-semibold">{e.id} <span className="text-ink-4">{e.cap}L</span></span>
                   </label>
                 );
               })}
             </div>
           </div>
           <div className="mb-5">
-            <SectionLabel icon={<Droplets size={13} />} color="text-purple-600">Filling Lines</SectionLabel>
+            <SectionLabel icon={<Droplets size={13} />} color="text-brand">Filling Lines</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               {equipment.filling.map(e => {
                 const ok = e.compatible.includes(form.fillingType);
                 const checked = form.compatibleFillLines.includes(e.id) || (form.compatibleFillLines.length === 0 && ok);
                 return (
-                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-purple-300 bg-purple-50/60' : 'border-gray-200 hover:bg-gray-50') : 'border-gray-200 bg-gray-50/50 opacity-50 cursor-not-allowed'}`}>
-                    <input type="checkbox" className="mt-0.5 accent-purple-500" checked={ok && checked} disabled={!ok}
+                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-brand-soft bg-brand-soft/60' : 'border-border hover:bg-surface-2') : 'border-border bg-surface-2/50 opacity-50 cursor-not-allowed'}`}>
+                    <input type="checkbox" className="mt-0.5 accent-brand" checked={ok && checked} disabled={!ok}
                       onChange={() => ok && setForm(f => ({ ...f, compatibleFillLines: toggle(f.compatibleFillLines, e.id) }))} />
                     <div>
-                      <div className="text-xs font-bold">{e.id} <Badge className="bg-purple-100 text-purple-700">{e.type.toUpperCase()}</Badge></div>
-                      <div className="text-[10px] text-gray-500">{e.name} - {fmt(e.speed)}/hr</div>
-                      {!ok && <div className="text-[10px] text-red-500 flex items-center gap-0.5"><X size={10} /> Not compatible with {form.fillingType.toUpperCase()}</div>}
+                      <div className="text-xs font-bold">{e.id} <Badge className="bg-brand-soft text-brand">{e.type.toUpperCase()}</Badge></div>
+                      <div className="text-[10px] text-ink-3">{e.name} - {fmt(e.speed)}/hr</div>
+                      {!ok && <div className="text-[10px] text-err flex items-center gap-0.5"><X size={10} /> Not compatible with {form.fillingType.toUpperCase()}</div>}
                     </div>
                   </label>
                 );
@@ -1385,17 +1393,17 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             </div>
           </div>
           <div>
-            <SectionLabel icon={<Package size={13} />} color="text-emerald-600">Packaging Lines</SectionLabel>
+            <SectionLabel icon={<Package size={13} />} color="text-ok">Packaging Lines</SectionLabel>
             <div className="grid grid-cols-3 gap-2">
               {equipment.packaging.map(e => {
                 const checked = form.compatiblePackLines.includes(e.id) || form.compatiblePackLines.length === 0;
                 return (
-                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-emerald-300 bg-emerald-50/60' : 'border-gray-200'}`}>
-                    <input type="checkbox" className="accent-emerald-500" checked={checked}
+                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-ok-soft bg-ok-soft/60' : 'border-border'}`}>
+                    <input type="checkbox" className="accent-ok" checked={checked}
                       onChange={() => setForm(f => ({ ...f, compatiblePackLines: toggle(f.compatiblePackLines, e.id) }))} />
                     <div>
                       <div className="text-xs font-bold">{e.id}</div>
-                      <div className="text-[10px] text-gray-500">{e.type.toUpperCase()} - {fmt(e.speed)}/hr</div>
+                      <div className="text-[10px] text-ink-3">{e.type.toUpperCase()} - {fmt(e.speed)}/hr</div>
                     </div>
                   </label>
                 );
@@ -1410,18 +1418,18 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
           <Tip color="orange" icon={<Users size={14} />}>Assign team members to each production stage. Unavailable members are shown but cannot be selected.</Tip>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div>
-              <SectionLabel icon={<FlaskConical size={13} />} color="text-orange-600">Manufacturing Team</SectionLabel>
+              <SectionLabel icon={<FlaskConical size={13} />} color="text-brand">Manufacturing Team</SectionLabel>
               {team.filter(t => t.dept === 'Manufacturing').map(t => (
                 <label key={t.id} className={`flex items-center gap-2 py-1.5 ${!t.avail ? 'opacity-40' : 'cursor-pointer'}`}>
-                  <input type="checkbox" className="accent-orange-500" checked={form.teamBMR.includes(t.id)} disabled={!t.avail}
+                  <input type="checkbox" className="accent-brand" checked={form.teamBMR.includes(t.id)} disabled={!t.avail}
                     onChange={() => t.avail && setForm(f => ({ ...f, teamBMR: toggle(f.teamBMR, t.id) }))} />
                   <div>
                     <div className="text-xs font-semibold">{t.name}</div>
-                    <div className="text-[10px] text-gray-400">{t.role}{!t.avail && ' - Unavailable'}</div>
+                    <div className="text-[10px] text-ink-4">{t.role}{!t.avail && ' - Unavailable'}</div>
                   </div>
                 </label>
               ))}
-              <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="mt-3 pt-3 border-t border-hairline">
                 <label className={LBL}>QC Officer - Bulk</label>
                 <select className={INP} value={form.qcOfficerBMR} onChange={e => setForm(f => ({ ...f, qcOfficerBMR: e.target.value }))}>
                   <option value="">Select QC Officer</option>
@@ -1430,25 +1438,25 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
               </div>
             </div>
             <div>
-              <SectionLabel icon={<Droplets size={13} />} color="text-purple-600">Filling Team</SectionLabel>
+              <SectionLabel icon={<Droplets size={13} />} color="text-brand">Filling Team</SectionLabel>
               {team.filter(t => t.dept === 'Filling').map(t => (
                 <label key={t.id} className={`flex items-center gap-2 py-1.5 ${!t.avail ? 'opacity-40' : 'cursor-pointer'}`}>
-                  <input type="checkbox" className="accent-purple-500" checked={form.teamBPR.includes(t.id)} disabled={!t.avail}
+                  <input type="checkbox" className="accent-brand" checked={form.teamBPR.includes(t.id)} disabled={!t.avail}
                     onChange={() => t.avail && setForm(f => ({ ...f, teamBPR: toggle(f.teamBPR, t.id) }))} />
-                  <div><div className="text-xs font-semibold">{t.name}</div><div className="text-[10px] text-gray-400">{t.role}</div></div>
+                  <div><div className="text-xs font-semibold">{t.name}</div><div className="text-[10px] text-ink-4">{t.role}</div></div>
                 </label>
               ))}
             </div>
             <div>
-              <SectionLabel icon={<Package size={13} />} color="text-emerald-600">Packaging Team</SectionLabel>
+              <SectionLabel icon={<Package size={13} />} color="text-ok">Packaging Team</SectionLabel>
               {team.filter(t => t.dept === 'Packaging').map(t => (
                 <label key={t.id} className={`flex items-center gap-2 py-1.5 ${!t.avail ? 'opacity-40' : 'cursor-pointer'}`}>
-                  <input type="checkbox" className="accent-emerald-500" checked={form.teamBPR.includes(t.id)} disabled={!t.avail}
+                  <input type="checkbox" className="accent-ok" checked={form.teamBPR.includes(t.id)} disabled={!t.avail}
                     onChange={() => t.avail && setForm(f => ({ ...f, teamBPR: toggle(f.teamBPR, t.id) }))} />
-                  <div><div className="text-xs font-semibold">{t.name}</div><div className="text-[10px] text-gray-400">{t.role}</div></div>
+                  <div><div className="text-xs font-semibold">{t.name}</div><div className="text-[10px] text-ink-4">{t.role}</div></div>
                 </label>
               ))}
-              <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="mt-3 pt-3 border-t border-hairline">
                 <label className={LBL}>QC Officer - Fill/Pack</label>
                 <select className={INP} value={form.qcOfficerBPR} onChange={e => setForm(f => ({ ...f, qcOfficerBPR: e.target.value }))}>
                   <option value="">Select QC Officer</option>
@@ -2222,7 +2230,7 @@ function AdjustBatchSizeModal({ batch, onClose, onSave }: {
       <Tip color="orange" icon={<Settings size={14} />}>Change the batch size during BMR or BPR. RM/PM required quantities scale proportionally; when the batch is linked to Planning, the planning batch row is updated on save.</Tip>
       <div className="mt-3">
         <label className={LBL}>Batch size (KG)</label>
-        <input className={INP} type="number" value={batchSize || ''} onChange={e => setBatchSize(parseFloat(e.target.value) || 0)} />
+        <input className={INP} type="number" aria-label="Batch size (KG)" value={batchSize || ''} onChange={e => setBatchSize(parseFloat(e.target.value) || 0)} />
       </div>
       <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
         <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
@@ -2482,6 +2490,7 @@ function SplitForVesselModal({
           <input
             className={INP}
             type="number"
+            aria-label="First run on this batch (KG)"
             min={1}
             max={batch.batchSize - 1}
             value={firstRunKg || ''}
@@ -2490,7 +2499,7 @@ function SplitForVesselModal({
         </div>
         <div>
           <label className={LBL}>Remainder → new split batch (KG)</label>
-          <input className={INP} type="number" readOnly value={remainderKg || ''} />
+          <input className={INP} type="number" aria-label="Remainder → new split batch (KG)" readOnly value={remainderKg || ''} />
         </div>
       </div>
       <div className="mt-3">
@@ -2498,18 +2507,19 @@ function SplitForVesselModal({
         <input
           className={INP}
           type="text"
+          aria-label="Reason (optional)"
           placeholder="e.g. 500 L vessel — split 800 KG batch"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
       </div>
-      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-hairline">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
         <button
           type="button"
           disabled={!canSubmit}
           onClick={() => void handleSplit()}
-          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm transition-colors"
+          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-brand hover:bg-brand disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm transition-colors"
         >
           {submitting ? <Loader2 size={13} className="animate-spin" /> : <Layers size={13} />}
           Split &amp; create sp batch
@@ -2998,32 +3008,32 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
 
   return (
     <Modal onClose={onClose} title={title} size="lg">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-3 py-2.5 flex gap-2 items-start text-xs mb-4">
+      <div className="rounded-lg border border-warn-soft bg-warn-soft text-warn px-3 py-2.5 flex gap-2 items-start text-xs mb-4">
         <div>{alertMsg}</div>
       </div>
       {(type === 'rm' && needLoadRm && loadingRm) || (type === 'pm' && needLoadPm && loadingPm) ? (
-        <div className="py-6 text-center text-sm text-gray-500">Loading {type.toUpperCase()} requirements…</div>
+        <div className="py-6 text-center text-sm text-ink-3">Loading {type.toUpperCase()} requirements…</div>
       ) : null}
       {type === 'rm' && needLoadRm && !loadingRm && rmLoadError && (
-        <div className="py-3 px-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">{rmLoadError}</div>
+        <div className="py-3 px-3 rounded-lg bg-warn-soft border border-warn-soft text-warn text-xs">{rmLoadError}</div>
       )}
       {items.length === 0 && !(type === 'rm' && needLoadRm && loadingRm) && !(type === 'pm' && needLoadPm && loadingPm) && (
-        <div className="py-3 px-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs">No {type.toUpperCase()} items for this batch. {type === 'rm' ? 'Ensure the product has a BOM with RM lines (same as RM & PM Availability tab).' : 'Ensure the product has a BOM with PM lines.'}</div>
+        <div className="py-3 px-3 rounded-lg bg-surface-2 border border-border text-ink-2 text-xs">No {type.toUpperCase()} items for this batch. {type === 'rm' ? 'Ensure the product has a BOM with RM lines (same as RM & PM Availability tab).' : 'Ensure the product has a BOM with PM lines.'}</div>
       )}
       {items.length > 0 && (
-        <div className="tbl-wrap overflow-x-auto rounded-xl border border-gray-100">
+        <div className="tbl-wrap overflow-auto max-h-[70vh] rounded-xl border border-hairline">
           <table className="w-full text-xs">
-            <thead><tr className="bg-gray-50/80 border-b border-gray-100">
-              <th className="px-3 py-2.5 w-10 text-left font-semibold text-gray-500"></th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'RM / INCI' : 'PM'}</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'Required KG' : 'Required'}</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">{type === 'rm' ? 'WH SIH' : 'SIH'}</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Other batches</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">This batch</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Free</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Status</th>
+            <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
+              <th scope="col" className="px-3 py-2.5 w-10 text-left font-semibold text-ink-3"></th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">{type === 'rm' ? 'RM / INCI' : 'PM'}</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">{type === 'rm' ? 'Required KG' : 'Required'}</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">{type === 'rm' ? 'WH SIH' : 'SIH'}</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Other batches</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">This batch</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Free</th>
+              <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Status</th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {items.map((r, i) => {
                 const code = String(r.code ?? '').trim();
                 const sih = stockMap[code] ?? 0;
@@ -3046,7 +3056,7 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                 const poOpenStage = stageRows.reduce((s, row) => s + (Number(row.poQuantity) || 0), 0);
                 const shortageQty = calcShortageQtyForKind(available, requiredQty, qtyKind);
                 return (
-                  <tr key={i} className={!whOk ? 'bg-red-50/50' : ''}>
+                  <tr key={i} className={!whOk ? 'bg-err-soft/50' : ''}>
                     <td className="px-3 py-2.5">
                       <input
                         type="checkbox"
@@ -3054,39 +3064,39 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
                         checked={checked}
                         disabled={alreadyFull}
                         onChange={(e) => setSelected((prev) => ({ ...prev, [i]: e.target.checked }))}
-                        className="rounded border-gray-300 text-amber-500 focus:ring-amber-400 disabled:opacity-40"
+                        className="rounded border-border text-warn focus:ring-warn disabled:opacity-40"
                       />
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="font-semibold text-gray-800">{r.inci || r.name || r.code}</div>
-                      <div className="text-[9px] text-gray-500">{r.code}</div>
+                      <div className="font-semibold text-ink">{r.inci || r.name || r.code}</div>
+                      <div className="text-[9px] text-ink-3">{r.code}</div>
                     </td>
                     <td className="px-3 py-2.5 font-mono font-semibold">{fmtQtyU(requiredQty)}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-700">{fmtQtyU(sih)}</td>
-                    <td className="px-3 py-2.5 font-mono text-amber-700" title="Reserved by other BMR/BPR batches">{fmtQtyU(otherReserved)}</td>
-                    <td className="px-3 py-2.5 font-mono text-indigo-700" title="Already reserved for this batch">{fmtQtyU(thisBatchReserved)}</td>
-                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-emerald-600' : 'text-red-600'}`} title="SIH minus other batches' reservation">{fmtQtyU(available)}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{fmtQtyU(sih)}</td>
+                    <td className="px-3 py-2.5 font-mono text-warn" title="Reserved by other BMR/BPR batches">{fmtQtyU(otherReserved)}</td>
+                    <td className="px-3 py-2.5 font-mono text-brand" title="Already reserved for this batch">{fmtQtyU(thisBatchReserved)}</td>
+                    <td className={`px-3 py-2.5 font-mono font-semibold ${whOk ? 'text-ok' : 'text-err'}`} title="SIH minus other batches' reservation">{fmtQtyU(available)}</td>
                     <td className="px-3 py-2.5">
                       {alreadyFull ? (
-                        <Badge className="bg-indigo-100 text-indigo-700 text-[8.5px]">Fully reserved</Badge>
+                        <Badge className="bg-brand-soft text-brand text-[8.5px]">Fully reserved</Badge>
                       ) : whOk ? (
-                        <Badge className="bg-emerald-100 text-emerald-700 text-[8.5px]">OK</Badge>
+                        <Badge className="bg-ok-soft text-ok text-[8.5px]">OK</Badge>
                       ) : (
                         <div className="space-y-1.5">
                           <span title={`Planning Items Involved coverage (reference): ${planningCoverage}%. Reserve still needs WH available ≥ required.`}>
-                            <Badge className="bg-red-100 text-red-600 text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>
+                            <Badge className="bg-err-soft text-err text-[8.5px]"><AlertTriangle size={10} /> Short</Badge>
                           </span>
-                          <div className="text-[10px] leading-tight text-red-700">
+                          <div className="text-[10px] leading-tight text-err">
                             <div>
                               Short {formatQtyShortage(shortageQty, qtyKind)} {unit} | Under GRN {fmtQty(underGrnStage)} | In Transit {fmtQty(inTransitStage)} | PO open {fmtQty(poOpenStage)}
                             </div>
                             {!whOk && (
-                              <div className="text-[9px] text-red-900/90 font-mono">
+                              <div className="text-[9px] text-err/90 font-mono">
                                 Need {fmtQtyU(requiredQty)} · Free {fmtQtyU(available)}
                                 {shortageQty > 0 ? ` · Gap ${formatQtyShortage(shortageQty, qtyKind)} ${unit}` : null}
                               </div>
                             )}
-                            <div className="text-[9px] text-red-800/80">
+                            <div className="text-[9px] text-err/80">
                               {processOwnerText({ underGrn: underGrnStage, inTransit: inTransitStage, poOpen: poOpenStage })}
                             </div>
                           </div>
@@ -3100,14 +3110,14 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
           </table>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
+      <div className="flex flex-wrap items-center justify-end gap-2 mt-5 pt-4 border-t border-hairline">
         {selectedShort && (
-          <span className="text-xs text-red-600 font-medium mr-auto">
+          <span className="text-xs text-err font-medium mr-auto">
             Cannot reserve selected lines — free stock (SIH − other batches&apos; reservation) is below required.
           </span>
         )}
-        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">Cancel</button>
-        <button type="button" onClick={() => void handleSave()} disabled={reserveDisabled} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors disabled:opacity-50">Cancel</button>
+        <button type="button" onClick={() => void handleSave()} disabled={reserveDisabled} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-warn hover:bg-warn text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           {saving ? <><Loader2 size={13} className="animate-spin" /> Reserving…</> : <>Reserve selected ({linesToReserve.length})</>}
         </button>
       </div>
@@ -3429,7 +3439,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
     setEquip: (v: string) => void,
     equipKind: 'mfg' | 'fill' | 'pack',
   ) => (
-    <div className={`rounded-lg border ${borderClass} bg-white/70 px-3 py-2`}>
+    <div className={`rounded-lg border ${borderClass} bg-surface/70 px-3 py-2`}>
       <label className={LBL}>{label}</label>
       <select
         className={INP}
@@ -3450,9 +3460,9 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
           );
         })}
       </select>
-      <div className="text-[10px] text-gray-500 mt-1">Stage date: {stageDate || '—'}</div>
+      <div className="text-[10px] text-ink-3 mt-1">Stage date: {stageDate || '—'}</div>
       {equipList.length === 0 && (
-        <p className="text-[10px] text-amber-700 mt-1">No lines configured — add under Production → Equipment.</p>
+        <p className="text-[10px] text-warn mt-1">No lines configured — add under Production → Equipment.</p>
       )}
     </div>
   );
@@ -3465,8 +3475,8 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
     setDate: (v: string) => void,
   ) => (
     <div className={`grid grid-cols-[auto_1fr_1fr] gap-3 items-center px-4 py-3 rounded-xl border mb-2 ${color}`}>
-      <span className="text-gray-500">{icon}</span>
-      <div className="text-[11px] font-bold text-gray-700">{label}</div>
+      <span className="text-ink-3">{icon}</span>
+      <div className="text-[11px] font-bold text-ink-2">{label}</div>
       <div><label className={LBL}>Date</label><input type="date" className={INP} value={dateVal} onChange={e => setDate(e.target.value)} /></div>
     </div>
   );
@@ -3509,7 +3519,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               ))}
             </select>
             {selectedSoId && batchesForSo.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">No batches found for this SO. Create batches for this SO first (e.g. from Planning).</p>
+              <p className="text-xs text-warn mt-1">No batches found for this SO. Create batches for this SO first (e.g. from Planning).</p>
             )}
           </div>
         </>
@@ -3517,9 +3527,9 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
 
       {!batch && (
         <>
-          <p className="text-sm text-gray-500 mb-4">Select a Sales Order and a batch above to set the schedule.</p>
-          <div className="flex justify-end pt-4 border-t border-gray-100">
-            <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <p className="text-sm text-ink-3 mb-4">Select a Sales Order and a batch above to set the schedule.</p>
+          <div className="flex justify-end pt-4 border-t border-hairline">
+            <button onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
           </div>
         </>
       )}
@@ -3527,14 +3537,14 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
       {batch && (
         <>
           <ScheduleYieldContextBanner batch={batch} />
-          <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/30 p-4">
-            <SectionLabel icon={<Factory size={13} />} color="text-teal-700">Manufacturing site &amp; plan</SectionLabel>
+          <div className="mb-5 rounded-2xl border border-brand-soft bg-brand-soft/30 p-4">
+            <SectionLabel icon={<Factory size={13} />} color="text-brand">Manufacturing site &amp; plan</SectionLabel>
             <Tip color="teal" icon={<MapPin size={14} />}>
               Choose where this batch will run. <b>MTR transfers</b> will send RM/PM to this manufacturing unit (ML) automatically.
             </Tip>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <div>
-                <label className={LBL}>Manufacturing location (MU zone) <span className="text-red-500">*</span></label>
+                <label className={LBL}>Manufacturing location (MU zone) <span className="text-err">*</span></label>
                 <select
                   className={INP}
                   value={scheduledMuZone}
@@ -3553,13 +3563,13 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
                   ))}
                 </select>
                 {allProductionZones.length === 0 && (
-                  <p className="text-[10px] text-amber-700 mt-1">Add manufacturing zones under Masters → Facility Management.</p>
+                  <p className="text-[10px] text-warn mt-1">Add manufacturing zones under Masters → Facility Management.</p>
                 )}
               </div>
               <div>
                 <label className={LBL}>Planned manufacturing date</label>
-                <div className="text-sm font-semibold text-gray-800 mt-1.5">{mfgDate || '—'}</div>
-                <p className="text-[10px] text-gray-500 mt-0.5">Set in Stage 1 below. Batch confirmation is allowed on or after this date.</p>
+                <div className="text-sm font-semibold text-ink mt-1.5">{mfgDate || '—'}</div>
+                <p className="text-[10px] text-ink-3 mt-0.5">Set in Stage 1 below. Batch confirmation is allowed on or after this date.</p>
               </div>
             </div>
             <div className="mt-3">
@@ -3572,7 +3582,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               />
             </div>
             {scheduledMuZone && (
-              <p className="text-[10px] text-teal-800 mt-2">
+              <p className="text-[10px] text-brand mt-2">
                 MTR receive zone: <b>{scheduledSiteLabel}</b> ({scheduledMuZone})
               </p>
             )}
@@ -3584,30 +3594,30 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
           )}
           {/* Recommended schedule from occupancy + volume (MV/FL/PL capacity vs batch volume) */}
           {bestRecommendation && !isScheduled && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4 mb-5">
+            <div className="rounded-xl border border-ok-soft bg-ok-soft/30 p-4 mb-5">
               <div className="flex justify-between items-center mb-2.5">
-                <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Recommended schedule (by occupancy &amp; volume)</div>
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">{bestRecommendation.confidenceScore}% optimal</span>
+                <div className="text-[10px] font-bold text-ink-2 uppercase tracking-wider">Recommended schedule (by occupancy &amp; volume)</div>
+                <span className="text-[10px] font-bold text-ok bg-ok-soft px-2 py-0.5 rounded-full">{bestRecommendation.confidenceScore}% optimal</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-emerald-50/60 border border-emerald-200/60 mb-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-ok-soft/60 border border-ok-soft/60 mb-2">
                 <div>
-                  <div className="text-[9px] text-gray-500 mb-0.5">Manufacturing</div>
-                  <div className="text-[11.5px] font-bold text-teal-700">{bestRecommendation.vesselName}</div>
-                  <div className="text-[10px] text-gray-500">{bestRecommendation.mfgDate}</div>
+                  <div className="text-[9px] text-ink-3 mb-0.5">Manufacturing</div>
+                  <div className="text-[11.5px] font-bold text-brand">{bestRecommendation.vesselName}</div>
+                  <div className="text-[10px] text-ink-3">{bestRecommendation.mfgDate}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] text-gray-500 mb-0.5">Filling</div>
-                  <div className="text-[11.5px] font-bold text-purple-700">{bestRecommendation.fillLineName}</div>
-                  <div className="text-[10px] text-gray-500">{bestRecommendation.fillDate}</div>
+                  <div className="text-[9px] text-ink-3 mb-0.5">Filling</div>
+                  <div className="text-[11.5px] font-bold text-brand">{bestRecommendation.fillLineName}</div>
+                  <div className="text-[10px] text-ink-3">{bestRecommendation.fillDate}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] text-gray-500 mb-0.5">Packaging</div>
-                  <div className="text-[11.5px] font-bold text-emerald-700">{bestRecommendation.packLineName}</div>
-                  <div className="text-[10px] text-gray-500">{bestRecommendation.packDate}</div>
+                  <div className="text-[9px] text-ink-3 mb-0.5">Packaging</div>
+                  <div className="text-[11.5px] font-bold text-ok">{bestRecommendation.packLineName}</div>
+                  <div className="text-[10px] text-ink-3">{bestRecommendation.packDate}</div>
                 </div>
               </div>
               {(batch.requiredVolumeLiters != null || (bestRecommendation.vessel && equipment.manufacturing.find(e => e.id === bestRecommendation.vessel)?.cap != null)) && (
-                <div className="text-[10px] text-gray-600 mb-2">
+                <div className="text-[10px] text-ink-2 mb-2">
                   {batch.requiredVolumeLiters != null && <span className="mr-3">Batch volume: <b>{batch.requiredVolumeLiters.toFixed(1)} L</b></span>}
                   {bestRecommendation.vessel && equipment.manufacturing.find(e => e.id === bestRecommendation.vessel)?.cap != null && (
                     <span>Vessel capacity: <b>{equipment.manufacturing.find(e => e.id === bestRecommendation.vessel)!.cap} L</b></span>
@@ -3616,10 +3626,10 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               )}
               <div className="flex flex-wrap gap-2 mb-3">
                 {bestRecommendation.reasons.map((r, i) => (
-                  <div key={i} className="flex-1 min-w-0 text-[9.5px] text-gray-600 bg-white/60 rounded px-2 py-1 border border-gray-100">{r}</div>
+                  <div key={i} className="flex-1 min-w-0 text-[9.5px] text-ink-2 bg-surface/60 rounded px-2 py-1 border border-hairline">{r}</div>
                 ))}
               </div>
-              <button type="button" onClick={handleConfirmRecommendation} className="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
+              <button type="button" onClick={handleConfirmRecommendation} className="w-full py-2.5 rounded-lg bg-ok hover:bg-ok text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
                 <Check size={14} /> One-click confirm
               </button>
             </div>
@@ -3627,20 +3637,20 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
 
           {/* Material Availability from DB */}
           <div className="mb-5">
-            <SectionLabel icon={<Package size={13} />} color="text-orange-600">Material Availability - Warehouse Inventory</SectionLabel>
+            <SectionLabel icon={<Package size={13} />} color="text-brand">Material Availability - Warehouse Inventory</SectionLabel>
             {materialsAvailability && batch.dispensingRM.length > 0 && (
-              <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-3">
-                <p className="text-xs font-bold text-orange-900">
+              <div className="mb-3 rounded-xl border border-brand-soft bg-brand-soft/80 px-4 py-3">
+                <p className="text-xs font-bold text-brand">
                   All RM available at WH by:{' '}
                   {materialsAvailability.maxRmAvailableBy ? (
                     <span className="font-mono text-sm">{formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)}</span>
                   ) : materialsAvailability.rmIncomplete ? (
-                    <span className="text-amber-800">Pending — some RMs lack GRN/PO arrival dates</span>
+                    <span className="text-warn">Pending — some RMs lack GRN/PO arrival dates</span>
                   ) : (
-                    <span className="text-emerald-800">Now (warehouse covers batch)</span>
+                    <span className="text-ok">Now (warehouse covers batch)</span>
                   )}
                 </p>
-                <p className="text-[10px] text-orange-800/90 mt-1 leading-relaxed">
+                <p className="text-[10px] text-brand/90 mt-1 leading-relaxed">
                   Schedule manufacturing after the latest RM arrival. Uses WH stock, Under GRN, in-transit GRN/PO ETAs, and open PO pipeline.
                   {earliestMfgAfterRm ? (
                     <>
@@ -3653,51 +3663,51 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials</SectionLabel>
+                <SectionLabel icon={<FlaskConical size={12} />} color="text-brand">Raw Materials</SectionLabel>
                 {batch.dispensingRM.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                      <tbody className="divide-y divide-gray-50">{batch.dispensingRM.map((r, i) => {
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
+                    <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                      <tbody className="divide-y divide-hairline">{batch.dispensingRM.map((r, i) => {
                         const sih = stockRM[r.code] ?? 0; const ok = !isQtyShort(sih, r.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, r.code, 'rm');
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 font-medium text-orange-800 whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        return <tr key={i} className={!ok ? 'bg-err-soft/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 font-medium text-brand whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-ok-soft text-ok">OK</Badge> : <Badge className="bg-err-soft text-err">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
-                ) : <p className="text-xs text-gray-400 italic">No RM items on this batch</p>}
+                ) : <p className="text-xs text-ink-4 italic">No RM items on this batch</p>}
               </div>
               <div>
-                <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials</SectionLabel>
+                <SectionLabel icon={<Package size={12} />} color="text-brand">Packaging Materials</SectionLabel>
                 {batch.dispensingPM.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
-                    <table className="w-full"><thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-left">Req</th><th className="px-2 py-1.5 text-left">SIH</th><th className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                      <tbody className="divide-y divide-gray-50">{batch.dispensingPM.map((p, i) => {
+                  <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
+                    <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
+                      <tbody className="divide-y divide-hairline">{batch.dispensingPM.map((p, i) => {
                         const sih = stockPM[p.code] ?? 0; const ok = !isQtyShort(sih, p.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, p.code, 'pm');
-                        return <tr key={i} className={!ok ? 'bg-red-50/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 font-medium text-purple-800 whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-emerald-100 text-emerald-700">OK</Badge> : <Badge className="bg-red-100 text-red-600">Short</Badge>}</td></tr>;
+                        return <tr key={i} className={!ok ? 'bg-err-soft/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 font-medium text-brand whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-ok-soft text-ok">OK</Badge> : <Badge className="bg-err-soft text-err">Short</Badge>}</td></tr>;
                       })}</tbody>
                     </table>
                   </div>
-                ) : <p className="text-xs text-gray-400 italic">No PM items on this batch</p>}
+                ) : <p className="text-xs text-ink-4 italic">No PM items on this batch</p>}
               </div>
             </div>
           </div>
 
           {/* Sequential Schedule */}
-          <div className="border border-orange-100 rounded-2xl p-5 bg-orange-50/20">
-            <SectionLabel icon={<Calendar size={13} />} color="text-orange-600">Sequential Schedule - Manufacturing {'>'} Filling {'>'} Packaging</SectionLabel>
+          <div className="border border-brand-soft rounded-2xl p-5 bg-brand-soft/20">
+            <SectionLabel icon={<Calendar size={13} />} color="text-brand">Sequential Schedule - Manufacturing {'>'} Filling {'>'} Packaging</SectionLabel>
             <Tip color="teal" icon={<Sparkles size={14} />}>System auto-suggested dates based on equipment availability. Adjust if needed.</Tip>
 
-            {scheduleRow(<FlaskConical size={16} />, 'STAGE 1 - Manufacturing', 'border-teal-200 bg-teal-50/40', mfgDate, handleMfgChange)}
+            {scheduleRow(<FlaskConical size={16} />, 'STAGE 1 - Manufacturing', 'border-brand-soft bg-brand-soft/40', mfgDate, handleMfgChange)}
 
-            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-orange-200 bg-orange-50/50 mb-2">
-              <Package size={14} className="text-orange-500" />
+            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-brand-soft bg-brand-soft/50 mb-2">
+              <Package size={14} className="text-brand" />
               <div>
-                <div className="text-[10px] text-orange-900 font-bold">RM will be available at WH by</div>
-                <div className="text-[9px] text-orange-800/80">Latest date across all batch RMs (warehouse + pipeline)</div>
+                <div className="text-[10px] text-brand font-bold">RM will be available at WH by</div>
+                <div className="text-[9px] text-brand/80">Latest date across all batch RMs (warehouse + pipeline)</div>
               </div>
               <div>
-                <div className="text-sm font-bold text-orange-900 font-mono mb-1">
+                <div className="text-sm font-bold text-brand font-mono mb-1">
                   {materialsAvailability?.maxRmAvailableBy
                     ? formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)
                     : materialsAvailability?.allRmCoveredNow
@@ -3707,25 +3717,25 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
                 <label className={LBL}>RM connect date</label>
                 <input type="date" className={INP} value={rmDate} onChange={e => setRmDate(e.target.value)} />
               </div>
-              <div className="text-[10px] text-orange-800/90 leading-snug">
+              <div className="text-[10px] text-brand/90 leading-snug">
                 {earliestMfgAfterRm && mfgDate && mfgDate < earliestMfgAfterRm ? (
-                  <span className="font-semibold text-amber-800">MFG is before all RM are ready — move MFG to {formatMaterialAvailableByLabel(earliestMfgAfterRm)} or later.</span>
+                  <span className="font-semibold text-warn">MFG is before all RM are ready — move MFG to {formatMaterialAvailableByLabel(earliestMfgAfterRm)} or later.</span>
                 ) : (
                   <>Prefilled from latest RM arrival (or 2 days before MFG).</>
                 )}
               </div>
             </div>
 
-            {scheduleRow(<Droplets size={16} />, 'STAGE 2 - Filling', 'border-purple-200 bg-purple-50/40', fillDate, setFillDate)}
+            {scheduleRow(<Droplets size={16} />, 'STAGE 2 - Filling', 'border-brand-soft bg-brand-soft/40', fillDate, setFillDate)}
 
-            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 mb-2">
-              <Package size={14} className="text-gray-400" />
+            <div className="ml-8 grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2 rounded-xl border border-hairline bg-surface-2/50 mb-2">
+              <Package size={14} className="text-ink-4" />
               <div>
-                <div className="text-[10px] text-gray-500 font-semibold">PM available at WH by</div>
-                <div className="text-[9px] text-gray-400">Latest across all batch PMs</div>
+                <div className="text-[10px] text-ink-3 font-semibold">PM available at WH by</div>
+                <div className="text-[9px] text-ink-4">Latest across all batch PMs</div>
               </div>
               <div>
-                <div className="text-sm font-bold text-purple-900 font-mono mb-1">
+                <div className="text-sm font-bold text-brand font-mono mb-1">
                   {materialsAvailability?.maxPmAvailableBy
                     ? formatMaterialAvailableByLabel(materialsAvailability.maxPmAvailableBy)
                     : materialsAvailability?.allPmCoveredNow
@@ -3735,36 +3745,36 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
                 <label className={LBL}>PM connect date</label>
                 <input type="date" className={INP} value={pmDate} onChange={e => setPmDate(e.target.value)} />
               </div>
-              <div className="text-[10px] text-gray-400">Prefilled from latest PM arrival (or 2 days before Fill)</div>
+              <div className="text-[10px] text-ink-4">Prefilled from latest PM arrival (or 2 days before Fill)</div>
             </div>
 
-            {scheduleRow(<Package size={16} />, 'STAGE 3 - Packaging', 'border-emerald-200 bg-emerald-50/40', packDate, setPackDate)}
+            {scheduleRow(<Package size={16} />, 'STAGE 3 - Packaging', 'border-ok-soft bg-ok-soft/40', packDate, setPackDate)}
 
-            <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50/40">
-              <CheckCircle2 size={16} className="text-blue-500" /><div className="text-[11px] font-bold text-blue-700">FG Ready</div>
+            <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-3 items-center px-4 py-2.5 rounded-xl border border-brand-soft bg-brand-soft/40">
+              <CheckCircle2 size={16} className="text-brand" /><div className="text-[11px] font-bold text-brand">FG Ready</div>
               <div><label className={LBL}>FG Date</label><input type="date" className={INP} value={fgDate} onChange={e => setFgDate(e.target.value)} /></div>
               <div></div>
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-4 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-800">
+            <div className="flex flex-wrap gap-3 mt-4 px-3 py-2.5 rounded-xl bg-ok-soft border border-ok-soft text-xs text-ok">
               <span>MFG: <b>{mfgDate}</b></span><span>Fill: <b>{fillDate}</b></span><span>Pack: <b>{packDate}</b></span>
               <span>FG: <b>{fgDate}</b></span><span>RM@WH: <b>{rmDate}</b></span><span>PM@WH: <b>{pmDate}</b></span>
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/30 p-4">
-            <SectionLabel icon={<Factory size={13} />} color="text-indigo-700">Equipment reservation</SectionLabel>
-            <p className="text-[10px] text-indigo-900/80 mb-3">
+          <div className="mt-4 rounded-xl border border-brand-soft bg-brand-soft/30 p-4">
+            <SectionLabel icon={<Factory size={13} />} color="text-brand">Equipment reservation</SectionLabel>
+            <p className="text-[10px] text-brand/80 mb-3">
               Select vessel, fill line, and pack line for the stage dates above. Equipment reserved on a date is available for other batches from the next day onward.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              {equipmentReserveSelect('Manufacturing vessel', 'border-teal-200', mfgDate, compatV, vessel, setVessel, 'mfg')}
-              {equipmentReserveSelect('Filling line', 'border-purple-200', fillDate, compatF, fillLine, setFillLine, 'fill')}
-              {equipmentReserveSelect('Packaging line', 'border-emerald-200', packDate, compatP, packLine, setPackLine, 'pack')}
+              {equipmentReserveSelect('Manufacturing vessel', 'border-brand-soft', mfgDate, compatV, vessel, setVessel, 'mfg')}
+              {equipmentReserveSelect('Filling line', 'border-brand-soft', fillDate, compatF, fillLine, setFillLine, 'fill')}
+              {equipmentReserveSelect('Packaging line', 'border-ok-soft', packDate, compatP, packLine, setPackLine, 'pack')}
             </div>
             {compatSupport.length > 0 && (
-              <div className="mt-3 px-3 py-3 rounded-lg border border-blue-200 bg-white/70">
-                <div className="text-[10px] font-bold text-blue-800 mb-2">Supporting tanks (MFG date)</div>
+              <div className="mt-3 px-3 py-3 rounded-lg border border-brand-soft bg-surface/70">
+                <div className="text-[10px] font-bold text-brand mb-2">Supporting tanks (MFG date)</div>
                 <div className="flex flex-wrap gap-2">
                   {compatSupport.map((id) => {
                     const eq = mfgList.find((e) => e.id === id);
@@ -3777,21 +3787,21 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
                       <label
                         key={id}
                         className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                          checked ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                          checked ? 'border-brand-soft bg-brand-soft' : 'border-border bg-surface hover:bg-surface-2'
                         } ${!free && !checked ? 'opacity-60' : ''}`}
                       >
                         <input
                           type="checkbox"
-                          className="accent-blue-500"
+                          className="accent-brand"
                           checked={checked}
                           disabled={!free && !checked}
                           onChange={() => setSupportingTanks((prev) => (
                             prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
                           ))}
                         />
-                        <span className="font-semibold text-gray-800">
+                        <span className="font-semibold text-ink">
                           {id}{eq?.cap != null ? ` (${eq.cap}L)` : ''}{' '}
-                          <span className={free || checked ? 'text-emerald-600' : 'text-red-600'}>
+                          <span className={free || checked ? 'text-ok' : 'text-err'}>
                             {free ? '(Free)' : occupiedOn ? `(From ${equipmentAvailableFromDate(occupiedOn)})` : '(Busy)'}
                           </span>
                         </span>
@@ -3802,7 +3812,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               </div>
             )}
             {(vessel || fillLine || packLine) && (
-              <p className="text-[10px] text-indigo-900 mt-3">
+              <p className="text-[10px] text-brand mt-3">
                 Reserved:{' '}
                 <b>
                   {vessel ? `${vessel} (${mfgDate})` : '—'}
@@ -3814,7 +3824,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
             {!scheduleEquipmentValidation.ok && (
               <ul className="mt-3 space-y-1" role="alert">
                 {scheduleEquipmentValidation.errors.map((err) => (
-                  <li key={err} className="text-xs text-red-700 flex items-start gap-1.5">
+                  <li key={err} className="text-xs text-err flex items-start gap-1.5">
                     <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {err}
                   </li>
                 ))}
@@ -3828,15 +3838,15 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
             onChange={setTeamAssignment}
           />
 
-          <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-hairline">
             <div>
               {isScheduled && (
-                <button onClick={handleUnschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"><X size={12} /> Unschedule</button>
+                <button onClick={handleUnschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs text-err border border-err-soft rounded-lg hover:bg-err-soft transition-colors"><X size={12} /> Unschedule</button>
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-              <button type="button" onClick={handleSave} disabled={!batch || !mfgDate || !String(scheduledMuZone || '').trim() || !scheduleEquipmentValidation.ok} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {isScheduled ? 'Update Schedule' : 'Save Schedule & Reserve Equipment'}</button>
+              <button onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
+              <button type="button" onClick={handleSave} disabled={!batch || !mfgDate || !String(scheduledMuZone || '').trim() || !scheduleEquipmentValidation.ok} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-brand hover:bg-brand text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {isScheduled ? 'Update Schedule' : 'Save Schedule & Reserve Equipment'}</button>
             </div>
           </div>
         </>
@@ -4129,14 +4139,14 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
   const overTotalCapacity = vesselCap != null && totalWithThis > vesselCap;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-4 border border-gray-100" onClick={e => e.stopPropagation()}>
-        <div className="modal-hdr flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll className="pt-10">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl my-4 border border-hairline" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"sch-title"}>
+        <div className="modal-hdr flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
-            <div className="modal-title text-base font-bold text-gray-900 tracking-tight" id="sch-title">{modalTitle}</div>
-            <div className="text-[10.5px] text-gray-500 mt-0.5" id="sch-sub">{modalSub}</div>
+            <div className="modal-title text-base font-bold text-ink tracking-tight" id="sch-title">{modalTitle}</div>
+            <div className="text-[10.5px] text-ink-3 mt-0.5" id="sch-sub">{modalSub}</div>
           </div>
-          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" aria-label="Close">×</button>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm p-1.5 rounded-lg hover:bg-surface-3 text-ink-3 transition-colors" aria-label="Close">×</button>
         </div>
 
         <div className="modal-body px-6 py-5 max-h-[65vh] overflow-y-auto" id="sch-body">
@@ -4165,83 +4175,83 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                 ))}
               </select>
               {selectedSoId && batchesForSo.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1">No unscheduled batches for this SO.</p>
+                <p className="text-xs text-warn mt-1">No unscheduled batches for this SO.</p>
               )}
             </div>
           </div>
 
           {batch && <ScheduleYieldContextBanner batch={batch} />}
           {batch && materialsAvailability && batch.dispensingRM.length > 0 && (
-            <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-3">
-              <p className="text-xs font-bold text-orange-900">
+            <div className="mb-3 rounded-xl border border-brand-soft bg-brand-soft/80 px-4 py-3">
+              <p className="text-xs font-bold text-brand">
                 All RM available at WH by:{' '}
                 {materialsAvailability.maxRmAvailableBy ? (
                   <span className="font-mono text-sm">{formatMaterialAvailableByLabel(materialsAvailability.maxRmAvailableBy)}</span>
                 ) : materialsAvailability.rmIncomplete ? (
-                  <span className="text-amber-800">Pending — check GRN/PO ETAs</span>
+                  <span className="text-warn">Pending — check GRN/PO ETAs</span>
                 ) : (
-                  <span className="text-emerald-800">Now</span>
+                  <span className="text-ok">Now</span>
                 )}
               </p>
               {earliestMfgAfterRm && (
-                <p className="text-[10px] text-orange-800/90 mt-1">
+                <p className="text-[10px] text-brand/90 mt-1">
                   Earliest suggested MFG: <span className="font-semibold font-mono">{formatMaterialAvailableByLabel(earliestMfgAfterRm)}</span>
                   {mfgDate && mfgDate < earliestMfgAfterRm ? (
-                    <span className="text-amber-800 font-semibold"> — current MFG date is earlier than all RM are ready.</span>
+                    <span className="text-warn font-semibold"> — current MFG date is earlier than all RM are ready.</span>
                   ) : null}
                 </p>
               )}
             </div>
           )}
           {batch && bprAwaitingBmrRelease(batch) && (
-            <div className="mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50/80 text-[11px] text-amber-900">
+            <div className="mb-3 p-2.5 rounded-lg border border-warn-soft bg-warn-soft/80 text-[11px] text-warn">
               <span className="font-semibold">Awaiting BMR QC release</span> — you can still adjust <b>fill / pack / FG dates</b> (and MFG if shown) to absorb BPR-side delays.
             </div>
           )}
 
           {!batch && (
-            <div className="flex justify-end pt-4 border-t border-gray-100">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+            <div className="flex justify-end pt-4 border-t border-hairline">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
             </div>
           )}
 
           {batch && recommendation && (
             <>
               {/* Recommended schedule card */}
-              <div className="rec-card rounded-xl border border-emerald-200 bg-emerald-50/30 p-4 mb-4">
+              <div className="rec-card rounded-xl border border-ok-soft bg-ok-soft/30 p-4 mb-4">
                 <div className="flex justify-between items-center mb-2.5">
-                  <div className="rec-card-title text-[10px] font-bold text-gray-600 uppercase tracking-wider">Recommended schedule</div>
-                  <span className="rec-score text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">{recommendation.confidenceScore}% optimal</span>
+                  <div className="rec-card-title text-[10px] font-bold text-ink-2 uppercase tracking-wider">Recommended schedule</div>
+                  <span className="rec-score text-[10px] font-bold text-ok bg-ok-soft px-2 py-0.5 rounded-full">{recommendation.confidenceScore}% optimal</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-emerald-50/60 border border-emerald-200/60 mb-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-lg bg-ok-soft/60 border border-ok-soft/60 mb-2">
                   <div>
-                    <div className="text-[9px] text-gray-500 mb-0.5">Manufacturing</div>
-                    <div className="text-[11.5px] font-bold text-teal-700">{recommendation.vesselName || recommendation.vessel || '—'}</div>
-                    <div className="text-[10px] text-gray-500">{recommendation.mfgDate || '—'}</div>
+                    <div className="text-[9px] text-ink-3 mb-0.5">Manufacturing</div>
+                    <div className="text-[11.5px] font-bold text-brand">{recommendation.vesselName || recommendation.vessel || '—'}</div>
+                    <div className="text-[10px] text-ink-3">{recommendation.mfgDate || '—'}</div>
                   </div>
                   <div>
-                    <div className="text-[9px] text-gray-500 mb-0.5">Filling</div>
-                    <div className="text-[11.5px] font-bold text-purple-700">{recommendation.fillLineName || recommendation.fillLine || '—'}</div>
-                    <div className="text-[10px] text-gray-500">{recommendation.fillDate || '—'}</div>
+                    <div className="text-[9px] text-ink-3 mb-0.5">Filling</div>
+                    <div className="text-[11.5px] font-bold text-brand">{recommendation.fillLineName || recommendation.fillLine || '—'}</div>
+                    <div className="text-[10px] text-ink-3">{recommendation.fillDate || '—'}</div>
                   </div>
                   <div>
-                    <div className="text-[9px] text-gray-500 mb-0.5">Packaging</div>
-                    <div className="text-[11.5px] font-bold text-emerald-700">{recommendation.packLineName || recommendation.packLine || '—'}</div>
-                    <div className="text-[10px] text-gray-500">{recommendation.packDate || '—'}</div>
+                    <div className="text-[9px] text-ink-3 mb-0.5">Packaging</div>
+                    <div className="text-[11.5px] font-bold text-ok">{recommendation.packLineName || recommendation.packLine || '—'}</div>
+                    <div className="text-[10px] text-ink-3">{recommendation.packDate || '—'}</div>
                   </div>
                 </div>
                 {(batch?.requiredVolumeLiters != null || (recommendation.vessel && equipment.manufacturing.find(e => e.id === recommendation.vessel)?.cap != null)) && (
-                  <div className="text-[10px] text-gray-600 mb-2">
+                  <div className="text-[10px] text-ink-2 mb-2">
                     {batch?.requiredVolumeLiters != null && <span className="rec-item">Batch volume: <b>{batch.requiredVolumeLiters.toFixed(1)} L</b></span>}
                     {recommendation.vessel && equipment.manufacturing.find(e => e.id === recommendation.vessel)?.cap != null && (
                       <span className="ml-3 rec-item">Vessel capacity: <b>{equipment.manufacturing.find(e => e.id === recommendation.vessel)!.cap} L</b></span>
                     )}
                     {recommendation.vessel && vesselCap != null && batchVol != null && batchVol <= vesselCap && totalWithThis <= vesselCap && vesselCap > totalWithThis && (
-                      <div className="mt-1 rec-item font-medium text-emerald-600">{Math.round((vesselCap - totalWithThis) * 10) / 10} L more capacity left after scheduling.</div>
+                      <div className="mt-1 rec-item font-medium text-ok">{Math.round((vesselCap - totalWithThis) * 10) / 10} L more capacity left after scheduling.</div>
                     )}
                   </div>
                 )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] text-gray-600 mb-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] text-ink-2 mb-3">
                   <div className="rec-item">
                     RM at WH:{' '}
                     <b>
@@ -4262,18 +4272,18 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                 </div>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {recommendation.reasons.map((r, i) => (
-                    <div key={i} className="rec-item flex-1 min-w-0 text-[9.5px] text-gray-600 bg-white/60 rounded px-2 py-1 border border-gray-100">{r}</div>
+                    <div key={i} className="rec-item flex-1 min-w-0 text-[9.5px] text-ink-2 bg-surface/60 rounded px-2 py-1 border border-hairline">{r}</div>
                   ))}
                 </div>
-                <button type="button" onClick={handleAcceptRecommendation} className="rec-btn w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
+                <button type="button" onClick={handleAcceptRecommendation} className="rec-btn w-full py-2.5 rounded-lg bg-ok hover:bg-ok text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
                   <Check size={14} /> One-click confirm
                 </button>
               </div>
 
               {/* Manual override */}
-              <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
-                <div className="text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-2">Manual override</div>
-                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-teal-50/80 border border-teal-100 text-[11px] text-teal-800 mb-3">
+              <div className="mt-4 p-4 rounded-xl bg-surface-2 border border-border">
+                <div className="text-[10.5px] font-bold text-ink-3 uppercase tracking-wider mb-2">Manual override</div>
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-brand-soft/80 border border-brand-soft text-[11px] text-brand mb-3">
                   <div>Or adjust dates and equipment below if needed.</div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
@@ -4289,7 +4299,7 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                   </div>
                 </div>
                 {(batchVol != null || vesselCap != null || volumeRequiredInBatch != null) && (
-                  <div className={`mb-3 p-3 rounded-lg border text-xs ${overCapacity || overTotalCapacity ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                  <div className={`mb-3 p-3 rounded-lg border text-xs ${overCapacity || overTotalCapacity ? 'bg-err-soft border-err-soft text-err' : 'bg-surface-2 border-border text-ink-2'}`}>
                     <div className="font-semibold mb-1.5">Volume & capacity</div>
                     <div className="grid grid-cols-2 gap-2">
                       <span>Volume required in this batch: <b>{volumeRequiredInBatch != null ? `${volumeRequiredInBatch.toFixed(1)} L` : '—'}</b></span>
@@ -4302,33 +4312,33 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                       <button
                         type="button"
                         onClick={() => onRequestVesselSplit(batch, vesselCap)}
-                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold bg-white border border-red-300 text-red-800 rounded-lg hover:bg-red-100 transition-colors"
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold bg-surface border border-err-soft text-err rounded-lg hover:bg-err-soft transition-colors"
                       >
                         <Layers size={12} /> Split batch for vessel ({vesselCap} L) &amp; reschedule remainder
                       </button>
                     )}
                     {!overCapacity && overTotalCapacity && <p className="mt-1.5 font-medium">Total scheduled volume exceeds vessel capacity.</p>}
                     {!overCapacity && !overTotalCapacity && vesselCap != null && totalWithThis < vesselCap && (
-                      <p className="mt-1.5 font-medium text-emerald-600">{Math.max(0, Math.round((vesselCap - totalWithThis) * 10) / 10).toFixed(1)} L more capacity left on this vessel/date.</p>
+                      <p className="mt-1.5 font-medium text-ok">{Math.max(0, Math.round((vesselCap - totalWithThis) * 10) / 10).toFixed(1)} L more capacity left on this vessel/date.</p>
                     )}
                   </div>
                 )}
                 {batchWithUnits && (batchWithUnits.fillUnitsRequired > 0 || batchWithUnits.packUnitsRequired > 0) && (equipment?.filling?.some(e => (e.speed ?? 0) > 0) || equipment?.packaging?.some(e => (e.speed ?? 0) > 0)) && (
-                  <div className="mb-3 p-3 rounded-lg border border-purple-200 bg-purple-50/40 text-xs text-slate-700">
+                  <div className="mb-3 p-3 rounded-lg border border-brand-soft bg-brand-soft/40 text-xs text-ink-2">
                     <div className="font-semibold mb-1.5">Filling & packaging capacity (units/day)</div>
-                    <p className="text-[10.5px] text-slate-600 mb-2">
+                    <p className="text-[10.5px] text-ink-2 mb-2">
                       PM type: <b>{(batch?.fillingType ?? 'bottle').toUpperCase()}</b>
                       {' · '}Planned split (order ÷ batches): <b>{batchWithUnits.fillUnitsRequired} fill</b>, <b>{batchWithUnits.packUnitsRequired} pack</b> units
                       {batch?.bulkYield != null && Number(batch.bulkYield) > 0 && (
-                        <span className="block mt-1 text-indigo-800 font-medium">
+                        <span className="block mt-1 text-brand font-medium">
                           BMR bulk recorded: <b>{formatYieldKg(Number(batch.bulkYield))} KG</b> vs planned <b>{batch.batchSize} KG</b> — use fill/pack QC yields when available for true output.
                         </span>
                       )}
                       {batch?.fillYield != null && Number(batch.fillYield) > 0 && (
-                        <span className="block mt-1 text-purple-800 font-medium">Fill QC yield on file: <b>{formatYieldUnits(Number(batch.fillYield))}</b> units.</span>
+                        <span className="block mt-1 text-brand font-medium">Fill QC yield on file: <b>{formatYieldUnits(Number(batch.fillYield))}</b> units.</span>
                       )}
                       {batch?.fgYield != null && Number(batch.fgYield) > 0 && (
-                        <span className="block mt-1 text-emerald-800 font-medium">Pack QC / FG yield on file: <b>{formatYieldUnits(Number(batch.fgYield))}</b> units.</span>
+                        <span className="block mt-1 text-ok font-medium">Pack QC / FG yield on file: <b>{formatYieldUnits(Number(batch.fgYield))}</b> units.</span>
                       )}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4339,8 +4349,8 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                         const remaining = getFillLineRemainingCapacity(equipment.filling ?? [], fillLine, fillDate, scheduledBatchesWithUnits, DEFAULT_WORKING_HOURS_PER_DAY, batch?.bmrNo);
                         const afterThis = remaining - (batchWithUnits.fillUnitsRequired ?? 0);
                         return (
-                          <div className="rounded-lg bg-white/60 p-2 border border-purple-100">
-                            <div className="font-medium text-purple-800">{fillLine} on {fillDate}</div>
+                          <div className="rounded-lg bg-surface/60 p-2 border border-brand-soft">
+                            <div className="font-medium text-brand">{fillLine} on {fillDate}</div>
                             <div className="mt-1 space-y-0.5 text-[10.5px]">
                               <span>Capacity: <b>{dailyCap.toLocaleString()}</b>/day ({fillEquip?.speed != null ? `${fillEquip.speed}/hr` : '—'})</span>
                               <br />
@@ -4349,9 +4359,9 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                               <span>This batch: <b>{batchWithUnits.fillUnitsRequired}</b> units</span>
                               <br />
                               {afterThis >= 0 ? (
-                                <span className="text-emerald-600 font-medium">Remaining after: <b>{afterThis.toLocaleString()}</b> units</span>
+                                <span className="text-ok font-medium">Remaining after: <b>{afterThis.toLocaleString()}</b> units</span>
                               ) : (
-                                <span className="text-amber-600 font-medium">Over by <b>{(-afterThis).toLocaleString()}</b> units (consider another line or date)</span>
+                                <span className="text-warn font-medium">Over by <b>{(-afterThis).toLocaleString()}</b> units (consider another line or date)</span>
                               )}
                             </div>
                           </div>
@@ -4364,8 +4374,8 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                         const remaining = getPackLineRemainingCapacity(equipment.packaging ?? [], packLine, packDate, scheduledBatchesWithUnits, DEFAULT_WORKING_HOURS_PER_DAY, batch?.bmrNo);
                         const afterThis = remaining - (batchWithUnits.packUnitsRequired ?? 0);
                         return (
-                          <div className="rounded-lg bg-white/60 p-2 border border-emerald-100">
-                            <div className="font-medium text-emerald-800">{packLine} on {packDate}</div>
+                          <div className="rounded-lg bg-surface/60 p-2 border border-ok-soft">
+                            <div className="font-medium text-ok">{packLine} on {packDate}</div>
                             <div className="mt-1 space-y-0.5 text-[10.5px]">
                               <span>Capacity: <b>{dailyCap.toLocaleString()}</b>/day ({packEquip?.speed != null ? `${packEquip.speed}/hr` : '—'})</span>
                               <br />
@@ -4374,9 +4384,9 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                               <span>This batch: <b>{batchWithUnits.packUnitsRequired}</b> units</span>
                               <br />
                               {afterThis >= 0 ? (
-                                <span className="text-emerald-600 font-medium">Remaining after: <b>{afterThis.toLocaleString()}</b> units</span>
+                                <span className="text-ok font-medium">Remaining after: <b>{afterThis.toLocaleString()}</b> units</span>
                               ) : (
-                                <span className="text-amber-600 font-medium">Over by <b>{(-afterThis).toLocaleString()}</b> units (consider another line or date)</span>
+                                <span className="text-warn font-medium">Over by <b>{(-afterThis).toLocaleString()}</b> units (consider another line or date)</span>
                               )}
                             </div>
                           </div>
@@ -4416,11 +4426,11 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
                     onChange={setTeamAssignment}
                   />
                 )}
-                <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-blue btn-sm py-2 px-4 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-3">
+                <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-blue btn-sm py-2 px-4 rounded-lg bg-brand hover:bg-brand text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-3">
                   Save manual schedule
                 </button>
                 {!scheduleEquipmentValidation.ok && (
-                  <p className="text-xs text-red-600 mt-2" role="alert">{scheduleEquipmentValidation.errors[0]}</p>
+                  <p className="text-xs text-err mt-2" role="alert">{scheduleEquipmentValidation.errors[0]}</p>
                 )}
               </div>
             </>
@@ -4428,15 +4438,15 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
         </div>
 
         {batch && recommendation && (
-          <div className="modal-foot flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
-            <button type="button" onClick={onClose} className="btn btn-ghost btn-sm px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
-            <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-primary inline-flex items-center gap-1.5 px-5 py-2 text-[13px] font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          <div className="modal-foot flex items-center justify-end gap-2 px-6 py-4 border-t border-hairline bg-surface-2/50 rounded-b-2xl">
+            <button type="button" onClick={onClose} className="btn btn-ghost btn-sm px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
+            <button type="button" onClick={handleSaveManual} disabled={!scheduleEquipmentValidation.ok} className="btn btn-primary inline-flex items-center gap-1.5 px-5 py-2 text-[13px] font-semibold bg-brand hover:bg-brand text-white rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Calendar size={14} /> Confirm schedule & reserve equipment
             </button>
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -4985,7 +4995,7 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
         . Use MTR from warehouse if qty at site is insufficient.
       </Tip>
       {reqError && (
-        <div className="rounded-lg border border-red-200 bg-red-50/60 text-red-700 px-3 py-2 text-xs mt-3">
+        <div className="rounded-lg border border-err-soft bg-err-soft/60 text-err px-3 py-2 text-xs mt-3">
           {reqError}
         </div>
       )}
@@ -4995,7 +5005,7 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
         </Tip>
       )}
       {dispenseErr && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/60 text-amber-900 px-3 py-2 text-xs mt-2">
+        <div className="rounded-lg border border-warn-soft bg-warn-soft/60 text-warn px-3 py-2 text-xs mt-2">
           {dispenseErr}
         </div>
       )}
@@ -5006,25 +5016,25 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
             {shiftLeadName ? <> · assigned to <b>{shiftLeadName}</b></> : null}
           </div>
         ) : null}
-        <div className="flex justify-between text-xs text-gray-500 mb-1.5"><span>Progress</span><span className="font-mono font-bold text-emerald-600">{done}/{total} ({pct}%)</span></div>
-        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : pct > 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${pct}%` }} /></div>
+        <div className="flex justify-between text-xs text-ink-3 mb-1.5"><span>Progress</span><span className="font-mono font-bold text-ok">{done}/{total} ({pct}%)</span></div>
+        <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-ok' : pct > 50 ? 'bg-warn' : 'bg-err'}`} style={{ width: `${pct}%` }} /></div>
       </div>
       <div className="space-y-2">
         {reqLoading ? (
-          <div className="py-4 text-center text-sm text-gray-500">Loading {type === 'rm' ? 'RM' : 'PM'} requirements…</div>
+          <div className="py-4 text-center text-sm text-ink-3">Loading {type === 'rm' ? 'RM' : 'PM'} requirements…</div>
         ) : localItems.length === 0 ? (
-          <div className="py-3 px-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs">
+          <div className="py-3 px-3 rounded-lg bg-surface-2 border border-border text-ink-2 text-xs">
             No {type === 'rm' ? 'RM' : 'PM'} items to dispense for this batch. If this is expected, verify the batch is linked to Planning BOM.
           </div>
         ) : (
           localItems.map((r, idx) => (
-            <div key={idx} className={`flex items-center gap-3 p-3.5 rounded-xl border transition-colors ${r.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-200'}`}>
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${r.done ? 'bg-emerald-100 border border-emerald-300 text-emerald-600' : 'bg-gray-100 border border-gray-200 text-gray-500'}`}>
+            <div key={idx} className={`flex items-center gap-3 p-3.5 rounded-xl border transition-colors ${r.done ? 'border-ok-soft bg-ok-soft/60' : 'border-border'}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${r.done ? 'bg-ok-soft border border-ok-soft text-ok' : 'bg-surface-3 border border-border text-ink-3'}`}>
                 {r.done ? <Check size={12} strokeWidth={3} /> : idx + 1}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gray-800">{r.inci || r.name || r.code}</div>
-                <div className="text-[10px] text-gray-400">
+                <div className="text-xs font-semibold text-ink">{r.inci || r.name || r.code}</div>
+                <div className="text-[10px] text-ink-4">
                   {r.code} — Target:{' '}
                   <b>{type === 'rm' ? formatQtyWithUnit(r.required, 'kg') : formatQtyWithUnit(r.required, 'pcs')}</b>
                   {' · '}
@@ -5032,8 +5042,8 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
                   <b
                     className={
                       !qtyWithinMuStock(r.required, muQtyStrForCode(r.code), qtyKind)
-                        ? 'text-amber-700'
-                        : 'text-blue-700'
+                        ? 'text-warn'
+                        : 'text-brand'
                     }
                   >
                     {muStockLoading ? '…' : formatQtyWithUnit(muQtyStrForCode(r.code), qtyKind)}
@@ -5041,7 +5051,7 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
                 </div>
               </div>
               {r.done ? (
-                <div className="inline-flex items-center gap-1 text-xs font-mono text-emerald-600 font-semibold">
+                <div className="inline-flex items-center gap-1 text-xs font-mono text-ok font-semibold">
                   <Check size={12} /> {formatQtyExact(r.dispensed, qtyKind)} {unit}
                   {isRm && (r.leftoverQty ?? 0) > 0 ? <span className="text-[10px] text-gray-400">({formatQtyExact(r.leftoverQty ?? 0, 'kg')} kg leftover)</span> : null}
                 </div>
@@ -5068,7 +5078,7 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
                     onChange={e => setInputVals(prev => ({ ...prev, [idx]: e.target.value }))}
                     min={0}
                     step={type === 'rm' ? 'any' : 1}
-                    className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono focus:ring-2 focus:ring-orange-300 focus:outline-none"
+                    className="w-20 px-2 py-1.5 border border-border rounded-lg text-xs font-mono focus:ring-2 focus:ring-brand focus:outline-none"
                   />
                   <button
                     type="button"
@@ -5088,8 +5098,8 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
                     }
                     className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-colors ${
                       isDispensingLineShort(r)
-                        ? 'bg-amber-500 text-white cursor-not-allowed opacity-90'
-                        : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                        ? 'bg-warn text-white cursor-not-allowed opacity-90'
+                        : 'bg-ok hover:bg-ok text-white'
                     }`}
                   >
                     {isDispensingLineShort(r) ? (
@@ -5110,17 +5120,17 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
           ))
         )}
       </div>
-      <div className="flex flex-wrap justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+      <div className="flex flex-wrap justify-end gap-2 mt-5 pt-4 border-t border-hairline">
+        <button onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
         {onReschedule && (
-          <button type="button" onClick={onReschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+          <button type="button" onClick={onReschedule} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors">
             <Calendar size={13} /> Reschedule dates
           </button>
         )}
         <button
           onClick={handleSaveProgress}
           disabled={reqLoading || localItems.length === 0}
-          className={`px-4 py-2 text-xs text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
+          className={`px-4 py-2 text-xs text-ink-2 border border-border rounded-lg hover:bg-surface-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
         >
           Save Progress
         </button>
@@ -5128,7 +5138,7 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, onClose
           <button
             onClick={handleComplete}
             disabled={bprBlockedByBmr}
-            className={`inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${bprBlockedByBmr ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
+            className={`inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${bprBlockedByBmr ? 'bg-ink-4 text-ink-3 cursor-not-allowed' : 'bg-ok hover:bg-ok text-white'}`}
           >
             <CheckCircle2 size={13} /> {isRm ? 'Complete Tray' : 'Complete Dispensing'}
           </button>
@@ -5426,35 +5436,35 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
         <Tip color="blue" icon={<Microscope size={14} />}>QC Officer: <b>{qcOfficer?.name || '-'}</b> reviewing <b>{formatUnifiedBatchLabel(batch)}</b>. Click each parameter to cycle: pending {'>'} pass {'>'} fail.</Tip>
 
       {qcType === 'bmr' && (
-        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 mb-2">Master bulk quality (RM)</div>
-          {qcRefLoading && <p className="text-xs text-gray-500">Loading specs from item master…</p>}
-          {qcRefErr && !qcRefLoading && <p className="text-xs text-amber-700">{qcRefErr}</p>}
+        <div className="mb-4 rounded-xl border border-brand-soft bg-brand-soft/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-brand mb-2">Master bulk quality (RM)</div>
+          {qcRefLoading && <p className="text-xs text-ink-3">Loading specs from item master…</p>}
+          {qcRefErr && !qcRefLoading && <p className="text-xs text-warn">{qcRefErr}</p>}
           {!qcRefLoading && !batchPk && (
-            <p className="text-xs text-gray-500">Batch id missing — cannot load BOM-linked master specs.</p>
+            <p className="text-xs text-ink-3">Batch id missing — cannot load BOM-linked master specs.</p>
           )}
           {!qcRefLoading && batchPk && bmrBulkRmSpecs.length === 0 && (
-            <p className="text-xs text-gray-500">No RM lines on this batch BOM, or RMs could not be resolved / have no bulk quality in master.</p>
+            <p className="text-xs text-ink-3">No RM lines on this batch BOM, or RMs could not be resolved / have no bulk quality in master.</p>
           )}
           {bmrBulkRmSpecs.length > 0 && (
             <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
               {bmrBulkRmSpecs.map((row) => {
                 const specEntries = Object.entries(row.specs || {});
                 return (
-                  <div key={`${row.type}-${row.id}`} className="rounded-lg border border-white/80 bg-white/70 p-2.5 text-xs">
+                  <div key={`${row.type}-${row.id}`} className="rounded-lg border border-white/80 bg-surface/70 p-2.5 text-xs">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono font-bold text-indigo-700">{row.code}</span>
-                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">RM</span>
-                      <span className="text-gray-700 font-medium truncate">{row.name || row.inci || '—'}</span>
+                      <span className="font-mono font-bold text-brand">{row.code}</span>
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-brand-soft text-brand">RM</span>
+                      <span className="text-ink-2 font-medium truncate">{row.name || row.inci || '—'}</span>
                     </div>
                     {specEntries.length === 0 ? (
-                      <p className="text-[10px] text-gray-400">No bulk quality specs in master for this item.</p>
+                      <p className="text-[10px] text-ink-4">No bulk quality specs in master for this item.</p>
                     ) : (
                       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
                         {specEntries.map(([k, v]) => (
                           <div key={k} className="flex gap-1">
-                            <dt className="text-gray-500 shrink-0">{k}:</dt>
-                            <dd className="text-gray-800 font-medium">{v}</dd>
+                            <dt className="text-ink-3 shrink-0">{k}:</dt>
+                            <dd className="text-ink font-medium">{v}</dd>
                           </div>
                         ))}
                       </dl>
@@ -5468,22 +5478,22 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
       )}
 
       {qcType === 'pack' && (
-        <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-2">Finished product — Specs &amp; Stability (BOM / PR master)</div>
-          {qcRefLoading && <p className="text-xs text-gray-500">Loading product specs…</p>}
-          {qcRefErr && !qcRefLoading && <p className="text-xs text-amber-700">{qcRefErr}</p>}
+        <div className="mb-4 rounded-xl border border-ok-soft bg-ok-soft/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ok mb-2">Finished product — Specs &amp; Stability (BOM / PR master)</div>
+          {qcRefLoading && <p className="text-xs text-ink-3">Loading product specs…</p>}
+          {qcRefErr && !qcRefLoading && <p className="text-xs text-warn">{qcRefErr}</p>}
           {!qcRefLoading && !batchPk && (
-            <p className="text-xs text-gray-500">Batch id missing — cannot load product specs.</p>
+            <p className="text-xs text-ink-3">Batch id missing — cannot load product specs.</p>
           )}
           {!qcRefLoading && batchPk && fgSpecEntries.length === 0 && (
-            <p className="text-xs text-gray-500">No Specs &amp; Stability on file for this SKU. Edit the product under BOM → Specs &amp; Stability.</p>
+            <p className="text-xs text-ink-3">No Specs &amp; Stability on file for this SKU. Edit the product under BOM → Specs &amp; Stability.</p>
           )}
           {fgSpecEntries.length > 0 && (
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-xs max-h-[200px] overflow-y-auto">
               {fgSpecEntries.map(([k, v]) => (
-                <div key={k} className="flex flex-col sm:flex-row sm:gap-2 rounded-md bg-white/60 px-2 py-1 border border-white/90">
-                  <dt className="text-gray-500 shrink-0 font-semibold">{k}</dt>
-                  <dd className="text-gray-900">{v}</dd>
+                <div key={k} className="flex flex-col sm:flex-row sm:gap-2 rounded-md bg-surface/60 px-2 py-1 border border-white/90">
+                  <dt className="text-ink-3 shrink-0 font-semibold">{k}</dt>
+                  <dd className="text-ink">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -5492,37 +5502,37 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
       )}
 
       {/* Summary bar */}
-      <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50">
+      <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl border border-hairline bg-surface-2/50">
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="font-semibold text-gray-500">{specs.length} params:</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]"><Check size={10} /> {passed}</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px]"><X size={10} /> {failed}</span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-bold text-[10px]"><CircleDot size={10} /> {pending}</span>
+          <span className="font-semibold text-ink-3">{specs.length} params:</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ok-soft text-ok font-bold text-[10px]"><Check size={10} /> {passed}</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-err-soft text-err font-bold text-[10px]"><X size={10} /> {failed}</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-3 text-ink-3 font-bold text-[10px]"><CircleDot size={10} /> {pending}</span>
         </div>
-        {allPassed && <span className="ml-auto text-[10px] font-bold text-emerald-600 flex items-center gap-1"><ShieldCheck size={12} /> All Passed</span>}
-        {hasFails && allReviewed && <span className="ml-auto text-[10px] font-bold text-red-600 flex items-center gap-1"><AlertTriangle size={12} /> {failed} Failed</span>}
+        {allPassed && <span className="ml-auto text-[10px] font-bold text-ok flex items-center gap-1"><ShieldCheck size={12} /> All Passed</span>}
+        {hasFails && allReviewed && <span className="ml-auto text-[10px] font-bold text-err flex items-center gap-1"><AlertTriangle size={12} /> {failed} Failed</span>}
       </div>
 
-      <div className="rounded-xl border border-gray-100 overflow-hidden mb-4">
-        <div className="grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+      <div className="rounded-xl border border-hairline overflow-hidden mb-4">
+        <div className="grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2 bg-surface-2/80 border-b border-hairline text-[10px] font-semibold text-ink-3 uppercase tracking-wider">
           <div>Parameter</div>
-          <div>Result <span className="text-red-500">*</span></div>
+          <div>Result <span className="text-err">*</span></div>
           <div>Verdict</div>
         </div>
         {specs.map((s, i) => {
-          const rowBg = s.passed === true ? 'bg-emerald-50/40' : s.passed === false ? 'bg-red-50/40' : '';
+          const rowBg = s.passed === true ? 'bg-ok-soft/40' : s.passed === false ? 'bg-err-soft/40' : '';
           return (
-            <div key={i} className={`grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2.5 border-b border-gray-50 items-center ${rowBg} transition-colors`}>
-              <div className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
-                {s.passed === true && <Check size={12} className="text-emerald-500 shrink-0" />}
-                {s.passed === false && <X size={12} className="text-red-500 shrink-0" />}
-                {s.passed === null && <CircleDot size={12} className="text-gray-300 shrink-0" />}
+            <div key={i} className={`grid grid-cols-[1fr_1fr_1fr_90px] gap-2 px-3 py-2.5 border-b border-hairline items-center ${rowBg} transition-colors`}>
+              <div className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                {s.passed === true && <Check size={12} className="text-ok shrink-0" />}
+                {s.passed === false && <X size={12} className="text-err shrink-0" />}
+                {s.passed === null && <CircleDot size={12} className="text-ink-4 shrink-0" />}
                 {s.param}
               </div>
-              {/* <div className="text-xs text-gray-500 font-mono">{s.spec}</div> */}
+              {/* <div className="text-xs text-ink-3 font-mono">{s.spec}</div> */}
               <input
                 disabled={saving}
-                className={`border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-orange-300 focus:outline-none bg-white disabled:bg-gray-50 ${String(s.result ?? '').trim() ? 'border-gray-200' : 'border-amber-300 ring-1 ring-amber-100'}`}
+                className={`border rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-brand focus:outline-none bg-surface disabled:bg-surface-2 ${String(s.result ?? '').trim() ? 'border-border' : 'border-warn-soft ring-1 ring-warn'}`}
                 value={s.result}
                 placeholder="Required — enter measured result"
                 onChange={e => setSpecs(prev => prev.map((sp, j) => j === i ? { ...sp, result: e.target.value } : sp))}
@@ -5531,9 +5541,9 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
                 type="button"
                 disabled={saving}
                 onClick={() => toggleResult(i)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all disabled:opacity-50 ${s.passed === true ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' :
-                  s.passed === false ? 'bg-red-100 border-red-300 text-red-700 hover:bg-red-200' :
-                    'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all disabled:opacity-50 ${s.passed === true ? 'bg-ok-soft border-ok-soft text-ok hover:bg-ok-soft' :
+                  s.passed === false ? 'bg-err-soft border-err-soft text-err hover:bg-err-soft' :
+                    'bg-surface-2 border-border text-ink-4 hover:bg-surface-3 hover:text-ink-2'
                   }`}
               >
                 {s.passed === true ? 'Pass' : s.passed === false ? 'Fail' : 'Pending'}
@@ -5544,10 +5554,10 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LBL}>{yieldLabels[qcType]} <span className="text-red-500">*</span></label>
+          <label className={LBL}>{yieldLabels[qcType]} <span className="text-err">*</span></label>
           <input
             disabled={saving}
-            className={`${INP} ${allPassed && !yieldValid ? 'border-amber-400 ring-1 ring-amber-200' : ''}`}
+            className={`${INP} ${allPassed && !yieldValid ? 'border-warn-soft ring-1 ring-warn' : ''}`}
             type="number"
             min={0.001}
             step={qcType === 'bmr' ? '0.001' : '0.001'}
@@ -5573,25 +5583,25 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
             onChange={e => setYieldVal(e.target.value)}
           />
           {qcType === 'bmr' && (
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-[10px] text-ink-3 mt-1">
               Required to approve (decimals allowed, e.g. 498.75 KG). Compare to planned batch size{' '}
               <b>{batch.batchSize} KG</b> (order line / formula).
             </p>
           )}
           {qcType === 'fill' && (
-            <p className="text-[10px] text-gray-500 mt-1">Required — how many sellable units were filled (feeds BPR / packaging planning).</p>
+            <p className="text-[10px] text-ink-3 mt-1">Required — how many sellable units were filled (feeds BPR / packaging planning).</p>
           )}
           {qcType === 'pack' && (
-            <p className="text-[10px] text-gray-500 mt-1">Required — finished good units after packaging QC.</p>
+            <p className="text-[10px] text-ink-3 mt-1">Required — finished good units after packaging QC.</p>
           )}
           {allPassed && !yieldValid && (
-            <p className="text-[10px] text-amber-700 mt-1 font-semibold">Enter a yield quantity greater than zero to approve.</p>
+            <p className="text-[10px] text-warn mt-1 font-semibold">Enter a yield quantity greater than zero to approve.</p>
           )}
         </div>
         <div><label className={LBL}>QC Remarks</label><input className={INP} placeholder="Overall remarks..." value={remarks} onChange={e => setRemarks(e.target.value)} disabled={saving} /></div>
       </div>
-      <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-        <div className="text-[10px] text-gray-400">
+      <div className="flex items-center justify-between mt-5 pt-4 border-t border-hairline">
+        <div className="text-[10px] text-ink-4">
           {!allReviewed && `${pending} parameter${pending !== 1 ? 's' : ''} still pending review`}
           {allReviewed && !allResultsFilled && 'Enter a Result for every parameter before Approve or Reject.'}
           {allReviewed && allResultsFilled && hasFails && `${failed} parameter${failed !== 1 ? 's' : ''} failed — reject to raise deviation`}
@@ -5600,12 +5610,12 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
           {allPassed && !allResultsFilled && 'Enter a Result for each parameter to approve.'}
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
           <button
             type="button"
             onClick={() => void handleReject()}
             disabled={saving || !allReviewed || !hasFails || !allResultsFilled}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs bg-err hover:bg-err text-white font-semibold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
             {saving ? 'Saving…' : `Reject (${failed})`}
@@ -5614,7 +5624,7 @@ function QCModal({ batch, qcType, team, batchPk, onClose, onSave }: {
             type="button"
             onClick={() => void handleApprove()}
             disabled={saving || !allPassed || !yieldValid || !allResultsFilled}
-            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-ok hover:bg-ok text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
             {saving ? 'Saving…' : 'Approve'}
@@ -5777,24 +5787,24 @@ function UnifiedPipelineStrip({ batch, outboundMrns }: { batch: Batch; outboundM
         return (
           <React.Fragment key={p.key}>
             {showDivider && (
-              <div className="shrink-0 px-1 text-[8px] font-bold text-purple-500 uppercase tracking-tighter" title="Packaging phase">
+              <div className="shrink-0 px-1 text-[8px] font-bold text-brand uppercase tracking-tighter" title="Packaging phase">
                 →
               </div>
             )}
             <div className="flex items-center gap-0.5 shrink-0">
               <div
                 className={`w-5.5 h-5.5 rounded-full flex items-center justify-center border ${
-                  isFailed ? 'bg-red-100 border-red-300 text-red-600'
-                    : state === 'done' ? 'bg-emerald-100 border-emerald-300 text-emerald-600'
-                      : state === 'active' ? 'bg-orange-100 border-orange-300 text-orange-600'
-                        : 'bg-gray-50 border-gray-200 text-gray-300'
+                  isFailed ? 'bg-err-soft border-err-soft text-err'
+                    : state === 'done' ? 'bg-ok-soft border-ok-soft text-ok'
+                      : state === 'active' ? 'bg-brand-soft border-brand-soft text-brand'
+                        : 'bg-surface-2 border-border text-ink-4'
                 }`}
                 title={isFailed ? `${p.label} (Failed)` : p.label}
               >
                 {isFailed ? <X size={10} strokeWidth={3} /> : state === 'done' ? <Check size={10} strokeWidth={3} /> : state === 'active' ? p.icon : <CircleDot size={8} />}
               </div>
               {i < BATCH_LIFECYCLE_PIPELINE.length - 1 && (
-                <div className={`w-2.5 h-px ${i < idx ? 'bg-emerald-300' : 'bg-gray-200'}`} />
+                <div className={`w-2.5 h-px ${i < idx ? 'bg-ok' : 'bg-surface-3'}`} />
               )}
             </div>
           </React.Fragment>
@@ -6374,10 +6384,10 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         </Tip>
       )}
       {loadingBatchReserved && (
-        <div className="mt-3 text-xs text-gray-500">Loading batch reservation…</div>
+        <div className="mt-3 text-xs text-ink-3">Loading batch reservation…</div>
       )}
       {hasShortage && (
-        <div className="mt-3 px-3 py-2.5 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs flex items-start gap-2">
+        <div className="mt-3 px-3 py-2.5 rounded-lg border border-err-soft bg-err-soft text-err text-xs flex items-start gap-2">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <span><strong>Send MTR blocked:</strong> &quot;To transfer&quot; exceeds what can move from WH for this batch (pool = batch reserved, capped by WH stock). Reserve RM/PM for this batch first, lower transfer qty, or use <b>Complete step</b> if stock is already at the production facility.</span>
         </div>
@@ -6422,28 +6432,28 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
         <div><label className={LBL}>Required By Date</label><input type="date" className={INP} value={reqDate} onChange={e => setReqDate(e.target.value)} /></div>
         <div><label className={LBL}>Priority</label><select className={INP} value={priority} onChange={e => setPriority(e.target.value)}><option>Urgent</option><option>Normal</option><option>Low</option></select></div>
       </div>
-      <SectionLabel icon={<Package size={12} />} color="text-gray-600">
+      <SectionLabel icon={<Package size={12} />} color="text-ink-2">
         Items to Transfer — x = needed, y = already at production facility, to transfer = max(0, x−y). At WH for MTR = reserved (production allocation), not free stock.
       </SectionLabel>
       {loadingItems && (
-        <div className="py-4 text-center text-sm text-gray-500">Loading items for this batch…</div>
+        <div className="py-4 text-center text-sm text-ink-3">Loading items for this batch…</div>
       )}
       {!loadingItems && localItems.length === 0 && (
-        <div className="py-3 px-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs">No {type.toUpperCase()} items for this batch. Confirm BOM in Planning for this SO{type === 'rm' ? ', or reserve RM first' : ', or reserve PM first'}.</div>
+        <div className="py-3 px-3 rounded-lg bg-surface-2 border border-border text-ink-2 text-xs">No {type.toUpperCase()} items for this batch. Confirm BOM in Planning for this SO{type === 'rm' ? ', or reserve RM first' : ', or reserve PM first'}.</div>
       )}
       {localItems.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-gray-100 text-xs">
+        <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
           <table className="w-full">
-            <thead><tr className="bg-gray-50/80 border-b border-gray-100">
-              <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Item</th>
-              <th className="px-2 py-1.5 text-left">Code</th>
-              <th className="px-2 py-1.5 text-right">Required</th>
-              <th className="px-2 py-1.5 text-right">At production facility</th>
-              <th className="px-2 py-1.5 text-left">To transfer</th>
-              <th className="px-2 py-1.5 text-right">Reserved (WH)</th>
-              <th className="px-2 py-1.5 text-left">Unit</th>
+            <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
+              <th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">Item</th>
+              <th scope="col" className="px-2 py-1.5 text-left">Code</th>
+              <th scope="col" className="px-2 py-1.5 text-right">Required</th>
+              <th scope="col" className="px-2 py-1.5 text-right">At production facility</th>
+              <th scope="col" className="px-2 py-1.5 text-left">To transfer</th>
+              <th scope="col" className="px-2 py-1.5 text-right">Reserved (WH)</th>
+              <th scope="col" className="px-2 py-1.5 text-left">Unit</th>
             </tr></thead>
-            <tbody className="divide-y divide-gray-50">{localItems.map((r, i) => {
+            <tbody className="divide-y divide-hairline">{localItems.map((r, i) => {
               const batchNeed = effectiveItems[i]?.required ?? r.required;
               const atFacility = atFacilityMap[r.code] ?? 0;
               const toTransfer = r.required;
@@ -6456,23 +6466,23 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
               );
               const short = toTransfer > 0 && isQtyShort(mtrPool, toTransfer, qtyKindMtr);
               return (
-                <tr key={i} className={short ? 'bg-amber-50/60' : ''}>
+                <tr key={i} className={short ? 'bg-warn-soft/60' : ''}>
                   <td className="px-2 py-1.5 font-semibold">{r.inci || r.name}</td>
-                  <td className="px-2 py-1.5 text-gray-500 font-mono">{r.code}</td>
+                  <td className="px-2 py-1.5 text-ink-3 font-mono">{r.code}</td>
                   <td className="px-2 py-1.5 font-mono text-right">{fmtQtyMtr(batchNeed)}</td>
-                  <td className="px-2 py-1.5 font-mono text-right text-blue-600">{fmtQtyMtr(atFacility)}</td>
+                  <td className="px-2 py-1.5 font-mono text-right text-brand">{fmtQtyMtr(atFacility)}</td>
                   <td className="px-2 py-1.5">
                     <input
                       type="number"
-                      className="w-20 px-1.5 py-0.5 border border-gray-200 rounded font-mono text-right"
+                      className="w-20 px-1.5 py-0.5 border border-border rounded font-mono text-right"
                       min={0}
                       step={type === 'rm' ? 'any' : 1}
                       value={toTransfer}
                       onChange={(e) => setItemQty(i, materialQtyToNum(parseQtyInputString(e.target.value)))}
                     />
                   </td>
-                  <td className={`px-2 py-1.5 font-mono text-right ${short ? 'text-amber-600' : 'text-gray-700'}`}>
-                    {fmtQtyMtr(mtrPool)}{short && <span className="text-red-600 ml-1">(short {fmtQtyMtr(calcShortageQtyForKind(mtrPool, toTransfer, qtyKindMtr))})</span>}
+                  <td className={`px-2 py-1.5 font-mono text-right ${short ? 'text-warn' : 'text-ink-2'}`}>
+                    {fmtQtyMtr(mtrPool)}{short && <span className="text-err ml-1">(short {fmtQtyMtr(calcShortageQtyForKind(mtrPool, toTransfer, qtyKindMtr))})</span>}
                   </td>
                   <td className="px-2 py-1.5">{unit}</td>
                 </tr>
@@ -6481,12 +6491,12 @@ function MTRModal({ batch, type, stockRM: _stockRM, stockPM: _stockPM, atFacilit
           </table>
         </div>
       )}
-      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-        <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+      <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-hairline">
+        <button onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
         {allAtMu ? (
-          <button onClick={handleCompleteStep} disabled={sending} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {sending ? 'Completing…' : 'Complete step'}</button>
+          <button onClick={handleCompleteStep} disabled={sending} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-ok hover:bg-ok text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><CheckCircle2 size={13} /> {sending ? 'Completing…' : 'Complete step'}</button>
         ) : (
-          <button onClick={handleSubmit} disabled={sending || loadingBatchReserved || linesToSend.length === 0 || hasShortage} title={hasShortage ? 'Insufficient batch reserved stock at WH for one or more lines' : undefined} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
+          <button onClick={handleSubmit} disabled={sending || loadingBatchReserved || linesToSend.length === 0 || hasShortage} title={hasShortage ? 'Insufficient batch reserved stock at WH for one or more lines' : undefined} className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-brand hover:bg-brand text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"><Send size={13} /> {sending ? 'Sending…' : 'Send MTR'}</button>
         )}
       </div>
     </Modal>
@@ -6519,18 +6529,18 @@ function MRNScanSimulator({ mrnNo }: { mrnNo: string }) {
         onChange={(e) => setPasteInput(e.target.value)}
         placeholder='Paste QR payload e.g. {"mrn_no":"EI-MRN-2026-001","box_index":1,...}'
         rows={2}
-        className="w-full text-xs font-mono border border-slate-300 rounded-lg px-3 py-2 bg-white"
+        className="w-full text-xs font-mono border border-border rounded-lg px-3 py-2 bg-surface"
       />
-      {parseError && <p className="text-xs text-red-600">{parseError}</p>}
+      {parseError && <p className="text-xs text-err">{parseError}</p>}
       {decoded && !parseError && (
-        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
-          <p className="text-xs font-semibold text-slate-700 uppercase">Decoded</p>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-800">
+        <div className="bg-surface rounded-lg border border-border p-4 space-y-2">
+          <p className="text-xs font-semibold text-ink-2 uppercase">Decoded</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-ink">
             {Object.entries(decoded).map(([k, v]) => (
               <span key={k} className="col-span-2 sm:col-span-1"><dt className="inline font-medium">{k}:</dt> <dd className="inline">{String(v ?? '—')}</dd></span>
             ))}
           </dl>
-          <p className="text-xs font-semibold text-emerald-700 pt-2 border-t border-slate-200">Action: Put away at MU location (from QR) and record movement.</p>
+          <p className="text-xs font-semibold text-ok pt-2 border-t border-border">Action: Put away at MU location (from QR) and record movement.</p>
         </div>
       )}
     </div>
@@ -7091,12 +7101,12 @@ function MRNDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false}>
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"transfer-order-modal-title"}>
+        <div className="sticky top-0 z-10 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Transfer order — {mrn.mrnNo}</h2>
-            <p className="text-sm text-slate-600 mt-0.5">
+            <h2 className="text-lg font-bold text-ink" id="transfer-order-modal-title">Transfer order — {mrn.mrnNo}</h2>
+            <p className="text-sm text-ink-2 mt-0.5">
               {mrn.requestedBy}
               {(() => {
                 const src = mrnSourceDocFromApi(mrn);
@@ -7104,80 +7114,80 @@ function MRNDetailModal({
               })()}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600" aria-label="Close"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="p-2 hover:bg-surface-3 rounded-lg text-ink-2" aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-6">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-amber-100 text-amber-700 border-amber-300">{status}</span>
-            {mrn.source && <span className="px-3 py-1 bg-blue-100 text-blue-700 border border-blue-300 rounded-full text-xs font-semibold">{mrn.source}</span>}
+            <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-warn-soft text-warn border-warn-soft">{status}</span>
+            {mrn.source && <span className="px-3 py-1 bg-brand-soft text-brand border border-brand-soft rounded-full text-xs font-semibold">{mrn.source}</span>}
           </div>
 
-          <section className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/80 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-700">Assign & receive</h3>
+          <section className="bg-surface-2/80 rounded-xl p-5 border border-border/80 space-y-4">
+            <h3 className="text-sm font-semibold text-ink-2">Assign & receive</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Status</label>
+                <label className="block text-xs font-semibold text-ink-2 uppercase mb-1">Status</label>
                 {isOutboundMtr ? (
-                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
-                    <span className="font-semibold text-slate-900">{status}</span>
-                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">{outboundMtrStageHint({ ...mrn, status })}</p>
+                  <div className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface-2">
+                    <span className="font-semibold text-ink">{status}</span>
+                    <p className="text-[11px] text-ink-2 mt-1 leading-snug">{outboundMtrStageHint({ ...mrn, status })}</p>
                   </div>
                 ) : (
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm">
                     {MRN_STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                 )}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Assigned picker</label>
+                <label className="block text-xs font-semibold text-ink-2 uppercase mb-1">Assigned picker</label>
                 {isOutboundMtr ? (
-                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
-                    <span className={mrn.assignedPicker ? 'font-medium text-slate-900' : 'text-slate-500'}>
+                  <div className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-surface-2">
+                    <span className={mrn.assignedPicker ? 'font-medium text-ink' : 'text-ink-3'}>
                       {mrn.assignedPicker?.trim() || 'Unassigned'}
                     </span>
                     {mrn.transferTeam?.trim() ? (
-                      <p className="text-[11px] text-slate-800 mt-1 font-medium">Transfer: {mrn.transferTeam}</p>
+                      <p className="text-[11px] text-ink mt-1 font-medium">Transfer: {mrn.transferTeam}</p>
                     ) : null}
-                    <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                    <p className="text-[11px] text-ink-2 mt-1 leading-snug">
                       Picker is assigned in Warehouse → Transfer orders (locked after first save). Production sees the same values here.
                     </p>
                   </div>
                 ) : (
-                  <select value={assignedPicker} onChange={(e) => setAssignedPicker(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <select value={assignedPicker} onChange={(e) => setAssignedPicker(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm">
                     <option value="">Unassigned</option>
                     {assignablePickers.map((u) => <option key={u.id} value={u.displayName}>{u.displayName}</option>)}
                   </select>
                 )}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Received at MU (date)</label>
-                <input type="date" value={receivedAtMu} onChange={(e) => setReceivedAtMu(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <label className="block text-xs font-semibold text-ink-2 uppercase mb-1">Received at MU (date)</label>
+                <input type="date" value={receivedAtMu} onChange={(e) => setReceivedAtMu(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm" />
               </div>
             </div>
             {isOutboundMtr && (
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase text-slate-700">Shared logistics</p>
-                    <p className="mt-1 text-sm text-slate-800">{logisticsSummary || 'Capture on Initiate transfer. Production and Warehouse read the same MRN values.'}</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="text-xs font-semibold uppercase text-ink-2">Shared logistics</p>
+                    <p className="mt-1 text-sm text-ink">{logisticsSummary || 'Capture on Initiate transfer. Production and Warehouse read the same MRN values.'}</p>
+                    <p className="mt-1 text-xs text-ink-3">
                       Dispatch: {formatDate(mrn.logisticsDispatchDate || logisticsDispatchDate || '')} · ETA: {formatDate(mrn.logisticsEtaDate || logisticsEtaDate || '')}
                     </p>
                   </div>
                 </div>
               </div>
             )}
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+            <div className="space-y-2 rounded-lg border border-border bg-surface-2/90 p-3">
               <div className="flex flex-wrap items-center gap-4">
-                <span className="text-xs font-semibold text-slate-700">
-                  MU put-away <span className="text-red-500">*</span>
+                <span className="text-xs font-semibold text-ink-2">
+                  MU put-away <span className="text-err">*</span>
                 </span>
-                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-slate-500 cursor-not-allowed' : 'text-slate-700 cursor-pointer'}`}>
+                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-ink-3 cursor-not-allowed' : 'text-ink-2 cursor-pointer'}`}>
                   <input
                     type="radio"
                     name="mrn-mu-location-source"
-                    className="rounded-full border-slate-300"
+                    className="rounded-full border-border"
                     disabled={mtrMuDestLocked}
                     checked={muLocationSource === 'facility'}
                     onChange={() => {
@@ -7192,11 +7202,11 @@ function MRNDetailModal({
                   />
                   Facility Management (production)
                 </label>
-                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-slate-500 cursor-not-allowed' : 'text-slate-700 cursor-pointer'}`}>
+                <label className={`flex items-center gap-1.5 text-xs ${mtrMuDestLocked ? 'text-ink-3 cursor-not-allowed' : 'text-ink-2 cursor-pointer'}`}>
                   <input
                     type="radio"
                     name="mrn-mu-location-source"
-                    className="rounded-full border-slate-300"
+                    className="rounded-full border-border"
                     disabled={mtrMuDestLocked}
                     checked={muLocationSource === 'custom'}
                     onChange={() => setMuLocationSource('custom')}
@@ -7204,20 +7214,20 @@ function MRNDetailModal({
                   Custom (type zone / rack)
                 </label>
               </div>
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-ink-3">
                 Production areas, zones, and racks are maintained under <strong>Facility Management</strong> (type Production). Zone <span className="font-mono">code</span> is stored for stock routing (e.g. include <span className="font-mono">MU02</span> or <span className="font-mono">LOC-MU02</span> for ML2).
               </p>
               {mtrMuDestLocked && (
-                <p className="text-[10px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                <p className="text-[10px] text-warn bg-warn-soft border border-warn-soft rounded-md px-2 py-1.5">
                   Destination manufacturing zone is fixed from <strong>Send MTR</strong>. Choose the <strong>rack</strong> for put-away, or change rack if needed.
                 </p>
               )}
 
               {muLocationSource === 'facility' && productionFacilityLoading && (
-                <p className="text-xs text-slate-500">Loading production locations…</p>
+                <p className="text-xs text-ink-3">Loading production locations…</p>
               )}
               {muLocationSource === 'facility' && !productionFacilityLoading && productionFacilityData.length === 0 && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                <p className="text-xs text-warn bg-warn-soft border border-warn-soft rounded-md px-2 py-1.5">
                   No production areas found. Add a production area, zones, and racks in Facility Management, or use Custom.
                 </p>
               )}
@@ -7225,7 +7235,7 @@ function MRNDetailModal({
               {muLocationSource === 'facility' && !productionFacilityLoading && productionFacilityData.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Production area</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-1">Production area</label>
                     <select
                       value={selectedMuAreaId === '' ? '' : String(selectedMuAreaId)}
                       onChange={(e) => {
@@ -7235,7 +7245,7 @@ function MRNDetailModal({
                         setSelectedMuRackId('');
                       }}
                       disabled={mtrMuDestLocked}
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                      className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3 disabled:text-ink-3"
                     >
                       <option value="">— Select area —</option>
                       {productionFacilityData.map((a) => (
@@ -7246,7 +7256,7 @@ function MRNDetailModal({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Zone</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-1">Zone</label>
                     <select
                       value={selectedMuZoneId === '' ? '' : String(selectedMuZoneId)}
                       onChange={(e) => {
@@ -7255,7 +7265,7 @@ function MRNDetailModal({
                         setSelectedMuRackId('');
                       }}
                       disabled={selectedMuAreaId === '' || mtrMuDestLocked}
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3 disabled:text-ink-4"
                     >
                       <option value="">— Select zone —</option>
                       {muZoneOptions.map((z) => (
@@ -7266,7 +7276,7 @@ function MRNDetailModal({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Rack (code)</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-1">Rack (code)</label>
                     <select
                       value={selectedMuRackId === '' ? '' : String(selectedMuRackId)}
                       onChange={(e) => {
@@ -7274,7 +7284,7 @@ function MRNDetailModal({
                         setSelectedMuRackId(v ? parseInt(v, 10) : '');
                       }}
                       disabled={selectedMuZoneId === ''}
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                      className="w-full px-2 py-1.5 border border-border rounded text-sm bg-surface disabled:bg-surface-3 disabled:text-ink-4"
                     >
                       <option value="">— Select rack —</option>
                       {muRackOptionsSorted.map((r) => (
@@ -7285,7 +7295,7 @@ function MRNDetailModal({
                       ))}
                     </select>
                     {selectedMuZoneId !== '' && muRackOptionsSorted.length === 0 && (
-                      <p className="text-[10px] text-amber-700 mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
+                      <p className="text-[10px] text-warn mt-1">No racks in this zone. Add racks in Facility Management or use Custom.</p>
                     )}
                   </div>
                 </div>
@@ -7294,31 +7304,31 @@ function MRNDetailModal({
               {muLocationSource === 'custom' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">MU zone</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-1">MU zone</label>
                     <input
                       type="text"
                       value={muReceiveZone}
                       readOnly={mtrMuDestLocked}
                       onChange={(e) => setMuReceiveZone(e.target.value)}
                       placeholder="e.g. LOC-MU01"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm read-only:bg-slate-100"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm read-only:bg-surface-3"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">MU rack</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-1">MU rack</label>
                     <input
                       type="text"
                       value={muReceiveRack}
                       onChange={(e) => setMuReceiveRack(e.target.value)}
                       placeholder="e.g. R1"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                     />
                   </div>
                 </div>
               )}
 
               {muLocationSource === 'facility' && !productionFacilityLoading && muReceiveZone && muReceiveRack && (
-                <p className="text-[10px] text-slate-600">
+                <p className="text-[10px] text-ink-2">
                   Saved on MRN / movement log: <span className="font-mono font-medium">zone</span> = {muReceiveZone} ·{' '}
                   <span className="font-mono font-medium">rack</span> = {muReceiveRack}
                 </p>
@@ -7328,38 +7338,38 @@ function MRNDetailModal({
 
           {mrn.lineItems && mrn.lineItems.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Line items</h3>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <h3 className="text-sm font-semibold text-ink-2">Line items</h3>
+              <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-100 border-b border-slate-200">
+                  <thead className="sticky top-0 z-20 bg-surface-3 border-b border-border [&_th]:bg-surface-3">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">Item</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">Code</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Quantity</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Unit</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Item</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Code</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Quantity</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Unit</th>
                       {isOutboundMtr && (
-                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Line transfer</th>
+                        <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Line transfer</th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-hairline">
                     {mrn.lineItems.map((item) => {
                       const phase = mtrLinePhaseRaw(mrn, item.id);
                       return (
                         <tr
                           key={item.id}
-                          className={`hover:bg-slate-50 ${phase === 'completed' ? 'bg-slate-100/80 text-slate-500' : ''}`}
+                          className={`hover:bg-surface-2 ${phase === 'completed' ? 'bg-surface-3/80 text-ink-3' : ''}`}
                         >
-                          <td className="px-3 py-2 font-medium text-slate-900">{item.item}</td>
-                          <td className="px-3 py-2 text-slate-500">{item.itemCode}</td>
+                          <td className="px-3 py-2 font-medium text-ink">{item.item}</td>
+                          <td className="px-3 py-2 text-ink-3">{item.itemCode}</td>
                           <td className="px-3 py-2 text-center font-medium">{item.quantity}</td>
                           <td className="px-3 py-2 text-center">{item.unit}</td>
                           {isOutboundMtr && (
-                            <td className="px-3 py-2 text-[10px] text-slate-700 align-top">
-                              <div className="font-medium text-slate-800">{formatMtrLinePhaseShort(phase)}</div>
+                            <td className="px-3 py-2 text-[10px] text-ink-2 align-top">
+                              <div className="font-medium text-ink">{formatMtrLinePhaseShort(phase)}</div>
                               {phase === 'not_initiated' && (
                                 <>
-                                  <p className="mt-1 text-slate-500 italic">Pending release from warehouse — add logistics to initiate transfer.</p>
+                                  <p className="mt-1 text-ink-3 italic">Pending release from warehouse — add logistics to initiate transfer.</p>
                                   <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
                                     <input
                                       type="checkbox"
@@ -7397,7 +7407,7 @@ function MRNDetailModal({
                                 </label>
                               )}
                               {phase === 'completed' && (
-                                <p className="mt-1 text-slate-500">Stock move completed — no further action.</p>
+                                <p className="mt-1 text-ink-3">Stock move completed — no further action.</p>
                               )}
                             </td>
                           )}
@@ -7411,45 +7421,45 @@ function MRNDetailModal({
           )}
 
           {/* <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Labels (QR per box for MU put-away)</h3>
+            <h3 className="text-sm font-semibold text-ink-2">Labels (QR per box for MU put-away)</h3>
             {mrn.lineItems && mrn.lineItems.length > 0 && (
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Select line item for labels</label>
-                <select value={selectedLineItemId} onChange={(e) => setSelectedLineItemId(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm">
+                <label className="block text-xs font-medium text-ink-2 mb-1">Select line item for labels</label>
+                <select value={selectedLineItemId} onChange={(e) => setSelectedLineItemId(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm">
                   {mrn.lineItems.map((li) => <option key={li.id} value={li.id}>{li.item} ({li.itemCode}) — Qty: {li.quantity}</option>)}
                 </select>
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">No of boxes</label><input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Units/box</label><input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Location prefix (MU)</label><input type="text" value={locationPrefix} onChange={(e) => setLocationPrefix(e.target.value)} placeholder="e.g. MU1-A" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Batch / expiry</label><input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} placeholder="Batch" className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm" /></div>
+              <div><label className="block text-xs font-medium text-ink-2 mb-1">No of boxes</label><input type="number" min={1} value={noOfBoxes} onChange={(e) => setNoOfBoxes(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm" /></div>
+              <div><label className="block text-xs font-medium text-ink-2 mb-1">Units/box</label><input type="number" min={0} value={unitsPerBox} onChange={(e) => setUnitsPerBox(e.target.value)} className="w-full px-2 py-1.5 border border-border rounded text-sm" /></div>
+              <div><label className="block text-xs font-medium text-ink-2 mb-1">Location prefix (MU)</label><input type="text" value={locationPrefix} onChange={(e) => setLocationPrefix(e.target.value)} placeholder="e.g. MU1-A" className="w-full px-2 py-1.5 border border-border rounded text-sm" /></div>
+              <div><label className="block text-xs font-medium text-ink-2 mb-1">Batch / expiry</label><input type="text" value={grnBatchMfg} onChange={(e) => setGrnBatchMfg(e.target.value)} placeholder="Batch" className="w-full px-2 py-1.5 border border-border rounded text-sm" /></div>
             </div>
             <div className="flex items-center gap-3">
               {!labelsGenerated ? (
-                <button onClick={handleGenerateLabels} disabled={generatingLabels} className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50">
+                <button onClick={handleGenerateLabels} disabled={generatingLabels} className="px-4 py-2 bg-ok text-white rounded-lg font-medium text-sm hover:bg-ok disabled:opacity-50">
                   {generatingLabels ? 'Generating…' : 'Generate Labels'}
                 </button>
               ) : (
-                <button onClick={() => { setLabelsGenerated(false); setLabels(null); }} className="px-4 py-2 bg-slate-400 text-white rounded-lg font-medium text-sm hover:bg-slate-500">Hide Labels</button>
+                <button onClick={() => { setLabelsGenerated(false); setLabels(null); }} className="px-4 py-2 bg-ink-4 text-white rounded-lg font-medium text-sm hover:bg-ink-2">Hide Labels</button>
               )}
             </div>
-            {labelError && <p className="text-sm text-red-600">{labelError}</p>}
+            {labelError && <p className="text-sm text-err">{labelError}</p>}
           </section> */}
 
           {/* {labelsGenerated && labels && labels.length > 0 && (
             <section className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Label preview (one QR per box)</h3>
+              <h3 className="text-sm font-semibold text-ink-2">Label preview (one QR per box)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {labels.map((label) => {
                   let payload: Record<string, unknown> = {};
                   try { payload = JSON.parse(label.qrPayload); } catch { }
                   return (
-                    <div key={label.boxIndex} className="bg-white border-2 border-slate-300 rounded-lg p-4 shadow-sm">
-                      <p className="text-xs font-mono font-bold text-slate-900 mb-2">Box {label.boxIndex}</p>
+                    <div key={label.boxIndex} className="bg-surface border-2 border-border rounded-lg p-4 shadow-sm">
+                      <p className="text-xs font-mono font-bold text-ink mb-2">Box {label.boxIndex}</p>
                       <div className="flex justify-center mb-3"><img src={label.qrImageDataUrl} alt={`QR Box ${label.boxIndex}`} className="w-32 h-32 object-contain" /></div>
-                      <div className="space-y-1 text-xs text-slate-600">
+                      <div className="space-y-1 text-xs text-ink-2">
                         {payload.location_prefix && <p><span className="font-semibold">Location:</span> {String(payload.location_prefix)}</p>}
                         <p><span className="font-semibold">MRN:</span> {String(payload.mrn_no ?? '')}</p>
                         <p><span className="font-semibold">Units/box:</span> {String(payload.units_per_box ?? '')}</p>
@@ -7458,28 +7468,28 @@ function MRNDetailModal({
                   );
                 })}
               </div>
-              <div className="mt-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
-                <h4 className="text-xs font-semibold text-slate-700 uppercase mb-2">On scan — simulate</h4>
+              <div className="mt-4 rounded-xl border-2 border-dashed border-border bg-surface-2 p-4">
+                <h4 className="text-xs font-semibold text-ink-2 uppercase mb-2">On scan — simulate</h4>
                 <MRNScanSimulator mrnNo={mrn.mrnNo} />
               </div>
             </section>
           )} */}
 
           {/* <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">Movement history (MU)</h3>
-            {historyLoading ? <p className="text-xs text-slate-500">Loading…</p> : locationHistory.length === 0 ? <p className="text-xs text-slate-500">No movement recorded yet. Complete this transfer with MU zone/rack to log put-away.</p> : (
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <h3 className="text-sm font-semibold text-ink-2">Movement history (MU)</h3>
+            {historyLoading ? <p className="text-xs text-ink-3">Loading…</p> : locationHistory.length === 0 ? <p className="text-xs text-ink-3">No movement recorded yet. Complete this transfer with MU zone/rack to log put-away.</p> : (
+              <div className="overflow-x-auto border border-border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-100 border-b border-slate-200">
+                  <thead className="bg-surface-3 border-b border-border">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">Action</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">From</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">To</th>
-                      <th className="px-3 py-2 text-center font-semibold text-slate-700">Qty</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-700">Date</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Action</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">From</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">To</th>
+                      <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Qty</th>
+                      <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-hairline">
                     {locationHistory.map((h) => (
                       <tr key={h.id}>
                         <td className="px-3 py-2 font-medium">{h.actionType ?? '—'}</td>
@@ -7495,22 +7505,22 @@ function MRNDetailModal({
             )}
         </section> */}
 
-          {saveError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{saveError}</div>}
+          {saveError && <div className="rounded-lg bg-err-soft border border-err-soft px-4 py-2 text-sm text-err">{saveError}</div>}
 
           {isOutboundMtr && !isClosedStatus(status) && (
-            <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-ink-2 bg-surface-2 border border-border rounded-lg px-3 py-2">
               Warehouse initiates transfer <strong>per line</strong> (checkboxes in Warehouse). Here: mark <strong>received</strong> and <strong>stock move</strong> per line (checkboxes in the table), then <strong>MU zone / rack</strong> and <strong>Mark Succeeded</strong> for selected lines. The MRN stays open until every line is completed.
             </p>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
-            <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-800 font-medium text-sm hover:bg-slate-50 disabled:opacity-50">Close</button>
-            <button onClick={() => persistUpdate({})} disabled={saving} className="px-4 py-2 bg-slate-600 text-white rounded-lg font-medium text-sm hover:bg-slate-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+          <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-border">
+            <button onClick={onClose} disabled={saving} className="px-4 py-2 border border-border rounded-lg text-ink font-medium text-sm hover:bg-surface-2 disabled:opacity-50">Close</button>
+            <button onClick={() => persistUpdate({})} disabled={saving} className="px-4 py-2 bg-ink-2 text-white rounded-lg font-medium text-sm hover:bg-ink-2 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
             {!isOutboundMtr && (status === 'Pending' || status === 'Picked' || status === 'In Transfer') && (
               <button
                 onClick={() => persistUpdate({ status: 'In Transit' })}
                 disabled={saving}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 bg-brand text-white rounded-lg font-medium text-sm hover:bg-brand disabled:opacity-50"
               >
                 Release from Warehouse
               </button>
@@ -7558,7 +7568,7 @@ function MRNDetailModal({
                   });
                 }}
                 disabled={saving}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium text-sm hover:bg-amber-700 disabled:opacity-50"
+                className="px-4 py-2 bg-warn text-white rounded-lg font-medium text-sm hover:bg-warn disabled:opacity-50"
               >
                 {isOutboundMtr ? (initiateSelectedIds.length > 0 ? 'Initiate transfer' : 'Verify / Received at MU') : 'Verify / Received at MU'}
               </button>
@@ -7593,7 +7603,7 @@ function MRNDetailModal({
                         : undefined
                     : undefined
                 }
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-ok text-white rounded-lg font-medium text-sm hover:bg-ok disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Mark Succeeded
               </button>
@@ -7602,49 +7612,49 @@ function MRNDetailModal({
         </div>
       </div>
       {logisticsModalOpen && canInitiateOutboundTransfer && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <ModalOverlay onClose={() => setLogisticsModalOpen(false)} z="z-[60]" dismissable={false}>
+          <div className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl border border-border" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"initiate-transfer-modal-title"}>
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
-                <h3 className="text-base font-semibold text-slate-900">Initiate transfer</h3>
-                <p className="text-xs text-slate-500 mt-1">Provide transfer details before moving selected lines to `In Transit`.</p>
+                <h3 className="text-base font-semibold text-ink" id="initiate-transfer-modal-title">Initiate transfer</h3>
+                <p className="text-xs text-ink-3 mt-1">Provide transfer details before moving selected lines to `In Transit`.</p>
               </div>
-              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close logistics popup">
+              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg p-2 text-ink-3 hover:bg-surface-3" aria-label="Close logistics popup">
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-5 py-5">
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Tracking / LR no.</label>
-                <input value={logisticsTrackingNo} onChange={(e) => setLogisticsTrackingNo(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase text-ink-2 mb-1">Tracking / LR no.</label>
+                <input value={logisticsTrackingNo} onChange={(e) => setLogisticsTrackingNo(e.target.value)} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Driver / transporter</label>
-                <input value={logisticsTransporter} onChange={(e) => setLogisticsTransporter(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase text-ink-2 mb-1">Driver / transporter</label>
+                <input value={logisticsTransporter} onChange={(e) => setLogisticsTransporter(e.target.value)} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Dispatch date</label>
-                <input type="date" value={logisticsDispatchDate} onChange={(e) => setLogisticsDispatchDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase text-ink-2 mb-1">Dispatch date</label>
+                <input type="date" value={logisticsDispatchDate} onChange={(e) => setLogisticsDispatchDate(e.target.value)} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">ETA (optional)</label>
-                <input type="date" value={logisticsEtaDate} onChange={(e) => setLogisticsEtaDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase text-ink-2 mb-1">ETA (optional)</label>
+                <input type="date" value={logisticsEtaDate} onChange={(e) => setLogisticsEtaDate(e.target.value)} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1">Vehicle no.</label>
-                <input value={logisticsVehicleNo} onChange={(e) => setLogisticsVehicleNo(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase text-ink-2 mb-1">Vehicle no.</label>
+                <input value={logisticsVehicleNo} onChange={(e) => setLogisticsVehicleNo(e.target.value)} className="w-full rounded-lg border border-border px-3 py-2 text-sm" />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
-              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-              <button onClick={handleSubmitLogistics} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+            <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
+              <button onClick={() => setLogisticsModalOpen(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink-2 hover:bg-surface-2">Cancel</button>
+              <button onClick={handleSubmitLogistics} className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand">
                 Save & initiate
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -7698,80 +7708,80 @@ function TransferOrdersView(props?: { onOutboundMtrCompleted?: () => void; onMrn
   }, [mrnList, searchQuery]);
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50/80">
+    <div className="flex-1 overflow-auto bg-surface-2/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Transfer orders</h1>
-          <p className="text-sm text-slate-600 mt-1">MRNs sent from Production (MTR) — receive at MU, verify, generate QR labels, and complete.</p>
+          <h1 className="text-2xl font-bold text-ink tracking-tight">Transfer orders</h1>
+          <p className="text-sm text-ink-2 mt-1">MRNs sent from Production (MTR) — receive at MU, verify, generate QR labels, and complete.</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4">
+        <div className="bg-surface rounded-xl border border-border/80 shadow-sm p-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search MRN, PR name, batch…" className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-4" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search MRN, PR name, batch…" className="w-full pl-10 pr-4 py-2.5 bg-surface-2 border border-border rounded-lg text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:ring-2 focus:ring-warn" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-surface rounded-xl border border-border/80 shadow-sm overflow-hidden">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full min-w-[700px]">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">MRN No.</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Source</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">PR name</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Request date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Expected date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">Batch number</th>
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">MRN No.</th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-ink-2 uppercase">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Source</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">PR name</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Request date</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Expected date</th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Batch number</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-hairline">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">Loading transfer orders…</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-ink-3">Loading transfer orders…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-500">No MRNs found. Raise an MTR from a batch (BMR/BPR) to see it here.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-ink-3">No MRNs found. Raise an MTR from a batch (BMR/BPR) to see it here.</td></tr>
                 ) : (
                   filtered.map((m) => (
-                    <tr key={m.id} className="hover:bg-amber-50/50 cursor-pointer transition-colors" onClick={() => setSelectedMRN(m)}>
-                      <td className="px-4 py-3"><span className="text-sm font-mono font-medium text-blue-600">{m.mrnNo}</span></td>
+                    <tr key={m.id} className="hover:bg-warn-soft/50 cursor-pointer transition-colors" onClick={() => setSelectedMRN(m)}>
+                      <td className="px-4 py-3"><span className="text-sm font-mono font-medium text-brand">{m.mrnNo}</span></td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${String(m.status).toLowerCase() === 'succeeded' || m.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                          m.status === 'Received at MU' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                            m.status === 'In Transit' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                              m.status === 'In Transfer' ? 'bg-cyan-100 text-cyan-800 border-cyan-200' :
-                                m.status === 'Picked' ? 'bg-violet-100 text-violet-800 border-violet-200' :
-                                  'bg-slate-100 text-slate-600 border-slate-200'
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${String(m.status).toLowerCase() === 'succeeded' || m.status === 'Completed' ? 'bg-ok-soft text-ok border-ok-soft' :
+                          m.status === 'Received at MU' ? 'bg-warn-soft text-warn border-warn-soft' :
+                            m.status === 'In Transit' ? 'bg-brand-soft text-brand border-brand-soft' :
+                              m.status === 'In Transfer' ? 'bg-brand-soft text-brand border-brand-soft' :
+                                m.status === 'Picked' ? 'bg-brand-soft text-brand border-brand-soft' :
+                                  'bg-surface-3 text-ink-2 border-border'
                           }`}>{m.status}</span>
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
                           const src = mrnSourceDocFromApi(m);
-                          if (!src) return <span className="text-sm text-slate-400">—</span>;
+                          if (!src) return <span className="text-sm text-ink-4">—</span>;
                           return (
                             <span className="inline-flex items-center gap-1.5 text-sm">
                               <span
                                 className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
                                   src.kind === 'bpr'
-                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                    : 'bg-teal-100 text-teal-700 border border-teal-200'
+                                    ? 'bg-brand-soft text-brand border border-brand-soft'
+                                    : 'bg-brand-soft text-brand border border-brand-soft'
                                 }`}
                               >
                                 {src.kind === 'bpr' ? 'BPR' : 'BMR'}
                               </span>
-                              <span className="font-mono text-slate-700">{src.id}</span>
+                              <span className="font-mono text-ink-2">{src.id}</span>
                             </span>
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-800 max-w-[220px] truncate" title={mrnDisplayPrName(m)}>
+                      <td className="px-4 py-3 text-sm text-ink max-w-[220px] truncate" title={mrnDisplayPrName(m)}>
                         {mrnDisplayPrName(m)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{formatMrnDisplayDate(m.createdAt)}</td>
-                      <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-slate-800">{mrnDisplayBatchNumber(m)}</td>
+                      <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{formatMrnDisplayDate(m.createdAt)}</td>
+                      <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-ink">{mrnDisplayBatchNumber(m)}</td>
                     </tr>
                   ))
                 )}
@@ -7955,26 +7965,26 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 backdrop-blur-[2px] p-4 pt-10 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-4 border border-gray-100 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+    <ModalOverlay onClose={onClose} z="z-50" align="start" scroll className="pt-10">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-5xl my-4 border border-hairline flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"bdm-title"}>
         {/* modal-hdr */}
-        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-hairline shrink-0">
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
             <div className="min-w-0">
-              <div className="text-sm font-bold text-gray-900 tracking-tight" id="bdm-title">{formatUnifiedBatchLabel(batch)}</div>
-              <div className="text-[10.5px] text-gray-500 mt-0.5" id="bdm-sub">
+              <div className="text-sm font-bold text-ink tracking-tight" id="bdm-title">{formatUnifiedBatchLabel(batch)}</div>
+              <div className="text-[10.5px] text-ink-3 mt-0.5" id="bdm-sub">
                 {batch.productName ?? '-'} · Batch {batch.batchIndex}/{batch.totalBatches} · {batch.batchSize} KG · SO: {batch.soNo}
               </div>
             </div>
             <div id="bdm-status-badges" className="flex gap-1.5 flex-wrap shrink-0 items-center">
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">{lifecyclePhaseLabel}</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200">{batchLifecycleLabel(lifecycleDisplayStage)}</span>
-              {batch.bmrStatus === 'batch_confirmed' && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Confirmed</span>}
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-surface-3 text-ink-2 border border-border">{lifecyclePhaseLabel}</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-soft text-brand border border-brand-soft">{batchLifecycleLabel(lifecycleDisplayStage)}</span>
+              {batch.bmrStatus === 'batch_confirmed' && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-ok-soft text-ok border border-ok-soft">Confirmed</span>}
             </div>
           </div>
           <div className="flex gap-1.5 items-center shrink-0">
-            <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Print</button>
-            <button type="button" onClick={onClose} className="inline-flex items-center justify-center w-8 h-8 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Close">×</button>
+            <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-3 rounded-lg transition-colors">Print</button>
+            <button type="button" onClick={onClose} className="inline-flex items-center justify-center w-8 h-8 text-ink-3 hover:bg-surface-3 rounded-lg transition-colors" aria-label="Close">×</button>
           </div>
         </div>
 
@@ -7984,7 +7994,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           <PipelineStripWithLabels pipeline={pipelineForStrip} currentStatus={curStatus} failed={batch.bmrStatus === 'qc_failed' || batch.bprStatus === 'qc_failed'} title={stripTitle} />
 
           {/* Navigation + Tabs */}
-          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1">Navigation</div>
+          <div className="text-[9px] font-bold text-ink-4 uppercase tracking-widest font-mono mb-1">Navigation</div>
           <div className="flex flex-wrap gap-1 mb-4">
             {[
               { key: 'overview', label: 'Overview' },
@@ -7995,7 +8005,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               { key: 'stepper', label: 'Stage Tracker' },
               { key: 'transfers', label: 'Transfers' },
             ].map(t => (
-              <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${tab === t.key ? 'bg-orange-500 text-white border-orange-500' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${tab === t.key ? 'bg-brand text-white border-brand-soft' : 'text-ink-2 border-border hover:bg-surface-2'}`}>
                 {t.label}
               </button>
             ))}
@@ -8006,14 +8016,14 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   {overviewCards.map(([k, v]) => (
-                    <div key={k} className="bg-black/5 border border-gray-200 rounded-md px-3 py-2.5">
-                      <div className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">{k}</div>
-                      <div className="text-xs font-semibold text-gray-800 wrap-break-word">{v || '-'}</div>
+                    <div key={k} className="bg-black/5 border border-border rounded-md px-3 py-2.5">
+                      <div className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider mb-0.5">{k}</div>
+                      <div className="text-xs font-semibold text-ink wrap-break-word">{v || '-'}</div>
                     </div>
                   ))}
                 </div>
                 {batch.remarks && (
-                  <div className="mt-2.5 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs"><div>{batch.remarks}</div></div>
+                  <div className="mt-2.5 flex items-start gap-2 px-3 py-2 rounded-lg bg-warn-soft border border-warn-soft text-warn text-xs"><div>{batch.remarks}</div></div>
                 )}
               </>
             )}
@@ -8022,8 +8032,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">Raw Materials (PR BOM)</SectionLabel>
-                    {batch.rmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    <SectionLabel icon={<FlaskConical size={12} />} color="text-brand">Raw Materials (PR BOM)</SectionLabel>
+                    {batch.rmReserved && <Badge className="bg-ok-soft text-ok"><Check size={10} /> Reserved</Badge>}
                     {canUnreserveRmForBatch(batch, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
                     )}
@@ -8032,26 +8042,26 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                     )}
                   </div>
                   {bomLoading ? (
-                    <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
+                    <div className="rounded-xl border border-hairline px-3 py-4 text-xs text-ink-3">Loading BOM…</div>
                   ) : (
-                    <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
+                    <div className="rounded-xl border border-hairline text-xs overflow-hidden">
                       <table className="w-full">
-                        <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">RM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <tbody className="divide-y divide-hairline">
                           {(batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems).map((r, i) => {
                             const sih = stockRM[r.code] ?? 0; const res = reservedRM[r.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, r.required);
-                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{formatQtyExact(res, 'kg')}</td></tr>;
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 text-center font-mono text-warn">{formatQtyExact(res, 'kg')}</td></tr>;
                           })}
                         </tbody>
                       </table>
-                      {(batch.dispensingRM.length === 0 && bomRmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No RM in BOM or product not found.</div>}
+                      {(batch.dispensingRM.length === 0 && bomRmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-ink-3 text-center">No RM in BOM or product not found.</div>}
                     </div>
                   )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <SectionLabel icon={<Package size={12} />} color="text-purple-600">Packaging Materials (PR BOM)</SectionLabel>
-                    {batch.pmReserved && <Badge className="bg-emerald-100 text-emerald-700"><Check size={10} /> Reserved</Badge>}
+                    <SectionLabel icon={<Package size={12} />} color="text-brand">Packaging Materials (PR BOM)</SectionLabel>
+                    {batch.pmReserved && <Badge className="bg-ok-soft text-ok"><Check size={10} /> Reserved</Badge>}
                     {packagingUnlocked && canUnreservePmForBatch(batch, outboundMrns, reservedItems) && (
                       <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
                     )}
@@ -8060,19 +8070,19 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                     )}
                   </div>
                   {bomLoading ? (
-                    <div className="rounded-xl border border-gray-100 px-3 py-4 text-xs text-gray-500">Loading BOM…</div>
+                    <div className="rounded-xl border border-hairline px-3 py-4 text-xs text-ink-3">Loading BOM…</div>
                   ) : (
-                    <div className="rounded-xl border border-gray-100 text-xs overflow-hidden">
+                    <div className="rounded-xl border border-hairline text-xs overflow-hidden">
                       <table className="w-full">
-                        <thead><tr className="bg-gray-50/80 border-b border-gray-100"><th className="px-2 py-1.5 text-left font-semibold text-gray-500">PM</th><th className="px-2 py-1.5 text-center">Req</th><th className="px-2 py-1.5 text-center">SIH</th><th className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-center">Req</th><th scope="col" className="px-2 py-1.5 text-center">SIH</th><th scope="col" className="px-2 py-1.5 text-center">Reserved</th></tr></thead>
+                        <tbody className="divide-y divide-hairline">
                           {(batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems).map((p, i) => {
                             const sih = stockPM[p.code] ?? 0; const res = reservedPM[p.code] ?? 0; const avail = qtyAvailable(sih, res); const ok = !isQtyShort(avail, p.required);
-                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-emerald-600' : 'text-red-600'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 text-center font-mono text-amber-700">{formatQtyExact(res, 'pcs')}</td></tr>;
+                            return <tr key={i}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 text-center font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 text-center font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 text-center font-mono text-warn">{formatQtyExact(res, 'pcs')}</td></tr>;
                           })}
                         </tbody>
                       </table>
-                      {(batch.dispensingPM.length === 0 && bomPmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-gray-500 text-center">No PM in BOM or product not found.</div>}
+                      {(batch.dispensingPM.length === 0 && bomPmItems.length === 0 && !bomLoading) && <div className="px-3 py-4 text-ink-3 text-center">No PM in BOM or product not found.</div>}
                     </div>
                   )}
                 </div>
@@ -8087,16 +8097,16 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   ['FG Date', batch.fgDate], ['RM Connect', batch.rmConnectDate], ['PM Connect', batch.pmConnectDate],
                   ['Main Vessel', batch.mainVessel], ['Filling Line', batch.fillingLine], ['Packaging Line', batch.packagingLine],
                   ] as [string, string][]).map(([k, v]) => (
-                    <div key={k}><div className="text-[10px] text-gray-400 font-medium">{k}</div><div className="text-sm font-semibold text-gray-800">{v || '-'}</div></div>
+                    <div key={k}><div className="text-[10px] text-ink-4 font-medium">{k}</div><div className="text-sm font-semibold text-ink">{v || '-'}</div></div>
                   ))}
                 </div>
                 {batch.scheduleRemarks && (
-                  <div className="mb-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
-                    <span className="font-semibold text-slate-500">Schedule notes:</span> {batch.scheduleRemarks}
+                  <div className="mb-3 px-3 py-2 rounded-lg bg-surface-2 border border-border text-xs text-ink-2">
+                    <span className="font-semibold text-ink-3">Schedule notes:</span> {batch.scheduleRemarks}
                   </div>
                 )}
                 {canRescheduleProductionDates(batch) && (
-                  <button type="button" onClick={() => { onClose(); onAction('schedule', batch); }} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+                  <button type="button" onClick={() => { onClose(); onAction('schedule', batch); }} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors">
                     <Calendar size={12} /> {batch.mfgDate || batch.fillDate || batch.packDate ? 'Reschedule dates' : 'Set / adjust schedule'}
                   </button>
                 )}
@@ -8106,35 +8116,35 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             {tab === 'dispensing' && (
               <div className="space-y-5">
                 {(batch.muDispensingBundleId || (batch.muDispensingBundles && batch.muDispensingBundles.length > 0)) && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
-                    <div className="font-bold text-slate-700 mb-1.5 flex items-center gap-2">
-                      <Package size={14} className="text-slate-500" /> MU consumption bundles (RM + PM qty from ML1/ML2/WH)
+                  <div className="rounded-xl border border-border bg-surface-2/60 p-3 text-xs">
+                    <div className="font-bold text-ink-2 mb-1.5 flex items-center gap-2">
+                      <Package size={14} className="text-ink-3" /> MU consumption bundles (RM + PM qty from ML1/ML2/WH)
                     </div>
                     {batch.muDispensingBundleId && (
-                      <p className="text-slate-600 mb-2">
-                        <span className="text-slate-500">Latest bundle:</span>{' '}
-                        <span className="font-mono font-semibold text-indigo-800">{batch.muDispensingBundleId}</span>
+                      <p className="text-ink-2 mb-2">
+                        <span className="text-ink-3">Latest bundle:</span>{' '}
+                        <span className="font-mono font-semibold text-brand">{batch.muDispensingBundleId}</span>
                       </p>
                     )}
-                    <p className="text-[10px] text-slate-500 mb-2">Each bundle groups all RM/PM lines consumed in one dispensing save. Procurement requests (PR) for the same planning extract are listed for traceability.</p>
+                    <p className="text-[10px] text-ink-3 mb-2">Each bundle groups all RM/PM lines consumed in one dispensing save. Procurement requests (PR) for the same planning extract are listed for traceability.</p>
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {([...(batch.muDispensingBundles || [])]).reverse().map((b) => (
-                        <div key={b.bundleId + b.at} className="rounded-lg border border-white/80 bg-white/90 p-2.5">
-                          <div className="font-mono text-[11px] font-bold text-indigo-800">{b.bundleId}</div>
-                          <div className="text-[10px] text-slate-500">{new Date(b.at).toLocaleString()}</div>
+                        <div key={b.bundleId + b.at} className="rounded-lg border border-white/80 bg-surface/90 p-2.5">
+                          <div className="font-mono text-[11px] font-bold text-brand">{b.bundleId}</div>
+                          <div className="text-[10px] text-ink-3">{new Date(b.at).toLocaleString()}</div>
                           {b.procurementRequests?.length > 0 && (
                             <div className="mt-1.5 text-[10px]">
-                              <span className="text-slate-500 font-semibold">PRs:</span>{' '}
+                              <span className="text-ink-3 font-semibold">PRs:</span>{' '}
                               {b.procurementRequests.map((pr) => (
                                 <span key={pr.id} className="inline-block mr-2">#{pr.id}{pr.status ? ` (${pr.status})` : ''}</span>
                               ))}
                             </div>
                           )}
                           {b.rm?.length > 0 && (
-                            <div className="mt-1 text-[10px] text-teal-800"><span className="font-semibold">RM:</span> {b.rm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
+                            <div className="mt-1 text-[10px] text-brand"><span className="font-semibold">RM:</span> {b.rm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
                           )}
                           {b.pm?.length > 0 && (
-                            <div className="mt-0.5 text-[10px] text-purple-800"><span className="font-semibold">PM:</span> {b.pm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
+                            <div className="mt-0.5 text-[10px] text-brand"><span className="font-semibold">PM:</span> {b.pm.map((l) => `${l.code} ${l.qty}`).join(' · ')}</div>
                           )}
                         </div>
                       ))}
@@ -8142,24 +8152,24 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   </div>
                 )}
                 <div>
-                  <SectionLabel icon={<FlaskConical size={12} />} color="text-teal-600">RM Dispensing ({batch.dispensingRM.filter(r => r.done).length}/{batch.dispensingRM.length})</SectionLabel>
+                  <SectionLabel icon={<FlaskConical size={12} />} color="text-brand">RM Dispensing ({batch.dispensingRM.filter(r => r.done).length}/{batch.dispensingRM.length})</SectionLabel>
                   {batch.dispensingRM.map((r, i) => (
-                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${r.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
-                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${r.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{r.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
+                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${r.done ? 'border-ok-soft bg-ok-soft/60' : 'border-hairline'}`}>
+                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${r.done ? 'bg-ok-soft text-ok' : 'bg-surface-3 text-ink-4'}`}>{r.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
                       <span className="text-xs font-semibold flex-1">{r.inci || r.code}</span>
-                      <span className="text-xs font-mono text-gray-500">{r.required} KG</span>
-                      {r.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {r.dispensed} KG</span>}
+                      <span className="text-xs font-mono text-ink-3">{r.required} KG</span>
+                      {r.done && <span className="text-[10px] text-ok font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {r.dispensed} KG</span>}
                     </div>
                   ))}
                 </div>
                 <div>
-                  <SectionLabel icon={<Package size={12} />} color="text-purple-600">PM Dispensing ({batch.dispensingPM.filter(r => r.done).length}/{batch.dispensingPM.length})</SectionLabel>
+                  <SectionLabel icon={<Package size={12} />} color="text-brand">PM Dispensing ({batch.dispensingPM.filter(r => r.done).length}/{batch.dispensingPM.length})</SectionLabel>
                   {batch.dispensingPM.map((p, i) => (
-                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${p.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100'}`}>
-                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${p.done ? 'bg-emerald-200 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{p.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
+                    <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-1 ${p.done ? 'border-ok-soft bg-ok-soft/60' : 'border-hairline'}`}>
+                      <div className={`w-5 h-5 rounded-full text-[9px] flex items-center justify-center font-bold ${p.done ? 'bg-ok-soft text-ok' : 'bg-surface-3 text-ink-4'}`}>{p.done ? <Check size={10} strokeWidth={3} /> : i + 1}</div>
                       <span className="text-xs font-semibold flex-1">{p.name || p.code}</span>
-                      <span className="text-xs font-mono text-gray-500">{formatQtyWithUnit(p.required, 'pcs')}</span>
-                      {p.done && <span className="text-[10px] text-emerald-600 font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {fmt(p.dispensed)} pcs</span>}
+                      <span className="text-xs font-mono text-ink-3">{formatQtyWithUnit(p.required, 'pcs')}</span>
+                      {p.done && <span className="text-[10px] text-ok font-mono flex items-center gap-0.5"><ArrowRight size={10} /> {fmt(p.dispensed)} pcs</span>}
                     </div>
                   ))}
                 </div>
@@ -8171,41 +8181,41 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                 {qcDetailSections.length > 0 ? (
                   <div className="space-y-4">
                     {qcDetailSections.map((section) => (
-                      <div key={section.label} className="rounded-xl border border-gray-100 overflow-hidden">
-                        <div className="px-3 py-1.5 bg-slate-100/80 border-b border-gray-100 text-[10px] font-bold text-slate-600 uppercase tracking-wider">{section.label}</div>
-                        <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-gray-50/80 border-b border-gray-100 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      <div key={section.label} className="rounded-xl border border-hairline overflow-hidden">
+                        <div className="px-3 py-1.5 bg-surface-3/80 border-b border-hairline text-[10px] font-bold text-ink-2 uppercase tracking-wider">{section.label}</div>
+                        <div className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 bg-surface-2/80 border-b border-hairline text-[10px] font-semibold text-ink-3 uppercase tracking-wider">
                           <div>Parameter</div><div>Specification</div><div>Result</div><div>Pass/Fail</div>
                         </div>
                         {section.rows.map((s, i) => (
-                          <div key={`${section.label}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-gray-50 items-center text-xs">
+                          <div key={`${section.label}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_80px] gap-2 px-3 py-2 border-b border-hairline items-center text-xs">
                             <div className="font-semibold">{s.param}</div>
-                            <div className="text-gray-500 font-mono">{s.spec}</div>
+                            <div className="text-ink-3 font-mono">{s.spec}</div>
                             <div className="font-mono">{s.result || '-'}</div>
-                            <div>{s.passed === true ? <Badge className="bg-emerald-100 text-emerald-700">Pass</Badge> : s.passed === false ? <Badge className="bg-red-100 text-red-600">Fail</Badge> : <span className="text-gray-400">-</span>}</div>
+                            <div>{s.passed === true ? <Badge className="bg-ok-soft text-ok">Pass</Badge> : s.passed === false ? <Badge className="bg-err-soft text-err">Fail</Badge> : <span className="text-ink-4">-</span>}</div>
                           </div>
                         ))}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-10 text-gray-400 text-sm">No QC results yet. Submit batch for QC review.</div>
+                  <div className="text-center py-10 text-ink-4 text-sm">No QC results yet. Submit batch for QC review.</div>
                 )}
                 {batch.bulkYield != null && (
                   <div className="mt-3 text-xs">
-                    <span className="text-gray-500">Bulk Yield:</span>{' '}
+                    <span className="text-ink-3">Bulk Yield:</span>{' '}
                     <b>{formatYieldKg(Number(batch.bulkYield))} KG</b>{' '}
-                    {batch.bulkBatchAccepted ? <Badge className="bg-emerald-100 text-emerald-700">Accepted</Badge> : ''}
+                    {batch.bulkBatchAccepted ? <Badge className="bg-ok-soft text-ok">Accepted</Badge> : ''}
                   </div>
                 )}
                 {batch.fillYield != null && (
                   <div className="mt-1 text-xs">
-                    <span className="text-gray-500">Fill Yield:</span>{' '}
+                    <span className="text-ink-3">Fill Yield:</span>{' '}
                     <b>{formatYieldUnits(Number(batch.fillYield))} units</b>
                   </div>
                 )}
                 {batch.fgYield != null && (
                   <div className="mt-1 text-xs">
-                    <span className="text-gray-500">FG Yield:</span>{' '}
+                    <span className="text-ink-3">FG Yield:</span>{' '}
                     <b>{formatYieldUnits(Number(batch.fgYield))} units</b>
                   </div>
                 )}
@@ -8219,15 +8229,15 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                   return (
                     <div key={p.key} className="flex items-start gap-3">
                       <div className="flex flex-col items-center">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${state === 'done' ? 'bg-emerald-100 border-emerald-400 text-emerald-600' :
-                          state === 'active' ? 'bg-orange-100 border-orange-400 text-orange-600 ring-2 ring-orange-100' :
-                            'bg-gray-50 border-gray-200 text-gray-300'
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border-2 ${state === 'done' ? 'bg-ok-soft border-ok-soft text-ok' :
+                          state === 'active' ? 'bg-brand-soft border-brand-soft text-brand ring-2 ring-brand' :
+                            'bg-surface-2 border-border text-ink-4'
                           }`}>{state === 'done' ? <Check size={12} strokeWidth={3} /> : p.icon}</div>
-                        {i < pipeline.length - 1 && <div className={`w-0.5 h-6 ${i < pIdx ? 'bg-emerald-300' : 'bg-gray-200'}`} />}
+                        {i < pipeline.length - 1 && <div className={`w-0.5 h-6 ${i < pIdx ? 'bg-ok' : 'bg-surface-3'}`} />}
                       </div>
                       <div className="pb-4">
-                        <div className={`text-xs font-bold ${state === 'done' ? 'text-emerald-600' : state === 'active' ? 'text-orange-600' : 'text-gray-400'}`}>{p.label}</div>
-                        <div className="text-[10px] text-gray-400">
+                        <div className={`text-xs font-bold ${state === 'done' ? 'text-ok' : state === 'active' ? 'text-brand' : 'text-ink-4'}`}>{p.label}</div>
+                        <div className="text-[10px] text-ink-4">
                           {state === 'pending' ? 'Awaiting previous step' : state === 'active' ? 'Currently at this stage' : 'Completed'}
                         </div>
                       </div>
@@ -8243,46 +8253,46 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
               );
               if (batchMrns.length === 0) {
                 return (
-                  <div className="py-8 text-center text-xs text-gray-400">
+                  <div className="py-8 text-center text-xs text-ink-4">
                     No transfer requests (MTRs) raised for this batch yet. Use <b>Send MTR</b> to request material transfer to the production facility.
                   </div>
                 );
               }
               const statusStyle = (s: string): string => {
                 const u = String(s).toUpperCase();
-                if (u.includes('COMPLETED') || u.includes('GRN')) return 'bg-emerald-100 text-emerald-700';
-                if (u.includes('DELIVERED')) return 'bg-cyan-100 text-cyan-700';
-                if (u.includes('SHIPPED')) return 'bg-indigo-100 text-indigo-700';
-                if (u.includes('PROCESS') || u.includes('PICK')) return 'bg-amber-100 text-amber-700';
-                return 'bg-slate-100 text-slate-600';
+                if (u.includes('COMPLETED') || u.includes('GRN')) return 'bg-ok-soft text-ok';
+                if (u.includes('DELIVERED')) return 'bg-brand-soft text-brand';
+                if (u.includes('SHIPPED')) return 'bg-brand-soft text-brand';
+                if (u.includes('PROCESS') || u.includes('PICK')) return 'bg-warn-soft text-warn';
+                return 'bg-surface-3 text-ink-2';
               };
               return (
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-200">
-                        <th className="py-2 pr-3">MRN #</th>
-                        <th className="py-2 pr-3">Item</th>
-                        <th className="py-2 pr-3 text-right">Required Qty</th>
-                        <th className="py-2 pr-3">Source</th>
-                        <th className="py-2 pr-3">Destination</th>
-                        <th className="py-2 pr-3">Need-by</th>
-                        <th className="py-2 pr-3">MRN Status</th>
-                        <th className="py-2">Action</th>
+                    <thead className="sticky top-0 z-20">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-ink-4 border-b border-border [&_th]:bg-surface-2">
+                        <th scope="col" className="py-2 pr-3">MRN #</th>
+                        <th scope="col" className="py-2 pr-3">Item</th>
+                        <th scope="col" className="py-2 pr-3 text-right">Required Qty</th>
+                        <th scope="col" className="py-2 pr-3">Source</th>
+                        <th scope="col" className="py-2 pr-3">Destination</th>
+                        <th scope="col" className="py-2 pr-3">Need-by</th>
+                        <th scope="col" className="py-2 pr-3">MRN Status</th>
+                        <th scope="col" className="py-2">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {batchMrns.flatMap((m) =>
                         (m.lineItems || []).map((li) => (
-                          <tr key={`${m.id}-${li.id}`} className="border-b border-gray-100 align-top">
-                            <td className="py-2 pr-3 font-medium text-amber-700 whitespace-nowrap">{m.mrnNo}</td>
-                            <td className="py-2 pr-3 text-gray-800">
-                              {li.name} <span className="text-gray-400 font-mono">{li.itemCode}</span>
+                          <tr key={`${m.id}-${li.id}`} className="border-b border-hairline align-top">
+                            <td className="py-2 pr-3 font-medium text-warn whitespace-nowrap">{m.mrnNo}</td>
+                            <td className="py-2 pr-3 text-ink">
+                              {li.name} <span className="text-ink-4 font-mono">{li.itemCode}</span>
                             </td>
                             <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{li.quantity} {li.unit}</td>
-                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{m.whDispatchZone || 'MW'}</td>
-                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{m.muReceiveZone || m.locationPrefix || 'ML1'}</td>
-                            <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
+                            <td className="py-2 pr-3 text-ink-2 whitespace-nowrap">{m.whDispatchZone || 'MW'}</td>
+                            <td className="py-2 pr-3 text-ink-2 whitespace-nowrap">{m.muReceiveZone || m.locationPrefix || 'ML1'}</td>
+                            <td className="py-2 pr-3 text-ink-2 whitespace-nowrap">{mrnDisplayExpectedDate(m)}</td>
                             <td className="py-2 pr-3">
                               <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${statusStyle(m.status)}`}>
                                 {m.status || '—'}
@@ -8292,7 +8302,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                               <button
                                 type="button"
                                 onClick={() => setMrnDetailTarget(m)}
-                                className="px-2 py-1 rounded-md bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-semibold whitespace-nowrap"
+                                className="px-2 py-1 rounded-md bg-brand hover:bg-brand text-white text-[10px] font-semibold whitespace-nowrap"
                               >
                                 ▶ Receive / Manage
                               </button>
@@ -8310,15 +8320,15 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
         </div>
 
         {/* modal-foot */}
-        <div id="bdm-actions" className="flex flex-wrap gap-2 items-center px-5 py-4 border-t border-gray-100 shrink-0 bg-gray-50/50 rounded-b-2xl">
-          <button type="button" onClick={onClose} className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Close</button>
+        <div id="bdm-actions" className="flex flex-wrap gap-2 items-center px-5 py-4 border-t border-hairline shrink-0 bg-surface-2/50 rounded-b-2xl">
+          <button type="button" onClick={onClose} className="px-3 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Close</button>
           {batch.bmrStatus === 'draft' && (
             <Btn color="teal" icon={<Calendar size={12} />} onClick={() => { onClose(); onAction('schedule', batch); }}>
               {hasProductionBatchSchedule(batch) ? 'Edit Schedule' : 'Schedule Batch'}
             </Btn>
           )}
           {batch.bmrStatus === 'draft' && hasProductionBatchSchedule(batch) && !canConfirmProductionBatch(batch) && (
-            <span className="inline-flex items-center px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+            <span className="inline-flex items-center px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg">
               Confirm available on {batch.mfgDate}
             </span>
           )}
@@ -8348,22 +8358,22 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           )}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && batch.rmReserved && !effectiveRmConnectedUi && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled' || batch.bmrStatus === 'batch_confirmed') && !batch.rmReserved && !anyRmMtrForBatch && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg">
               <Info size={14} className="shrink-0" /> Reserve all RM lines before RM Transfer
             </span>
           )}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && openRmMtrForBatch && (
-            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
+            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg max-w-xl" title={outboundMtrStageHint(openRmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openRmMtrForBatch)}</span>
               </span>
               {openRmMtrWarehouseMeta && (
-                <span className="text-[10px] font-semibold text-amber-950/90 leading-snug pl-5 border-l-2 border-amber-300/60 ml-1">
+                <span className="text-[10px] font-semibold text-warn/90 leading-snug pl-5 border-l-2 border-warn-soft/60 ml-1">
                   {openRmMtrWarehouseMeta}
                 </span>
               )}
               {openRmMtrForBatch.lineTransferStatus && openRmMtrForBatch.lineItems && (
-                <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
+                <span className="text-[10px] font-normal text-warn/90 leading-snug">
                   {openRmMtrForBatch.lineItems.filter(mtrLineItemIsRm).map((li) => (
                     <span key={li.id} className="mr-2 inline-block">
                       <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openRmMtrForBatch, li.id))}
@@ -8381,7 +8391,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
                 : <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispenseRM', batch); }}>Start RM Dispensing</Btn>
           )}
           {effectiveRmConnectedUi && (batch.bmrStatus === 'rm_connected' || batch.bmrStatus === 'dispensing' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && openRmMtrForBatch && !mtrAllRmLinesReceivedAtMu(openRmMtrForBatch) && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Verify every RM line at MU in Transfer orders before dispensing.">
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg" title="Verify every RM line at MU in Transfer orders before dispensing.">
               <Info size={14} /> Receive all RM lines at MU first
             </span>
           )}
@@ -8392,22 +8402,22 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {(batch.bmrStatus === 'in_production' || batch.bmrStatus === 'qc_failed') && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcBMR', batch); }}>Submit to Bulk QC</Btn>}
           {packagingUnlocked && batch.bprStatus === 'pm_reserved' && batch.pmReserved && !effectivePmConnectedUi && !anyPmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrPM', batch, batch.dispensingPM.length > 0 ? undefined : { mtrPmItems: bomPmItems }); }}>PM Transfer</Btn>}
           {packagingUnlocked && batch.bprStatus === 'pm_reserved' && !batch.pmReserved && !anyPmMtrForBatch && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg">
               <Info size={14} className="shrink-0" /> Reserve all PM lines before PM Transfer
             </span>
           )}
           {packagingUnlocked && batch.bprStatus === 'pm_reserved' && !effectivePmConnectedUi && openPmMtrForBatch && (
-            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
+            <span className="inline-flex flex-col gap-1 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg max-w-xl" title={outboundMtrStageHint(openPmMtrForBatch)}>
               <span className="inline-flex items-center gap-1.5">
                 <Info size={14} className="shrink-0" /> <span className="leading-tight">{outboundMtrStageTitle(openPmMtrForBatch)}</span>
               </span>
               {openPmMtrWarehouseMeta && (
-                <span className="text-[10px] font-semibold text-amber-950/90 leading-snug pl-5 border-l-2 border-amber-300/60 ml-1">
+                <span className="text-[10px] font-semibold text-warn/90 leading-snug pl-5 border-l-2 border-warn-soft/60 ml-1">
                   {openPmMtrWarehouseMeta}
                 </span>
               )}
               {openPmMtrForBatch.lineTransferStatus && openPmMtrForBatch.lineItems && (
-                <span className="text-[10px] font-normal text-amber-900/90 leading-snug">
+                <span className="text-[10px] font-normal text-warn/90 leading-snug">
                   {openPmMtrForBatch.lineItems.filter(mtrLineItemIsPm).map((li) => (
                     <span key={li.id} className="mr-2 inline-block">
                       <span className="font-mono">{li.itemCode}</span>: {formatMtrLinePhaseShort(mtrLinePhaseRaw(openPmMtrForBatch, li.id))}
@@ -8421,7 +8431,7 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             <Btn color="purple" icon={<Scale size={12} />} onClick={() => { onClose(); onAction('dispensePM', batch); }}>PM Dispensing</Btn>
           )}
           {packagingUnlocked && effectivePmConnectedUi && (batch.bprStatus === 'pm_connected' || batch.bprStatus === 'pm_reserved' || batch.bprStatus === 'pm_dispensing') && openPmMtrForBatch && !mtrAllPmLinesReceivedAtMu(openPmMtrForBatch) && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg" title="Verify every PM line at MU in Transfer orders before PM dispensing.">
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg" title="Verify every PM line at MU in Transfer orders before PM dispensing.">
               <Info size={14} /> Receive all PM lines at MU first
             </span>
           )}
@@ -8429,10 +8439,10 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {packagingUnlocked && batch.bprStatus === 'packaging' && <Btn color="blue" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Pack QC</Btn>}
           {packagingUnlocked && batch.bprStatus === 'qc_failed' && batch.fillBatchAccepted === false && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcFill', batch); }}>Retry Fill QC</Btn>}
           {packagingUnlocked && batch.bprStatus === 'qc_failed' && batch.fgBatchAccepted === false && <Btn color="amber" icon={<Microscope size={12} />} onClick={() => { onClose(); onAction('qcPack', batch); }}>Retry Pack QC</Btn>}
-          <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 ml-auto transition-colors"><Printer size={12} /> Print BMR/BPR</button>
+          <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-3 py-2 text-xs text-ink-3 border border-border rounded-lg hover:bg-surface-2 ml-auto transition-colors"><Printer size={12} /> Print BMR/BPR</button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
     {mrnDetailTarget && (
       <MRNDetailModal
         mrn={mrnDetailTarget}
@@ -8449,14 +8459,14 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 
 function Btn({ color, icon, onClick, children }: { color: string; icon?: React.ReactNode; onClick: () => void; children: React.ReactNode }) {
   const cm: Record<string, string> = {
-    orange: 'bg-orange-500 hover:bg-orange-600',
-    amber: 'bg-amber-500 hover:bg-amber-600',
-    teal: 'bg-teal-500 hover:bg-teal-600',
-    purple: 'bg-purple-500 hover:bg-purple-600',
-    blue: 'bg-blue-500 hover:bg-blue-600',
-    red: 'bg-red-500 hover:bg-red-600',
-    emerald: 'bg-emerald-500 hover:bg-emerald-600',
-    gray: 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300',
+    orange: 'bg-brand hover:bg-brand',
+    amber: 'bg-warn hover:bg-warn',
+    teal: 'bg-brand hover:bg-brand',
+    purple: 'bg-brand hover:bg-brand',
+    blue: 'bg-brand hover:bg-brand',
+    red: 'bg-err hover:bg-err',
+    emerald: 'bg-ok hover:bg-ok',
+    gray: 'bg-surface-3 hover:bg-surface-3 text-ink border border-border',
   };
   const textClass = color === 'gray' ? '' : 'text-white';
   return (
@@ -8644,34 +8654,34 @@ function CreateNewBatchModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-gray-100" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <ModalOverlay onClose={onClose} z="z-50">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md border border-hairline" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={"rework-batch-modal-title"}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Create New Batch (Rework)</h2>
+            <h2 className="text-base font-bold text-ink" id="rework-batch-modal-title">Create New Batch (Rework)</h2>
             {presetLocked && (
-              <p className="text-[11px] font-medium text-emerald-700 mt-0.5">Pre-filled from Yield Report — confirm reason and quantities below.</p>
+              <p className="text-[11px] font-medium text-ok mt-0.5">Pre-filled from Yield Report — confirm reason and quantities below.</p>
             )}
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">×</button>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-3 text-ink-3" aria-label="Close">×</button>
         </div>
         <div className="px-6 py-5 space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-2">
             When a batch fails, create a new batch for the same SO to continue production. The new batch will be in the planning table and named with suffix <strong>rw-01</strong>, <strong>rw-02</strong>, etc.
           </p>
           {presetLocked ? (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 space-y-1.5">
-              <p className="text-[11px] font-semibold text-emerald-900 uppercase tracking-wide">Base batch (from yield)</p>
-              <div className="text-sm text-gray-900"><span className="text-gray-500 text-xs mr-1">SO</span><strong>{preset!.soNo}</strong></div>
-              <div className="text-sm text-gray-900"><span className="text-gray-500 text-xs mr-1">Batch</span><strong>{formatUnifiedBatchLabel(preset!)}</strong></div>
-              <p className="text-[10px] text-gray-600">To pick a different SO or batch, close this dialog and use <strong>Create New Batch</strong> from the Batches tab.</p>
+            <div className="rounded-lg border border-ok-soft bg-ok-soft/80 p-3 space-y-1.5">
+              <p className="text-[11px] font-semibold text-ok uppercase tracking-wide">Base batch (from yield)</p>
+              <div className="text-sm text-ink"><span className="text-ink-3 text-xs mr-1">SO</span><strong>{preset!.soNo}</strong></div>
+              <div className="text-sm text-ink"><span className="text-ink-3 text-xs mr-1">Batch</span><strong>{formatUnifiedBatchLabel(preset!)}</strong></div>
+              <p className="text-[10px] text-ink-2">To pick a different SO or batch, close this dialog and use <strong>Create New Batch</strong> from the Batches tab.</p>
             </div>
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Sales order</label>
+                <label className="block text-xs font-medium text-ink-3 mb-1">Sales order</label>
                 <select
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm"
                   value={selectedSoNo}
                   onChange={e => onSoChange(e.target.value)}
                 >
@@ -8681,13 +8691,13 @@ function CreateNewBatchModal({
                   ))}
                 </select>
                 {soList.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No batches in production. Sync or send batches from Planning first.</p>
+                  <p className="text-xs text-warn mt-1">No batches in production. Sync or send batches from Planning first.</p>
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Rework from batch</label>
+                <label className="block text-xs font-medium text-ink-3 mb-1">Rework from batch</label>
                 <select
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm"
                   value={selectedBmrNo}
                   onChange={e => setSelectedBmrNo(e.target.value)}
                   disabled={!selectedSoNo}
@@ -8701,27 +8711,27 @@ function CreateNewBatchModal({
                   ))}
                 </select>
                 {selectedSoNo && batchesForSo.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No batches for this SO.</p>
+                  <p className="text-xs text-warn mt-1">No batches for this SO.</p>
                 )}
                 {selected && selected._pk != null && selected.planningBatchId != null && !reason.trim() && (
-                  <p className="text-xs text-amber-600 mt-1">Enter a reason for the rework.</p>
+                  <p className="text-xs text-warn mt-1">Enter a reason for the rework.</p>
                 )}
                 {selected && !selected.planningBatchId && (
-                  <p className="text-xs text-amber-600 mt-1">This batch is not linked to planning. Send it from Planning first, or choose another batch.</p>
+                  <p className="text-xs text-warn mt-1">This batch is not linked to planning. Send it from Planning first, or choose another batch.</p>
                 )}
               </div>
             </>
           )}
           {presetLocked && selected && selected._pk != null && selected.planningBatchId != null && !reason.trim() && (
-            <p className="text-xs text-amber-600 -mt-2">Enter a reason for the rework.</p>
+            <p className="text-xs text-warn -mt-2">Enter a reason for the rework.</p>
           )}
           {presetLocked && selected && !selected.planningBatchId && (
-            <p className="text-xs text-amber-600 -mt-2">This batch is not linked to planning. Send it from Planning first, or use BMR Create New Batch to choose another batch.</p>
+            <p className="text-xs text-warn -mt-2">This batch is not linked to planning. Send it from Planning first, or use BMR Create New Batch to choose another batch.</p>
           )}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Reason for rework <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-ink-3 mb-1">Reason for rework <span className="text-err">*</span></label>
             <textarea
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[80px]"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm min-h-[80px]"
               placeholder="e.g. QC failure – pH out of spec; bulk rework required"
               value={reason}
               onChange={e => setReason(e.target.value)}
@@ -8729,36 +8739,36 @@ function CreateNewBatchModal({
             />
           </div>
           {selected && selected._pk != null && selected.planningBatchId != null && (
-            <div className="rounded-lg border border-orange-200 bg-orange-50/60 p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-orange-900">Rework Preview (BMR)</p>
+            <div className="rounded-lg border border-brand-soft bg-brand-soft/60 p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-brand">Rework Preview (BMR)</p>
               <div className="grid grid-cols-3 gap-2 text-[11px]">
-                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
-                  <p className="text-gray-500 uppercase">Planned</p>
-                  <p className="font-semibold text-gray-900">{plannedUnits.toLocaleString('en-IN')}</p>
+                <div className="rounded border border-brand-soft bg-surface px-2 py-1.5">
+                  <p className="text-ink-3 uppercase">Planned</p>
+                  <p className="font-semibold text-ink">{plannedUnits.toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
-                  <p className="text-gray-500 uppercase">Actual</p>
-                  <p className="font-semibold text-gray-900">{Math.round(actualUnits).toLocaleString('en-IN')}</p>
+                <div className="rounded border border-brand-soft bg-surface px-2 py-1.5">
+                  <p className="text-ink-3 uppercase">Actual</p>
+                  <p className="font-semibold text-ink">{Math.round(actualUnits).toLocaleString('en-IN')}</p>
                 </div>
-                <div className="rounded border border-orange-200 bg-white px-2 py-1.5">
-                  <p className="text-gray-500 uppercase">Shortfall</p>
-                  <p className="font-semibold text-orange-700">{shortfallUnits.toLocaleString('en-IN')}</p>
+                <div className="rounded border border-brand-soft bg-surface px-2 py-1.5">
+                  <p className="text-ink-3 uppercase">Shortfall</p>
+                  <p className="font-semibold text-brand">{shortfallUnits.toLocaleString('en-IN')}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Rework Qty (units)</label>
+                  <label className="block text-[11px] font-medium text-ink-2 mb-1">Rework Qty (units)</label>
                   <input
                     type="number"
                     min={1}
                     step={1}
                     value={reworkQty}
                     onChange={e => setReworkQty(e.target.value)}
-                    className="w-full border border-orange-200 rounded-lg px-2.5 py-2 text-sm bg-white"
+                    className="w-full border border-brand-soft rounded-lg px-2.5 py-2 text-sm bg-surface"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Batch Size (KG, optional)</label>
+                  <label className="block text-[11px] font-medium text-ink-2 mb-1">Batch Size (KG, optional)</label>
                   <input
                     type="number"
                     min={0.001}
@@ -8766,29 +8776,29 @@ function CreateNewBatchModal({
                     value={reworkBatchSizeKg}
                     onChange={e => setReworkBatchSizeKg(e.target.value)}
                     placeholder="Auto-scaled"
-                    className="w-full border border-orange-200 rounded-lg px-2.5 py-2 text-sm bg-white"
+                    className="w-full border border-brand-soft rounded-lg px-2.5 py-2 text-sm bg-surface"
                   />
                 </div>
               </div>
-              <div className="rounded border border-orange-200 bg-white p-2.5">
-                <p className="text-[11px] font-semibold text-gray-800 mb-1.5">RM/PM shortfall preview (Planning Items Involved)</p>
+              <div className="rounded border border-brand-soft bg-surface p-2.5">
+                <p className="text-[11px] font-semibold text-ink mb-1.5">RM/PM shortfall preview (Planning Items Involved)</p>
                 {reworkItemsLoading ? (
-                  <p className="text-[11px] text-gray-500">Loading item-level shortfall…</p>
+                  <p className="text-[11px] text-ink-3">Loading item-level shortfall…</p>
                 ) : reworkItemsError ? (
-                  <p className="text-[11px] text-amber-700">{reworkItemsError}</p>
+                  <p className="text-[11px] text-warn">{reworkItemsError}</p>
                 ) : previewShortageRows.length === 0 ? (
-                  <p className="text-[11px] text-emerald-700">No immediate RM/PM shortage detected for this planning line.</p>
+                  <p className="text-[11px] text-ok">No immediate RM/PM shortage detected for this planning line.</p>
                 ) : (
                   <div className="space-y-1">
                     {previewShortageRows.map((row) => (
-                      <div key={`${row.type}-${row.code}`} className="grid grid-cols-[auto_1fr_auto_auto] gap-2 text-[11px] border-b border-gray-100 pb-1">
-                        <span className={`font-semibold ${row.type === 'RM' ? 'text-blue-700' : 'text-purple-700'}`}>{row.type}</span>
-                        <span className="truncate text-gray-700" title={`${row.code} ${row.name}`}>{row.code} - {row.name}</span>
-                        <span className="text-gray-500">need {row.req.toLocaleString('en-IN')} {row.unit}</span>
-                        <span className="font-semibold text-red-700">short {row.shortage.toLocaleString('en-IN')}</span>
+                      <div key={`${row.type}-${row.code}`} className="grid grid-cols-[auto_1fr_auto_auto] gap-2 text-[11px] border-b border-hairline pb-1">
+                        <span className={`font-semibold ${row.type === 'RM' ? 'text-brand' : 'text-brand'}`}>{row.type}</span>
+                        <span className="truncate text-ink-2" title={`${row.code} ${row.name}`}>{row.code} - {row.name}</span>
+                        <span className="text-ink-3">need {row.req.toLocaleString('en-IN')} {row.unit}</span>
+                        <span className="font-semibold text-err">short {row.shortage.toLocaleString('en-IN')}</span>
                       </div>
                     ))}
-                    <p className="text-[10px] text-gray-500 pt-1">
+                    <p className="text-[10px] text-ink-3 pt-1">
                       Rework request creates a new Planning batch entry; use Planning (PIs Extracted / Items Involved) to handle procurement in the normal flow.
                     </p>
                   </div>
@@ -8797,14 +8807,14 @@ function CreateNewBatchModal({
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100">Cancel</button>
-          <button type="button" onClick={handleCreate} disabled={!canReworkSelected || submitting} className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-hairline">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-2 rounded-lg hover:bg-surface-3">Cancel</button>
+          <button type="button" onClick={handleCreate} disabled={!canReworkSelected || submitting} className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand disabled:opacity-50">
             {submitting ? 'Creating…' : 'Create rework batch'}
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -8851,54 +8861,54 @@ function YieldReworkPreflightModal({
       subtitle={`${formatUnifiedBatchLabel(batch)} · ${batch.productName ?? batch.sku}`}
       size="lg"
     >
-      <p className="text-xs text-gray-600 mb-4">
+      <p className="text-xs text-ink-2 mb-4">
         Review quantities and shortfall. The next step opens the rework form with <strong>SO</strong> and <strong>base BMR</strong> filled in automatically.
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-xs">
-        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Batch</p><p className="font-semibold text-gray-900">{formatUnifiedBatchLabel(batch)}</p></div>
-        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="font-semibold text-gray-900">{batch.soNo || '—'}</p></div>
-        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Seq</p><p className="font-semibold text-gray-900">{batch.batchIndex}/{batch.totalBatches}</p></div>
-        <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">Size</p><p className="font-semibold text-gray-900">{batch.batchSize} KG</p></div>
+        <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">Batch</p><p className="font-semibold text-ink">{formatUnifiedBatchLabel(batch)}</p></div>
+        <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">SO</p><p className="font-semibold text-ink">{batch.soNo || '—'}</p></div>
+        <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">Seq</p><p className="font-semibold text-ink">{batch.batchIndex}/{batch.totalBatches}</p></div>
+        <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">Size</p><p className="font-semibold text-ink">{batch.batchSize} KG</p></div>
       </div>
       <div className="grid md:grid-cols-2 gap-3 mb-4">
-        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
-          <h4 className="text-xs font-bold text-blue-900 mb-2">BMR (KG)</h4>
+        <div className="rounded-xl border border-brand-soft bg-brand-soft/50 p-3">
+          <h4 className="text-xs font-bold text-brand mb-2">BMR (KG)</h4>
           <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-gray-600">Planned</span><b>{formatYieldKg(plannedKg)}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">Yield</span><b>{formatYieldKg(bmrYieldKg)}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">Wastage</span><b className="text-amber-700">{formatYieldKg(bmrWastageKg)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">Planned</span><b>{formatYieldKg(plannedKg)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">Yield</span><b>{formatYieldKg(bmrYieldKg)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">Wastage</span><b className="text-warn">{formatYieldKg(bmrWastageKg)}</b></div>
           </div>
         </div>
-        <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-3">
-          <h4 className="text-xs font-bold text-purple-900 mb-2">BPR (units)</h4>
+        <div className="rounded-xl border border-brand-soft bg-brand-soft/50 p-3">
+          <h4 className="text-xs font-bold text-brand mb-2">BPR (units)</h4>
           <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-gray-600">Bulk to fill</span><b>{formatYieldUnits(bprBulkUnits)}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">FG / output</span><b>{formatYieldUnits(builtUnits)}</b></div>
-            <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{formatYieldUnits(bprWastageUnits)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">Bulk to fill</span><b>{formatYieldUnits(bprBulkUnits)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">FG / output</span><b>{formatYieldUnits(builtUnits)}</b></div>
+            <div className="flex justify-between"><span className="text-ink-2">BPR wastage</span><b className="text-err">{formatYieldUnits(bprWastageUnits)}</b></div>
           </div>
         </div>
       </div>
-      <div className="rounded-xl border border-orange-200 bg-orange-50/70 p-3 mb-4">
-        <h4 className="text-xs font-bold text-orange-900 mb-2">Rework basis (units)</h4>
+      <div className="rounded-xl border border-brand-soft bg-brand-soft/70 p-3 mb-4">
+        <h4 className="text-xs font-bold text-brand mb-2">Rework basis (units)</h4>
         <div className="grid grid-cols-3 gap-2 text-xs">
-          <div><p className="text-gray-500">Planned</p><p className="font-semibold">{fmt(Math.round(plannedUnits))}</p></div>
-          <div><p className="text-gray-500">Actual</p><p className="font-semibold">{fmt(Math.round(builtUnits))}</p></div>
-          <div><p className="text-gray-500">Shortfall</p><p className="font-semibold text-orange-800">{fmt(shortfallUnits)}</p></div>
+          <div><p className="text-ink-3">Planned</p><p className="font-semibold">{fmt(Math.round(plannedUnits))}</p></div>
+          <div><p className="text-ink-3">Actual</p><p className="font-semibold">{fmt(Math.round(builtUnits))}</p></div>
+          <div><p className="text-ink-3">Shortfall</p><p className="font-semibold text-brand">{fmt(shortfallUnits)}</p></div>
         </div>
         {!linkageOk && (
-          <p className="text-[11px] text-amber-800 mt-2">This batch is missing production id or planning link — rework cannot be created from here. Use Planning / BMR flows to fix linkage.</p>
+          <p className="text-[11px] text-warn mt-2">This batch is missing production id or planning link — rework cannot be created from here. Use Planning / BMR flows to fix linkage.</p>
         )}
         {linkageOk && shortfallUnits <= 0 && (
-          <p className="text-[11px] text-gray-700 mt-2">No unit shortfall vs plan; rework from yield is not needed for this batch.</p>
+          <p className="text-[11px] text-ink-2 mt-2">No unit shortfall vs plan; rework from yield is not needed for this batch.</p>
         )}
       </div>
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100">Cancel</button>
+      <div className="flex justify-end gap-2 pt-2 border-t border-hairline">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-2 rounded-lg hover:bg-surface-3">Cancel</button>
         <button
           type="button"
           disabled={!canContinue}
           onClick={onContinue}
-          className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-brand text-white rounded-lg hover:bg-brand disabled:opacity-50"
         >
           Continue to rework form
         </button>
@@ -8949,68 +8959,68 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-yield-report">
-      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-hairline bg-surface shrink-0">
         <div>
-          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Yield Report</div>
-          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">FG-ready batch-wise output report from QC-yield inputs.</div>
+          <div className="sec-title text-lg font-bold text-ink tracking-tight">Yield Report</div>
+          <div className="sec-sub text-[11px] text-ink-4 mt-0.5">FG-ready batch-wise output report from QC-yield inputs.</div>
         </div>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search BMR/BPR, batch, SO, product…"
-          className="w-full sm:w-72 text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-emerald-300"
+          className="w-full sm:w-72 text-[11px] px-2.5 py-1.5 rounded-lg border border-border bg-surface text-ink placeholder-gray-400 outline-none focus:ring-1 focus:ring-ok"
         />
       </div>
-      <div className="kpi-row grid grid-cols-2 sm:grid-cols-5 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0">
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">FG Ready Batches</div><div className="kpi-val text-lg font-extrabold text-emerald-600">{rows.length}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Yield (KG)</div><div className="kpi-val text-lg font-extrabold text-blue-600">{formatYieldKg(totalYieldKg)}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">Actual Output (Units)</div><div className="kpi-val text-lg font-extrabold text-purple-600">{formatYieldUnits(totalActualOutputUnits)}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BMR Wastage (KG)</div><div className="kpi-val text-lg font-extrabold text-amber-600">{formatYieldKg(totalBmrWastageKg)}</div></div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold">BPR Wastage (Units)</div><div className="kpi-val text-lg font-extrabold text-rose-600">{formatYieldUnits(totalBprWastageUnits)}</div></div>
+      <div className="kpi-row grid grid-cols-2 sm:grid-cols-5 gap-2.5 px-6 py-3.5 bg-surface-2/50 border-b border-hairline shrink-0">
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold">FG Ready Batches</div><div className="kpi-val text-lg font-extrabold text-ok">{rows.length}</div></div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold">BMR Yield (KG)</div><div className="kpi-val text-lg font-extrabold text-brand">{formatYieldKg(totalYieldKg)}</div></div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold">Actual Output (Units)</div><div className="kpi-val text-lg font-extrabold text-brand">{formatYieldUnits(totalActualOutputUnits)}</div></div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold">BMR Wastage (KG)</div><div className="kpi-val text-lg font-extrabold text-warn">{formatYieldKg(totalBmrWastageKg)}</div></div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2 shadow-xs"><div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold">BPR Wastage (Units)</div><div className="kpi-val text-lg font-extrabold text-err">{formatYieldUnits(totalBprWastageUnits)}</div></div>
       </div>
       <div className="flex-1 overflow-auto p-5">
         {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-400"><Activity size={30} className="mb-2 opacity-20" /><p className="text-sm">No FG-ready batches found for yield reporting.</p></div>
+          <div className="flex flex-col items-center justify-center h-40 text-ink-4"><Activity size={30} className="mb-2 opacity-20" /><p className="text-sm">No FG-ready batches found for yield reporting.</p></div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
-            <table className="w-full text-xs bg-white">
-              <thead className="bg-gray-50 border-b border-gray-100">
+          <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline">
+            <table className="w-full text-xs bg-surface">
+              <thead className="sticky top-0 z-20 bg-surface-2 border-b border-hairline [&_th]:bg-surface-2">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Batch</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Product / SO</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Plan (KG)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Yield (KG)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Waste (KG)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BMR Yield %</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BPR Bulk (Units)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Actual Output (Units)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">BPR Waste (Units)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Overall Waste (Units)</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gray-600">Output vs Plan %</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-600">Rework</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-600">Details</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Batch</th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product / SO</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BMR Plan (KG)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BMR Yield (KG)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BMR Waste (KG)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BMR Yield %</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BPR Bulk (Units)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Actual Output (Units)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">BPR Waste (Units)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Overall Waste (Units)</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Output vs Plan %</th>
+                  <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Rework</th>
+                  <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2">Details</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.b.bmrNo} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <tr key={r.b.bmrNo} className="border-b border-hairline hover:bg-surface-2/50">
                     <td className="px-3 py-2">
-                      <div className="font-semibold text-gray-800">{formatUnifiedBatchLabel(r.b)}</div>
-                      <div className="text-[10px] text-gray-500">{r.b.soNo || '—'} · Seq {r.b.batchIndex}/{r.b.totalBatches}</div>
+                      <div className="font-semibold text-ink">{formatUnifiedBatchLabel(r.b)}</div>
+                      <div className="text-[10px] text-ink-3">{r.b.soNo || '—'} · Seq {r.b.batchIndex}/{r.b.totalBatches}</div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="text-gray-800">{r.b.productName}</div>
-                      <div className="text-[10px] text-gray-500">{r.b.soNo || '—'}</div>
+                      <div className="text-ink">{r.b.productName}</div>
+                      <div className="text-[10px] text-ink-3">{r.b.soNo || '—'}</div>
                     </td>
                     <td className="px-3 py-2 text-right font-mono">{formatYieldKg(r.plannedKg)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-blue-700">{formatYieldKg(r.bmrYieldKg)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-amber-700">{formatYieldKg(r.bmrWastageKg)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-brand">{formatYieldKg(r.bmrYieldKg)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-warn">{formatYieldKg(r.bmrWastageKg)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.bmrYieldPct.toFixed(1)}%</td>
                     <td className="px-3 py-2 text-right font-mono">{formatYieldUnits(r.bprBulkUnits)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-purple-700">{formatYieldUnits(r.builtUnits)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-rose-700">{formatYieldUnits(r.bprWastageUnits)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-amber-700">{formatYieldUnits(r.overallWastageUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-brand">{formatYieldUnits(r.builtUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-err">{formatYieldUnits(r.bprWastageUnits)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-warn">{formatYieldUnits(r.overallWastageUnits)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.outputVsPlanPct.toFixed(1)}%</td>
                     <td className="px-3 py-2 text-center">
                       <button
@@ -9026,7 +9036,7 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
                               : 'Create rework batch from this yield row'
                         }
                         onClick={() => onRequestReworkPreflight?.(r.b)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-50 disabled:opacity-40 disabled:pointer-events-none"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-brand border border-brand-soft rounded-lg hover:bg-brand-soft disabled:opacity-40 disabled:pointer-events-none"
                       >
                         <Layers size={10} /> Rework
                       </button>
@@ -9035,7 +9045,7 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
                       <button
                         type="button"
                         onClick={() => setSelectedBmrNo(r.b.bmrNo)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] text-ink-2 border border-border rounded-lg hover:bg-surface-2"
                       >
                         <Eye size={10} /> View
                       </button>
@@ -9055,40 +9065,40 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
           size="xl"
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">SO</p><p className="text-xs font-semibold text-gray-800">{selectedRow.b.soNo || '—'}</p></div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">FG Date</p><p className="text-xs font-semibold text-gray-800">{selectedRow.b.fgDate || '—'}</p></div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BMR Status</p><p className="text-xs font-semibold text-gray-800">{bmrStatusLabel[selectedRow.b.bmrStatus]}</p></div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"><p className="text-[10px] text-gray-500 uppercase">BPR Status</p><p className="text-xs font-semibold text-gray-800">{bprStatusLabel[selectedRow.b.bprStatus]}</p></div>
+            <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">SO</p><p className="text-xs font-semibold text-ink">{selectedRow.b.soNo || '—'}</p></div>
+            <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">FG Date</p><p className="text-xs font-semibold text-ink">{selectedRow.b.fgDate || '—'}</p></div>
+            <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">BMR Status</p><p className="text-xs font-semibold text-ink">{bmrStatusLabel[selectedRow.b.bmrStatus]}</p></div>
+            <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-2"><p className="text-[10px] text-ink-3 uppercase">BPR Status</p><p className="text-xs font-semibold text-ink">{bprStatusLabel[selectedRow.b.bprStatus]}</p></div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-              <h4 className="text-sm font-bold text-blue-900 mb-3">BMR (Manufacturing) Detail</h4>
+            <div className="rounded-xl border border-brand-soft bg-brand-soft/50 p-4">
+              <h4 className="text-sm font-bold text-brand mb-3">BMR (Manufacturing) Detail</h4>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Planned batch weight</span><b>{formatYieldKg(selectedRow.plannedKg)} KG</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Actual yield weight</span><b>{formatYieldKg(selectedRow.bmrYieldKg)} KG</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">BMR wastage</span><b className="text-amber-700">{formatYieldKg(selectedRow.bmrWastageKg)} KG</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Yield efficiency</span><b>{selectedRow.bmrYieldPct.toFixed(1)}%</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Planned batch weight</span><b>{formatYieldKg(selectedRow.plannedKg)} KG</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Actual yield weight</span><b>{formatYieldKg(selectedRow.bmrYieldKg)} KG</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">BMR wastage</span><b className="text-warn">{formatYieldKg(selectedRow.bmrWastageKg)} KG</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Yield efficiency</span><b>{selectedRow.bmrYieldPct.toFixed(1)}%</b></div>
               </div>
             </div>
-            <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
-              <h4 className="text-sm font-bold text-purple-900 mb-3">BPR (Filling & Packing) Detail</h4>
+            <div className="rounded-xl border border-brand-soft bg-brand-soft/50 p-4">
+              <h4 className="text-sm font-bold text-brand mb-3">BPR (Filling & Packing) Detail</h4>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Bulk available to fill</span><b>{formatYieldUnits(selectedRow.bprBulkUnits)} units</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Actual output produced</span><b>{formatYieldUnits(selectedRow.builtUnits)} units</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">BPR wastage</span><b className="text-rose-700">{formatYieldUnits(selectedRow.bprWastageUnits)} units</b></div>
-                <div className="flex justify-between"><span className="text-gray-600">Output vs planned units</span><b>{selectedRow.outputVsPlanPct.toFixed(1)}%</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Bulk available to fill</span><b>{formatYieldUnits(selectedRow.bprBulkUnits)} units</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Actual output produced</span><b>{formatYieldUnits(selectedRow.builtUnits)} units</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">BPR wastage</span><b className="text-err">{formatYieldUnits(selectedRow.bprWastageUnits)} units</b></div>
+                <div className="flex justify-between"><span className="text-ink-2">Output vs planned units</span><b>{selectedRow.outputVsPlanPct.toFixed(1)}%</b></div>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
-            <h4 className="text-sm font-bold text-emerald-900 mb-3">Combined Batch Summary</h4>
+          <div className="mt-4 rounded-xl border border-ok-soft bg-ok-soft/60 p-4">
+            <h4 className="text-sm font-bold text-ok mb-3">Combined Batch Summary</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-              <div><p className="text-gray-500">Planned units</p><p className="font-semibold">{fmt(Math.round(selectedRow.plannedUnits))}</p></div>
-              <div><p className="text-gray-500">Actual output units</p><p className="font-semibold">{formatYieldUnits(selectedRow.builtUnits)}</p></div>
-              <div><p className="text-gray-500">Overall unit wastage</p><p className="font-semibold text-amber-700">{formatYieldUnits(selectedRow.overallWastageUnits)}</p></div>
-              <div><p className="text-gray-500">Overall quality state</p><p className="font-semibold">{selectedRow.b.bprStatus === 'fg_ready' ? 'FG Ready' : 'In Progress'}</p></div>
+              <div><p className="text-ink-3">Planned units</p><p className="font-semibold">{fmt(Math.round(selectedRow.plannedUnits))}</p></div>
+              <div><p className="text-ink-3">Actual output units</p><p className="font-semibold">{formatYieldUnits(selectedRow.builtUnits)}</p></div>
+              <div><p className="text-ink-3">Overall unit wastage</p><p className="font-semibold text-warn">{formatYieldUnits(selectedRow.overallWastageUnits)}</p></div>
+              <div><p className="text-ink-3">Overall quality state</p><p className="font-semibold">{selectedRow.b.bprStatus === 'fg_ready' ? 'FG Ready' : 'In Progress'}</p></div>
             </div>
           </div>
           {onRequestReworkPreflight && (
@@ -9104,7 +9114,7 @@ function YieldReportView({ batches, onRequestReworkPreflight }: { batches: Batch
                     : 'Confirm quantities, then open rework form with SO and BMR filled in'
                 }
                 onClick={() => { onRequestReworkPreflight(selectedRow.b); setSelectedBmrNo(null); }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-40 disabled:pointer-events-none"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-brand rounded-lg hover:bg-brand disabled:opacity-40 disabled:pointer-events-none"
               >
                 <Layers size={14} /> Create rework batch…
               </button>
@@ -9193,7 +9203,7 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
 
   const batchProductShort = (b: Batch) => `${b.batchSize}KG`;
 
-  const catColors = { mfg: 'bg-teal-500', fill: 'bg-purple-500', pack: 'bg-emerald-500' };
+  const catColors = { mfg: 'bg-brand', fill: 'bg-brand', pack: 'bg-ok' };
   const catLabels = { mfg: 'Manufacturing Vessels', fill: 'Filling Lines', pack: 'Packaging Lines' };
   const catGroupHdr = { mfg: 'Manufacturing Vessels', fill: 'Filling Lines', pack: 'Packaging Lines' };
   const colGrid = '130px repeat(7, 110px)';
@@ -9234,99 +9244,99 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-calendar">
       {/* Section header — Production Calendar */}
-      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 bg-white border-b border-gray-100 shrink-0">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 bg-surface border-b border-hairline shrink-0">
         <div>
-          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Production Calendar</div>
-          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">Vessel & Line wise scheduling — Manufacturing · Filling · Packaging</div>
+          <div className="sec-title text-lg font-bold text-ink tracking-tight">Production Calendar</div>
+          <div className="sec-sub text-[11px] text-ink-4 mt-0.5">Vessel & Line wise scheduling — Manufacturing · Filling · Packaging</div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
-          <button type="button" onClick={() => onWeekOffsetChange(weekOffset - 1)} className="btn btn-sm btn-ghost px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 text-xs font-medium">Prev</button>
-          <span className="font-mono text-[11.5px] text-gray-500">{weekLabel}</span>
-          <button type="button" onClick={() => onWeekOffsetChange(weekOffset + 1)} className="btn btn-sm btn-ghost px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 text-xs font-medium">Next</button>
-          <div className="w-px h-[18px] bg-gray-200" />
-          <button type="button" onClick={() => setCalView('week')} className={`btn btn-sm px-2 py-1 rounded-lg text-xs font-medium ${calView === 'week' ? 'border border-orange-300 text-orange-600 bg-orange-50' : 'border border-gray-200 hover:bg-gray-50 text-gray-600'}`}>Week</button>
-          <button type="button" onClick={() => setCalView('day')} className={`btn btn-sm btn-ghost px-2 py-1 rounded-lg text-xs font-medium border border-transparent ${calView === 'day' ? 'text-orange-600' : 'text-gray-500 hover:bg-gray-50'}`}>Day</button>
+          <button type="button" onClick={() => onWeekOffsetChange(weekOffset - 1)} className="btn btn-sm btn-ghost px-2 py-1 rounded-lg border border-border hover:bg-surface-2 text-ink-3 text-xs font-medium">Prev</button>
+          <span className="font-mono text-[11.5px] text-ink-3">{weekLabel}</span>
+          <button type="button" onClick={() => onWeekOffsetChange(weekOffset + 1)} className="btn btn-sm btn-ghost px-2 py-1 rounded-lg border border-border hover:bg-surface-2 text-ink-3 text-xs font-medium">Next</button>
+          <div className="w-px h-[18px] bg-surface-3" />
+          <button type="button" onClick={() => setCalView('week')} className={`btn btn-sm px-2 py-1 rounded-lg text-xs font-medium ${calView === 'week' ? 'border border-brand-soft text-brand bg-brand-soft' : 'border border-border hover:bg-surface-2 text-ink-2'}`}>Week</button>
+          <button type="button" onClick={() => setCalView('day')} className={`btn btn-sm btn-ghost px-2 py-1 rounded-lg text-xs font-medium border border-transparent ${calView === 'day' ? 'text-brand' : 'text-ink-3 hover:bg-surface-2'}`}>Day</button>
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="kpi-row grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 px-6 py-3.5 bg-gray-50/50 border-b border-gray-100 shrink-0" id="cal-kpis">
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2.5 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Active Batches</div>
-          <div className="kpi-val text-lg font-extrabold text-orange-600">{active}</div>
-          <div className="kpi-sub text-[10px] text-gray-400">In production flow</div>
+      <div className="kpi-row grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2.5 px-6 py-3.5 bg-surface-2/50 border-b border-hairline shrink-0" id="cal-kpis">
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2.5 shadow-xs">
+          <div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold tracking-wider">Active Batches</div>
+          <div className="kpi-val text-lg font-extrabold text-brand">{active}</div>
+          <div className="kpi-sub text-[10px] text-ink-4">In production flow</div>
         </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2.5 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Vessels Idle</div>
-          <div className="kpi-val text-lg font-extrabold text-indigo-600">{vesselsIdle}</div>
-          <div className="kpi-sub text-[10px] text-gray-400">of {mfgTotal} manufacturing</div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2.5 shadow-xs">
+          <div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold tracking-wider">Vessels Idle</div>
+          <div className="kpi-val text-lg font-extrabold text-brand">{vesselsIdle}</div>
+          <div className="kpi-sub text-[10px] text-ink-4">of {mfgTotal} manufacturing</div>
         </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2.5 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Filling Lines Idle</div>
-          <div className="kpi-val text-lg font-extrabold text-blue-600">{fillingLinesIdle}</div>
-          <div className="kpi-sub text-[10px] text-gray-400">of {fillTotal} lines</div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2.5 shadow-xs">
+          <div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold tracking-wider">Filling Lines Idle</div>
+          <div className="kpi-val text-lg font-extrabold text-brand">{fillingLinesIdle}</div>
+          <div className="kpi-sub text-[10px] text-ink-4">of {fillTotal} lines</div>
         </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2.5 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold tracking-wider">Scheduled Batches</div>
-          <div className="kpi-val text-lg font-extrabold text-teal-600">{scheduledWithDates}</div>
-          <div className="kpi-sub text-[10px] text-gray-400">with dates assigned</div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2.5 shadow-xs">
+          <div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold tracking-wider">Scheduled Batches</div>
+          <div className="kpi-val text-lg font-extrabold text-brand">{scheduledWithDates}</div>
+          <div className="kpi-sub text-[10px] text-ink-4">with dates assigned</div>
         </div>
-        <div className="kpi-card bg-white rounded-xl border border-gray-100 px-3 py-2.5 shadow-xs">
-          <div className="kpi-label text-[10px] text-gray-500 uppercase font-semibold tracking-wider">FG Ready</div>
-          <div className="kpi-val text-lg font-extrabold text-emerald-600">{fgReady}</div>
-          <div className="kpi-sub text-[10px] text-gray-400">Batches completed</div>
+        <div className="kpi-card bg-surface rounded-xl border border-hairline px-3 py-2.5 shadow-xs">
+          <div className="kpi-label text-[10px] text-ink-3 uppercase font-semibold tracking-wider">FG Ready</div>
+          <div className="kpi-val text-lg font-extrabold text-ok">{fgReady}</div>
+          <div className="kpi-sub text-[10px] text-ink-4">Batches completed</div>
         </div>
       </div>
 
       {/* Legend */}
       <div className="flex gap-2.5 mb-2.5 px-6 flex-wrap items-center shrink-0 pt-2">
-        <span className="text-[10px] text-gray-500">Legend:</span>
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-teal-300/80 inline-block" />Manufacturing</span>
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-purple-300/80 inline-block" />Filling</span>
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-emerald-300/80 inline-block" />Packaging</span>
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-amber-300/80 inline-block" />QC Hold</span>
-        <span className="w-px h-3.5 bg-gray-200 inline-block" />
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-orange-400/80 inline-block" /><span className="border-l-2 border-orange-500 pl-1">Hot Process</span></span>
-        <span className="flex items-center gap-1 text-[10px] text-gray-600"><span className="w-3 h-3 rounded-sm bg-sky-400/80 inline-block" /><span className="border-l-2 border-sky-400 pl-1">Cold Process</span></span>
+        <span className="text-[10px] text-ink-3">Legend:</span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-brand/80 inline-block" />Manufacturing</span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-brand/80 inline-block" />Filling</span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-ok/80 inline-block" />Packaging</span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-warn/80 inline-block" />QC Hold</span>
+        <span className="w-px h-3.5 bg-surface-3 inline-block" />
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-brand/80 inline-block" /><span className="border-l-2 border-brand-soft pl-1">Hot Process</span></span>
+        <span className="flex items-center gap-1 text-[10px] text-ink-2"><span className="w-3 h-3 rounded-sm bg-brand/80 inline-block" /><span className="border-l-2 border-brand-soft pl-1">Cold Process</span></span>
       </div>
 
       {/* Calendar grid */}
       <div className="cal-wrap flex-1 overflow-auto px-6 pb-4" id="cal-wrap">
         <div className="cal-grid min-w-[900px]">
-          <div className="cal-header grid border-b border-gray-100 bg-white sticky top-0 z-10 shadow-xs" style={{ gridTemplateColumns: colGrid }}>
-            <div className="cal-header-cell col-span-1 px-3 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-100">Equipment</div>
+          <div className="cal-header grid border-b border-hairline bg-surface sticky top-0 z-10 shadow-xs" style={{ gridTemplateColumns: colGrid }}>
+            <div className="cal-header-cell col-span-1 px-3 py-2.5 text-[10px] font-semibold text-ink-3 uppercase tracking-wider border-r border-hairline">Equipment</div>
             {weekDays.map((d, i) => (
-              <div key={i} className={`cal-header-cell text-center py-2.5 border-r border-gray-50 ${i === todayIndex ? 'today-col bg-orange-50/60 text-orange-700' : 'text-gray-600'}`}>
+              <div key={i} className={`cal-header-cell text-center py-2.5 border-r border-hairline ${i === todayIndex ? 'today-col bg-brand-soft/60 text-brand' : 'text-ink-2'}`}>
                 {d.label} {d.date}
-                <div className="text-[8px] mt-0.5 text-gray-400">{d.month}</div>
+                <div className="text-[8px] mt-0.5 text-ink-4">{d.month}</div>
               </div>
             ))}
           </div>
 
           {(['mfg', 'fill', 'pack'] as const).map(cat => (
             <React.Fragment key={cat}>
-              <div className="cal-group-hdr text-[11px] font-bold text-gray-600 uppercase tracking-wider py-1.5 px-0 border-b border-gray-100">{catGroupHdr[cat]}</div>
+              <div className="cal-group-hdr text-[11px] font-bold text-ink-2 uppercase tracking-wider py-1.5 px-0 border-b border-hairline">{catGroupHdr[cat]}</div>
               {unassignedInWeek[cat] && (
-                <div className="cal-row grid border-b border-amber-100 bg-amber-50/30 hover:bg-amber-50/50 transition-colors" style={{ gridTemplateColumns: colGrid }}>
-                  <div className="cal-label flex items-center justify-between px-3 py-2 border-r border-amber-100">
+                <div className="cal-row grid border-b border-warn-soft bg-warn-soft/30 hover:bg-warn-soft/50 transition-colors" style={{ gridTemplateColumns: colGrid }}>
+                  <div className="cal-label flex items-center justify-between px-3 py-2 border-r border-warn-soft">
                     <div>
-                      <div className="cal-label-name text-xs font-bold text-amber-900">Awaiting line</div>
-                      <div className="cal-label-cap text-[10px] text-amber-700">From Planning — assign in Schedule</div>
+                      <div className="cal-label-name text-xs font-bold text-warn">Awaiting line</div>
+                      <div className="cal-label-cap text-[10px] text-warn">From Planning — assign in Schedule</div>
                     </div>
-                    <span className="badge text-[8px] font-semibold px-1.5 py-0.5 rounded-full b-orange bg-amber-100 text-amber-700">TBD</span>
+                    <span className="badge text-[8px] font-semibold px-1.5 py-0.5 rounded-full b-orange bg-warn-soft text-warn">TBD</span>
                   </div>
                   {weekDays.map((d, i) => {
                     const dayBatches = getBatches(CAL_UNASSIGNED, d.iso, cat);
                     return (
                       <div
                         key={`unassigned-${cat}-${i}`}
-                        className={`cal-cell min-h-14 border-r border-amber-50 p-0.5 flex flex-col gap-0.5 ${i === todayIndex ? 'today-col bg-orange-50/30' : ''}`}
+                        className={`cal-cell min-h-14 border-r border-warn-soft p-0.5 flex flex-col gap-0.5 ${i === todayIndex ? 'today-col bg-brand-soft/30' : ''}`}
                         role="gridcell"
                       >
                         {dayBatches.map((batch) => (
                           <div
                             key={batch.bmrNo}
-                            className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] border-dashed border-amber-400 bg-amber-100/80`}
+                            className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] border-dashed border-warn-soft bg-warn-soft/80`}
                             onClick={() => onBatchClick(batch)}
                             title={`${formatUnifiedBatchLabel(batch)} · ${batch.productName} · assign equipment in Schedule`}
                           >
@@ -9343,13 +9353,13 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
                 const busy = isEquipBusy(eq.id, cat);
                 const capLabel = 'cap' in eq && eq.cap ? `${eq.cap}L` : 'speed' in eq && eq.speed ? `${fmt(eq.speed)}/h` : '';
                 return (
-                  <div key={eq.id} className="cal-row grid border-b border-gray-50 hover:bg-gray-50/40 transition-colors" style={{ gridTemplateColumns: colGrid }}>
-                    <div className="cal-label flex items-center justify-between px-3 py-2 border-r border-gray-100">
+                  <div key={eq.id} className="cal-row grid border-b border-hairline hover:bg-surface-2/40 transition-colors" style={{ gridTemplateColumns: colGrid }}>
+                    <div className="cal-label flex items-center justify-between px-3 py-2 border-r border-hairline">
                       <div>
-                        <div className="cal-label-name text-xs font-bold text-gray-800">{eq.id}</div>
-                        <div className="cal-label-cap text-[10px] text-gray-400">{capLabel}</div>
+                        <div className="cal-label-name text-xs font-bold text-ink">{eq.id}</div>
+                        <div className="cal-label-cap text-[10px] text-ink-4">{capLabel}</div>
                       </div>
-                      <span className={`badge text-[8px] font-semibold px-1.5 py-0.5 rounded-full ${busy ? 'b-orange bg-amber-100 text-amber-700' : 'b-green bg-emerald-100 text-emerald-700'}`}>{busy ? 'Busy' : 'Free'}</span>
+                      <span className={`badge text-[8px] font-semibold px-1.5 py-0.5 rounded-full ${busy ? 'b-orange bg-warn-soft text-warn' : 'b-green bg-ok-soft text-ok'}`}>{busy ? 'Busy' : 'Free'}</span>
                     </div>
                     {weekDays.map((d, i) => {
                       const dayBatches = getBatches(eq.id, d.iso, cat);
@@ -9360,31 +9370,31 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
                       return (
                         <div
                           key={i}
-                          className={`cal-cell min-h-14 border-r border-gray-50 p-0.5 flex flex-col gap-0.5 cursor-pointer ${i === todayIndex ? 'today-col bg-orange-50/30' : ''}`}
+                          className={`cal-cell min-h-14 border-r border-hairline p-0.5 flex flex-col gap-0.5 cursor-pointer ${i === todayIndex ? 'today-col bg-brand-soft/30' : ''}`}
                           onClick={() => showAddSlot && onSchedule({ equipId: eq.id, category: cat, dateIso: d.iso })}
                           role="gridcell"
                         >
                           {dayBatches.length === 0 && !hasCapacityLeft ? (
-                            <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-lg hover:bg-gray-50 hover:border-gray-300 transition-colors">+</div>
+                            <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-border flex items-center justify-center text-ink-4 text-lg hover:bg-surface-2 hover:border-border transition-colors">+</div>
                           ) : (
                             <>
                               {dayBatches.map((batch) => (
                                 <div
                                   key={batch.bmrNo}
-                                  className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] ${cat === 'mfg' ? 'batch-block-mfg bg-teal-100/90 border-teal-400' : cat === 'fill' ? 'batch-block-fill bg-purple-100/90 border-purple-400' : 'batch-block-pack bg-emerald-100/90 border-emerald-400'} ${batch.processType === 'hot' ? 'border-l-orange-500' : 'border-l-sky-400'}`}
+                                  className={`batch-block rounded text-[10px] font-semibold px-1.5 py-1 flex flex-col justify-center overflow-hidden shadow-xs cursor-pointer hover:brightness-95 transition-all shrink-0 border-l-[3px] ${cat === 'mfg' ? 'batch-block-mfg bg-brand-soft/90 border-brand-soft' : cat === 'fill' ? 'batch-block-fill bg-brand-soft/90 border-brand-soft' : 'batch-block-pack bg-ok-soft/90 border-ok-soft'} ${batch.processType === 'hot' ? 'border-l-orange-500' : 'border-l-sky-400'}`}
                                   style={{ borderLeftColor: batch.processType === 'hot' ? '#f97316' : '#38bdf8' }}
                                   onClick={e => { e.stopPropagation(); onBatchClick(batch); }}
                                   title={`${formatUnifiedBatchLabel(batch)} · ${batch.productName} · ${batch.processType.toUpperCase()} process`}
                                 >
                                   <div className="flex items-center gap-1">
-                                    <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${batch.processType === 'hot' ? 'bg-orange-400' : 'bg-sky-400'}`} title={batch.processType === 'hot' ? 'Hot Process' : 'Cold Process'} aria-hidden />
+                                    <span className={`inline-block w-2 h-2 rounded-sm shrink-0 ${batch.processType === 'hot' ? 'bg-brand' : 'bg-brand'}`} title={batch.processType === 'hot' ? 'Hot Process' : 'Cold Process'} aria-hidden />
                                     {formatUnifiedBatchLabelShort(batch)}
                                   </div>
                                   <div className="opacity-80 text-[8px]">{batchProductShort(batch)}</div>
                                 </div>
                               ))}
                               {hasCapacityLeft && (
-                                <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-lg hover:bg-gray-50 hover:border-gray-300 transition-colors shrink-0" title="Add another batch (capacity left)">+</div>
+                                <div className="empty-slot flex-1 min-h-10 rounded border border-dashed border-border flex items-center justify-center text-ink-4 text-lg hover:bg-surface-2 hover:border-border transition-colors shrink-0" title="Add another batch (capacity left)">+</div>
                               )}
                             </>
                           )}
@@ -9401,24 +9411,24 @@ function CalendarView({ batches, equipment, onBatchClick, onSchedule, weekOffset
 
       {/* Manual scheduling — date + batch only; BMR/BPR and equipment assigned internally */}
       {onManualSchedule && schedulableBatches.length > 0 && (
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 shrink-0">
-          <div className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2">Manual scheduling</div>
-          <p className="text-[11px] text-gray-500 mb-3">Select date and batch. Vessel and lines are assigned automatically from first available.</p>
+        <div className="px-6 py-4 border-t border-hairline bg-surface-2/50 shrink-0">
+          <div className="text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-2">Manual scheduling</div>
+          <p className="text-[11px] text-ink-3 mb-3">Select date and batch. Vessel and lines are assigned automatically from first available.</p>
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="block text-[10px] font-semibold text-gray-500 mb-1">Date</label>
-              <input type="date" className="border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-gray-800 focus:ring-2 focus:ring-orange-300 focus:outline-none" value={manualDate} onChange={e => setManualDate(e.target.value)} />
+              <label className="block text-[10px] font-semibold text-ink-3 mb-1">Date</label>
+              <input type="date" className="border border-border rounded-lg px-3 py-2 text-xs font-medium text-ink focus:ring-2 focus:ring-brand focus:outline-none" value={manualDate} onChange={e => setManualDate(e.target.value)} />
             </div>
             <div className="min-w-[220px]">
-              <label className="block text-[10px] font-semibold text-gray-500 mb-1">Batch</label>
-              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-medium text-gray-800 focus:ring-2 focus:ring-orange-300 focus:outline-none" value={manualBatchId} onChange={e => setManualBatchId(e.target.value)}>
+              <label className="block text-[10px] font-semibold text-ink-3 mb-1">Batch</label>
+              <select className="w-full border border-border rounded-lg px-3 py-2 text-xs font-medium text-ink focus:ring-2 focus:ring-brand focus:outline-none" value={manualBatchId} onChange={e => setManualBatchId(e.target.value)}>
                 <option value="">— Select batch —</option>
                 {schedulableBatches.map(b => (
                   <option key={b.bmrNo} value={b.bmrNo}>{formatUnifiedBatchLabel(b)} — {b.productName} ({b.batchSize} KG)</option>
                 ))}
               </select>
             </div>
-            <button type="button" onClick={handleManualScheduleSubmit} disabled={!manualBatchId} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg shadow-sm transition-colors">
+            <button type="button" onClick={handleManualScheduleSubmit} disabled={!manualBatchId} className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-brand hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg shadow-sm transition-colors">
               <Calendar size={14} /> Schedule
             </button>
           </div>
@@ -9551,9 +9561,9 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
   };
 
   const catMeta: { key: 'manufacturing' | 'filling' | 'packaging'; label: string; color: string; icon: React.ReactNode }[] = [
-    { key: 'manufacturing', label: 'Manufacturing Vessels', color: 'text-teal-600', icon: <FlaskConical size={14} /> },
-    { key: 'filling', label: 'Filling Lines', color: 'text-purple-600', icon: <Droplets size={14} /> },
-    { key: 'packaging', label: 'Packaging Lines', color: 'text-emerald-600', icon: <Package size={14} /> },
+    { key: 'manufacturing', label: 'Manufacturing Vessels', color: 'text-brand', icon: <FlaskConical size={14} /> },
+    { key: 'filling', label: 'Filling Lines', color: 'text-brand', icon: <Droplets size={14} /> },
+    { key: 'packaging', label: 'Packaging Lines', color: 'text-ok', icon: <Package size={14} /> },
   ];
 
   const totalEquip = equipment.manufacturing.length + equipment.filling.length + equipment.packaging.length;
@@ -9561,11 +9571,11 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-equipment">
-      <div className="sec-hdr flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
-        <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Equipment & Capacity</div>
+      <div className="sec-hdr flex items-center justify-between px-6 pt-5 pb-4 border-b border-hairline bg-surface shrink-0">
+        <div className="sec-title text-lg font-bold text-ink tracking-tight">Equipment & Capacity</div>
         <div className="flex gap-2">
-          <button onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"><RotateCcw size={12} /> Refresh</button>
-          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Equipment</button>
+          <button onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-ink-3 font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2 transition-colors"><RotateCcw size={12} /> Refresh</button>
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 bg-brand hover:bg-brand text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition-colors"><Plus size={13} /> Add Equipment</button>
         </div>
       </div>
       <div className="flex-1 overflow-auto p-6" id="equip-content">
@@ -9573,7 +9583,7 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
           <div key={cat.key} className="mb-8">
             <h3 className={`flex items-center gap-2 text-sm font-bold ${cat.color} uppercase tracking-wide mb-3`}>
               {cat.icon}{cat.label}
-              <Badge className="bg-gray-100 text-gray-500 ml-1">{(equipment[cat.key] as unknown[]).length}</Badge>
+              <Badge className="bg-surface-3 text-ink-3 ml-1">{(equipment[cat.key] as unknown[]).length}</Badge>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(equipment[cat.key] as Array<{ id: string; name: string; _pk?: number; cap?: number; speed?: number; type?: string; status?: string; homogenizer?: boolean; processType?: string[]; compatible?: string[]; supports?: string[] }>).map((e) => {
@@ -9581,44 +9591,44 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
                 const activeBatches = batches.filter(b => (b.mainVessel === e.id || b.fillingLine === e.id || b.packagingLine === e.id) && !['draft', 'cleared', 'fg_ready'].includes(b.bmrStatus));
                 const utilPct = Math.min(100, activeBatches.length > 0 ? Math.round((activeBatches.length / Math.max(batches.length, 1)) * 100) : 0);
                 return (
-                  <div key={e.id} className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${busy ? 'border-orange-200' : 'border-gray-100'}`}>
+                  <div key={e.id} className={`bg-surface rounded-xl border p-4 transition-shadow hover:shadow-md ${busy ? 'border-brand-soft' : 'border-hairline'}`}>
                     <div className="flex items-start justify-between mb-2.5">
                       <div>
                         <div className={`text-sm font-bold font-mono ${cat.color}`}>{e.id}</div>
-                        <div className="text-xs text-gray-600 font-medium">{e.name}</div>
+                        <div className="text-xs text-ink-2 font-medium">{e.name}</div>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        {e.status === 'maintenance' && <Badge className="bg-amber-100 text-amber-700">MAINTENANCE</Badge>}
-                        {e.status !== 'maintenance' && <Badge className={busy ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-700'}>{busy ? 'IN USE' : 'IDLE'}</Badge>}
+                        {e.status === 'maintenance' && <Badge className="bg-warn-soft text-warn">MAINTENANCE</Badge>}
+                        {e.status !== 'maintenance' && <Badge className={busy ? 'bg-err-soft text-err' : 'bg-ok-soft text-ok'}>{busy ? 'IN USE' : 'IDLE'}</Badge>}
                       </div>
                     </div>
                     {busy && activeBatches.length > 0 && (
-                      <div className="text-[10px] text-orange-600 mb-1.5 flex items-center gap-1"><Activity size={10} /> Running: {activeBatches.map(b => formatUnifiedBatchLabelShort(b)).join(', ')}</div>
+                      <div className="text-[10px] text-brand mb-1.5 flex items-center gap-1"><Activity size={10} /> Running: {activeBatches.map(b => formatUnifiedBatchLabelShort(b)).join(', ')}</div>
                     )}
-                    {e.cap != null && <div className="text-[11px] text-gray-500">Capacity: <b className="text-gray-800">{e.cap}L</b></div>}
-                    {e.speed != null && <div className="text-[11px] text-gray-500">Speed: <b className="text-gray-800">{fmt(e.speed)}/hr</b></div>}
-                    {e.type && <div className="text-[11px] text-gray-500">Type: <b className="text-gray-800">{(e.type as string).toUpperCase()}</b></div>}
-                    {e.homogenizer !== undefined && cat.key === 'manufacturing' && <div className="text-[11px] text-gray-500 inline-flex items-center gap-0.5">Homogenizer: <b className={e.homogenizer ? 'text-emerald-600 inline-flex items-center gap-0.5' : 'text-gray-400'}>{e.homogenizer ? <><Check size={11} /> Yes</> : 'No'}</b></div>}
-                    {e.processType && e.processType.length > 0 && <div className="text-[11px] text-gray-500">Process: <b>{(e.processType as string[]).join(', ').toUpperCase()}</b></div>}
-                    {e.compatible && e.compatible.length > 0 && <div className="text-[11px] text-gray-500">Compatible: <b>{(e.compatible as string[]).join(', ')}</b></div>}
-                    {e.supports && e.supports.length > 0 && <div className="text-[11px] text-gray-500">Supports: <b>{(e.supports as string[]).join(', ')}</b></div>}
+                    {e.cap != null && <div className="text-[11px] text-ink-3">Capacity: <b className="text-ink">{e.cap}L</b></div>}
+                    {e.speed != null && <div className="text-[11px] text-ink-3">Speed: <b className="text-ink">{fmt(e.speed)}/hr</b></div>}
+                    {e.type && <div className="text-[11px] text-ink-3">Type: <b className="text-ink">{(e.type as string).toUpperCase()}</b></div>}
+                    {e.homogenizer !== undefined && cat.key === 'manufacturing' && <div className="text-[11px] text-ink-3 inline-flex items-center gap-0.5">Homogenizer: <b className={e.homogenizer ? 'text-ok inline-flex items-center gap-0.5' : 'text-ink-4'}>{e.homogenizer ? <><Check size={11} /> Yes</> : 'No'}</b></div>}
+                    {e.processType && e.processType.length > 0 && <div className="text-[11px] text-ink-3">Process: <b>{(e.processType as string[]).join(', ').toUpperCase()}</b></div>}
+                    {e.compatible && e.compatible.length > 0 && <div className="text-[11px] text-ink-3">Compatible: <b>{(e.compatible as string[]).join(', ')}</b></div>}
+                    {e.supports && e.supports.length > 0 && <div className="text-[11px] text-ink-3">Supports: <b>{(e.supports as string[]).join(', ')}</b></div>}
                     <div className="mt-3">
-                      <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>Utilization</span><span>{utilPct}%</span></div>
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${utilPct > 50 ? 'bg-orange-400' : 'bg-emerald-400'}`} style={{ width: `${utilPct}%` }} /></div>
+                      <div className="flex justify-between text-[10px] text-ink-4 mb-1"><span>Utilization</span><span>{utilPct}%</span></div>
+                      <div className="w-full h-1.5 bg-surface-3 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all ${utilPct > 50 ? 'bg-brand' : 'bg-ok'}`} style={{ width: `${utilPct}%` }} /></div>
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => openEdit(cat.key, e)} className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] text-blue-500 border border-blue-100 rounded-lg hover:bg-blue-50 transition-colors"><Pencil size={10} /> Edit</button>
+                      <button onClick={() => openEdit(cat.key, e)} className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] text-brand border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors"><Pencil size={10} /> Edit</button>
                       <button onClick={() => handleRemove(cat.key, e.id)} disabled={busy}
-                        className={`inline-flex items-center gap-0.5 px-2 py-1 text-[10px] border rounded-lg transition-colors ${busy ? 'text-gray-300 border-gray-100 cursor-not-allowed' : 'text-red-500 border-red-100 hover:bg-red-50'}`}>
+                        className={`inline-flex items-center gap-0.5 px-2 py-1 text-[10px] border rounded-lg transition-colors ${busy ? 'text-ink-4 border-hairline cursor-not-allowed' : 'text-err border-err-soft hover:bg-err-soft'}`}>
                         <X size={10} /> Remove
                       </button>
                     </div>
                   </div>
                 );
               })}
-              <div onClick={() => { setAddCat(cat.key); setShowAdd(true); }} className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-orange-300 hover:bg-orange-50/20 transition-colors min-h-35">
-                <Plus size={22} className="text-gray-300" />
-                <span className="text-xs font-semibold text-gray-400">Add Equipment</span>
+              <div onClick={() => { setAddCat(cat.key); setShowAdd(true); }} className="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-brand-soft hover:bg-brand-soft/20 transition-colors min-h-35">
+                <Plus size={22} className="text-ink-4" />
+                <span className="text-xs font-semibold text-ink-4">Add Equipment</span>
               </div>
             </div>
           </div>
@@ -9642,13 +9652,13 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
               <>
                 <div className="flex items-center gap-2">
                   <label className={LBL}>Homogenizer</label>
-                  <input type="checkbox" checked={addHomogenizer} onChange={e => setAddHomogenizer(e.target.checked)} className="rounded border-gray-300" />
+                  <input type="checkbox" checked={addHomogenizer} onChange={e => setAddHomogenizer(e.target.checked)} className="rounded border-border" />
                 </div>
                 <div className="col-span-2 flex gap-3 items-center">
                   <label className={`${LBL} mb-0`}>Process Types:</label>
                   {['hot', 'cold'].map(pt => (
-                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-gray-600">
-                      <input type="checkbox" checked={addProcessTypes.includes(pt)} onChange={e => setAddProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-gray-300" />
+                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-ink-2">
+                      <input type="checkbox" checked={addProcessTypes.includes(pt)} onChange={e => setAddProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-border" />
                       {pt.toUpperCase()}
                     </label>
                   ))}
@@ -9662,10 +9672,10 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
               <div className="col-span-2"><label className={LBL}>Supports (comma-separated)</label><input className={INP} value={addSupports} onChange={e => setAddSupports(e.target.value)} placeholder="e.g. carton, label, shrink" /></div>
             )}
           </div>
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-hairline">
+            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
             <button onClick={handleAdd} disabled={saving || !addId.trim() || !addName.trim()}
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-brand hover:bg-brand text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
               {saving ? 'Saving...' : <><Plus size={13} /> Add</>}
             </button>
           </div>
@@ -9690,13 +9700,13 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
               <>
                 <div className="flex items-center gap-2">
                   <label className={LBL}>Homogenizer</label>
-                  <input type="checkbox" checked={editHomogenizer} onChange={e => setEditHomogenizer(e.target.checked)} className="rounded border-gray-300" />
+                  <input type="checkbox" checked={editHomogenizer} onChange={e => setEditHomogenizer(e.target.checked)} className="rounded border-border" />
                 </div>
                 <div className="col-span-2 flex gap-3 items-center">
                   <label className={`${LBL} mb-0`}>Process Types:</label>
                   {['hot', 'cold'].map(pt => (
-                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-gray-600">
-                      <input type="checkbox" checked={editProcessTypes.includes(pt)} onChange={e => setEditProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-gray-300" />
+                    <label key={pt} className="inline-flex items-center gap-1 text-xs text-ink-2">
+                      <input type="checkbox" checked={editProcessTypes.includes(pt)} onChange={e => setEditProcessTypes(prev => e.target.checked ? [...prev, pt] : prev.filter(p => p !== pt))} className="rounded border-border" />
                       {pt.toUpperCase()}
                     </label>
                   ))}
@@ -9710,10 +9720,10 @@ function EquipmentView({ equipment, batches, onUpdate, onRefresh }: {
               <div className="col-span-2"><label className={LBL}>Supports (comma-separated)</label><input className={INP} value={editSupports} onChange={e => setEditSupports(e.target.value)} /></div>
             )}
           </div>
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button onClick={() => setEditPk(null)} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-hairline">
+            <button onClick={() => setEditPk(null)} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">Cancel</button>
             <button onClick={handleEditSave} disabled={saving}
-              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-brand hover:bg-brand text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50">
               {saving ? 'Saving...' : <><Check size={13} /> Save</>}
             </button>
           </div>
@@ -9730,17 +9740,17 @@ function TeamView({ team, onRefresh }: {
   onRefresh: () => void;
 }) {
   const depts: { key: Department; color: string; icon: React.ReactNode }[] = [
-    { key: 'Manufacturing', color: 'text-orange-600', icon: <FlaskConical size={14} /> },
-    { key: 'Filling', color: 'text-purple-600', icon: <Droplets size={14} /> },
-    { key: 'Packaging', color: 'text-emerald-600', icon: <Package size={14} /> },
-    { key: 'Quality', color: 'text-blue-600', icon: <ShieldCheck size={14} /> },
+    { key: 'Manufacturing', color: 'text-brand', icon: <FlaskConical size={14} /> },
+    { key: 'Filling', color: 'text-brand', icon: <Droplets size={14} /> },
+    { key: 'Packaging', color: 'text-ok', icon: <Package size={14} /> },
+    { key: 'Quality', color: 'text-brand', icon: <ShieldCheck size={14} /> },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-team">
-      <div className="sec-hdr flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
-        <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Team Management</div>
-        <button type="button" onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+      <div className="sec-hdr flex items-center justify-between px-6 pt-5 pb-4 border-b border-hairline bg-surface shrink-0">
+        <div className="sec-title text-lg font-bold text-ink tracking-tight">Team Management</div>
+        <button type="button" onClick={onRefresh} className="inline-flex items-center gap-1.5 text-xs text-ink-3 font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2 transition-colors">
           <RotateCcw size={12} /> Refresh
         </button>
       </div>
@@ -9755,23 +9765,23 @@ function TeamView({ team, onRefresh }: {
             <div key={dept.key} className="mb-8 mt-6">
               <h3 className={`flex items-center gap-2 text-sm font-bold ${dept.color} uppercase tracking-wide mb-3`}>
                 {dept.icon}{dept.key}
-                <Badge className="bg-gray-100 text-gray-500 ml-1">{members.length}</Badge>
+                <Badge className="bg-surface-3 text-ink-3 ml-1">{members.length}</Badge>
               </h3>
               {members.length === 0 ? (
-                <p className="text-xs text-gray-400">No eligible users for this department.</p>
+                <p className="text-xs text-ink-4">No eligible users for this department.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {members.map(t => (
-                    <div key={`${dept.key}-${t.id}`} className="bg-white rounded-xl border border-gray-100 p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <div key={`${dept.key}-${t.id}`} className="bg-surface rounded-xl border border-hairline p-3.5 flex items-start gap-3 transition-shadow hover:shadow-md">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 bg-ok-soft text-ok border border-ok-soft">
                         {t.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-gray-800">{t.name}</div>
-                        <div className="text-[10px] text-gray-500">{t.role}</div>
+                        <div className="text-xs font-bold text-ink">{t.name}</div>
+                        <div className="text-[10px] text-ink-3">{t.role}</div>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <Badge className="bg-emerald-100 text-emerald-700">Active</Badge>
-                          {t.userId != null && <Badge className="bg-blue-50 text-blue-500">User #{t.userId}</Badge>}
+                          <Badge className="bg-ok-soft text-ok">Active</Badge>
+                          {t.userId != null && <Badge className="bg-brand-soft text-brand">User #{t.userId}</Badge>}
                         </div>
                       </div>
                     </div>
@@ -9840,11 +9850,11 @@ function ReserveForBatchPickerModal({
 
   return (
     <Modal onClose={onClose} title="Reserve for batch" size="md">
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-xs text-ink-3 mb-4">
         Choose a production batch and material type, then select which RM or PM lines to reserve from warehouse stock.
       </p>
       <div className="flex flex-wrap gap-2 mb-4">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider self-center">Material:</span>
+        <span className="text-[10px] font-bold text-ink-3 uppercase tracking-wider self-center">Material:</span>
         {(['rm', 'pm'] as const).map((k) => (
           <button
             key={k}
@@ -9853,9 +9863,9 @@ function ReserveForBatchPickerModal({
             className={`text-[11px] px-3 py-1.5 rounded-lg font-semibold border transition-colors ${
               materialType === k
                 ? k === 'rm'
-                  ? 'bg-teal-500 text-white border-teal-500'
-                  : 'bg-purple-500 text-white border-purple-500'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  ? 'bg-brand text-white border-brand-soft'
+                  : 'bg-brand text-white border-brand-soft'
+                : 'bg-surface text-ink-2 border-border hover:bg-surface-2'
             }`}
           >
             {k === 'rm' ? 'Raw materials (RM)' : 'Packaging (PM)'}
@@ -9863,7 +9873,7 @@ function ReserveForBatchPickerModal({
         ))}
       </div>
       <div className="mb-3">
-        <label htmlFor="reserve-batch-search" className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+        <label htmlFor="reserve-batch-search" className="block text-[10px] font-bold text-ink-3 uppercase tracking-wider mb-1.5">
           Search batch
         </label>
         <input
@@ -9872,15 +9882,15 @@ function ReserveForBatchPickerModal({
           value={batchSearch}
           onChange={(e) => setBatchSearch(e.target.value)}
           placeholder="BMR, BPR, product, SO…"
-          className="w-full text-xs px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-300"
+          className="w-full text-xs px-3 py-2 rounded-lg border border-border bg-surface text-ink placeholder-gray-400 outline-none focus:ring-1 focus:ring-warn"
         />
       </div>
       <div className="mb-4">
-        <label htmlFor="reserve-batch-select" className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+        <label htmlFor="reserve-batch-select" className="block text-[10px] font-bold text-ink-3 uppercase tracking-wider mb-1.5">
           Batch
         </label>
         {eligibleBatches.length === 0 ? (
-          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-4 text-xs text-gray-500 text-center">
+          <div className="rounded-lg border border-hairline bg-surface-2 px-3 py-4 text-xs text-ink-3 text-center">
             No batches eligible for {materialType === 'rm' ? 'RM' : 'PM'} reservation with current filters.
           </div>
         ) : (
@@ -9888,7 +9898,7 @@ function ReserveForBatchPickerModal({
             id="reserve-batch-select"
             value={selectedBmr}
             onChange={(e) => setSelectedBmr(e.target.value)}
-            className="w-full text-xs px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-800 outline-none focus:ring-1 focus:ring-amber-300"
+            className="w-full text-xs px-3 py-2 rounded-lg border border-border bg-surface text-ink outline-none focus:ring-1 focus:ring-warn"
           >
             {eligibleBatches.map((b) => (
               <option key={b.bmrNo} value={b.bmrNo}>
@@ -9899,23 +9909,23 @@ function ReserveForBatchPickerModal({
         )}
       </div>
       {selectedBatch && (
-        <div className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2.5 text-xs text-amber-900 mb-4">
+        <div className="rounded-lg border border-warn-soft bg-warn-soft/60 px-3 py-2.5 text-xs text-warn mb-4">
           <div className="font-semibold">{selectedBatch.productName}</div>
-          <div className="text-[10px] text-amber-800/90 mt-0.5">
+          <div className="text-[10px] text-warn/90 mt-0.5">
             SO {selectedBatch.soNo} · Batch {selectedBatch.batchIndex}/{selectedBatch.totalBatches}
             {materialType === 'rm' ? ` · ${selectedBatch.batchSize} KG` : ''}
           </div>
         </div>
       )}
-      <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">
+      <div className="flex justify-end gap-2 pt-4 border-t border-hairline">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-ink-3 rounded-lg hover:bg-surface-3 transition-colors">
           Cancel
         </button>
         <button
           type="button"
           disabled={!selectedBatch}
           onClick={() => { if (selectedBatch) onContinue(selectedBatch, materialType); }}
-          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-warn hover:bg-warn text-white font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Package size={13} /> Continue to select lines
         </button>
@@ -10038,10 +10048,10 @@ function MaterialReservationView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-material-reservation">
-      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 bg-white shrink-0">
+      <div className="sec-hdr flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 pt-5 pb-4 border-b border-hairline bg-surface shrink-0">
         <div>
-          <div className="sec-title text-lg font-bold text-gray-900 tracking-tight">Material Reservation</div>
-          <div className="sec-sub text-[11px] text-gray-400 mt-0.5">
+          <div className="sec-title text-lg font-bold text-ink tracking-tight">Material Reservation</div>
+          <div className="sec-sub text-[11px] text-ink-4 mt-0.5">
             All RM/PM reserved for production batches · remove individual lines or reserve more per batch
           </div>
         </div>
@@ -10049,28 +10059,28 @@ function MaterialReservationView({
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-warn hover:bg-warn text-white shadow-sm transition-colors"
           >
             <Plus size={13} /> Reserve for batch
           </button>
           <button
             type="button"
             onClick={() => { load(); onRefresh(); }}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-2 transition-colors"
           >
             <RotateCcw size={13} /> Refresh
           </button>
         </div>
       </div>
-      <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-gray-100 bg-white shrink-0">
-        <span className="text-[9.5px] font-bold text-gray-500 uppercase tracking-wider">Type:</span>
+      <div className="filter-bar flex flex-wrap items-center gap-2 px-6 py-3 border-b border-hairline bg-surface shrink-0">
+        <span className="text-[9.5px] font-bold text-ink-3 uppercase tracking-wider">Type:</span>
         {(['all', 'RM', 'PM'] as const).map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setFilter(k)}
             className={`chip text-[10px] px-2.5 py-1 rounded-lg font-semibold border transition-colors ${
-              filter === k ? 'active bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              filter === k ? 'active bg-warn text-white border-warn-soft' : 'bg-surface text-ink-2 border-border hover:bg-surface-2'
             }`}
           >
             {k === 'all' ? 'All' : k}
@@ -10078,72 +10088,68 @@ function MaterialReservationView({
         ))}
         <input
           type="text"
-          className="search-box flex-1 min-w-[120px] max-w-[220px] text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-1 focus:ring-amber-300 ml-auto"
+          className="search-box flex-1 min-w-[120px] max-w-[220px] text-[11px] px-2.5 py-1.5 rounded-lg border border-border bg-surface text-ink placeholder-gray-400 outline-none focus:ring-1 focus:ring-warn ml-auto"
           placeholder="Search batch, code, product…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Badge className="bg-gray-100 text-gray-600 border border-gray-200">{filtered.length} lines</Badge>
+        <Badge className="bg-surface-3 text-ink-2 border border-border">{filtered.length} lines</Badge>
       </div>
       <div className="flex-1 overflow-auto p-5">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-            <Loader2 size={28} className="animate-spin mb-2 opacity-40" />
-            <p className="text-sm">Loading reserved items…</p>
-          </div>
+          <TableSkeleton rows={6} cols={7} />
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-40 text-red-500">
-            <AlertTriangle size={28} className="mb-2 opacity-60" />
-            <p className="text-sm">{error}</p>
-            <button type="button" onClick={load} className="mt-3 text-xs text-amber-600 font-semibold hover:underline">Retry</button>
-          </div>
+          <ErrorState message={error} onRetry={load} />
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-            <Layers size={32} className="mb-2 opacity-20" />
-            <p className="text-sm text-center max-w-md">No reserved materials match this filter. Use <b>Reserve for batch</b> or reserve from batch cards.</p>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors"
-            >
-              <Plus size={13} /> Reserve for batch
-            </button>
-          </div>
+          <EmptyState
+            icon={<Layers />}
+            title="No reserved materials match this filter."
+            description="Use Reserve for batch or reserve from batch cards."
+            action={
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-warn hover:bg-warn text-white shadow-sm transition-colors"
+              >
+                <Plus size={13} /> Reserve for batch
+              </button>
+            }
+          />
         ) : (
-          <div className="tbl-wrap overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <div className="tbl-wrap overflow-auto max-h-[70vh] rounded-xl border border-hairline bg-surface">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-100">
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Type</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Batch</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Product</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Code</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500">Material</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Qty reserved</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-gray-500">Actions</th>
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2">
+                  <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Type</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Batch</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Product</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Code</th>
+                  <th scope="col" className="px-3 py-2.5 text-left font-semibold text-ink-3">Material</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-semibold text-ink-3">Qty reserved</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-semibold text-ink-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-hairline">
                 {filtered.map((row) => {
                   const batch = batchByPk.get(row.productionBatchId);
                   const removable = canRemoveRow(row);
                   return (
-                    <tr key={row.id} className="hover:bg-gray-50/50">
+                    <tr key={row.id} className="hover:bg-surface-2/50">
                       <td className="px-3 py-2.5">
-                        <Badge className={row.itemType === 'RM' ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-purple-50 text-purple-700 border border-purple-200'}>
+                        <Badge className={row.itemType === 'RM' ? 'bg-brand-soft text-brand border border-brand-soft' : 'bg-brand-soft text-brand border border-brand-soft'}>
                           {row.itemType}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-[10px] text-gray-700">
+                      <td className="px-3 py-2.5 font-mono text-[10px] text-ink-2">
                         {batch ? formatUnifiedBatchLabel(batch) : (row.bmrNo || row.bprNo || '—')}
                       </td>
-                      <td className="px-3 py-2.5 text-gray-700 max-w-[10rem] truncate" title={row.productName || undefined}>
+                      <td className="px-3 py-2.5 text-ink-2 max-w-[10rem] truncate" title={row.productName || undefined}>
                         {row.productName || '—'}
-                        {row.soNo && <div className="text-[9px] text-gray-400">{row.soNo}</div>}
+                        {row.soNo && <div className="text-[9px] text-ink-4">{row.soNo}</div>}
                       </td>
-                      <td className="px-3 py-2.5 font-mono font-semibold text-gray-800">{row.code}</td>
-                      <td className="px-3 py-2.5 text-gray-600 max-w-[12rem] truncate" title={row.name}>{row.name}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-800">
+                      <td className="px-3 py-2.5 font-mono font-semibold text-ink">{row.code}</td>
+                      <td className="px-3 py-2.5 text-ink-2 max-w-[12rem] truncate" title={row.name}>{row.name}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-ink">
                         {formatQtyExact(row.quantityReserved, row.itemType === 'RM' ? 'kg' : 'pcs')} {row.unit}
                       </td>
                       <td className="px-3 py-2.5">
@@ -10152,7 +10158,7 @@ function MaterialReservationView({
                             <button
                               type="button"
                               onClick={() => handleReserveMore(row)}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors"
                             >
                               <Package size={10} /> Reserve more
                             </button>
@@ -10162,7 +10168,7 @@ function MaterialReservationView({
                             disabled={!removable || removingId === row.id}
                             title={removable ? 'Remove this reservation line' : 'Blocked by connect, MTR, or dispensing'}
                             onClick={() => void handleRemove(row)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-err bg-err-soft border border-err-soft rounded-lg hover:bg-err-soft transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {removingId === row.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
                             Remove
@@ -10220,28 +10226,24 @@ const NAV_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'team', label: 'Team Management', icon: <Users size={15} /> },
 ];
 
+const PRODUCTION_SIDEBAR_COLLAPSE_KEY = 'production-sidebar-collapsed';
+
 function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose, navItems }: {
   active: Section; onChange: (s: Section) => void; mobileOpen: boolean; onMobileClose: () => void;
   navItems: { id: Section; label: string; icon: React.ReactNode }[];
 }) {
   return (
-    <>
-      {mobileOpen && <div className="fixed inset-0 bg-black/20 z-30 md:hidden" onClick={onMobileClose} />}
-      <aside className={`fixed top-0 left-0 h-full z-40 w-48 bg-white border-r border-gray-100 shadow-sm flex flex-col transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:static md:translate-x-0 md:flex md:shrink-0`}>
-        <div className="px-4 pt-5 pb-4 border-b border-gray-50">
-          <img src={eiLogo} alt="EI Logo" className="h-7 w-auto object-contain object-left" />
-        </div>
-        <nav className="flex-1 py-2 overflow-y-auto">
-          {navItems.map(item => (
-            <button key={item.id} onClick={() => { onChange(item.id); onMobileClose(); }}
-              className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-[11px] font-medium transition-all duration-150 ${active === item.id ? 'bg-orange-50 text-orange-600 border-l-2 border-orange-500 font-semibold' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 border-l-2 border-transparent'}`}>
-              <span className="shrink-0">{item.icon}</span>
-              <span className="leading-tight">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-      </aside>
-    </>
+    <NavSidebar
+      title="Production"
+      moduleName="production"
+      collapseKey={PRODUCTION_SIDEBAR_COLLAPSE_KEY}
+      activeKey={active}
+      onNavigate={(k) => onChange(k as Section)}
+      sections={navItems.map((item) => ({ key: item.id, label: item.label, icon: item.icon }))}
+      mobileOpen={mobileOpen}
+      onMobileClose={onMobileClose}
+      hideMobileHeader
+    />
   );
 }
 
@@ -10255,20 +10257,20 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
   const weekLabel = formatWeekLabel(getWeekStart(new Date()));
 
   const statusBadges: { label: string; count: number; className: string }[] = [
-    { label: 'Batches', count: statusCounts.total, className: 'bg-gray-100 text-gray-600 border-gray-200' },
-    { label: 'Dispensing', count: statusCounts.dispensing, className: 'bg-teal-50 text-teal-700 border-teal-200' },
-    { label: 'Production', count: statusCounts.production, className: 'bg-orange-50 text-orange-600 border-orange-200' },
-    { label: 'Filling', count: statusCounts.filling, className: 'bg-purple-50 text-purple-600 border-purple-200' },
-    { label: 'Packing', count: statusCounts.packing, className: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
-    { label: 'FG Ready', count: statusCounts.fgReady, className: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+    { label: 'Batches', count: statusCounts.total, className: 'bg-surface-3 text-ink-2 border-border' },
+    { label: 'Dispensing', count: statusCounts.dispensing, className: 'bg-brand-soft text-brand border-brand-soft' },
+    { label: 'Production', count: statusCounts.production, className: 'bg-brand-soft text-brand border-brand-soft' },
+    { label: 'Filling', count: statusCounts.filling, className: 'bg-brand-soft text-brand border-brand-soft' },
+    { label: 'Packing', count: statusCounts.packing, className: 'bg-brand-soft text-brand border-brand-soft' },
+    { label: 'FG Ready', count: statusCounts.fgReady, className: 'bg-ok-soft text-ok border-ok-soft' },
   ];
 
   return (
-    <header className="h-13 bg-white border-b border-gray-100 shadow-xs flex items-center px-5 gap-3 shrink-0 z-20">
+    <header className="h-13 bg-surface border-b border-hairline shadow-xs flex items-center px-5 gap-3 shrink-0 z-20">
       <AdminMainMenuButton />
-      <button className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors" onClick={onMenuClick}><Menu size={18} /></button>
+      <button className="md:hidden p-1.5 rounded-lg hover:bg-surface-3 text-ink-3 transition-colors" onClick={onMenuClick} aria-label="Open menu"><Menu size={18} /></button>
       <div className="hidden md:flex items-center gap-2">
-        <span className="text-[11px] text-gray-400 font-medium tracking-wide">Manufacturing Management</span>
+        <span className="text-[11px] text-ink-4 font-medium tracking-wide">Manufacturing Management</span>
       </div>
       <div className="flex items-center gap-1.5 ml-1 md:ml-3 overflow-x-auto">
         {statusBadges.map((badge) => (
@@ -10278,8 +10280,8 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
         ))}
       </div>
       <div className="ml-auto flex items-center gap-3">
-        <span className="hidden sm:block text-[11px] text-gray-400 font-medium">{weekLabel}</span>
-        <button onClick={onSchedule} className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-colors shadow-sm">
+        <span className="hidden sm:block text-[11px] text-ink-4 font-medium">{weekLabel}</span>
+        <button onClick={onSchedule} className="inline-flex items-center gap-1.5 bg-brand hover:bg-brand text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-colors shadow-sm">
           <Plus size={14} /> Schedule
         </button>
       </div>
@@ -10969,7 +10971,7 @@ const Production = () => {
         );
       case 'batches':
         if (!canViewBmr && !canViewBpr) {
-          return <div className="p-8 text-sm text-gray-500">You do not have permission to view Batches.</div>;
+          return <div className="p-8 text-sm text-ink-3">You do not have permission to view Batches.</div>;
         }
         return (
           <BatchesView
@@ -10983,7 +10985,7 @@ const Production = () => {
         );
       case 'dispensing-tray':
         if (!canViewBmr && !canViewBpr) {
-          return <div className="p-8 text-sm text-gray-500">You do not have permission to view Dispensing &amp; Tray.</div>;
+          return <div className="p-8 text-sm text-ink-3">You do not have permission to view Dispensing &amp; Tray.</div>;
         }
         return (
           <DispensingTrayView
@@ -10993,7 +10995,7 @@ const Production = () => {
         );
       case 'material-reservation':
         if (!canViewBmr && !canViewBpr) {
-          return <div className="p-8 text-sm text-gray-500">You do not have permission to view Material Reservation.</div>;
+          return <div className="p-8 text-sm text-ink-3">You do not have permission to view Material Reservation.</div>;
         }
         return (
           <MaterialReservationView
@@ -11013,7 +11015,7 @@ const Production = () => {
           />
         );
       case 'yield-report':
-        if (!canViewTransferYield) return <div className="p-8 text-sm text-gray-500">You do not have permission to view Yield Report.</div>;
+        if (!canViewTransferYield) return <div className="p-8 text-sm text-ink-3">You do not have permission to view Yield Report.</div>;
         return (
           <YieldReportView
             batches={state.batches}
@@ -11028,11 +11030,11 @@ const Production = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-screen bg-canvas text-ink overflow-hidden">
       <TopHeader batches={state.batches} onMenuClick={() => setMobileSidebarOpen(true)} onSchedule={openScheduleWizard} />
       <div className="flex flex-1 overflow-hidden">
         <ProductionSidebar active={activeSection} onChange={setSection} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} navItems={visibleNavItems} />
-        <main className="flex-1 overflow-hidden flex flex-col bg-white">{renderContent()}</main>
+        <main className="flex-1 overflow-hidden flex flex-col bg-surface">{renderContent()}</main>
       </div>
 
       {/* MODALS */}

@@ -11,6 +11,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { CheckCircle } from '@phosphor-icons/react';
 import { ProcModalShell } from './ProcModalShell';
 import type { RfqTemplateData } from './RfqTemplatePopup';
 import VendorClientNameTypeahead from '../VendorClientNameTypeahead';
@@ -43,9 +44,9 @@ export interface QuotationEditPopupProps {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+  'w-full rounded-lg border border-border px-3 py-2 text-sm bg-surface focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]';
 const pctCls =
-  'w-full min-w-[4rem] rounded border border-slate-300 px-2 py-1 text-sm tabular-nums';
+  'w-full min-w-[4rem] rounded border border-border px-2 py-1 text-sm tabular-nums';
 
 function asRecord(data: unknown): Record<string, unknown> | undefined {
   return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : undefined;
@@ -207,8 +208,8 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
       title={`Record Quotation — ${data.qtId}`}
       subtitle={
         <>
-          {data.itemName} <span className="font-mono text-xs text-slate-500">{data.itemCode}</span>
-          {type && <span className="ml-1 text-xs text-slate-400">· {type}</span>}
+          {data.itemName} <span className="font-mono text-xs text-ink-3">{data.itemCode}</span>
+          {type && <span className="ml-1 text-xs text-ink-4">· {type}</span>}
         </>
       }
       width="max-w-2xl"
@@ -218,27 +219,27 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white disabled:opacity-60"
+            className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface disabled:opacity-60"
           >
             Close
           </button>
           <button
             onClick={() => void handleApproveSave()}
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {saving ? 'Saving…' : '✅ Approve & Save to Price List'}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle weight="fill" className="w-4 h-4" />}
+            {saving ? 'Saving…' : 'Approve & Save to Price List'}
           </button>
         </>
       }
     >
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2 text-sm text-err">{error}</div>
       )}
 
       <div>
-        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Vendor</label>
+        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Vendor</label>
         <VendorClientNameTypeahead
           parties={vendors}
           selectedId={vendorId}
@@ -248,52 +249,52 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
           placeholder="Search vendor by name, code, city…"
         />
         {data.vendor && data.vendor !== 'Any (broadcast)' && (
-          <p className="text-[11px] text-slate-500 mt-1">Requested vendor hint: {data.vendor}</p>
+          <p className="text-[11px] text-ink-3 mt-1">Requested vendor hint: {data.vendor}</p>
         )}
         {vendorId && (
-          <p className="text-[11px] text-emerald-600 mt-1">Payment terms, lead time and notes auto-filled from the vendor master — edit if needed.</p>
+          <p className="text-[11px] text-ok mt-1">Payment terms, lead time and notes auto-filled from the vendor master — edit if needed.</p>
         )}
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide">
             MOQ price bands
-            {data.quantityToQuote != null && <span className="ml-1 font-normal normal-case text-slate-400">(first MOQ from qty to quote)</span>}
+            {data.quantityToQuote != null && <span className="ml-1 font-normal normal-case text-ink-4">(first MOQ from qty to quote)</span>}
           </label>
           <button
             type="button"
             onClick={addBand}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 text-slate-700 text-[11px] font-semibold hover:bg-slate-50"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-2 text-[11px] font-semibold hover:bg-surface-3"
           >
             <Plus className="h-3.5 w-3.5" /> Add band
           </button>
         </div>
-        <p className="text-[11px] text-slate-500 mb-2">Enter a price for each MOQ band, exactly like the Masters price list (e.g. 1–99 @ ₹X, 100–499 @ ₹Y).</p>
-        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+        <p className="text-[11px] text-ink-3 mb-2">Enter a price for each MOQ band, exactly like the Masters price list (e.g. 1–99 @ ₹X, 100–499 @ ₹Y).</p>
+        <div className="overflow-auto max-h-[70vh] rounded-md border border-border bg-surface">
           <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-left text-slate-600">
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">MOQ min</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">MOQ max (optional)</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Price / unit (₹)</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200 w-8" aria-label="Remove" />
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">MOQ min</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">MOQ max (optional)</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Price / unit (₹)</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border w-8" aria-label="Remove" />
               </tr>
             </thead>
             <tbody>
               {bands.map((band, idx) => (
-                <tr key={idx}>
-                  <td className="px-2 py-1.5 border-t border-slate-100">
-                    <input value={band.moqMin} onChange={(e) => setBand(idx, 'moqMin', e.target.value)} type="number" min={1} step="any" inputMode="decimal" className={pctCls} />
+                <tr key={`band-${idx}`}>
+                  <td className="px-2 py-1.5 border-t border-hairline">
+                    <input aria-label="MOQ min" value={band.moqMin} onChange={(e) => setBand(idx, 'moqMin', e.target.value)} type="number" min={1} step="any" inputMode="decimal" className={pctCls} />
                   </td>
-                  <td className="px-2 py-1.5 border-t border-slate-100">
-                    <input value={band.moqMax} onChange={(e) => setBand(idx, 'moqMax', e.target.value)} type="number" min={0} step="any" inputMode="decimal" placeholder="—" className={pctCls} />
+                  <td className="px-2 py-1.5 border-t border-hairline">
+                    <input aria-label="MOQ max (optional)" value={band.moqMax} onChange={(e) => setBand(idx, 'moqMax', e.target.value)} type="number" min={0} step="any" inputMode="decimal" placeholder="—" className={pctCls} />
                   </td>
-                  <td className="px-2 py-1.5 border-t border-slate-100">
-                    <input value={band.price} onChange={(e) => setBand(idx, 'price', e.target.value)} type="number" min={0} step="0.01" inputMode="decimal" className={pctCls} />
+                  <td className="px-2 py-1.5 border-t border-hairline">
+                    <input aria-label="Price / unit (₹)" value={band.price} onChange={(e) => setBand(idx, 'price', e.target.value)} type="number" min={0} step="0.01" inputMode="decimal" className={pctCls} />
                   </td>
-                  <td className="px-2 py-1.5 border-t border-slate-100 text-center">
-                    <button type="button" onClick={() => removeBand(idx)} disabled={bands.length === 1} className="text-slate-400 hover:text-red-600 disabled:opacity-30" aria-label="Remove band">
+                  <td className="px-2 py-1.5 border-t border-hairline text-center">
+                    <button type="button" onClick={() => removeBand(idx)} disabled={bands.length === 1} className="text-ink-4 hover:text-err disabled:opacity-30" aria-label="Remove band">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </td>
@@ -305,38 +306,38 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
       </div>
 
       <div className="w-1/2 pr-1.5">
-        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time (days)</label>
+        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Lead time (days)</label>
         <input value={leadTimeDays} onChange={(e) => setLeadTimeDays(e.target.value)} type="number" min={0} className={inputCls} />
       </div>
 
       <div>
-        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms</label>
-        <p className="text-[11px] text-slate-500 mb-2">
+        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Payment terms</label>
+        <p className="text-[11px] text-ink-3 mb-2">
           Same three-way split as Items List and vendor masters (advance, pre-shipment, post-shipment, credit days). Auto-filled from the vendor; leave blank for “as per contract”.
         </p>
-        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+        <div className="overflow-auto max-h-[70vh] rounded-md border border-border bg-surface">
           <table className="w-full max-w-xl text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-left text-slate-600">
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Advance %</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Pre-ship %</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Post-ship %</th>
-                <th className="px-2 py-1.5 font-semibold border-b border-slate-200">Credit days</th>
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-3 text-left text-ink-3 [&_th]:bg-surface-3">
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Advance %</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Pre-ship %</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Post-ship %</th>
+                <th scope="col" className="px-2 py-1.5 font-semibold border-b border-border">Credit days</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="px-2 py-1.5 border-t border-slate-100">
-                  <input type="number" min={0} max={100} value={advancePct} onChange={(e) => setAdvancePct(e.target.value)} className={pctCls} />
+                <td className="px-2 py-1.5 border-t border-hairline">
+                  <input aria-label="Advance %" type="number" min={0} max={100} value={advancePct} onChange={(e) => setAdvancePct(e.target.value)} className={pctCls} />
                 </td>
-                <td className="px-2 py-1.5 border-t border-slate-100">
-                  <input type="number" min={0} max={100} value={preShipmentPct} onChange={(e) => setPreShipmentPct(e.target.value)} className={pctCls} />
+                <td className="px-2 py-1.5 border-t border-hairline">
+                  <input aria-label="Pre-ship %" type="number" min={0} max={100} value={preShipmentPct} onChange={(e) => setPreShipmentPct(e.target.value)} className={pctCls} />
                 </td>
-                <td className="px-2 py-1.5 border-t border-slate-100">
-                  <input type="number" min={0} max={100} value={postShipmentPct} onChange={(e) => setPostShipmentPct(e.target.value)} className={pctCls} />
+                <td className="px-2 py-1.5 border-t border-hairline">
+                  <input aria-label="Post-ship %" type="number" min={0} max={100} value={postShipmentPct} onChange={(e) => setPostShipmentPct(e.target.value)} className={pctCls} />
                 </td>
-                <td className="px-2 py-1.5 border-t border-slate-100">
-                  <input type="number" min={0} value={creditDays} onChange={(e) => setCreditDays(e.target.value)} className={pctCls} />
+                <td className="px-2 py-1.5 border-t border-hairline">
+                  <input aria-label="Credit days" type="number" min={0} value={creditDays} onChange={(e) => setCreditDays(e.target.value)} className={pctCls} />
                 </td>
               </tr>
             </tbody>
@@ -346,16 +347,16 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Valid till (optional)</label>
+          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Valid till (optional)</label>
           <input value={validTill} onChange={(e) => setValidTill(e.target.value)} type="date" className={inputCls} />
         </div>
         <div>
-          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Note (optional)</label>
+          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Note (optional)</label>
           <input value={note} onChange={(e) => setNote(e.target.value)} type="text" placeholder="e.g. quoted on call, freight extra" className={inputCls} />
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-ink-3">
         Approve & Save writes every MOQ band into the Items List (price list) for this vendor and marks the request fulfilled — no email is sent.
       </p>
     </ProcModalShell>

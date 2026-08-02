@@ -524,25 +524,25 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
 
   const getProgressPercentage = () => ((currentStage + 1) / stages.length) * 100;
 
-  const inputClass = "w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 focus:border-transparent transition";
-  const labelClass = "block text-sm font-medium text-gray-700 mb-1.5";
-  const sectionTitleClass = "text-xs font-bold text-gray-500 tracking-widest uppercase mb-4";
+  const inputClass = "w-full p-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border focus:border-transparent transition";
+  const labelClass = "block text-sm font-medium text-ink-2 mb-1.5";
+  const sectionTitleClass = "text-xs font-bold text-ink-3 tracking-widest uppercase mb-4";
 
   return (
     <div className="p-6 w-full">
       {/* Header with Progress */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="bg-surface rounded-xl shadow-sm border border-border p-6 mb-6">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-800">{currentStage}) {stages[currentStage].title}</h2>
-            <p className="text-sm text-gray-500 mt-1">{stages[currentStage].hint}</p>
+            <h2 className="text-xl font-bold text-ink">{currentStage}) {stages[currentStage].title}</h2>
+            <p className="text-sm text-ink-3 mt-1">{stages[currentStage].hint}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
               type="button"
               onClick={handlePrevStage}
               disabled={currentStage === 0}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
+              className="px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
             >
               Prev
             </button>
@@ -550,26 +550,26 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               type="button"
               onClick={handleNextStage}
               disabled={currentStage === stages.length - 1}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
+              className="px-4 py-2 bg-ink text-white rounded-lg hover:bg-ink disabled:opacity-50 disabled:cursor-not-allowed transition font-medium text-sm"
             >
               Next
             </button>
           </div>
         </div>
-        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden">
           <div
-            className="h-full bg-slate-800 transition-all duration-500"
+            className="h-full bg-ink transition-all duration-500"
             style={{ width: `${getProgressPercentage()}%` }}
           />
         </div>
         <div className="flex justify-between mt-2">
-          <span className="text-xs text-gray-500">Step {currentStage + 1} of {stages.length}</span>
-          <span className="text-xs text-gray-500">{Math.round(getProgressPercentage())}% Complete</span>
+          <span className="text-xs text-ink-3">Step {currentStage + 1} of {stages.length}</span>
+          <span className="text-xs text-ink-3">{Math.round(getProgressPercentage())}% Complete</span>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-surface rounded-xl shadow-sm border border-border p-6">
 
           {/* Stage 0: Setup & Coding */}
           {currentStage === 0 && (
@@ -617,7 +617,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                 <div>
                   <label className={labelClass}>Linked User Management ID</label>
                   <input type="text" inputMode="numeric" name="linkedUserId" value={formData.linkedUserId} onChange={handleInputChange} placeholder="Portal user id (optional)" className={inputClass} />
-                  <p className="text-xs text-slate-500 mt-1">Matches a row in User Management. Clear to unlink.</p>
+                  <p className="text-xs text-ink-3 mt-1">Matches a row in User Management. Clear to unlink.</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -632,9 +632,9 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               </div>
 
               {editingId && String(formData.entityCode || '').trim() ? (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Entity code</p>
-                  <p className="text-sm font-mono text-gray-800 mt-0.5">{formData.entityCode}</p>
+                <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-ink-3">Entity code</p>
+                  <p className="text-sm font-mono text-ink mt-0.5">{formData.entityCode}</p>
                 </div>
               ) : null}
             </div>
@@ -795,31 +795,31 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="date" value={tempDoc.date} onChange={(e) => setTempDoc({ ...tempDoc, date: e.target.value })} className={inputClass} />
                 </div>
                 <div className="flex items-end">
-                  <button type="button" onClick={addDocument} className="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition font-medium text-sm">
+                  <button type="button" onClick={addDocument} className="w-full px-4 py-2.5 bg-surface-3 border border-border rounded-lg hover:bg-surface-3 transition font-medium text-sm">
                     + Add Document
                   </button>
                 </div>
               </div>
 
               {documents.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Doc</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Link</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600"></th>
+                <div className="overflow-auto max-h-[70vh]">
+                  <table className="w-full border border-border rounded-lg overflow-hidden">
+                    <thead className="sticky top-0 z-20 bg-surface-2">
+                      <tr className="[&_th]:bg-surface-2">
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-ink-2">Doc</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-ink-2">Link</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-ink-2">Date</th>
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-ink-2"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {documents.map((doc, idx) => (
-                        <tr key={idx} className="border-t border-gray-200">
+                        <tr key={idx} className="border-t border-border">
                           <td className="px-4 py-3 text-sm font-medium">{doc.type}</td>
-                          <td className="px-4 py-3 text-sm text-slate-900 truncate max-w-xs">{doc.link}</td>
+                          <td className="px-4 py-3 text-sm text-ink truncate max-w-xs">{doc.link}</td>
                           <td className="px-4 py-3 text-sm">{doc.date}</td>
                           <td className="px-4 py-3">
-                            <button type="button" onClick={() => removeDocument(idx)} className="text-red-600 hover:text-red-800 text-sm font-medium">Del</button>
+                            <button type="button" onClick={() => removeDocument(idx)} className="text-err hover:text-err text-sm font-medium">Del</button>
                           </td>
                         </tr>
                       ))}
@@ -893,30 +893,30 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempPoc.notes} onChange={(e) => setTempPoc({ ...tempPoc, notes: e.target.value })} placeholder="Working hours, WhatsApp only, etc." className={inputClass} />
                 </div>
                 <div>
-                  <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-slate-800 text-white border border-amber-600 rounded-lg hover:bg-slate-800 transition text-sm font-semibold">
+                  <button type="button" onClick={addPOC} className="w-full px-4 py-2.5 bg-ink text-white border border-warn rounded-lg hover:bg-ink transition text-sm font-semibold">
                     + Add POC
                   </button>
                 </div>
               </div>
 
               {pocs.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Name</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Role</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Email</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Phone</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Level</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Preferred</th>
-                        <th className="px-3 py-3"></th>
+                <div className="overflow-auto max-h-[70vh]">
+                  <table className="w-full border border-border rounded-lg overflow-hidden">
+                    <thead className="sticky top-0 z-20 bg-surface-2">
+                      <tr className="[&_th]:bg-surface-2">
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">#</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Name</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Role</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Email</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Phone</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Level</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Preferred</th>
+                        <th scope="col" className="px-3 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {pocs.map((poc, idx) => (
-                        <tr key={idx} className="border-t border-gray-200">
+                        <tr key={idx} className="border-t border-border">
                           <td className="px-3 py-3 text-sm">{idx + 1}</td>
                           <td className="px-3 py-3 text-sm font-medium">{poc.name}</td>
                           <td className="px-3 py-3 text-sm">{poc.role}</td>
@@ -925,7 +925,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                           <td className="px-3 py-3 text-sm">{poc.level}</td>
                           <td className="px-3 py-3 text-sm">{poc.preferred}</td>
                           <td className="px-3 py-3">
-                            <button type="button" onClick={() => removePOC(idx)} className="text-red-600 hover:text-red-800 text-sm font-medium">Del</button>
+                            <button type="button" onClick={() => removePOC(idx)} className="text-err hover:text-err text-sm font-medium">Del</button>
                           </td>
                         </tr>
                       ))}
@@ -996,30 +996,30 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempBank.notes} onChange={(e) => setTempBank({ ...tempBank, notes: e.target.value })} placeholder="Any payment instructions" className={inputClass} />
                 </div>
                 <div className="flex items-end">
-                  <button type="button" onClick={addBank} className="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition font-medium text-sm">
+                  <button type="button" onClick={addBank} className="w-full px-4 py-2.5 bg-surface-3 border border-border rounded-lg hover:bg-surface-3 transition font-medium text-sm">
                     + Add Bank
                   </button>
                 </div>
               </div>
 
               {banks.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Beneficiary</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Bank</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">A/c</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">IFSC</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-                        <th className="px-3 py-3 text-left text-xs font-bold text-gray-600">Default</th>
-                        <th className="px-3 py-3"></th>
+                <div className="overflow-auto max-h-[70vh]">
+                  <table className="w-full border border-border rounded-lg overflow-hidden">
+                    <thead className="sticky top-0 z-20 bg-surface-2">
+                      <tr className="[&_th]:bg-surface-2">
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">#</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Beneficiary</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Bank</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">A/c</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">IFSC</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Type</th>
+                        <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-ink-2">Default</th>
+                        <th scope="col" className="px-3 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {banks.map((bank, idx) => (
-                        <tr key={idx} className="border-t border-gray-200">
+                        <tr key={idx} className="border-t border-border">
                           <td className="px-3 py-3 text-sm">{idx + 1}</td>
                           <td className="px-3 py-3 text-sm font-medium">{bank.beneficiaryName}</td>
                           <td className="px-3 py-3 text-sm">{bank.bankName}</td>
@@ -1028,7 +1028,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                           <td className="px-3 py-3 text-sm">{bank.accountType}</td>
                           <td className="px-3 py-3 text-sm">{bank.isDefault}</td>
                           <td className="px-3 py-3">
-                            <button type="button" onClick={() => removeBank(idx)} className="text-red-600 hover:text-red-800 text-sm font-medium">Del</button>
+                            <button type="button" onClick={() => removeBank(idx)} className="text-err hover:text-err text-sm font-medium">Del</button>
                           </td>
                         </tr>
                       ))}
@@ -1145,7 +1145,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
           {currentStage === 6 && (
             <div className="space-y-6">
               <div className={sectionTitleClass}>Product Interest & Requirements</div>
-              <p className="text-sm text-gray-500 mb-4">Track products/services the client is interested in purchasing.</p>
+              <p className="text-sm text-ink-3 mb-4">Track products/services the client is interested in purchasing.</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1213,30 +1213,30 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                   <input type="text" value={tempProduct.specifications} onChange={(e) => setTempProduct({ ...tempProduct, specifications: e.target.value })} placeholder="Any specific requirements" className={inputClass} />
                 </div>
                 <div className="flex items-end">
-                  <button type="button" onClick={addProductInterest} className="w-full px-4 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-medium text-sm">
+                  <button type="button" onClick={addProductInterest} className="w-full px-4 py-2.5 bg-ink text-white rounded-lg hover:bg-ink transition font-medium text-sm">
                     + Add Product Interest
                   </button>
                 </div>
               </div>
 
               {productInterests.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border border-gray-200 rounded-lg overflow-hidden">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">#</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Category</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Type</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Volume</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Frequency</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Price</th>
-                        <th className="px-2 py-3 text-left text-xs font-bold text-gray-600">Priority</th>
-                        <th className="px-2 py-3"></th>
+                <div className="overflow-auto max-h-[70vh]">
+                  <table className="w-full border border-border rounded-lg overflow-hidden">
+                    <thead className="sticky top-0 z-20 bg-surface-2">
+                      <tr className="[&_th]:bg-surface-2">
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">#</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Category</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Type</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Volume</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Frequency</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Price</th>
+                        <th scope="col" className="px-2 py-3 text-left text-xs font-bold text-ink-2">Priority</th>
+                        <th scope="col" className="px-2 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {productInterests.map((product, idx) => (
-                        <tr key={idx} className="border-t border-gray-200">
+                        <tr key={idx} className="border-t border-border">
                           <td className="px-2 py-3 text-sm">{idx + 1}</td>
                           <td className="px-2 py-3 text-sm">{product.productCategory}</td>
                           <td className="px-2 py-3 text-sm font-medium">{product.productType}</td>
@@ -1244,13 +1244,13 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
                           <td className="px-2 py-3 text-sm">{product.frequency}</td>
                           <td className="px-2 py-3 text-sm">{product.targetPrice}</td>
                           <td className="px-2 py-3 text-sm">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${product.priority === 'High' ? 'bg-red-100 text-red-700' :
-                              product.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-green-100 text-green-700'
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${product.priority === 'High' ? 'bg-err-soft text-err' :
+                              product.priority === 'Medium' ? 'bg-warn-soft text-warn' :
+                                'bg-ok-soft text-ok'
                               }`}>{product.priority}</span>
                           </td>
                           <td className="px-2 py-3">
-                            <button type="button" onClick={() => removeProductInterest(idx)} className="text-red-600 hover:text-red-800 text-sm font-medium">Del</button>
+                            <button type="button" onClick={() => removeProductInterest(idx)} className="text-err hover:text-err text-sm font-medium">Del</button>
                           </td>
                         </tr>
                       ))}
@@ -1393,7 +1393,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
             type="button"
             onClick={handlePrevStage}
             disabled={currentStage === 0}
-            className="px-6 py-2.5 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
+            className="px-6 py-2.5 bg-surface-3 border border-border text-ink-2 rounded-lg hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
           >
             Previous
           </button>
@@ -1402,7 +1402,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-8 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
+                className="px-8 py-2.5 bg-ok text-white rounded-lg hover:bg-ok disabled:opacity-50 disabled:cursor-not-allowed transition font-medium shadow-lg"
               >
                 {isSaving ? 'Saving...' : 'Submit Client'}
               </button>
@@ -1410,7 +1410,7 @@ const ClientForm: React.FC<ClientFormProps> = ({ editingId = null, onSaved }) =>
               <button
                 type="button"
                 onClick={handleNextStage}
-                className="px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-medium shadow-lg"
+                className="px-8 py-2.5 bg-ink text-white rounded-lg hover:bg-ink transition font-medium shadow-lg"
               >
                 Next
               </button>

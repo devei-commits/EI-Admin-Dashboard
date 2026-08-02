@@ -297,8 +297,8 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
      </div>
 
      {/* Full-Screen Details Panel */}
-     <div className="flex-1 bg-gray-50 overflow-auto animate-in slide-in-from-right-2 fade-in-0 duration-300">
-      <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
+     <div className="flex-1 bg-surface-2 overflow-auto animate-in slide-in-from-right-2 fade-in-0 duration-300">
+      <div className="sticky top-0 z-10 bg-surface border-b shadow-sm">
        <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
          <Button
@@ -313,10 +313,10 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
           )} />
          </Button>
          <div>
-          <h2 className="text-xl font-semibold text-gray-900">
+          <h2 className="text-xl font-semibold text-ink">
            {selectedPIS.pisCode}
           </h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-3">
            {selectedPIS.customer} • {selectedPIS.formulation}
           </p>
          </div>
@@ -351,7 +351,7 @@ export function ImprovedPISManagement({ currentRole, preset }: ImprovedPISManage
      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
       <div>
        <h2 className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2">PIS Management</h2>
-       <p className="text-sm sm:text-base text-gray-600">
+       <p className="text-sm sm:text-base text-ink-2">
         Comprehensive view and management of Product Information Sheets
        </p>
       </div>

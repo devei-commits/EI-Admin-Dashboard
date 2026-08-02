@@ -7,6 +7,8 @@ import { Badge } from './ui/badge';
 import { usePIS } from '../context/PISContext';
 import { pisApi } from '../utils/api';
 import { toast } from 'sonner';
+import { SkeletonText } from '../../ui/Skeleton';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface PISMessage {
  id: string;
@@ -155,20 +157,22 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
  return (
   <Card className="p-4">
    <div className="flex items-center gap-2 mb-4">
-    <MessageCircle className="h-5 w-5 text-blue-600" />
+    <MessageCircle className="h-5 w-5 text-brand" />
     <h3 className="font-medium">Team Chat</h3>
     <Badge variant="secondary">{messages.length}</Badge>
    </div>
 
    {/* Messages List */}
-   <div className="border rounded-lg bg-gray-50 p-4 mb-4 max-h-96 overflow-y-auto space-y-3">
+   <div className="border rounded-lg bg-surface-2 p-4 mb-4 max-h-96 overflow-y-auto space-y-3">
     {isLoading ? (
-     <div className="text-center text-gray-500 py-8">Loading messages...</div>
+     <SkeletonText lines={4} className="py-2" />
     ) : messages.length === 0 ? (
-     <div className="text-center text-gray-500 py-8">
-      <MessageCircle className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-      <p>No messages yet. Start the conversation!</p>
-     </div>
+     <EmptyState
+      compact
+      icon={<MessageCircle />}
+      title="No messages yet"
+      description="Start the conversation!"
+     />
     ) : (
      messages.map((message) => {
       const isOwnMessage = currentUser && (
@@ -181,8 +185,8 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
        key={message.id}
        className={`p-3 rounded-lg ${
         isOwnMessage
-         ? 'bg-blue-100 ml-8'
-         : 'bg-white mr-8'
+         ? 'bg-brand-soft ml-8'
+         : 'bg-surface mr-8'
        }`}
       >
        {editingMessageId === message.id ? (
@@ -226,14 +230,14 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
               {message.author.role}
              </Badge>
             )}
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-ink-3">
              {formatTimestamp(message.createdAt)}
             </span>
             {message.isEdited && (
-             <span className="text-xs text-gray-400 italic">(edited)</span>
+             <span className="text-xs text-ink-4 italic">(edited)</span>
             )}
            </div>
-           <p className="text-sm text-gray-800 whitespace-pre-wrap">
+           <p className="text-sm text-ink whitespace-pre-wrap">
             {message.message}
            </p>
           </div>
@@ -254,7 +258,7 @@ export function PISChat({ pisId, currentRole, disabled = false }: PISChatProps) 
             <Button
              variant="ghost"
              size="sm"
-             className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+             className="h-6 w-6 p-0 text-err hover:text-err"
              onClick={() => handleDeleteMessage(message.id)}
              title="Delete message"
             >

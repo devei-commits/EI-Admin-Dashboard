@@ -51,7 +51,7 @@ export function MasterSubmitPreviewModal({
             type="button"
             onClick={onClose}
             disabled={confirming}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-ink-2 bg-surface border border-border rounded-lg hover:bg-surface-3 disabled:opacity-50"
           >
             Back to form
           </button>
@@ -59,7 +59,7 @@ export function MasterSubmitPreviewModal({
             type="button"
             onClick={() => onConfirm(comment.trim())}
             disabled={confirming}
-            className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            className="px-4 py-2 text-sm font-semibold text-white bg-ok rounded-lg hover:bg-ok disabled:opacity-50"
           >
             {confirming ? 'Saving…' : isEdit ? 'Confirm & update' : confirmLabel}
           </button>
@@ -69,25 +69,25 @@ export function MasterSubmitPreviewModal({
       <div className="space-y-6">
         {sections.length > 0 ? (
           sections.map((section) => (
-            <section key={section.title} className="border border-gray-200 rounded-lg overflow-hidden">
-              <h3 className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-indigo-800 bg-indigo-50 border-b border-indigo-100">
+            <section key={section.title} className="border border-border rounded-lg overflow-hidden">
+              <h3 className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-brand bg-brand-soft border-b border-brand-soft">
                 {section.title}
               </h3>
-              <dl className="divide-y divide-gray-100">
+              <dl className="divide-y divide-hairline">
                 {section.rows.map((row) => (
                   <div
                     key={`${section.title}-${row.label}`}
                     className={`grid grid-cols-1 sm:grid-cols-[minmax(140px,32%)_1fr] gap-1 sm:gap-4 px-4 py-2.5 text-sm ${
-                      row.changed ? 'bg-amber-50 border-l-4 border-amber-400' : ''
+                      row.changed ? 'bg-warn-soft border-l-4 border-warn' : ''
                     }`}
                   >
-                    <dt className={`font-medium shrink-0 ${row.changed ? 'text-amber-900' : 'text-gray-600'}`}>
+                    <dt className={`font-medium shrink-0 ${row.changed ? 'text-warn' : 'text-ink-3'}`}>
                       {row.label}
                     </dt>
-                    <dd className="text-gray-900 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
-                      <span className={row.changed ? 'font-semibold text-amber-950' : undefined}>{row.value}</span>
+                    <dd className="text-ink whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
+                      <span className={row.changed ? 'font-semibold text-warn' : undefined}>{row.value}</span>
                       {row.changed && row.previousValue ? (
-                        <p className="mt-1.5 text-xs font-sans text-amber-800/90">
+                        <p className="mt-1.5 text-xs font-sans text-warn/90">
                           Previously — {row.previousValue}
                         </p>
                       ) : null}
@@ -101,7 +101,7 @@ export function MasterSubmitPreviewModal({
 
         {showComment ? (
           <div>
-            <label htmlFor="master-submit-comment" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label htmlFor="master-submit-comment" className="block text-sm font-medium text-ink-2 mb-1.5">
               {commentLabel}
             </label>
             <textarea
@@ -111,7 +111,7 @@ export function MasterSubmitPreviewModal({
               rows={3}
               placeholder={commentPlaceholder}
               disabled={confirming}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:opacity-50"
             />
           </div>
         ) : null}

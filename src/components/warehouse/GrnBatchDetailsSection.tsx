@@ -9,7 +9,7 @@ import { Paperclip } from 'lucide-react';
 import type { GrnBatchRow } from '../../lib/inboundGrnBatchesMeta';
 
 const cellInput =
-  'w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100';
+  'w-full rounded-md border border-border px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3';
 
 export interface GrnBatchDetailsSectionProps {
   rows: GrnBatchRow[];
@@ -46,16 +46,16 @@ const CoaCell: React.FC<{
         type="button"
         disabled={disabled}
         onClick={() => ref.current?.click()}
-        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-semibold text-ink-2 hover:bg-surface-2 disabled:opacity-60"
       >
         <Paperclip className="h-3 w-3" aria-hidden /> Choose file
       </button>
       {row.coaFileName ? (
-        <span className="max-w-[120px] truncate text-xs text-slate-600" title={row.coaFileName}>
+        <span className="max-w-[120px] truncate text-xs text-ink-2" title={row.coaFileName}>
           {row.coaFileName}
         </span>
       ) : (
-        <span className="text-xs text-slate-400">No file chosen</span>
+        <span className="text-xs text-ink-4">No file chosen</span>
       )}
     </div>
   );
@@ -67,37 +67,37 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
   disabled = false,
 }) => {
   return (
-    <section className="rounded-xl border border-slate-200 p-4">
+    <section className="rounded-xl border border-border p-4">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-800">3 · Batch Details</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-ink">3 · Batch Details</h3>
+        <p className="mt-1 text-xs text-ink-3">
           Enter details for each batch received. No. of packs drives Step 4 (Packaging List) — each pack
           gets a unique packaging number.
         </p>
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
+        <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-ink-3">
           Set "No. of batches received" in the previous step to generate batch rows.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
-              <tr>
-                <th className="px-3 py-2 text-left">#</th>
-                <th className="px-3 py-2 text-left">Vendor Batch No.</th>
-                <th className="px-3 py-2 text-left">MFG Date</th>
-                <th className="px-3 py-2 text-left">EXP Date</th>
-                <th className="px-3 py-2 text-right">No. of Packs</th>
-                <th className="px-3 py-2 text-right">Qty per pack (approx)</th>
-                <th className="px-3 py-2 text-left">Batch COA</th>
+            <thead className="sticky top-0 z-20 bg-surface-2 text-xs uppercase tracking-wide text-ink-2">
+              <tr className="[&_th]:bg-surface-2">
+                <th scope="col" className="px-3 py-2 text-left">#</th>
+                <th scope="col" className="px-3 py-2 text-left">Vendor Batch No.</th>
+                <th scope="col" className="px-3 py-2 text-left">MFG Date</th>
+                <th scope="col" className="px-3 py-2 text-left">EXP Date</th>
+                <th scope="col" className="px-3 py-2 text-right">No. of Packs</th>
+                <th scope="col" className="px-3 py-2 text-right">Qty per pack (approx)</th>
+                <th scope="col" className="px-3 py-2 text-left">Batch COA</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-hairline">
               {rows.map((row, i) => (
                 <tr key={i} className="align-top">
-                  <td className="px-3 py-2 font-medium text-slate-700 whitespace-nowrap">Batch {i + 1}</td>
+                  <td className="px-3 py-2 font-medium text-ink-2 whitespace-nowrap">Batch {i + 1}</td>
                   <td className="px-3 py-2 min-w-[150px]">
                     <input
                       type="text"
@@ -105,6 +105,7 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                       disabled={disabled}
                       onChange={(e) => onChangeRow(i, { vendorBatchNo: e.target.value || null })}
                       placeholder="VB-2026-01000"
+                      aria-label={`Batch ${i + 1} vendor batch no.`}
                       className={cellInput}
                     />
                   </td>
@@ -114,6 +115,7 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                       value={row.mfgDate ?? ''}
                       disabled={disabled}
                       onChange={(e) => onChangeRow(i, { mfgDate: e.target.value || null })}
+                      aria-label={`Batch ${i + 1} MFG date`}
                       className={cellInput}
                     />
                   </td>
@@ -123,6 +125,7 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                       value={row.expDate ?? ''}
                       disabled={disabled}
                       onChange={(e) => onChangeRow(i, { expDate: e.target.value || null })}
+                      aria-label={`Batch ${i + 1} EXP date`}
                       className={cellInput}
                     />
                   </td>
@@ -134,6 +137,7 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                       value={row.noOfPacks ?? ''}
                       disabled={disabled}
                       onChange={(e) => onChangeRow(i, { noOfPacks: toNumOrNull(e.target.value) })}
+                      aria-label={`Batch ${i + 1} no. of packs`}
                       className={`${cellInput} text-right`}
                     />
                   </td>
@@ -144,6 +148,7 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                       value={row.qtyPerPack ?? ''}
                       disabled={disabled}
                       onChange={(e) => onChangeRow(i, { qtyPerPack: toNumOrNull(e.target.value) })}
+                      aria-label={`Batch ${i + 1} qty per pack`}
                       className={`${cellInput} text-right`}
                     />
                   </td>

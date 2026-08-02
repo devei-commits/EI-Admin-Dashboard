@@ -11,8 +11,10 @@ import {
 } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { EmptyState } from '../components/ui/EmptyState';
 import VendorForm from './VendorForm.tsx';
 import ClientForm from './ClientForm.tsx';
+import { procBtnPrimary, procBtnSecondary, procInputClass, procSelectClass } from '../components/procurement/ProcSection';
 
 type VendorClientSortColumn =
  | 'code'
@@ -70,8 +72,8 @@ const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boole
      : null;
  return (
   <div>
-   <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">{label}</div>
-   <div className={`text-sm text-gray-800 mt-1 ${mono ? 'font-mono' : ''}`}>{isEl ? value : display}</div>
+   <div className="text-xs font-bold text-ink-3 uppercase tracking-widest">{label}</div>
+   <div className={`text-sm text-ink mt-1 ${mono ? 'font-mono' : ''}`}>{isEl ? value : display}</div>
   </div>
  );
 };
@@ -79,9 +81,9 @@ const VendorClientField: React.FC<{ label: string; value?: unknown; mono?: boole
 const STATUS_OPTIONS: VendorClientType['status'][] = ['active', 'inactive', 'pending'];
 
 const STATUS_BADGE_CLASS: Record<VendorClientType['status'], string> = {
- active: 'bg-green-50 text-green-700 border-green-200',
- inactive: 'bg-gray-100 text-gray-600 border-gray-200',
- pending: 'bg-amber-50 text-amber-700 border-amber-200',
+ active: 'bg-ok-soft text-ok border-ok',
+ inactive: 'bg-surface-3 text-ink-2 border-border',
+ pending: 'bg-warn-soft text-warn border-warn',
 };
 
 const StatusSelect: React.FC<{
@@ -92,6 +94,7 @@ const StatusSelect: React.FC<{
  return (
   <select
    value={current}
+   aria-label="Status"
    onClick={(e) => e.stopPropagation()}
    onChange={(e) => onChange(e.target.value as VendorClientType['status'])}
    className={`px-2 py-1 rounded-lg border text-xs font-semibold capitalize cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${STATUS_BADGE_CLASS[current]}`}
@@ -107,9 +110,9 @@ const VendorClientSection: React.FC<{ title: string; icon?: string; children: Re
  <div className="mt-6">
   <div className="flex items-center gap-2 mb-3">
    {icon && <span className="text-base leading-none">{icon}</span>}
-   <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">{title}</div>
+   <div className="text-xs font-bold text-ink-3 uppercase tracking-widest">{title}</div>
   </div>
-  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">{children}</div>
+  <div className="bg-surface-2 border border-border rounded-xl p-4">{children}</div>
  </div>
 );
 
@@ -490,25 +493,25 @@ const VendorClient: React.FC = () => {
   headers: string[],
   rows: Array<Array<unknown>>,
  ) => (
-  <div className="overflow-x-auto">
-   <table className="w-full border border-gray-200 rounded-lg overflow-hidden bg-white">
-    <thead className="bg-gray-100">
-     <tr>
+  <div className="overflow-auto max-h-[70vh]">
+   <table className="w-full border border-border rounded-lg overflow-hidden bg-surface">
+    <thead className="sticky top-0 z-20 bg-surface-3">
+     <tr className="[&_th]:bg-surface-3">
       {headers.map(h => (
-       <th key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-600">{h}</th>
+       <th scope="col" key={h} className="px-3 py-2 text-left text-xs font-bold text-ink-2">{h}</th>
       ))}
      </tr>
     </thead>
     <tbody>
      {rows.length === 0 ? (
       <tr>
-       <td colSpan={headers.length} className="px-3 py-4 text-sm text-gray-500 text-center">No records</td>
+       <td colSpan={headers.length} className="px-3 py-4 text-sm text-ink-3 text-center">No records</td>
       </tr>
      ) : (
       rows.map((r, idx) => (
-       <tr key={idx} className="border-t border-gray-200">
+       <tr key={idx} className="border-t border-border">
         {r.map((cell, cidx) => (
-         <td key={cidx} className="px-3 py-2 text-sm text-gray-800">{cell === '' || cell === null || cell === undefined ? '-' : String(cell)}</td>
+         <td key={cidx} className="px-3 py-2 text-sm text-ink">{cell === '' || cell === null || cell === undefined ? '-' : String(cell)}</td>
         ))}
        </tr>
       ))
@@ -522,7 +525,7 @@ const VendorClient: React.FC = () => {
   const display = value === null || value === undefined || value === '' ? '-' : String(value);
   const isDash = display === '-';
   return (
-   <span className={isDash ? 'block text-center text-gray-500' : ''}>
+   <span className={isDash ? 'block text-center text-ink-3' : ''}>
     {display}
    </span>
   );
@@ -535,8 +538,8 @@ const VendorClient: React.FC = () => {
      <div className="p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
        <div>
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Vendor Master</h2>
-        <p className="text-sm text-gray-500">{vendorTotal} vendor(s)</p>
+        <h2 className="text-lg sm:text-xl font-semibold text-ink">Vendor Master</h2>
+        <p className="text-sm text-ink-3">{vendorTotal} vendor(s)</p>
        </div>
        <div className="flex flex-wrap gap-2">
         <input
@@ -550,7 +553,7 @@ const VendorClient: React.FC = () => {
          type="button"
          disabled={importingVendorExcel}
          onClick={() => vendorExcelFileRef.current?.click()}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm disabled:opacity-50"
+         className={procBtnSecondary}
         >
          {importingVendorExcel ? 'Importing…' : 'Import vendors (Excel)'}
         </button>
@@ -571,7 +574,7 @@ const VendorClient: React.FC = () => {
           }));
           downloadCsv(rows, `vendors_${new Date().toISOString().slice(0, 10)}.csv`);
          }}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm"
+         className={procBtnSecondary}
         >
          <span className="hidden sm:inline">Export CSV</span>
          <span className="sm:hidden">Export</span>
@@ -579,25 +582,27 @@ const VendorClient: React.FC = () => {
         <button
          type="button"
          onClick={openVendorCreate}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-medium shadow text-sm"
+         className={procBtnPrimary}
         >
          + Add Vendor
         </button>
        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 mb-4">
+      <div className="bg-surface border border-border rounded-xl p-3 sm:p-4 mb-4">
        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         <input
          value={vendorSearch}
          onChange={(e) => setVendorSearch(e.target.value)}
          placeholder="Search by code, name, email..."
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         aria-label="Search vendors by code, name, email"
+         className={procInputClass}
         />
         <select
          value={vendorStatus}
+         aria-label="Filter by status"
          onChange={(e) => setVendorStatus(e.target.value as any)}
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         className={`w-full ${procSelectClass}`}
         >
          <option value="all">All Status</option>
          <option value="active">Active</option>
@@ -606,8 +611,9 @@ const VendorClient: React.FC = () => {
         </select>
         <select
          value={vendorCategory}
+         aria-label="Filter by category"
          onChange={(e) => setVendorCategory(e.target.value)}
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         className={`w-full ${procSelectClass}`}
         >
          <option value="all">All Categories</option>
          {vendorCategories.map(c => (
@@ -618,11 +624,11 @@ const VendorClient: React.FC = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
+      <div className="hidden md:block overflow-auto max-h-[70vh] bg-surface border border-border rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
-         <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
+        <thead className="sticky top-0 z-20 bg-surface-2 border-b border-border">
+         <tr className="[&_th]:bg-surface-2">
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Vendor" column="name" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
@@ -632,42 +638,42 @@ const VendorClient: React.FC = () => {
           <SortableTableTh label="State" column="state" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Status" column="status" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
           <SortableTableTh label="Updated" column="updated" sortColumn={vendorSortColumn} sortDirection={vendorSortDirection} onSort={toggleVendorSort} />
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2">Actions</th>
          </tr>
         </thead>
         <tbody>
          {vendorTotal === 0 ? (
           <tr>
-           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No vendors found.</td>
+           <td colSpan={11}><EmptyState compact title="No vendors found." /></td>
           </tr>
          ) : (
           sortedPagedVendors.map((v, idx) => (
-           <tr key={v.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{vendorOffset + idx + 1}</td>
-            <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.zohoId || (v.data as any)?.zohoId || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.category || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(v.location || '-')}</td>
+           <tr key={v.id} className="border-t border-border hover:bg-surface-2">
+            <td className="px-4 py-3 text-sm text-ink-3 whitespace-nowrap">{vendorOffset + idx + 1}</td>
+            <td className="px-4 py-3 text-sm font-mono text-ink-2 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-ink whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(v.zohoId || (v.data as any)?.zohoId || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(v.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 max-w-48 truncate">{renderCellValue(v.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(v.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(v.location || '-')}</td>
             <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
              <StatusSelect value={v.status} onChange={(next) => handleStatusChange(v.id, next)} />
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2">{renderCellValue(v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
               <button
                type="button"
                onClick={() => openView(v)}
-               className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium"
+               className="px-3 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium"
               >
                View
               </button>
               <button
                type="button"
                onClick={() => openVendorEdit(v.id)}
-               className="px-3 py-1.5 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium"
+               className="px-3 py-1.5 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
               >
                Edit
               </button>
@@ -683,48 +689,48 @@ const VendorClient: React.FC = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
        {vendorTotal === 0 ? (
-        <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No vendors found.</div>
+        <div className="bg-surface rounded-xl border"><EmptyState compact title="No vendors found." /></div>
        ) : (
         sortedPagedVendors.map((v) => (
-         <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+         <div key={v.id} className="bg-surface border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 font-mono">Code: {String(v.data?.entityCode || '-')}</p>
-            <p className="font-semibold text-gray-800 truncate">{v.name}</p>
-            <p className="text-sm text-slate-800">{v.category}</p>
+            <p className="text-xs text-ink-3 font-mono">Code: {String(v.data?.entityCode || '-')}</p>
+            <p className="font-semibold text-ink truncate">{v.name}</p>
+            <p className="text-sm text-ink">{v.category}</p>
            </div>
            <StatusSelect value={v.status} onChange={(next) => handleStatusChange(v.id, next)} />
           </div>
-          <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
+          <div className="space-y-1 text-sm border-t border-hairline pt-3">
            <div className="flex justify-between">
-            <span className="text-gray-500">Email</span>
-            <span className="text-gray-800 truncate ml-2 max-w-[60%] text-right">{v.email || '-'}</span>
+            <span className="text-ink-3">Email</span>
+            <span className="text-ink truncate ml-2 max-w-[60%] text-right">{v.email || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">Phone</span>
-            <span className="text-gray-800">{v.phone || '-'}</span>
+            <span className="text-ink-3">Phone</span>
+            <span className="text-ink">{v.phone || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">State</span>
-            <span className="text-gray-800">{v.location || '-'}</span>
+            <span className="text-ink-3">State</span>
+            <span className="text-ink">{v.location || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">Updated</span>
-            <span className="text-gray-800">{v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-'}</span>
+            <span className="text-ink-3">Updated</span>
+            <span className="text-ink">{v.lastModified ? new Date(v.lastModified).toLocaleDateString() : '-'}</span>
            </div>
           </div>
-          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+          <div className="flex gap-2 mt-3 pt-3 border-t border-hairline">
            <button
             type="button"
             onClick={() => openView(v)}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium text-sm"
            >
             View
            </button>
            <button
             type="button"
             onClick={() => openVendorEdit(v.id)}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium text-sm"
            >
             Edit
            </button>
@@ -736,17 +742,18 @@ const VendorClient: React.FC = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Page {Math.min(vendorPage, vendorTotalPages)} of {vendorTotalPages} • Showing {pagedVendors.length} of {vendorTotal}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select
          value={vendorPageSize}
+         aria-label="Rows per page"
          onChange={(e) => {
           setVendorPageSize(parseInt(e.target.value, 10));
           setVendorPage(1);
          }}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm"
         >
          <option value={10}>10 / page</option>
          <option value={20}>20 / page</option>
@@ -756,7 +763,7 @@ const VendorClient: React.FC = () => {
          type="button"
          onClick={() => setVendorPage(p => Math.max(1, p - 1))}
          disabled={vendorPage <= 1}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
         >
          Prev
         </button>
@@ -764,7 +771,7 @@ const VendorClient: React.FC = () => {
          type="button"
          onClick={() => setVendorPage(p => Math.min(vendorTotalPages, p + 1))}
          disabled={vendorPage >= vendorTotalPages}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
         >
          Next
         </button>
@@ -777,8 +784,8 @@ const VendorClient: React.FC = () => {
      <div className="p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
        <div>
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Client Master</h2>
-        <p className="text-sm text-gray-500">{clientTotal} client(s)</p>
+        <h2 className="text-lg sm:text-xl font-semibold text-ink">Client Master</h2>
+        <p className="text-sm text-ink-3">{clientTotal} client(s)</p>
        </div>
        <div className="flex flex-wrap gap-2">
         <input
@@ -792,7 +799,7 @@ const VendorClient: React.FC = () => {
          type="button"
          disabled={importingClientExcel}
          onClick={() => clientExcelFileRef.current?.click()}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm disabled:opacity-50"
+         className={procBtnSecondary}
         >
          {importingClientExcel ? 'Importing…' : 'Import clients (Excel)'}
         </button>
@@ -813,7 +820,7 @@ const VendorClient: React.FC = () => {
           }));
           downloadCsv(rows, `clients_${new Date().toISOString().slice(0, 10)}.csv`);
          }}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-amber-300 transition font-medium shadow-sm text-sm"
+         className={procBtnSecondary}
         >
          <span className="hidden sm:inline">Export CSV</span>
          <span className="sm:hidden">Export</span>
@@ -821,25 +828,27 @@ const VendorClient: React.FC = () => {
         <button
          type="button"
          onClick={openClientCreate}
-         className="flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-medium shadow text-sm"
+         className={procBtnPrimary}
         >
          + Add Client
         </button>
        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 mb-4">
+      <div className="bg-surface border border-border rounded-xl p-3 sm:p-4 mb-4">
        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         <input
          value={clientSearch}
          onChange={(e) => setClientSearch(e.target.value)}
          placeholder="Search by code, name, email..."
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         aria-label="Search clients by code, name, email"
+         className={procInputClass}
         />
         <select
          value={clientStatus}
+         aria-label="Filter by status"
          onChange={(e) => setClientStatus(e.target.value as any)}
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         className={`w-full ${procSelectClass}`}
         >
          <option value="all">All Status</option>
          <option value="active">Active</option>
@@ -848,8 +857,9 @@ const VendorClient: React.FC = () => {
         </select>
         <select
          value={clientCategory}
+         aria-label="Filter by category"
          onChange={(e) => setClientCategory(e.target.value)}
-         className="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800 text-sm"
+         className={`w-full ${procSelectClass}`}
         >
          <option value="all">All Categories</option>
          {clientCategories.map(c => (
@@ -860,11 +870,11 @@ const VendorClient: React.FC = () => {
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto bg-white border border-gray-200 rounded-xl">
+      <div className="hidden md:block overflow-auto max-h-[70vh] bg-surface border border-border rounded-xl">
        <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
-         <tr>
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Sr No</th>
+        <thead className="sticky top-0 z-20 bg-surface-2 border-b border-border">
+         <tr className="[&_th]:bg-surface-2">
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2">Sr No</th>
           <SortableTableTh label="Code" column="code" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Client" column="name" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Zoho ID" column="zohoId" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
@@ -874,42 +884,42 @@ const VendorClient: React.FC = () => {
           <SortableTableTh label="State" column="state" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Status" column="status" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
           <SortableTableTh label="Updated" column="updated" sortColumn={clientSortColumn} sortDirection={clientSortDirection} onSort={toggleClientSort} />
-          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-700">Actions</th>
+          <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2">Actions</th>
          </tr>
         </thead>
         <tbody>
          {clientTotal === 0 ? (
           <tr>
-           <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">No clients found.</td>
+           <td colSpan={11}><EmptyState compact title="No clients found." /></td>
           </tr>
          ) : (
           sortedPagedClients.map((c, idx) => (
-           <tr key={c.id} className="border-t border-gray-200 hover:bg-gray-50">
-            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{clientOffset + idx + 1}</td>
-            <td className="px-4 py-3 text-sm font-mono text-gray-700 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
-            <td className="px-4 py-3 text-sm font-medium text-gray-800 whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.zohoId || (c.data as any)?.zohoId || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.category || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>
-            <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{renderCellValue(c.location || '-')}</td>
+           <tr key={c.id} className="border-t border-border hover:bg-surface-2">
+            <td className="px-4 py-3 text-sm text-ink-3 whitespace-nowrap">{clientOffset + idx + 1}</td>
+            <td className="px-4 py-3 text-sm font-mono text-ink-2 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
+            <td className="px-4 py-3 text-sm font-medium text-ink whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(c.zohoId || (c.data as any)?.zohoId || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(c.category || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 max-w-48 truncate">{renderCellValue(c.email || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(c.phone || '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2 whitespace-nowrap">{renderCellValue(c.location || '-')}</td>
             <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
              <StatusSelect value={c.status} onChange={(next) => handleStatusChange(c.id, next)} />
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{renderCellValue(c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-')}</td>
+            <td className="px-4 py-3 text-sm text-ink-2">{renderCellValue(c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-')}</td>
             <td className="px-4 py-3 text-sm">
              <div className="flex gap-2">
               <button
                type="button"
                onClick={() => openView(c)}
-               className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium"
+               className="px-3 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium"
               >
                View
               </button>
               <button
                type="button"
                onClick={() => openClientEdit(c.id)}
-               className="px-3 py-1.5 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium"
+               className="px-3 py-1.5 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
               >
                Edit
               </button>
@@ -925,48 +935,48 @@ const VendorClient: React.FC = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-3">
        {clientTotal === 0 ? (
-        <div className="text-center py-8 text-gray-500 bg-white rounded-xl border">No clients found.</div>
+        <div className="bg-surface rounded-xl border"><EmptyState compact title="No clients found." /></div>
        ) : (
         sortedPagedClients.map((c) => (
-         <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+         <div key={c.id} className="bg-surface border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
            <div className="flex-1 min-w-0">
-            <p className="text-xs text-gray-500 font-mono">Code: {String(c.data?.entityCode || '-')}</p>
-            <p className="font-semibold text-gray-800 truncate">{c.name}</p>
-            <p className="text-sm text-slate-800">{c.category}</p>
+            <p className="text-xs text-ink-3 font-mono">Code: {String(c.data?.entityCode || '-')}</p>
+            <p className="font-semibold text-ink truncate">{c.name}</p>
+            <p className="text-sm text-ink">{c.category}</p>
            </div>
            <StatusSelect value={c.status} onChange={(next) => handleStatusChange(c.id, next)} />
           </div>
-          <div className="space-y-1 text-sm border-t border-gray-100 pt-3">
+          <div className="space-y-1 text-sm border-t border-hairline pt-3">
            <div className="flex justify-between">
-            <span className="text-gray-500">Email</span>
-            <span className="text-gray-800 truncate ml-2 max-w-[60%] text-right">{c.email || '-'}</span>
+            <span className="text-ink-3">Email</span>
+            <span className="text-ink truncate ml-2 max-w-[60%] text-right">{c.email || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">Phone</span>
-            <span className="text-gray-800">{c.phone || '-'}</span>
+            <span className="text-ink-3">Phone</span>
+            <span className="text-ink">{c.phone || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">State</span>
-            <span className="text-gray-800">{c.location || '-'}</span>
+            <span className="text-ink-3">State</span>
+            <span className="text-ink">{c.location || '-'}</span>
            </div>
            <div className="flex justify-between">
-            <span className="text-gray-500">Updated</span>
-            <span className="text-gray-800">{c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-'}</span>
+            <span className="text-ink-3">Updated</span>
+            <span className="text-ink">{c.lastModified ? new Date(c.lastModified).toLocaleDateString() : '-'}</span>
            </div>
           </div>
-          <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+          <div className="flex gap-2 mt-3 pt-3 border-t border-hairline">
            <button
             type="button"
             onClick={() => openView(c)}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium text-sm"
            >
             View
            </button>
            <button
             type="button"
             onClick={() => openClientEdit(c.id)}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-amber-800 hover:bg-gray-50 font-medium text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium text-sm"
            >
             Edit
            </button>
@@ -978,17 +988,18 @@ const VendorClient: React.FC = () => {
 
       {/* Pagination */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4">
-       <div className="text-sm text-gray-600">
+       <div className="text-sm text-ink-2">
         Page {Math.min(clientPage, clientTotalPages)} of {clientTotalPages} • Showing {pagedClients.length} of {clientTotal}
        </div>
        <div className="flex flex-wrap items-center gap-2">
         <select
          value={clientPageSize}
+         aria-label="Rows per page"
          onChange={(e) => {
           setClientPageSize(parseInt(e.target.value, 10));
           setClientPage(1);
          }}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm"
         >
          <option value={10}>10 / page</option>
          <option value={20}>20 / page</option>
@@ -998,7 +1009,7 @@ const VendorClient: React.FC = () => {
          type="button"
          onClick={() => setClientPage(p => Math.max(1, p - 1))}
          disabled={clientPage <= 1}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
         >
          Prev
         </button>
@@ -1006,7 +1017,7 @@ const VendorClient: React.FC = () => {
          type="button"
          onClick={() => setClientPage(p => Math.min(clientTotalPages, p + 1))}
          disabled={clientPage >= clientTotalPages}
-         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+         className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
         >
          Next
         </button>
@@ -1018,11 +1029,11 @@ const VendorClient: React.FC = () => {
  };
 
  return (
-  <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
+  <div className="min-h-screen bg-surface-2/50 p-4 md:p-6">
    <div className="max-w-7xl mx-auto">
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className="bg-surface rounded-xl shadow-sm border border-hairline overflow-hidden">
      {/* Master tabs: Vendor | Client */}
-     <div className="border-b border-gray-200">
+     <div className="border-b border-border">
       <div className="flex">
        {tabs.map((tab) => (
         <button
@@ -1031,8 +1042,8 @@ const VendorClient: React.FC = () => {
          onClick={() => setActiveTab(tab.id)}
          className={`flex-1 px-6 py-4 text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
           activeTab === tab.id
-           ? 'border-b-2 border-slate-800 text-slate-900 bg-gray-50'
-           : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+           ? 'border-b-2 border-slate-800 text-ink bg-surface-2'
+           : 'text-ink-2 hover:text-ink hover:bg-surface-2'
          }`}
         >
          <span>{tab.icon}</span>
@@ -1052,20 +1063,21 @@ const VendorClient: React.FC = () => {
    {/* View Modal */}
   {viewing && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-surface/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="vendor-client-view-title"
    >
-    <div className="w-full max-w-5xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
-    <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
+    <div className="w-full max-w-5xl max-h-[90vh] bg-surface rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col">
+    <div className="flex items-start justify-between gap-3 p-5 border-b border-border bg-surface-2">
        <div>
-        <h3 className="text-lg font-bold text-gray-800">{viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
-        <p className="text-sm text-gray-500 font-mono">{String(viewing.data?.entityCode || viewing.id)}</p>
+        <h3 id="vendor-client-view-title" className="text-lg font-bold text-ink">{viewing.type === 'vendor' ? 'Vendor' : 'Client'} Details</h3>
+        <p className="text-sm text-ink-3 font-mono">{String(viewing.data?.entityCode || viewing.id)}</p>
        </div>
        <button
         type="button"
         onClick={closeView}
-        className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+        className={procBtnSecondary}
        >
         Close
        </button>
@@ -1082,7 +1094,7 @@ const VendorClient: React.FC = () => {
           <VendorClientField
             label="Linked user (User Management)"
             value={
-              <a href={`/user-management`} className="text-blue-600 hover:underline font-mono">
+              <a href={`/user-management`} className="text-brand hover:underline font-mono">
                 User #{viewing.userId}
               </a>
             }
@@ -1252,8 +1264,8 @@ const VendorClient: React.FC = () => {
        )}
 
        <details className="mt-6">
-        <summary className="cursor-pointer text-sm font-medium text-gray-700">Raw data (advanced)</summary>
-        <pre className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs overflow-auto max-h-72">{JSON.stringify(viewing.data, null, 2)}</pre>
+        <summary className="cursor-pointer text-sm font-medium text-ink-2">Raw data (advanced)</summary>
+        <pre className="mt-3 p-3 bg-surface-2 border border-border rounded-xl text-xs overflow-auto max-h-72">{JSON.stringify(viewing.data, null, 2)}</pre>
        </details>
       </div>
      </div>
@@ -1262,21 +1274,21 @@ const VendorClient: React.FC = () => {
 
   {vendorCreateModalOpen && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-surface/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
     aria-labelledby="vendor-create-title"
    >
-    <div className="w-full max-w-6xl max-h-[92vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
-     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50 shrink-0">
+    <div className="w-full max-w-6xl max-h-[92vh] bg-surface rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col">
+     <div className="flex items-start justify-between gap-3 p-5 border-b border-border bg-surface-2 shrink-0">
       <div>
-       <h3 id="vendor-create-title" className="text-lg font-bold text-gray-800">Add Vendor</h3>
-       <p className="text-sm text-gray-500">Complete the wizard to create a new vendor master record.</p>
+       <h3 id="vendor-create-title" className="text-lg font-bold text-ink">Add Vendor</h3>
+       <p className="text-sm text-ink-3">Complete the wizard to create a new vendor master record.</p>
       </div>
       <button
        type="button"
        onClick={() => setVendorCreateModalOpen(false)}
-       className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+       className="px-3 py-2 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
       >
        Close
       </button>
@@ -1296,21 +1308,21 @@ const VendorClient: React.FC = () => {
 
   {clientCreateModalOpen && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-surface/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
     aria-labelledby="client-create-title"
    >
-    <div className="w-full max-w-6xl max-h-[92vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
-     <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50 shrink-0">
+    <div className="w-full max-w-6xl max-h-[92vh] bg-surface rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col">
+     <div className="flex items-start justify-between gap-3 p-5 border-b border-border bg-surface-2 shrink-0">
       <div>
-       <h3 id="client-create-title" className="text-lg font-bold text-gray-800">Add Client</h3>
-       <p className="text-sm text-gray-500">Complete the wizard to create a new client master record.</p>
+       <h3 id="client-create-title" className="text-lg font-bold text-ink">Add Client</h3>
+       <p className="text-sm text-ink-3">Complete the wizard to create a new client master record.</p>
       </div>
       <button
        type="button"
        onClick={() => setClientCreateModalOpen(false)}
-       className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+       className="px-3 py-2 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
       >
        Close
       </button>
@@ -1330,20 +1342,21 @@ const VendorClient: React.FC = () => {
 
   {editing && (
    <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-md p-4"
+    className="fixed inset-0 z-50 flex items-center justify-center bg-surface/60 backdrop-blur-md p-4"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="vendor-client-edit-title"
    >
-    <div className="w-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
-    <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-200 bg-gray-50">
+    <div className="w-full max-w-6xl max-h-[90vh] bg-surface rounded-2xl shadow-xl border border-border overflow-hidden flex flex-col">
+    <div className="flex items-start justify-between gap-3 p-5 border-b border-border bg-surface-2">
      <div>
-      <h3 className="text-lg font-bold text-gray-800">Edit {editing.type === 'vendor' ? 'Vendor' : 'Client'}</h3>
-      <p className="text-sm text-gray-500">Update record details without leaving the dashboard.</p>
+      <h3 id="vendor-client-edit-title" className="text-lg font-bold text-ink">Edit {editing.type === 'vendor' ? 'Vendor' : 'Client'}</h3>
+      <p className="text-sm text-ink-3">Update record details without leaving the dashboard.</p>
      </div>
      <button
       type="button"
       onClick={closeEdit}
-      className="px-3 py-2 rounded-lg border border-gray-200 text-amber-900 hover:bg-gray-50 font-medium"
+      className="px-3 py-2 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
      >
       Close
      </button>

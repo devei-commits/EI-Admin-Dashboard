@@ -10,8 +10,8 @@ import { deriveGrnQcStatusFromSpecs, summarizeGrnQcTests } from '../../lib/grnQc
 import { GrnQcInspectionPanel } from './GrnQcInspectionPanel';
 
 const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100';
-const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500';
+  'w-full rounded-lg border border-border px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3';
+const labelClass = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3';
 
 export interface GrnQcCompleteSectionProps {
   qcSpecs: GrnQcSpecsStored | null;
@@ -41,16 +41,16 @@ export const GrnQcCompleteSection: React.FC<GrnQcCompleteSectionProps> = ({
 
   const verdictBadge =
     derived === 'Rejected'
-      ? { text: '❌ REJECT — one or more params failed', cls: 'border-rose-200 bg-rose-50 text-rose-700' }
+      ? { text: '❌ REJECT — one or more params failed', cls: 'border-err-soft bg-err-soft text-err' }
       : derived === 'Passed'
-        ? { text: '✅ ACCEPT — all packs', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
-        : { text: `⏳ Pending — ${summary.mandatoryPending} mandatory test(s) to record`, cls: 'border-amber-200 bg-amber-50 text-amber-800' };
+        ? { text: '✅ ACCEPT — all packs', cls: 'border-ok-soft bg-ok-soft text-ok' }
+        : { text: `⏳ Pending — ${summary.mandatoryPending} mandatory test(s) to record`, cls: 'border-warn-soft bg-warn-soft text-warn' };
 
   return (
-    <section className="rounded-xl border border-slate-200 p-4 space-y-4">
+    <section className="rounded-xl border border-border p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-slate-800">7 · Quality Check → Complete</h3>
-        <p className="mt-1 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-ink">7 · Quality Check → Complete</h3>
+        <p className="mt-1 text-xs text-ink-3">
           Record the result and verdict for each spec parameter, then Accept to complete the GRN and put
           stock away, or Reject to return the goods to the vendor.
         </p>

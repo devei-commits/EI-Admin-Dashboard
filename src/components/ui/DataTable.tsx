@@ -1,5 +1,8 @@
 import React, { useState, useMemo, ReactNode } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { TableSkeleton } from './Skeleton';
+import { EmptyState } from './EmptyState';
+import { ErrorState } from './ErrorState';
 
 export interface TableColumn<T> {
   key: keyof T | string;
@@ -15,9 +18,22 @@ interface DataTableProps<T> {
   data: T[];
   keyField?: keyof T;
   emptyMessage?: string;
+  /** Optional icon element for the empty state. */
+  emptyIcon?: ReactNode;
+  /** Show a skeleton table body while data loads. */
+  loading?: boolean;
+  /** Rows to render in the loading skeleton. */
+  skeletonRows?: number;
+  /** Render an error state (with optional Retry) instead of rows. */
+  error?: ReactNode;
+  onRetry?: () => void;
   className?: string;
   rowClassName?: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Card is its own vertical scroll box so the sticky header pins within it (default true). */
+  stickyHeader?: boolean;
+  /** Tailwind max-height class used when stickyHeader (default `max-h-[70vh]`). */
+  maxHeight?: string;
 }
 
 type SortDir = 'asc' | 'desc' | null;
@@ -27,9 +43,16 @@ export function DataTable<T extends Record<string, unknown>>({
   data,
   keyField,
   emptyMessage = 'No data found.',
+  emptyIcon,
+  loading = false,
+  skeletonRows = 6,
+  error,
+  onRetry,
   className = '',
   rowClassName,
   onRowClick,
+  stickyHeader = true,
+  maxHeight = 'max-h-[70vh]',
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
@@ -53,21 +76,22 @@ export function DataTable<T extends Record<string, unknown>>({
   const SortIcon = ({ col }: { col: TableColumn<T> }) => {
     if (!col.sortable) return null;
     const key = String(col.key);
-    if (sortKey !== key) return <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 ml-1 inline" />;
-    if (sortDir === 'asc') return <ChevronUp className="w-3.5 h-3.5 text-blue-500 ml-1 inline" />;
-    return <ChevronDown className="w-3.5 h-3.5 text-blue-500 ml-1 inline" />;
+    if (sortKey !== key) return <ChevronsUpDown className="w-3.5 h-3.5 text-ink-4 ml-1 inline" />;
+    if (sortDir === 'asc') return <ChevronUp className="w-3.5 h-3.5 text-brand ml-1 inline" />;
+    return <ChevronDown className="w-3.5 h-3.5 text-brand ml-1 inline" />;
   };
 
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    <div className={`${stickyHeader ? `overflow-auto ${maxHeight}` : 'overflow-x-auto'} ${className}`}>
       <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-gray-50">
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border bg-surface-3 [&_th]:bg-surface-3">
             {columns.map((col) => (
               <th
                 key={String(col.key)}
+                scope="col"
                 onClick={() => col.sortable && handleSort(String(col.key))}
-                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600 ${col.sortable ? 'cursor-pointer select-none hover:bg-gray-100' : ''} ${col.headerClassName ?? ''}`}
+                className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-3 ${col.sortable ? 'cursor-pointer select-none hover:bg-surface-2' : ''} ${col.headerClassName ?? ''}`}
               >
                 {col.label}
                 <SortIcon col={col} />
@@ -75,11 +99,23 @@ export function DataTable<T extends Record<string, unknown>>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
-          {sorted.length === 0 ? (
+        <tbody className="divide-y divide-hairline">
+          {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-gray-400">
-                {emptyMessage}
+              <td colSpan={columns.length} className="px-4 py-6">
+                <TableSkeleton rows={skeletonRows} cols={columns.length} />
+              </td>
+            </tr>
+          ) : error ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4">
+                <ErrorState message={typeof error === 'string' ? error : undefined} onRetry={onRetry} compact />
+              </td>
+            </tr>
+          ) : sorted.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length} className="px-4">
+                <EmptyState icon={emptyIcon} title={emptyMessage} compact />
               </td>
             </tr>
           ) : (
@@ -87,7 +123,7 @@ export function DataTable<T extends Record<string, unknown>>({
               <tr
                 key={keyField ? String(row[keyField as string]) : idx}
                 onClick={() => onRowClick?.(row)}
-                className={`hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowClassName?.(row) ?? ''}`}
+                className={`hover:bg-surface-3 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${rowClassName?.(row) ?? ''}`}
               >
                 {columns.map((col) => (
                   <td key={String(col.key)} className={`px-4 py-3 ${col.className ?? ''}`}>

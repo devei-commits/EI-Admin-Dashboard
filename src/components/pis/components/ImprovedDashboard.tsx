@@ -12,6 +12,8 @@ import { PISDetailsDialog } from './PISDetailsDialog';
 import { getServerBaseUrl, pisApi } from '../utils/api';
 import QuotationsDashboardWidget from '../../../pages/quotations/QuotationsDashboardWidget';
 import { toast } from 'sonner';
+import { SkeletonText } from '../../ui/Skeleton';
+import { EmptyState } from '../../ui/EmptyState';
 
 // Type definitions for dashboard data
 interface PendingUpload {
@@ -375,7 +377,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
   <div className="space-y-4 sm:space-y-6">
    <div>
     <h2 className="text-2xl sm:text-3xl mb-1 sm:mb-2">Dashboard</h2>
-    <p className="text-sm sm:text-base text-gray-600">Overview of PIS workflow status and key metrics</p>
+    <p className="text-sm sm:text-base text-ink-2">Overview of PIS workflow status and key metrics</p>
    </div>
 
    {/* Stats Cards */}
@@ -390,19 +392,19 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
    {(pendingActions.length > 0 || overdueItems.length > 0) && (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
      {pendingActions.length > 0 && (
-      <Card className="p-3 sm:p-4 border-l-4 border-blue-500 bg-blue-50/50">
+      <Card className="p-3 sm:p-4 border-l-4 border-brand bg-brand-soft/50">
        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
+        <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-brand" />
         <div className="flex-1">
-         <h3 className="font-medium text-blue-900 text-sm sm:text-base">Pending Your Action</h3>
-         <p className="text-xs sm:text-sm text-blue-700">
+         <h3 className="font-medium text-brand text-sm sm:text-base">Pending Your Action</h3>
+         <p className="text-xs sm:text-sm text-brand">
           You have {pendingActions.length} PIS waiting for your review
          </p>
         </div>
         <Button
          size="sm"
          variant="outline"
-         className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white w-full sm:w-auto text-xs sm:text-sm"
+         className="border-brand text-brand hover:bg-brand hover:text-white w-full sm:w-auto text-xs sm:text-sm"
          onClick={handlePendingClick}
         >
          View All
@@ -412,19 +414,19 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
      )}
 
      {overdueItems.length > 0 && (
-      <Card className="p-3 sm:p-4 border-l-4 border-red-500 bg-red-50/50">
+      <Card className="p-3 sm:p-4 border-l-4 border-err bg-err-soft/50">
        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-red-600" />
+        <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-err" />
         <div className="flex-1">
-         <h3 className="font-medium text-red-900 text-sm sm:text-base">Overdue Items</h3>
-         <p className="text-xs sm:text-sm text-red-700">
+         <h3 className="font-medium text-err text-sm sm:text-base">Overdue Items</h3>
+         <p className="text-xs sm:text-sm text-err">
           {overdueItems.length} PIS have been idle for over 30 days
          </p>
         </div>
         <Button
          size="sm"
          variant="outline"
-         className="border-red-600 text-red-600 hover:bg-red-600 hover:text-white w-full sm:w-auto text-xs sm:text-sm"
+         className="border-err text-err hover:bg-err hover:text-white w-full sm:w-auto text-xs sm:text-sm"
          onClick={() => onNavigate?.('pis')}
         >
          Review
@@ -447,27 +449,27 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       </div>
 
       {deadlines.length === 0 ? (
-       <div className="text-sm text-gray-500">No upcoming deadlines.</div>
+       <div className="text-sm text-ink-3">No upcoming deadlines.</div>
       ) : (
        <div className="space-y-2">
         {deadlines.map((d: Deadline) => {
          const dueAt = d?.dueAt ? new Date(String(d.dueAt)) : null;
          const isOverdue = Boolean(d?.isOverdue);
          return (
-          <div key={d.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 p-3 border rounded-lg bg-white">
+          <div key={d.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 p-3 border rounded-lg bg-surface">
            <div className="min-w-0">
             <p className="font-medium truncate text-sm sm:text-base">{d.pisCode || d.id}</p>
-            <p className="text-xs text-gray-500 truncate">
+            <p className="text-xs text-ink-3 truncate">
              {d.customer || '—'} • {getStageLabel(String(d.stage || '') as PISStage)}
             </p>
            </div>
            <div className="flex items-center gap-2">
             {isOverdue ? (
-             <Badge className="bg-red-100 text-red-700 border-0 text-xs">Overdue</Badge>
+             <Badge className="bg-err-soft text-err border-0 text-xs">Overdue</Badge>
             ) : (
-             <Badge className="bg-gray-100 text-slate-900 border-0 text-xs">Due</Badge>
+             <Badge className="bg-surface-3 text-ink border-0 text-xs">Due</Badge>
             )}
-            <span className="text-xs text-gray-500 whitespace-nowrap">
+            <span className="text-xs text-ink-3 whitespace-nowrap">
              {dueAt && !Number.isNaN(dueAt.getTime()) ? dueAt.toLocaleDateString() : '—'}
             </span>
            </div>
@@ -482,23 +484,23 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       <h3 className="text-base sm:text-lg font-medium mb-4">Workflow Funnel</h3>
       <div className="space-y-3 text-sm">
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">New / Pending</span>
+        <span className="text-ink-2">New / Pending</span>
         <span className="font-medium">{workflow?.funnel?.NEW ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">In Progress</span>
+        <span className="text-ink-2">In Progress</span>
         <span className="font-medium">{workflow?.funnel?.IN_PROGRESS ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">On Hold</span>
+        <span className="text-ink-2">On Hold</span>
         <span className="font-medium">{workflow?.funnel?.ON_HOLD ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Dropped</span>
+        <span className="text-ink-2">Dropped</span>
         <span className="font-medium">{workflow?.funnel?.DROPPED ?? 0}</span>
        </div>
        <div className="pt-3 border-t flex items-center justify-between">
-        <span className="text-gray-600">Avg cycle time</span>
+        <span className="text-ink-2">Avg cycle time</span>
         <span className="font-medium">{Number(workflow?.avgCycleTimeDays ?? 0).toFixed(1)}d</span>
        </div>
       </div>
@@ -517,16 +519,16 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
      </div>
 
      {isPendingUploadsLoading ? (
-      <div className="text-sm text-gray-500">Loading…</div>
+      <SkeletonText lines={3} />
      ) : pendingUploads.length === 0 ? (
-      <div className="text-sm text-gray-500">No pending uploads.</div>
+      <EmptyState compact title="No pending uploads." />
      ) : (
       <div className="space-y-2">
        {pendingUploads.map((a: PendingUpload) => (
-        <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg bg-white">
+        <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg bg-surface">
          <div className="min-w-0">
           <p className="font-medium truncate">{a.fileName || 'Attachment'}</p>
-          <p className="text-xs text-gray-500 truncate">
+          <p className="text-xs text-ink-3 truncate">
            {a.pis?.pisCode || '—'} • {a.pis?.stage ? getStageLabel(String(a.pis.stage) as PISStage) : '—'}
           </p>
           {a.fileUrl && (
@@ -534,7 +536,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
             href={String(a.fileUrl).startsWith('http') ? a.fileUrl : `${serverBaseUrl}${a.fileUrl}`}
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-blue-600 hover:underline"
+            className="text-xs text-brand hover:underline"
            >
             Open file
            </a>
@@ -570,7 +572,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
              toast.error(error?.message || 'Reject failed');
             }
            }}
-           className="border-red-300 text-red-700 hover:bg-red-50"
+           className="border-err text-err hover:bg-err-soft"
           >
            Reject
           </Button>
@@ -591,13 +593,13 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
        <div className="space-y-2">
         {workflow.topClients.map((c: TopClient) => (
          <div key={c.name} className="flex items-center justify-between text-sm">
-          <span className="text-gray-700 truncate">{c.name}</span>
+          <span className="text-ink-2 truncate">{c.name}</span>
           <span className="font-medium">{c.count}</span>
          </div>
         ))}
        </div>
       ) : (
-       <div className="text-sm text-gray-500">No data.</div>
+       <div className="text-sm text-ink-3">No data.</div>
       )}
      </Card>
 
@@ -605,15 +607,15 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       <h3 className="text-lg font-medium mb-4">Way Forward Snapshot</h3>
       <div className="space-y-3 text-sm">
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Proceed</span>
+        <span className="text-ink-2">Proceed</span>
         <span className="font-medium">{workflow?.management?.wayForward?.wayForwardProceed ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Hold</span>
+        <span className="text-ink-2">Hold</span>
         <span className="font-medium">{workflow?.management?.wayForward?.wayForwardHold ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Drop</span>
+        <span className="text-ink-2">Drop</span>
         <span className="font-medium">{workflow?.management?.wayForward?.wayForwardDrop ?? 0}</span>
        </div>
       </div>
@@ -636,7 +638,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       </ResponsiveContainer>
       <div className="mt-3 space-y-1">
        {(workflow?.rnd?.workloadByScientist || []).slice(0, 4).map((w: WorkloadItem) => (
-        <div key={w.assignee} className="flex items-center justify-between text-xs text-gray-600">
+        <div key={w.assignee} className="flex items-center justify-between text-xs text-ink-2">
          <span className="truncate">{w.assignee}</span>
          <span className="font-medium">{w.count}</span>
         </div>
@@ -668,16 +670,16 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
        </PieChart>
       </ResponsiveContainer>
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-       <div className="p-2 rounded bg-gray-50">
-        <div className="text-xs text-gray-500">Rejections</div>
+       <div className="p-2 rounded bg-surface-2">
+        <div className="text-xs text-ink-3">Rejections</div>
         <div className="font-medium">{workflow?.rnd?.rework?.totalRejections ?? 0}</div>
        </div>
-       <div className="p-2 rounded bg-gray-50">
-        <div className="text-xs text-gray-500">Loops</div>
+       <div className="p-2 rounded bg-surface-2">
+        <div className="text-xs text-ink-3">Loops</div>
         <div className="font-medium">{workflow?.rnd?.rework?.totalLoops ?? 0}</div>
        </div>
-       <div className="p-2 rounded bg-gray-50">
-        <div className="text-xs text-gray-500">Lab util</div>
+       <div className="p-2 rounded bg-surface-2">
+        <div className="text-xs text-ink-3">Lab util</div>
         <div className="font-medium">{workflow?.rnd?.labUtilizationProxy?.percent ?? 0}%</div>
        </div>
       </div>
@@ -688,15 +690,15 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
    {workflow && (currentRole === 'QA_MANAGER' || currentRole === 'QA_STAFF') && (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
      <Card className="p-6 shadow-md">
-      <div className="text-sm text-gray-600">Open approvals</div>
+      <div className="text-sm text-ink-2">Open approvals</div>
       <div className="text-3xl font-semibold mt-2">{workflow?.qa?.openApprovals ?? 0}</div>
      </Card>
      <Card className="p-6 shadow-md">
-      <div className="text-sm text-gray-600">Pending checks</div>
+      <div className="text-sm text-ink-2">Pending checks</div>
       <div className="text-3xl font-semibold mt-2">{workflow?.qa?.pendingChecks ?? 0}</div>
      </Card>
      <Card className="p-6 shadow-md">
-      <div className="text-sm text-gray-600">Defect rate (proxy)</div>
+      <div className="text-sm text-ink-2">Defect rate (proxy)</div>
       <div className="text-3xl font-semibold mt-2">{workflow?.qa?.defectFailureRateProxy ?? 0}%</div>
      </Card>
     </div>
@@ -705,11 +707,11 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
    {workflow && currentRole === 'PKG_STAFF' && (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
      <Card className="p-6 shadow-md">
-      <div className="text-sm text-gray-600">Pending packaging alignment</div>
+      <div className="text-sm text-ink-2">Pending packaging alignment</div>
       <div className="text-3xl font-semibold mt-2">{workflow?.packaging?.pendingPackagingAlignment ?? 0}</div>
      </Card>
      <Card className="p-6 shadow-md">
-      <div className="text-sm text-gray-600">Artwork cycles (proxy)</div>
+      <div className="text-sm text-ink-2">Artwork cycles (proxy)</div>
       <div className="text-3xl font-semibold mt-2">{workflow?.packaging?.artworkCyclesProxy ?? 0}</div>
      </Card>
     </div>
@@ -734,11 +736,11 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
       <h3 className="text-lg font-medium mb-4">Client Satisfaction (Proxy)</h3>
       <div className="space-y-3 text-sm">
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Drops</span>
+        <span className="text-ink-2">Drops</span>
         <span className="font-medium">{workflow?.management?.clientSatisfactionProxy?.drops ?? 0}</span>
        </div>
        <div className="flex items-center justify-between">
-        <span className="text-gray-600">Holds</span>
+        <span className="text-ink-2">Holds</span>
         <span className="font-medium">{workflow?.management?.clientSatisfactionProxy?.holds ?? 0}</span>
        </div>
       </div>
@@ -752,7 +754,7 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
       <Card className="p-4 sm:p-6 shadow-md">
        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 flex items-center gap-2">
-        <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+        <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-brand" />
         PIS by Stage
        </h3>
        <ResponsiveContainer width="100%" height={250} className="sm:h-75">
@@ -855,24 +857,24 @@ export function ImprovedDashboard({ currentRole, onNavigate }: ImprovedDashboard
        {recentActivity.map((pis) => (
         <div
          key={pis.id}
-         className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg border hover:shadow-md transition-all cursor-pointer group"
+         className="flex items-center justify-between p-3 sm:p-4 bg-surface-2 rounded-lg border hover:shadow-md transition-all cursor-pointer group"
          onClick={() => handleOpenDetails(pis)}
         >
          <div className="flex-1 min-w-0">
-          <p className="font-medium text-blue-600 group-hover:text-blue-700 transition-colors text-sm sm:text-base truncate">
+          <p className="font-medium text-brand group-hover:text-brand transition-colors text-sm sm:text-base truncate">
            {pis.pisCode}
           </p>
-          <p className="text-xs sm:text-sm text-gray-600 truncate">{pis.customer}</p>
+          <p className="text-xs sm:text-sm text-ink-2 truncate">{pis.customer}</p>
           <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
            <Badge variant="outline" className="text-[10px] sm:text-xs">
             {getStageLabel(pis.stage)}
            </Badge>
-           <span className="text-[10px] sm:text-xs text-gray-400">
+           <span className="text-[10px] sm:text-xs text-ink-4">
             {pis.updatedAt.toLocaleDateString()}
            </span>
           </div>
          </div>
-         <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
+         <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-ink-4 group-hover:text-brand group-hover:translate-x-1 transition-all shrink-0 ml-2" />
         </div>
        ))}
       </div>

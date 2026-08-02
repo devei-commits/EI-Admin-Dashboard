@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchFulfillmentOrders } from '../../../services/fulfillment.service';
 import type { SaleOrder } from '../../../types/orderFulfillment';
+import { TableSkeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 /**
  * Transfers → Invoice tab. Read-only list of customer dispatch requests coming from the
@@ -21,12 +23,12 @@ function prettyStatus(s: string): string {
 
 function statusBadgeClass(status: string): string {
   const s = String(status || '').toLowerCase();
-  if (s === 'delivered' || s === 'closed') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  if (s === 'shipped') return 'bg-blue-100 text-blue-700 border-blue-200';
-  if (s === 'invoiced') return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-  if (s === 'picking') return 'bg-amber-100 text-amber-700 border-amber-200';
-  if (s === 'fg_ready') return 'bg-cyan-100 text-cyan-700 border-cyan-200';
-  return 'bg-slate-100 text-slate-600 border-slate-200';
+  if (s === 'delivered' || s === 'closed') return 'bg-ok-soft text-ok border-ok-soft';
+  if (s === 'shipped') return 'bg-brand-soft text-brand border-brand-soft';
+  if (s === 'invoiced') return 'bg-brand-soft text-brand border-brand-soft';
+  if (s === 'picking') return 'bg-warn-soft text-warn border-warn-soft';
+  if (s === 'fg_ready') return 'bg-brand-soft text-brand border-brand-soft';
+  return 'bg-surface-3 text-ink-2 border-border';
 }
 
 function fmtDate(v: string | undefined | null): string {
@@ -84,43 +86,43 @@ const WarehouseInvoiceTab = ({ search = '' }: { search?: string } = {}) => {
   return (
     <div className="p-6 w-full">
         {error && (
-          <div className="mb-4 px-4 py-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">{error}</div>
+          <div className="mb-4 px-4 py-3 rounded-lg border border-err-soft bg-err-soft text-err text-sm">{error}</div>
         )}
 
-        <div className="border border-slate-200 rounded-lg overflow-x-auto">
+        <div className="border border-border rounded-lg overflow-auto max-h-[70vh]">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr className="text-left">
-                <th className="px-4 py-3 font-semibold">SO No</th>
-                <th className="px-4 py-3 font-semibold">Customer</th>
-                <th className="px-4 py-3 font-semibold">Invoice No</th>
-                <th className="px-4 py-3 font-semibold">Dispatch date</th>
-                <th className="px-4 py-3 font-semibold text-right">Value</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
+            <thead className="sticky top-0 z-20 bg-surface-2 text-ink-2">
+              <tr className="text-left [&_th]:bg-surface-2">
+                <th scope="col" className="px-4 py-3 font-semibold">SO No</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Customer</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Invoice No</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Dispatch date</th>
+                <th scope="col" className="px-4 py-3 font-semibold text-right">Value</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-hairline">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400">Loading dispatch requests…</td>
+                  <td colSpan={6} className="px-4 py-4"><TableSkeleton rows={6} cols={6} /></td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                    {orders.length === 0 ? 'No dispatch requests yet.' : 'No dispatches match your search.'}
+                  <td colSpan={6}>
+                    <EmptyState title={orders.length === 0 ? 'No dispatch requests yet.' : 'No dispatches match your search.'} />
                   </td>
                 </tr>
               ) : (
                 filtered.map((o) => (
-                  <tr key={o.id ?? o.soNo} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{o.soNo}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                  <tr key={o.id ?? o.soNo} className="hover:bg-surface-2">
+                    <td className="px-4 py-3 font-medium text-ink">{o.soNo}</td>
+                    <td className="px-4 py-3 text-ink-2">
                       {o.customer}
-                      {o.customerCity ? <span className="text-slate-400"> · {o.customerCity}</span> : null}
+                      {o.customerCity ? <span className="text-ink-4"> · {o.customerCity}</span> : null}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{o.invoiceNo || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{fmtDate(o.dispatchDate)}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{fmtValue(o.soValue)}</td>
+                    <td className="px-4 py-3 text-ink-2">{o.invoiceNo || '—'}</td>
+                    <td className="px-4 py-3 text-ink-2">{fmtDate(o.dispatchDate)}</td>
+                    <td className="px-4 py-3 text-right text-ink-2">{fmtValue(o.soValue)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeClass(o.soStatus)}`}>
                         {prettyStatus(o.soStatus)}

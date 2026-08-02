@@ -17,6 +17,9 @@ import type { PackMaterialRecord } from '../services/packMaterials.service';
 import { fetchWarehouseInventory, type WarehouseInventoryRow } from '../services/warehouseInventory.service';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { ModalOverlay } from '../components/ui/ModalOverlay';
+import { procBtnPrimary, procInputClass } from '../components/procurement/ProcSection';
 
 const EMPTY_FORM = {
   name: '',
@@ -342,10 +345,10 @@ const ItemGroups: React.FC = () => {
   };
 
   const statCards = [
-    { label: 'TOTAL GROUPS', value: stats.totalGroups, sub: 'RM + PM groups', accent: 'border-l-violet-500', num: 'text-violet-600' },
-    { label: 'RM GROUPS', value: stats.rmGroups, sub: 'Raw material', accent: 'border-l-blue-500', num: 'text-blue-600' },
-    { label: 'PM GROUPS', value: stats.pmGroups, sub: 'Packaging', accent: 'border-l-green-500', num: 'text-green-600' },
-    { label: 'ALTERNATES', value: stats.alternates, sub: 'Approved + Proposed', accent: 'border-l-amber-500', num: 'text-amber-600' },
+    { label: 'TOTAL GROUPS', value: stats.totalGroups, sub: 'RM + PM groups', accent: 'border-l-brand', num: 'text-brand' },
+    { label: 'RM GROUPS', value: stats.rmGroups, sub: 'Raw material', accent: 'border-l-brand', num: 'text-brand' },
+    { label: 'PM GROUPS', value: stats.pmGroups, sub: 'Packaging', accent: 'border-l-ok', num: 'text-ok' },
+    { label: 'ALTERNATES', value: stats.alternates, sub: 'Approved + Proposed', accent: 'border-l-warn', num: 'text-warn' },
   ];
 
   const totalPages = Math.max(1, Math.ceil(stats.totalGroups / pageSize));
@@ -359,7 +362,7 @@ const ItemGroups: React.FC = () => {
     const sourceId = Number(memberId);
     if (!Number.isFinite(sourceId) || sourceId <= 0) {
       return (
-        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+        <div className="mt-1 inline-flex rounded-md border border-border bg-surface-3 px-2 py-1 text-[10px] text-ink-3">
           Stock unavailable
         </div>
       );
@@ -368,15 +371,15 @@ const ItemGroups: React.FC = () => {
     const stock = stockByItemKey.get(key);
     if (!stock) {
       return (
-        <div className="mt-1 inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-500">
+        <div className="mt-1 inline-flex rounded-md border border-border bg-surface-3 px-2 py-1 text-[10px] text-ink-3">
           Stock unavailable
         </div>
       );
     }
     return (
-      <div className="mt-1 inline-flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] text-violet-800">
+      <div className="mt-1 inline-flex items-center gap-2 rounded-md border border-brand-soft bg-brand-soft px-2 py-1 text-[10px] text-brand">
         <span className="font-semibold">Total {stock.stockInHand}</span>
-        <span className="text-violet-400">|</span>
+        <span className="text-brand">|</span>
         <span>WH {stock.whStock}</span>
         <span>ML1 {stock.ml1Stock}</span>
         <span>ML2 {stock.ml2Stock}</span>
@@ -388,44 +391,40 @@ const ItemGroups: React.FC = () => {
   const detailPanelWide = editingGroup != null;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-50">
+    <div className="min-h-screen bg-canvas">
       <div className="flex min-h-screen">
         <main
-          className={`flex-1 min-w-0 px-6 md:px-10 py-8 space-y-6 ${
+          className={`flex-1 min-w-0 px-6 md:px-10 py-5 space-y-4 ${
             detailPanelOpen ? 'lg:max-w-none' : 'max-w-400 mx-auto w-full'
           }`}
         >
 
-        <div className="relative">
-          <div className="absolute inset-0 bg-linear-to-r from-violet-500/10 via-transparent to-transparent rounded-2xl blur-3xl" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 mb-3">
-              <span className="text-3xl"></span>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">Item Configuration</span>
-            </div>
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">Item Groups</h1>
-            <p className="text-sm text-gray-600">Manage approved member items (RM/PM from DB) and proposed alternates for supply continuity.</p>
+        <div>
+          <div className="inline-flex items-center gap-2 mb-3">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-brand-soft text-brand border border-brand-soft">Item Configuration</span>
           </div>
+          <h1 className="text-xl md:text-2xl font-semibold text-ink tracking-tight mb-1">Item Groups</h1>
+          <p className="text-sm text-ink-3">Manage approved member items (RM/PM from DB) and proposed alternates for supply continuity.</p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {statCards.map(card => (
-            <div key={card.label} className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
-              <div className={`h-1 bg-linear-to-r from-violet-400 to-violet-600 ${card.accent}`} />
-              <div className="px-4 py-4">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{card.label}</p>
-                <p className={`text-3xl font-extrabold mt-2 ${card.num}`}>{card.value}</p>
-                <p className="text-[11px] text-gray-400 mt-2">{card.sub}</p>
+            <div key={card.label} className="group bg-surface rounded-xl border border-hairline shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+              <div className={`h-1 bg-brand ${card.accent}`} />
+              <div className="px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-4">{card.label}</p>
+                <p className={`text-lg font-bold mt-2 ${card.num}`}>{card.value}</p>
+                <p className="text-[11px] text-ink-4 mt-2">{card.sub}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-gray-100 bg-linear-to-r from-slate-50/50 to-transparent">
+        <div className="bg-surface rounded-xl border border-border shadow-[var(--e1)] overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-hairline bg-surface-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-semibold text-gray-800">Item Groups</span>
-              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200/50">
+              <span className="text-sm font-semibold text-ink">Item Groups</span>
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-brand-soft text-brand border border-brand-soft">
                 {filtered.length} / {stats.totalGroups}
               </span>
             </div>
@@ -434,14 +433,15 @@ const ItemGroups: React.FC = () => {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search group…"
-                className="pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 w-44"
+                aria-label="Search group"
+                className={`${procInputClass} w-44`}
               />
-              <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50">
+              <div className="flex items-center gap-1 border border-border rounded-lg p-0.5 bg-surface-3">
                 {(['All', 'RM', 'PM'] as const).map(type => (
                   <button
                     key={type}
                     onClick={() => setTypeFilter(type)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded ${typeFilter === type ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded ${typeFilter === type ? 'bg-surface text-ink shadow-sm' : 'text-ink-3'}`}
                   >
                     {type}
                   </button>
@@ -452,7 +452,7 @@ const ItemGroups: React.FC = () => {
                   setCreateSubmitStep('form');
                   setShowCreateModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold shadow-lg"
+                className={procBtnPrimary}
               >
                 <span className="text-base leading-none">+</span> New Group
               </button>
@@ -460,16 +460,16 @@ const ItemGroups: React.FC = () => {
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading…</div>
+            <TableSkeleton rows={6} cols={4} className="p-6" />
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-hairline">
               {filtered.map(ig => (
                 <div
                   key={ig.id}
                   className={`p-5 transition-colors cursor-pointer ${
                     selectedGroup?.id === ig.id
-                      ? 'bg-violet-50/90 ring-1 ring-inset ring-violet-200'
-                      : 'hover:bg-gray-50/50'
+                      ? 'bg-brand-soft ring-1 ring-inset ring-brand-soft'
+                      : 'hover:bg-surface-2'
                   }`}
                   onClick={() => setSelectedGroup(ig)}
                 >
@@ -479,16 +479,16 @@ const ItemGroups: React.FC = () => {
                         <span className="text-lg shrink-0">{ig.icon}</span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs font-bold text-violet-600">{ig.code}</span>
-                            <span className="text-xs text-gray-500">·</span>
-                            <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{ig.type}</span>
-                            <h3 className="text-sm font-semibold text-gray-900">{ig.name}</h3>
+                            <span className="font-mono text-xs font-bold text-brand">{ig.code}</span>
+                            <span className="text-xs text-ink-3">·</span>
+                            <span className="text-xs font-semibold text-ink-2 bg-surface-3 px-1.5 py-0.5 rounded">{ig.type}</span>
+                            <h3 className="text-sm font-semibold text-ink">{ig.name}</h3>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">{ig.description}</p>
+                          <p className="text-xs text-ink-3 mt-1">{ig.description}</p>
                         </div>
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${ig.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${ig.status === 'Active' ? 'bg-ok-soft text-ok border border-[color:var(--st-green-fg)]/30' : 'bg-surface-3 text-ink-3'}`}>
                       {ig.status}
                     </span>
                   </div>
@@ -496,15 +496,15 @@ const ItemGroups: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <span className="text-base leading-none"></span>
-                        <span className="text-xs font-semibold text-gray-600 uppercase">APPROVED MEMBERS ({ig.approvedMembers.length})</span>
+                        <span className="text-xs font-semibold text-ink-3 uppercase">APPROVED MEMBERS ({ig.approvedMembers.length})</span>
                       </div>
                       <ul className="space-y-1">
                         {ig.approvedMembers.map(member => (
                           <li key={member.id} className="flex items-center gap-2 text-xs">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="text-yellow-500"></span>
-                                <span className="text-gray-800 font-medium">{member.name}</span>
+                                <span className="text-warn"></span>
+                                <span className="text-ink font-medium">{member.name}</span>
                               </div>
                               {renderStockWindow(ig.type, member.id)}
                             </div>
@@ -515,16 +515,16 @@ const ItemGroups: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <span className="text-base leading-none"></span>
-                        <span className="text-xs font-semibold text-gray-600 uppercase">PROPOSED ALTERNATES ({ig.proposedAlternates.length})</span>
+                        <span className="text-xs font-semibold text-ink-3 uppercase">PROPOSED ALTERNATES ({ig.proposedAlternates.length})</span>
                       </div>
                       {ig.proposedAlternates.length === 0 ? (
-                        <p className="text-xs text-gray-400">No proposed alternates yet</p>
+                        <p className="text-xs text-ink-4">No proposed alternates yet</p>
                       ) : (
                         <ul className="space-y-1">
                           {ig.proposedAlternates.map(alt => (
                             <li key={alt.id} className="text-xs">
-                              <div className="text-gray-800 font-medium">{alt.name}</div>
-                              <div className="text-gray-500 text-[10px]">{alt.notes}</div>
+                              <div className="text-ink font-medium">{alt.name}</div>
+                              <div className="text-ink-3 text-[10px]">{alt.notes}</div>
                               {renderStockWindow(ig.type, alt.item_id)}
                             </li>
                           ))}
@@ -533,8 +533,8 @@ const ItemGroups: React.FC = () => {
                     </div>
                   </div>
                   {ig.notes && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs text-gray-500"><span className="font-semibold text-gray-600"></span>{ig.notes}</p>
+                    <div className="mt-3 pt-3 border-t border-hairline">
+                      <p className="text-xs text-ink-3"><span className="font-semibold text-ink-3"></span>{ig.notes}</p>
                     </div>
                   )}
                 </div>
@@ -546,7 +546,7 @@ const ItemGroups: React.FC = () => {
         {/* Pagination */}
         {!loading && stats.totalGroups > 0 && (
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mt-4 px-6 py-0">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-ink-3">
               Page {safeCurrentPage} of {totalPages} • Showing {filtered.length} of {stats.totalGroups}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -556,7 +556,7 @@ const ItemGroups: React.FC = () => {
                   setPageSize(parseInt(e.target.value, 10));
                   setCurrentPage(1);
                 }}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                className="px-3 py-2 rounded-lg border border-border bg-surface text-sm"
               >
                 <option value={10}>10 / page</option>
                 <option value={25}>25 / page</option>
@@ -566,7 +566,7 @@ const ItemGroups: React.FC = () => {
                 type="button"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={safeCurrentPage <= 1}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+                className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
               >
                 Prev
               </button>
@@ -574,7 +574,7 @@ const ItemGroups: React.FC = () => {
                 type="button"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={safeCurrentPage >= totalPages}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm disabled:opacity-50"
+                className="px-3 py-2 rounded-lg border border-border bg-surface text-sm disabled:opacity-50"
               >
                 Next
               </button>
@@ -590,26 +590,26 @@ const ItemGroups: React.FC = () => {
           <button
             type="button"
             aria-label="Close panel"
-            className="lg:hidden fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm"
+            className="lg:hidden fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm"
             onClick={closeDetailPanel}
           />
           <aside
-            className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl border-l border-gray-200 w-full max-w-md
+            className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-surface shadow-2xl border-l border-border w-full max-w-md
               lg:static lg:z-auto lg:shrink-0 lg:h-screen lg:shadow-none
               ${detailPanelWide ? 'lg:max-w-2xl xl:max-w-3xl' : 'lg:max-w-md xl:max-w-lg'}`}
           >
-            <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+            <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-hairline">
               <div className="flex items-start gap-3 min-w-0">
                 <span className="text-2xl shrink-0 mt-0.5">{selectedGroup?.icon}</span>
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-gray-900 leading-snug">
+                  <h2 className="text-lg font-bold text-ink leading-snug">
                     {editingGroup
                       ? editSubmitStep === 'preview'
                         ? 'Review changes'
                         : editForm.name
                       : selectedGroup.name}
                   </h2>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-ink-3 mt-1">
                     {editingGroup
                       ? editSubmitStep === 'preview'
                         ? 'Verify details before saving to the database.'
@@ -620,11 +620,11 @@ const ItemGroups: React.FC = () => {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {!editingGroup ? (
-                  <button onClick={(e) => { e.stopPropagation(); openEdit(selectedGroup); }} className="p-2 rounded-lg hover:bg-violet-100 text-violet-600 transition-colors" title="Edit">
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(selectedGroup); }} className="p-2 rounded-lg hover:bg-brand-soft text-brand transition-colors" title="Edit" aria-label="Edit">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
                 ) : null}
-                <button type="button" onClick={closeDetailPanel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <button type="button" onClick={closeDetailPanel} aria-label="Close panel" className="p-1.5 rounded-lg hover:bg-surface-3 text-ink-4 hover:text-ink-3">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
               </div>
@@ -633,81 +633,81 @@ const ItemGroups: React.FC = () => {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
               {editingGroup && editSubmitStep === 'preview' ? (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-violet-900">Confirm item group update</p>
-                    <p className="text-xs text-violet-800/90 mt-1">
+                  <div className="rounded-xl border border-brand-soft bg-brand-soft px-4 py-3">
+                    <p className="text-sm font-semibold text-brand">Confirm item group update</p>
+                    <p className="text-xs text-brand mt-1">
                       Check every field below. Use Back to edit, or confirm to save permanently.
                     </p>
                   </div>
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Code</dt>
-                      <dd className="font-mono font-semibold text-violet-700">{editingGroup.code}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Code</dt>
+                      <dd className="font-mono font-semibold text-brand">{editingGroup.code}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Type</dt>
-                      <dd className="font-semibold text-gray-900">{editingGroup.type}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Type</dt>
+                      <dd className="font-semibold text-ink">{editingGroup.type}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Name</dt>
-                      <dd className="font-semibold text-gray-900">{editForm.name.trim()}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Name</dt>
+                      <dd className="font-semibold text-ink">{editForm.name.trim()}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Status</dt>
-                      <dd className="font-semibold text-gray-900">{editForm.status}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Status</dt>
+                      <dd className="font-semibold text-ink">{editForm.status}</dd>
                     </div>
                     <div className="sm:col-span-2">
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Description</dt>
-                      <dd className="text-gray-800">{editForm.description.trim() || '—'}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Description</dt>
+                      <dd className="text-ink">{editForm.description.trim() || '—'}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Purpose</dt>
-                      <dd className="text-gray-800">{editForm.purpose.trim() || '—'}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Purpose</dt>
+                      <dd className="text-ink">{editForm.purpose.trim() || '—'}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Notes</dt>
-                      <dd className="text-gray-800">{editForm.notes.trim() || '—'}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Notes</dt>
+                      <dd className="text-ink">{editForm.notes.trim() || '—'}</dd>
                     </div>
                   </dl>
                   <div>
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-teal-700 mb-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-brand mb-2">
                       Approved members ({selectedMembersForEdit.length})
                     </h4>
                     {selectedMembersForEdit.length === 0 ? (
-                      <p className="text-xs text-gray-500 italic">No members selected.</p>
+                      <p className="text-xs text-ink-3 italic">No members selected.</p>
                     ) : (
                       <ul className="space-y-2">
                         {selectedMembersForEdit.map((m, idx) => (
-                          <li key={m.id} className="rounded-lg border border-teal-200 bg-teal-50/50 px-3 py-2">
+                          <li key={m.id} className="rounded-lg border border-brand-soft bg-brand-soft px-3 py-2">
                             <div className="flex flex-wrap items-center gap-2">
                               {idx === 0 ? (
-                                <span className="text-[9px] font-bold uppercase text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                                <span className="text-[9px] font-bold uppercase text-brand bg-brand-soft px-1.5 py-0.5 rounded">
                                   Primary
                                 </span>
                               ) : null}
-                              <span className="text-xs font-mono font-semibold text-teal-800">{m.code}</span>
-                              {m.sku ? <span className="text-[10px] font-mono text-gray-500">SKU {m.sku}</span> : null}
+                              <span className="text-xs font-mono font-semibold text-brand">{m.code}</span>
+                              {m.sku ? <span className="text-[10px] font-mono text-ink-3">SKU {m.sku}</span> : null}
                             </div>
-                            <p className="text-sm font-medium text-gray-900 mt-0.5">{m.name}</p>
+                            <p className="text-sm font-medium text-ink mt-0.5">{m.name}</p>
                           </li>
                         ))}
                       </ul>
                     )}
                   </div>
                   <div>
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-warn mb-2">
                       Proposed alternates ({editForm.proposedAlternates.length})
                     </h4>
                     {editForm.proposedAlternates.length === 0 ? (
-                      <p className="text-xs text-gray-500 italic">None.</p>
+                      <p className="text-xs text-ink-3 italic">None.</p>
                     ) : (
                       <ul className="space-y-2">
                         {editForm.proposedAlternates.map((alt, idx) => (
-                          <li key={`${alt.item_id}-${idx}`} className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
-                            <p className="text-xs font-mono text-amber-900">{alt.code}</p>
-                            <p className="text-sm font-medium text-gray-900">{alt.name}</p>
-                            {alt.notes ? <p className="text-xs text-gray-600 mt-1">{alt.notes}</p> : null}
-                            <span className="inline-block mt-1 text-[10px] font-semibold text-amber-800 capitalize">{alt.status}</span>
+                          <li key={`${alt.item_id}-${idx}`} className="rounded-lg border border-[color:var(--st-amber-fg)]/30 bg-warn-soft px-3 py-2">
+                            <p className="text-xs font-mono text-warn">{alt.code}</p>
+                            <p className="text-sm font-medium text-ink">{alt.name}</p>
+                            {alt.notes ? <p className="text-xs text-ink-3 mt-1">{alt.notes}</p> : null}
+                            <span className="inline-block mt-1 text-[10px] font-semibold text-warn capitalize">{alt.status}</span>
                           </li>
                         ))}
                       </ul>
@@ -716,77 +716,77 @@ const ItemGroups: React.FC = () => {
                 </div>
               ) : editingGroup ? (
                 <>
-                  <div className="rounded-xl border border-violet-100 bg-violet-50/40 px-3 py-2.5 flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-mono font-bold text-violet-700">{editingGroup.code}</span>
-                    <span className="text-gray-400">·</span>
-                    <span className="font-semibold text-gray-700">{editingGroup.type}</span>
-                    <span className="text-gray-400">·</span>
-                    <span className="text-gray-600">{editForm.member_ids.length} member(s)</span>
+                  <div className="rounded-xl border border-brand-soft bg-brand-soft px-3 py-2.5 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-mono font-bold text-brand">{editingGroup.code}</span>
+                    <span className="text-ink-4">·</span>
+                    <span className="font-semibold text-ink-2">{editingGroup.type}</span>
+                    <span className="text-ink-4">·</span>
+                    <span className="text-ink-3">{editForm.member_ids.length} member(s)</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Name</label>
-                      <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                      <label className="block text-[10px] font-bold uppercase text-ink-3 mb-1">Name</label>
+                      <input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 text-sm border border-border rounded-lg" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Status</label>
-                      <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg">
+                      <label className="block text-[10px] font-bold uppercase text-ink-3 mb-1">Status</label>
+                      <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))} className="w-full px-3 py-2 text-sm border border-border rounded-lg">
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
                       </select>
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Description</label>
-                      <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                      <label className="block text-[10px] font-bold uppercase text-ink-3 mb-1">Description</label>
+                      <input value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 text-sm border border-border rounded-lg" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Purpose</label>
-                      <input value={editForm.purpose} onChange={e => setEditForm(f => ({ ...f, purpose: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                      <label className="block text-[10px] font-bold uppercase text-ink-3 mb-1">Purpose</label>
+                      <input value={editForm.purpose} onChange={e => setEditForm(f => ({ ...f, purpose: e.target.value }))} className="w-full px-3 py-2 text-sm border border-border rounded-lg" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Notes</label>
-                      <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" />
+                      <label className="block text-[10px] font-bold uppercase text-ink-3 mb-1">Notes</label>
+                      <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 text-sm border border-border rounded-lg" />
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-brand">
                       Members ({editingGroup.type === 'RM' ? 'Raw materials' : 'Pack materials'})
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <section className="rounded-xl border border-teal-200 bg-teal-50/40 p-3 flex flex-col min-h-48">
+                      <section className="rounded-xl border border-brand-soft bg-brand-soft p-3 flex flex-col min-h-48">
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <h4 className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                          <h4 className="text-[10px] font-bold uppercase tracking-wider text-brand">
                             Selected ({selectedMembersForEdit.length})
                           </h4>
                         </div>
                         <div className="flex-1 overflow-y-auto space-y-2 min-h-0 max-h-56">
                           {selectedMembersForEdit.length === 0 ? (
-                            <p className="text-xs text-teal-700/80 italic p-1">No members selected. Add from the list on the right.</p>
+                            <p className="text-xs text-brand italic p-1">No members selected. Add from the list on the right.</p>
                           ) : (
                             selectedMembersForEdit.map((m, idx) => (
                               <div
                                 key={m.id}
-                                className="flex items-start justify-between gap-2 rounded-lg border border-teal-200 bg-white px-2.5 py-2 shadow-sm"
+                                className="flex items-start justify-between gap-2 rounded-lg border border-brand-soft bg-surface px-2.5 py-2 shadow-sm"
                               >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     {idx === 0 ? (
-                                      <span className="text-[9px] font-bold uppercase tracking-wide text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                                      <span className="text-[9px] font-bold uppercase tracking-wide text-brand bg-brand-soft px-1.5 py-0.5 rounded">
                                         Primary
                                       </span>
                                     ) : null}
-                                    <span className="text-[10px] font-mono font-semibold text-teal-800">{m.code}</span>
+                                    <span className="text-[10px] font-mono font-semibold text-brand">{m.code}</span>
                                   </div>
-                                  <p className="text-sm font-medium text-gray-900 truncate mt-0.5">{m.name}</p>
+                                  <p className="text-sm font-medium text-ink truncate mt-0.5">{m.name}</p>
                                   {m.sku ? (
-                                    <p className="text-[10px] text-gray-500 font-mono mt-0.5">SKU {m.sku}</p>
+                                    <p className="text-[10px] text-ink-3 font-mono mt-0.5">SKU {m.sku}</p>
                                   ) : null}
                                   {editingGroup.type === 'RM' ? renderStockWindow('RM', m.id) : renderStockWindow('PM', m.id)}
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => removeEditMember(m.id)}
-                                  className="shrink-0 p-1.5 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                  className="shrink-0 p-1.5 rounded-md text-ink-4 hover:bg-err-soft hover:text-err"
                                   title="Remove member"
                                   aria-label={`Remove ${m.name}`}
                                 >
@@ -798,8 +798,8 @@ const ItemGroups: React.FC = () => {
                         </div>
                       </section>
 
-                      <section className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 flex flex-col min-h-48">
-                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">
+                      <section className="rounded-xl border border-border bg-surface-2 p-3 flex flex-col min-h-48">
+                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-ink-3 mb-2">
                           Add members
                         </h4>
                         {editingGroup.type === 'RM' ? (
@@ -808,32 +808,33 @@ const ItemGroups: React.FC = () => {
                             value={memberRmFilter}
                             onChange={(e) => setMemberRmFilter(e.target.value)}
                             placeholder="Search by name, code, or SKU…"
-                            className="w-full mb-2 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-violet-500"
+                            aria-label="Search by name, code, or SKU"
+                            className="w-full mb-2 px-3 py-2 text-sm border border-border rounded-lg bg-surface focus:ring-2 focus:ring-[color:var(--ring)]"
                           />
                         ) : null}
-                        <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg bg-white p-1.5 space-y-0.5 min-h-0 max-h-56">
+                        <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-surface p-1.5 space-y-0.5 min-h-0 max-h-56">
                           {addableMembersForEdit.map((m) => (
                             <label
                               key={m.id}
-                              className="flex items-center gap-2 p-2 hover:bg-violet-50/60 rounded-lg cursor-pointer"
+                              className="flex items-center gap-2 p-2 hover:bg-brand-soft rounded-lg cursor-pointer"
                             >
                               <input
                                 type="checkbox"
                                 checked={false}
                                 onChange={() => toggleEditMember(m.id)}
-                                className="rounded border-gray-300 text-violet-600"
+                                className="rounded border-border text-brand"
                               />
                               <div className="min-w-0 flex-1">
-                                <span className="text-[10px] font-mono text-gray-600">{m.code}</span>
+                                <span className="text-[10px] font-mono text-ink-3">{m.code}</span>
                                 {m.sku ? (
-                                  <span className="text-[10px] text-gray-400 font-mono ml-1">· {m.sku}</span>
+                                  <span className="text-[10px] text-ink-4 font-mono ml-1">· {m.sku}</span>
                                 ) : null}
-                                <span className="block text-sm text-gray-800 truncate">{m.name}</span>
+                                <span className="block text-sm text-ink truncate">{m.name}</span>
                               </div>
                             </label>
                           ))}
                           {addableMembersForEdit.length === 0 && (
-                            <p className="text-xs text-gray-400 p-2">
+                            <p className="text-xs text-ink-4 p-2">
                               {memberRmFilter.trim() && editingGroup.type === 'RM'
                                 ? 'No more materials match your search.'
                                 : selectedMembersForEdit.length > 0
@@ -846,24 +847,24 @@ const ItemGroups: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-2">Proposed alternates</h3>
-                    <p className="text-[11px] text-gray-500 mb-2">Select {editingGroup.type === 'RM' ? 'raw materials' : 'pack materials'} from the list to add as proposed alternates.</p>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-warn mb-2">Proposed alternates</h3>
+                    <p className="text-[11px] text-ink-3 mb-2">Select {editingGroup.type === 'RM' ? 'raw materials' : 'pack materials'} from the list to add as proposed alternates.</p>
                     <div className="space-y-2 max-h-56 overflow-y-auto">
                       {editForm.proposedAlternates.map((alt, idx) => (
-                        <div key={`${alt.item_id}-${idx}`} className="border border-amber-200 rounded-lg p-2 bg-amber-50/50 space-y-2">
+                        <div key={`${alt.item_id}-${idx}`} className="border border-[color:var(--st-amber-fg)]/30 rounded-lg p-2 bg-warn-soft space-y-2">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-mono text-amber-800">{alt.code}</span>
-                            <span className="text-sm text-gray-800 truncate flex-1 min-w-0">{alt.name}</span>
-                            <button type="button" onClick={() => removeEditAlternate(idx)} className="p-1.5 rounded hover:bg-red-100 text-red-600 shrink-0" title="Remove">×</button>
+                            <span className="text-xs font-mono text-warn">{alt.code}</span>
+                            <span className="text-sm text-ink truncate flex-1 min-w-0">{alt.name}</span>
+                            <button type="button" onClick={() => removeEditAlternate(idx)} className="p-1.5 rounded hover:bg-err-soft text-err shrink-0" title="Remove">×</button>
                           </div>
-                          <input value={alt.notes} onChange={e => updateEditAlternate(idx, { notes: e.target.value })} placeholder="Notes" className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded" />
-                          <select value={alt.status} onChange={e => updateEditAlternate(idx, { status: e.target.value as 'proposed' | 'under-review' })} className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded bg-white">
+                          <input value={alt.notes} onChange={e => updateEditAlternate(idx, { notes: e.target.value })} placeholder="Notes" aria-label="Notes" className="w-full px-2 py-1.5 text-xs border border-border rounded" />
+                          <select value={alt.status} onChange={e => updateEditAlternate(idx, { status: e.target.value as 'proposed' | 'under-review' })} aria-label="Alternate status" className="w-full px-2 py-1.5 text-xs border border-border rounded bg-surface">
                             <option value="proposed">Proposed</option>
                             <option value="under-review">Under review</option>
                           </select>
                         </div>
                       ))}
-                      {editForm.proposedAlternates.length === 0 && <p className="text-xs text-gray-400 p-2">No proposed alternates. Add from the list below.</p>}
+                      {editForm.proposedAlternates.length === 0 && <p className="text-xs text-ink-4 p-2">No proposed alternates. Add from the list below.</p>}
                     </div>
                     {availableAlternatesForEdit.length > 0 ? (
                       <div className="mt-2">
@@ -882,11 +883,11 @@ const ItemGroups: React.FC = () => {
                             onClearSelection={() => setAlternateRmQuery('')}
                             requirePickFromList
                             placeholder="Search by name, code, or SKU…"
-                            className="[&_input]:text-xs [&_input]:border-amber-200 [&_input]:rounded-lg"
+                            className="[&_input]:text-xs [&_input]:border-[color:var(--st-amber-fg)]/30 [&_input]:rounded-lg"
                           />
                         ) : (
                           <select
-                            className="px-3 py-1.5 text-xs border border-amber-200 rounded-lg bg-white text-gray-700 w-full"
+                            className="px-3 py-1.5 text-xs border border-[color:var(--st-amber-fg)]/30 rounded-lg bg-surface text-ink-2 w-full"
                             value=""
                             onChange={e => {
                               const id = e.target.value ? parseInt(e.target.value, 10) : 0;
@@ -903,65 +904,65 @@ const ItemGroups: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <p className="mt-2 text-xs text-gray-400">No more {editingGroup?.type === 'RM' ? 'raw materials' : 'pack materials'} available to add as alternates.</p>
+                      <p className="mt-2 text-xs text-ink-4">No more {editingGroup?.type === 'RM' ? 'raw materials' : 'pack materials'} available to add as alternates.</p>
                     )}
                   </div>
                 </>
               ) : (
                 <>
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="text-center py-3 px-2 rounded-xl border border-gray-200 bg-gray-50">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Type</p>
-                      <p className="text-lg font-extrabold text-gray-900 mt-1">{selectedGroup.type}</p>
+                    <div className="text-center py-3 px-2 rounded-xl border border-border bg-surface-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-4">Type</p>
+                      <p className="text-lg font-extrabold text-ink mt-1">{selectedGroup.type}</p>
                     </div>
-                    <div className="text-center py-3 px-2 rounded-xl border border-teal-200 bg-teal-50">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Members</p>
-                      <p className="text-lg font-extrabold text-teal-600 mt-1">{selectedGroup.approvedMembers.length}</p>
+                    <div className="text-center py-3 px-2 rounded-xl border border-brand-soft bg-brand-soft">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-4">Members</p>
+                      <p className="text-lg font-extrabold text-brand mt-1">{selectedGroup.approvedMembers.length}</p>
                     </div>
-                    <div className="text-center py-3 px-2 rounded-xl border border-amber-200 bg-amber-50">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Alternates</p>
-                      <p className="text-lg font-extrabold text-amber-600 mt-1">{selectedGroup.proposedAlternates.length}</p>
+                    <div className="text-center py-3 px-2 rounded-xl border border-[color:var(--st-amber-fg)]/30 bg-warn-soft">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-4">Alternates</p>
+                      <p className="text-lg font-extrabold text-warn mt-1">{selectedGroup.proposedAlternates.length}</p>
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-3">Approved Members</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-brand mb-3">Approved Members</h3>
                     <div className="space-y-2">
                       {selectedGroup.approvedMembers.map((member, idx) => (
-                        <div key={member.id} className="border border-gray-200 rounded-xl p-3.5">
+                        <div key={member.id} className="border border-border rounded-xl p-3.5">
                           <div className="flex items-center gap-2 mb-1">
-                            {idx === 0 && <span className="text-[10px] font-bold text-teal-600">Primary</span>}
-                            <span className="font-mono text-[10px] font-bold text-teal-600">{member.code}</span>
+                            {idx === 0 && <span className="text-[10px] font-bold text-brand">Primary</span>}
+                            <span className="font-mono text-[10px] font-bold text-brand">{member.code}</span>
                           </div>
-                          <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                          <p className="text-sm font-semibold text-ink">{member.name}</p>
                         </div>
                       ))}
-                      {selectedGroup.approvedMembers.length === 0 && <p className="text-xs text-gray-400 italic">No approved members yet</p>}
+                      {selectedGroup.approvedMembers.length === 0 && <p className="text-xs text-ink-4 italic">No approved members yet</p>}
                     </div>
                   </div>
                   {selectedGroup.proposedAlternates.length > 0 && (
                     <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 mb-3">Proposed Alternates</h3>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-warn mb-3">Proposed Alternates</h3>
                       <div className="space-y-2">
                         {selectedGroup.proposedAlternates.map(alt => (
-                          <div key={alt.id} className="border border-amber-200 rounded-xl p-3.5 bg-amber-50/50">
-                            <p className="text-sm font-semibold text-gray-900">{alt.name}</p>
-                            <p className="text-xs text-gray-500 mt-1">{alt.notes}</p>
-                            <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${alt.status === 'proposed' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{alt.status === 'proposed' ? 'Proposed' : 'Under Review'}</span>
+                          <div key={alt.id} className="border border-[color:var(--st-amber-fg)]/30 rounded-xl p-3.5 bg-warn-soft">
+                            <p className="text-sm font-semibold text-ink">{alt.name}</p>
+                            <p className="text-xs text-ink-3 mt-1">{alt.notes}</p>
+                            <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${alt.status === 'proposed' ? 'bg-warn-soft text-warn' : 'bg-brand-soft text-brand'}`}>{alt.status === 'proposed' ? 'Proposed' : 'Under Review'}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
                   {selectedGroup.notes && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                      <p className="text-sm text-emerald-800"><span className="font-bold">Rationale:</span> {selectedGroup.notes}</p>
+                    <div className="rounded-xl border border-[color:var(--st-green-fg)]/30 bg-ok-soft p-4">
+                      <p className="text-sm text-ok"><span className="font-bold">Rationale:</span> {selectedGroup.notes}</p>
                     </div>
                   )}
                 </>
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-2">
               {editingGroup ? (
                 editSubmitStep === 'preview' ? (
                   <>
@@ -969,7 +970,7 @@ const ItemGroups: React.FC = () => {
                       type="button"
                       onClick={() => setEditSubmitStep('form')}
                       disabled={saving}
-                      className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      className="px-5 py-2 text-sm font-medium text-ink-2 border border-border rounded-lg hover:bg-surface-3 disabled:opacity-50"
                     >
                       Back to edit
                     </button>
@@ -977,7 +978,7 @@ const ItemGroups: React.FC = () => {
                       type="button"
                       onClick={handleSaveEdit}
                       disabled={saving}
-                      className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50"
+                      className="px-5 py-2 text-sm font-semibold text-white bg-brand rounded-lg hover:bg-brand-press disabled:opacity-50"
                     >
                       {saving ? 'Saving…' : 'Confirm & save'}
                     </button>
@@ -990,21 +991,21 @@ const ItemGroups: React.FC = () => {
                         setEditingGroup(null);
                         setEditSubmitStep('form');
                       }}
-                      className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      className="px-5 py-2 text-sm font-medium text-ink-2 border border-border rounded-lg hover:bg-surface-3"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={requestEditPreview}
-                      className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+                      className="px-5 py-2 text-sm font-semibold text-white bg-brand rounded-lg hover:bg-brand-press"
                     >
                       Review & save
                     </button>
                   </>
                 )
               ) : (
-                <button type="button" onClick={closeDetailPanel} className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Close</button>
+                <button type="button" onClick={closeDetailPanel} className="px-5 py-2 text-sm font-medium text-ink-2 border border-border rounded-lg hover:bg-surface-3">Close</button>
               )}
             </div>
           </aside>
@@ -1014,28 +1015,27 @@ const ItemGroups: React.FC = () => {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-white/60 backdrop-blur-md" onClick={closeCreateModal} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[min(90vh,720px)] flex flex-col">
+        <ModalOverlay onClose={closeCreateModal} z="z-50" dismissable={true} backdrop="light">
+          <div className="relative bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[min(90vh,720px)] flex flex-col" role="dialog" aria-modal="true" aria-labelledby="create-item-group-title" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-6 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">
+                <h2 id="create-item-group-title" className="text-lg font-bold text-ink">
                   {createSubmitStep === 'preview' ? 'Review new group' : 'Create Item Group'}
                 </h2>
                 {createSubmitStep === 'preview' ? (
-                  <p className="text-xs text-gray-500 mt-1">Verify details before creating the group.</p>
+                  <p className="text-xs text-ink-3 mt-1">Verify details before creating the group.</p>
                 ) : null}
               </div>
-              <button type="button" onClick={closeCreateModal} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={closeCreateModal} aria-label="Close" className="p-1.5 rounded-lg hover:bg-surface-3 text-ink-4 hover:text-ink-3">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
             <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               {createSubmitStep === 'preview' ? (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-teal-900">Confirm new item group</p>
-                    <p className="text-xs text-teal-800/90 mt-1">
+                  <div className="rounded-xl border border-brand-soft bg-brand-soft px-4 py-3">
+                    <p className="text-sm font-semibold text-brand">Confirm new item group</p>
+                    <p className="text-xs text-brand mt-1">
                       Check every field below. Use Back to edit, or confirm to create the group.
                     </p>
                   </div>
@@ -1043,23 +1043,23 @@ const ItemGroups: React.FC = () => {
                     <div className="flex items-center gap-2">
                       {form.icon ? <span className="text-2xl">{form.icon}</span> : null}
                       <div>
-                        <dt className="text-[10px] font-bold uppercase text-gray-500">Group name</dt>
-                        <dd className="font-semibold text-gray-900">{form.name.trim()}</dd>
+                        <dt className="text-[10px] font-bold uppercase text-ink-3">Group name</dt>
+                        <dd className="font-semibold text-ink">{form.name.trim()}</dd>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <dt className="text-[10px] font-bold uppercase text-gray-500">Type</dt>
-                        <dd className="font-semibold text-gray-900">{form.type}</dd>
+                        <dt className="text-[10px] font-bold uppercase text-ink-3">Type</dt>
+                        <dd className="font-semibold text-ink">{form.type}</dd>
                       </div>
                       <div>
-                        <dt className="text-[10px] font-bold uppercase text-gray-500">Code</dt>
-                        <dd className="font-mono font-semibold text-teal-700">{form.code || '—'}</dd>
+                        <dt className="text-[10px] font-bold uppercase text-ink-3">Code</dt>
+                        <dd className="font-mono font-semibold text-brand">{form.code || '—'}</dd>
                       </div>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Primary member</dt>
-                      <dd className="text-gray-900 mt-0.5">
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Primary member</dt>
+                      <dd className="text-ink mt-0.5">
                         {form.type === 'RM'
                           ? rmTypeaheadLabelForId(rawMaterials, form.primaryItemId) || '—'
                           : packMaterials.find((p) => p.id === form.primaryItemId)?.description ||
@@ -1068,12 +1068,12 @@ const ItemGroups: React.FC = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Description</dt>
-                      <dd className="text-gray-800">{form.description.trim() || '—'}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Description</dt>
+                      <dd className="text-ink">{form.description.trim() || '—'}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase text-gray-500">Rationale</dt>
-                      <dd className="text-gray-800">{form.rationale.trim() || '—'}</dd>
+                      <dt className="text-[10px] font-bold uppercase text-ink-3">Rationale</dt>
+                      <dd className="text-ink">{form.rationale.trim() || '—'}</dd>
                     </div>
                   </dl>
                 </div>
@@ -1081,12 +1081,12 @@ const ItemGroups: React.FC = () => {
               <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Group Name <span className="text-red-500">*</span></label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Vitamin C Derivatives" className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500" />
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Group Name <span className="text-err">*</span></label>
+                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Vitamin C Derivatives" className="w-full px-3 py-2.5 text-sm border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Type</label>
-                  <select value={form.type} onChange={e => { setPrimaryRmQuery(''); setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' })); }} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Type</label>
+                  <select value={form.type} onChange={e => { setPrimaryRmQuery(''); setForm(f => ({ ...f, type: e.target.value as 'RM' | 'PM', primaryItemId: '', code: '' })); }} className="w-full px-3 py-2.5 text-sm border border-border rounded-lg bg-surface focus:ring-2 focus:ring-[color:var(--ring)]">
                     <option value="RM">RM</option>
                     <option value="PM">PM</option>
                   </select>
@@ -1094,11 +1094,11 @@ const ItemGroups: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Code</label>
-                  <input value={form.code} readOnly className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600" placeholder="From server" />
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Code</label>
+                  <input value={form.code} readOnly className="w-full px-3 py-2.5 text-sm border border-border rounded-lg bg-surface-3 text-ink-3" placeholder="From server" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Primary Item</label>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Primary Item</label>
                   {form.type === 'RM' ? (
                     <>
                       <RmMasterTypeahead
@@ -1114,16 +1114,16 @@ const ItemGroups: React.FC = () => {
                         loading={mastersLoading}
                         requirePickFromList
                         placeholder="Search by name, code, or SKU…"
-                        className="[&_input]:w-full [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm [&_input]:border-gray-300 [&_input]:rounded-lg [&_input]:focus:ring-2 [&_input]:focus:ring-teal-500"
+                        className="[&_input]:w-full [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm [&_input]:border-border [&_input]:rounded-lg [&_input]:focus:ring-2 [&_input]:focus:ring-[color:var(--ring)]"
                       />
                       {!mastersLoading && rmTypeaheadOptions.length === 0 ? (
-                        <p className="mt-1 text-xs text-amber-700" role="status">
+                        <p className="mt-1 text-xs text-warn" role="status">
                           No raw materials in master.
                         </p>
                       ) : null}
                     </>
                   ) : (
-                    <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-teal-500">
+                    <select value={form.primaryItemId} onChange={e => setForm(f => ({ ...f, primaryItemId: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-border rounded-lg bg-surface focus:ring-2 focus:ring-[color:var(--ring)]">
                       <option value="">— Select pack material —</option>
                       {primaryItemOptions.map(item => (
                         <option key={item.id} value={item.id}>{item.name}</option>
@@ -1132,47 +1132,47 @@ const ItemGroups: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Icon (Emoji)</label>
-                  <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="" className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500" />
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Icon (Emoji)</label>
+                  <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="" className="w-full px-3 py-2.5 text-sm border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]" />
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Description</label>
-                <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short description" className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500" />
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Description</label>
+                <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short description" className="w-full px-3 py-2.5 text-sm border border-border rounded-lg focus:ring-2 focus:ring-[color:var(--ring)]" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Rationale</label>
-                <textarea value={form.rationale} onChange={e => setForm(f => ({ ...f, rationale: e.target.value }))} placeholder="Why these items are grouped" rows={3} className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg resize-y focus:ring-2 focus:ring-teal-500" />
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink-3 mb-1.5">Rationale</label>
+                <textarea value={form.rationale} onChange={e => setForm(f => ({ ...f, rationale: e.target.value }))} placeholder="Why these items are grouped" rows={3} className="w-full px-3 py-2.5 text-sm border border-border rounded-lg resize-y focus:ring-2 focus:ring-[color:var(--ring)]" />
               </div>
               </>
               )}
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-hairline">
               {createSubmitStep === 'preview' ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setCreateSubmitStep('form')}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="px-4 py-2 text-sm font-medium text-ink-2 border border-border rounded-lg hover:bg-surface-3"
                   >
                     Back to edit
                   </button>
                   <button
                     type="button"
                     onClick={handleCreateGroup}
-                    className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700"
+                    className="px-5 py-2 text-sm font-semibold text-white bg-brand rounded-lg hover:bg-brand-press"
                   >
                     Confirm & create
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={closeCreateModal} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                  <button type="button" onClick={closeCreateModal} className="px-4 py-2 text-sm font-medium text-ink-2 border border-border rounded-lg hover:bg-surface-3">Cancel</button>
                   <button
                     type="button"
                     onClick={requestCreatePreview}
                     disabled={!form.name.trim()}
-                    className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-5 py-2 text-sm font-semibold text-white bg-brand rounded-lg hover:bg-brand-press disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Review & create
                   </button>
@@ -1180,7 +1180,7 @@ const ItemGroups: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </div>
   );

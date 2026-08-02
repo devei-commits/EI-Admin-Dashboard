@@ -28,6 +28,11 @@ import {
 import WarehouseInventorySidebar from '../../components/WarehouseInventorySidebar';
 import StockByLocationPanel from '../../components/StockByLocationPanel';
 import { formatQtyExact } from '../../utils/formatQty';
+import { TableSkeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
+import { PackageSearch } from 'lucide-react';
+import { procBtnSecondary, procInputClass, procSelectClass, procChipClass } from '../../components/procurement/ProcSection';
 
 export interface InventoryItem {
   id: string;
@@ -167,20 +172,20 @@ function SortableInventoryTh({
 }): JSX.Element {
   const active = sortColumn === column;
   return (
-    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
+    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider">
       <button
         type="button"
         onClick={() => onSort(column)}
         title={title}
         aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
-        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
-          active ? 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+        className={`group inline-flex items-center gap-1 -mx-1.5 px-1.5 py-1 rounded-md cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+          active ? 'text-brand bg-brand-soft hover:bg-brand-soft' : 'text-ink-2 hover:text-ink hover:bg-surface-3'
         }`}
       >
         {label}
         <span
           className={`text-[10px] not-italic leading-none transition-opacity duration-150 ${
-            active ? 'opacity-100 text-cyan-600' : 'opacity-0 group-hover:opacity-70 text-gray-500'
+            active ? 'opacity-100 text-brand' : 'opacity-0 group-hover:opacity-70 text-ink-3'
           }`}
           aria-hidden
         >
@@ -605,14 +610,14 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-200">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-2xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-location-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Add New Warehouse Location</h2>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+          <h2 id="add-location-modal-title" className="text-2xl font-bold text-ink">Add New Warehouse Location</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 border border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-3 border border-border text-ink-2 hover:text-ink hover:border-border transition-colors"
             aria-label="Close"
           >
             X
@@ -625,7 +630,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
             <div className="grid grid-cols-2 gap-4">
               {/* Location Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Location Name *
                 </label>
                 <input
@@ -633,7 +638,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="e.g. Solvent Store"
                   required
                 />
@@ -641,7 +646,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
 
               {/* Zone Code */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Zone Code
                 </label>
                 <input
@@ -649,7 +654,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   name="zoneCode"
                   value={formData.zoneCode}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="e.g. Zone F"
                 />
               </div>
@@ -658,14 +663,14 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
             <div className="grid grid-cols-2 gap-4">
               {/* Type */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Type
                 </label>
                 <select
                   name="type"
                   value={formData.type}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink"
                 >
                   <option value="raw-material">Raw Material</option>
                   <option value="packaging">Packaging Material</option>
@@ -677,7 +682,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
 
               {/* Area (SQM) */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Area (SQM)
                 </label>
                 <input
@@ -685,7 +690,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   name="area"
                   value={formData.area}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="100"
                 />
               </div>
@@ -693,7 +698,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
 
             {/* Temperature / Storage Conditions */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                 Temperature / Storage Conditions
               </label>
               <input
@@ -701,7 +706,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                 name="temperature"
                 value={formData.temperature}
                 onChange={handleChange}
-                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                 placeholder="e.g. Ambient 15-30°C"
               />
             </div>
@@ -709,7 +714,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
             <div className="grid grid-cols-2 gap-4">
               {/* Max Capacity */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Max Capacity (KG / UNITS)
                 </label>
                 <input
@@ -717,14 +722,14 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   name="maxCapacity"
                   value={formData.maxCapacity}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="500"
                 />
               </div>
 
               {/* Icon (Emoji) */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Icon
                 </label>
                 <input
@@ -732,7 +737,7 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
                   name="icon"
                   value={formData.icon}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder=""
                 />
               </div>
@@ -740,24 +745,24 @@ const AddLocationModal: React.FC<AddLocationModalProps> = ({ isOpen, onClose, on
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
+          <div className="px-6 py-4 border-t border-border flex gap-3 justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+              className="px-6 py-2.5 bg-surface border border-border rounded-lg text-ink-2 hover:bg-surface-2 font-medium transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium transition-colors"
+              className="px-6 py-2.5 bg-brand text-white rounded-lg hover:bg-brand-press font-medium transition-colors"
             >
               Add Location
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 
@@ -812,14 +817,14 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl border border-gray-200">
+    <ModalOverlay onClose={onClose} z="z-50" dismissable={false} backdrop="default">
+      <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-xl border border-border" role="dialog" aria-modal="true" aria-labelledby="add-rack-modal-title" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Add New Rack / Bay</h2>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+          <h2 id="add-rack-modal-title" className="text-2xl font-bold text-ink">Add New Rack / Bay</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 border border-gray-300 text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-3 border border-border text-ink-2 hover:text-ink hover:border-border transition-colors"
             aria-label="Close"
           >
             X
@@ -832,14 +837,14 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
             <div className="grid grid-cols-2 gap-4">
               {/* Zone / Location */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Zone / Location *
                 </label>
                 <select
                   name="zoneLocation"
                   value={formData.zoneLocation}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink"
                   required
                 >
                   <option value="">Select location</option>
@@ -864,7 +869,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
               {/* Bay Code */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Bay Code *
                 </label>
                 <input
@@ -872,7 +877,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                   name="bayCode"
                   value={formData.bayCode}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="e.g. F1"
                   required
                 />
@@ -881,7 +886,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
             {/* Rack Name */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                 Rack Name
               </label>
               <input
@@ -889,7 +894,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                 name="rackName"
                 value={formData.rackName}
                 onChange={handleChange}
-                className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                 placeholder="e.g. Bay F1 — Ambient Shelf"
               />
             </div>
@@ -897,7 +902,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
             <div className="grid grid-cols-3 gap-4">
               {/* No. of Levels */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   No. of Levels
                 </label>
                 <input
@@ -905,7 +910,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                   name="levels"
                   value={formData.levels}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="4"
                   min="1"
                 />
@@ -913,7 +918,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
               {/* Slots per Level */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Slots per Level
                 </label>
                 <input
@@ -921,7 +926,7 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
                   name="slotsPerLevel"
                   value={formData.slotsPerLevel}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink placeholder-ink-4"
                   placeholder="4"
                   min="1"
                 />
@@ -929,14 +934,14 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
 
               {/* Condition */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-medium text-ink-2 uppercase tracking-wider mb-2">
                   Condition
                 </label>
                 <select
                   name="condition"
                   value={formData.condition}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900"
+                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand text-ink"
                 >
                   <option value="ambient">Ambient</option>
                   <option value="cool">Cool</option>
@@ -948,24 +953,24 @@ const AddRackModal: React.FC<AddRackModalProps> = ({ isOpen, onClose, onAdd, loc
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
+          <div className="px-6 py-4 border-t border-border flex gap-3 justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+              className="px-6 py-2.5 bg-surface border border-border rounded-lg text-ink-2 hover:bg-surface-2 font-medium transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium transition-colors"
+              className="px-6 py-2.5 bg-brand text-white rounded-lg hover:bg-brand-press font-medium transition-colors"
             >
               Add Rack
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </ModalOverlay>
   );
 };
 
@@ -1506,78 +1511,51 @@ const WarehouseInventory = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'In Stock':
-        return <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">In Stock</span>;
+        return <span className="px-2 py-1 bg-ok-soft text-ok text-xs font-medium rounded">In Stock</span>;
       case 'Low Stock':
-        return <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded">Low Stock</span>;
+        return <span className="px-2 py-1 bg-warn-soft text-warn text-xs font-medium rounded">Low Stock</span>;
       case 'Critical':
-        return <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">Critical</span>;
+        return <span className="px-2 py-1 bg-err-soft text-err text-xs font-medium rounded">Critical</span>;
       case 'Out of Stock':
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">Out of Stock</span>;
+        return <span className="px-2 py-1 bg-surface-3 text-ink-2 text-xs font-medium rounded">Out of Stock</span>;
       default:
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded">{status}</span>;
+        return <span className="px-2 py-1 bg-surface-3 text-ink-2 text-xs font-medium rounded">{status}</span>;
     }
   };
 
   const getTypeBadge = (type: string) => {
-    return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">{type}</span>;
+    return <span className="px-2 py-1 bg-brand-soft text-brand text-xs font-medium rounded">{type}</span>;
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-white">
-      {/* Summary Cards */}
-      <div className="bg-linear-to-br from-gray-50 to-gray-100 border-b border-gray-200 p-6">
+    <div className="flex-1 overflow-auto bg-canvas">
+      {/* Summary Cards — matches the Overview card style for a consistent warehouse look */}
+      <div className="border-b border-border p-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {/* Total SKUs */}
-          <div className="bg-white rounded-lg p-4 border border-cyan-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">Total SKUs</div>
-            <div className="text-3xl font-bold text-cyan-600 mb-1">{stats.total}</div>
-            <div className="text-xs text-gray-500">RM + PM + Finished Goods</div>
-          </div>
-
-          {/* In Stock */}
-          <div className="bg-white rounded-lg p-4 border border-emerald-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">In Stock</div>
-            <div className="text-3xl font-bold text-emerald-600 mb-1">{stats.inStock}</div>
-            <div className="text-xs text-gray-500">Items available</div>
-          </div>
-
-          {/* Low Stock */}
-          <div className="bg-white rounded-lg p-4 border border-amber-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">Low Stock</div>
-            <div className="text-3xl font-bold text-amber-600 mb-1">{stats.lowStock}</div>
-            <div className="text-xs text-gray-500">Below threshold</div>
-          </div>
-
-          {/* Critical / Out */}
-          <div className="bg-white rounded-lg p-4 border border-red-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">Critical / Out</div>
-            <div className="text-3xl font-bold text-red-600 mb-1">{stats.critical}</div>
-            <div className="text-xs text-gray-500">Needs attention</div>
-          </div>
-
-          {/* FG Under QC */}
-          <div className="bg-white rounded-lg p-4 border border-purple-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">FG Under QC</div>
-            <div className="text-3xl font-bold text-purple-600 mb-1">{stats.fgUnderQc}</div>
-            <div className="text-xs text-gray-500">batches pending release</div>
-          </div>
-
-          {/* In Transit */}
-          <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
-            <div className="text-gray-600 text-xs font-semibold uppercase tracking-wide mb-1">In Transit</div>
-            <div className="text-3xl font-bold text-blue-600 mb-1">{stats.inTransit}</div>
-            <div className="text-xs text-gray-500">RM/PM orders</div>
-          </div>
+          {[
+            { label: 'Total SKUs', value: stats.total, sub: 'RM + PM + Finished Goods' },
+            { label: 'In Stock', value: stats.inStock, sub: 'Items available' },
+            { label: 'Low Stock', value: stats.lowStock, sub: 'Below threshold' },
+            { label: 'Critical / Out', value: stats.critical, sub: 'Needs attention' },
+            { label: 'FG Under QC', value: stats.fgUnderQc, sub: 'batches pending release' },
+            { label: 'In Transit', value: stats.inTransit, sub: 'RM/PM orders' },
+          ].map((c) => (
+            <div key={c.label} className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+              <p className="text-xs font-medium text-ink-3 uppercase tracking-wide">{c.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">{c.value}</p>
+              <p className="text-xs text-ink-3 mt-1">{c.sub}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Filters and Actions */}
-      <div className="sticky top-0 bg-white border-b border-gray-200 z-10">
+      <div className="sticky top-0 bg-surface border-b border-border z-10">
         <div className="p-6">
           {/* View mode + filter tabs */}
           <div className="mb-4">
             <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-semibold text-ink">
                 {viewMode === 'current' ? 'Inventory' : viewMode === 'history' ? 'Inventory History' : 'Usage'}
               </h1>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -1615,7 +1593,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => inventorySummaryFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="Zoho Inventory Summary export"
                   >
                     {importingInventoryExcel ? 'Importing…' : 'Zoho stock Excel'}
@@ -1624,7 +1602,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => mainWarehouseSihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="Main warehouse workbook — CONSOLIDATED SIH sheet with sku, item_name, SIH"
                   >
                     {importingSihBucket === 'warehouse'
@@ -1635,7 +1613,7 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => ml1SihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="ML1 workbook — STOCK IN HAND sheet: sku, item_name, PHYSICAL QTY"
                   >
                     {importingSihBucket === 'ml1' ? 'Importing…' : 'Upload ML1 SIH'}
@@ -1644,20 +1622,20 @@ const WarehouseInventory = () => {
                     type="button"
                     disabled={importingInventoryExcel || importingSihBucket != null}
                     onClick={() => ml2SihFileRef.current?.click()}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                    className={procBtnSecondary}
                     title="ML2 workbook — Sheet3 with sku, item_name, SIH"
                   >
                     {importingSihBucket === 'ml2' ? 'Importing…' : 'Upload ML2 SIH'}
                   </button>
                 </>
               )}
-              <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
+              <div className="inline-flex rounded-lg border border-border bg-surface-3 p-1">
                 <button
                   type="button"
                   onClick={() => setViewMode('current')}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'current'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   Main Inventory
@@ -1666,8 +1644,8 @@ const WarehouseInventory = () => {
                   type="button"
                   onClick={() => setViewMode('history')}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'history'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   Inventory History
@@ -1676,8 +1654,8 @@ const WarehouseInventory = () => {
                   type="button"
                   onClick={() => setViewMode('usage')}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-md ${viewMode === 'usage'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-surface text-ink shadow-sm'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   Usage
@@ -1698,10 +1676,7 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                    className={procChipClass(activeFilter === filter.key)}
                   >
                     {filter.label}
                   </button>
@@ -1712,7 +1687,7 @@ const WarehouseInventory = () => {
                   id="item-group-filter"
                   value={itemGroupFilter}
                   onChange={(e) => setItemGroupFilter(e.target.value)}
-                  className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className={procSelectClass}
                 >
                   <option value="">All item groups</option>
                   {itemGroups.map((g) => (
@@ -1735,10 +1710,7 @@ const WarehouseInventory = () => {
                   <button
                     key={filter.key}
                     onClick={() => setActiveFilter(filter.key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeFilter === filter.key
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                    className={procChipClass(activeFilter === filter.key)}
                   >
                     {filter.label}
                   </button>
@@ -1751,18 +1723,19 @@ const WarehouseInventory = () => {
           {viewMode === 'current' && (
             <div className="flex items-center gap-3">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-4 w-5 h-5" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search item, code, category..."
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  aria-label="Search item, code, category"
+                  className={`${procInputClass} pl-10`}
                 />
               </div>
               <button
                 onClick={() => navigate('/facility-management')}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                className={procBtnSecondary}
                 title="Manage areas/zones in Facility Management"
               >
                 <MapPin className="w-4 h-4" />
@@ -1770,7 +1743,7 @@ const WarehouseInventory = () => {
               </button>
               <button
                 onClick={() => navigate('/facility-management')}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm text-gray-700"
+                className={procBtnSecondary}
                 title="Manage racks in Facility Management"
               >
                 <Grid3x3 className="w-4 h-4" />
@@ -1782,13 +1755,14 @@ const WarehouseInventory = () => {
           {viewMode === 'history' && (
             <div className="flex items-center gap-3">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-4 w-5 h-5" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search history by item, code, zone, rack..."
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  aria-label="Search history by item, code, zone, rack"
+                  className={`${procInputClass} pl-10`}
                 />
               </div>
             </div>
@@ -1799,58 +1773,58 @@ const WarehouseInventory = () => {
       {/* Inventory Table / History view */}
       <div className="p-6">
         {error && viewMode === 'current' && (
-          <div className="mb-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="mb-4 p-4 rounded-lg bg-err-soft border border-err-soft text-err text-sm">
             {error}
           </div>
         )}
         {loading && viewMode === 'current' ? (
-          <div className="py-12 text-center text-gray-500">Loading inventory…</div>
+          <div className="py-4">
+            <TableSkeleton rows={8} cols={6} />
+          </div>
         ) : viewMode === 'history' ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Inventory History</h2>
+          <div className="bg-surface rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-ink mb-4">Inventory History</h2>
             {historyError && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              <div className="mb-4 p-3 rounded-lg bg-err-soft border border-err-soft text-err text-sm">
                 {historyError}
               </div>
             )}
             {historyLoading ? (
-              <div className="py-12 text-center text-gray-500">Loading internal movement history…</div>
+              <TableSkeleton rows={8} cols={7} />
             ) : filteredHistoryRows.length === 0 ? (
-              <div className="py-12 text-center text-gray-500 text-sm">
-                No internal movements recorded yet.
-              </div>
+              <EmptyState title="No internal movements recorded yet." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Item
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Type
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         From (Zone / Rack)
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         To (Zone / Rack)
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Action
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Reserved / Batch
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Qty Δ
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase tracking-wider">
                         Moved At
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-hairline">
                     {filteredHistoryRows.map((row) => {
                       const adjustLines =
                         row.actionType === 'INVENTORY_ADJUST'
@@ -1859,51 +1833,51 @@ const WarehouseInventory = () => {
                       return (
                       <tr key={row.id}>
                         <td className="px-4 py-3">
-                          <div className="text-sm font-semibold text-gray-900">
+                          <div className="text-sm font-semibold text-ink">
                             {row.code || '—'}{row.name ? ` — ${row.name}` : ''}
                           </div>
                           {row.subtitle && (
-                            <div className="text-xs text-gray-500">{row.subtitle}</div>
+                            <div className="text-xs text-ink-3">{row.subtitle}</div>
                           )}
                         </td>
                         <td className="px-4 py-3">
                           {getTypeBadge(row.itemType)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-4 py-3 text-sm text-ink-2">
                           <div>{row.fromZone || '—'}</div>
-                          <div className="text-xs text-gray-500">{row.fromRack || '—'}</div>
+                          <div className="text-xs text-ink-3">{row.fromRack || '—'}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-4 py-3 text-sm text-ink-2">
                           <div>{row.toZone || '—'}</div>
-                          <div className="text-xs text-gray-500">{row.toRack || '—'}</div>
+                          <div className="text-xs text-ink-3">{row.toRack || '—'}</div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-4 py-3 text-sm text-ink-2">
                           {row.actionType === 'INVENTORY_ADJUST'
                             ? 'Inventory adjust'
                             : row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED'
                               ? `Reserved (${row.actionType === 'BMR_RESERVED' ? 'BMR' : 'BPR'})`
                               : (row.actionType || 'Move')}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700 max-w-md">
+                        <td className="px-4 py-3 text-sm text-ink-2 max-w-md">
                           {row.actionType === 'INVENTORY_ADJUST' ? (
                             <div className="space-y-1">
                               {adjustLines.length > 0 ? (
-                                <ul className="list-disc list-inside text-xs text-gray-600">
+                                <ul className="list-disc list-inside text-xs text-ink-2">
                                   {adjustLines.map((line, i) => (
                                     <li key={i}>{line}</li>
                                   ))}
                                 </ul>
                               ) : (
-                                <span className="text-gray-400">—</span>
+                                <span className="text-ink-4">—</span>
                               )}
                               {row.note ? (
-                                <div className="text-xs text-gray-700">
+                                <div className="text-xs text-ink-2">
                                   <span className="font-medium">Note:</span> {row.note}
                                 </div>
                               ) : null}
                             </div>
                           ) : (row.actionType === 'BMR_RESERVED' || row.actionType === 'BPR_RESERVED') ? (
-                            <span className="text-amber-700 font-medium">
+                            <span className="text-warn font-medium">
                               +{row.reservedDelta ?? row.qtyDelta ?? 0} → {row.reservedAfter ?? '—'}{' '}
                               {row.batchNo ? `· ${row.batchNo}` : ''}
                             </span>
@@ -1911,10 +1885,10 @@ const WarehouseInventory = () => {
                             '—'
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-4 py-3 text-sm text-ink-2">
                           {row.qtyDelta != null ? row.qtyDelta : '—'}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-4 py-3 text-sm text-ink-2">
                           {new Date(row.movedAt).toLocaleString()}
                         </td>
                       </tr>
@@ -1926,40 +1900,40 @@ const WarehouseInventory = () => {
             )}
           </div>
         ) : viewMode === 'usage' ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Usage (consumption) — avg per period</h2>
+          <div className="bg-surface rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-ink mb-4">Usage (consumption) — avg per period</h2>
             {usageLoading ? (
-              <div className="py-12 text-center text-gray-500">Loading usage stats…</div>
+              <TableSkeleton rows={8} cols={5} />
             ) : usageRows.length === 0 ? (
-              <div className="py-12 text-center text-gray-500 text-sm">No usage data yet (from movement history).</div>
+              <EmptyState title="No usage data yet (from movement history)." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Day</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Week</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Month</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Quarter</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg/Year</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total (all time)</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Code</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Name</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Type</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Avg/Day</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Avg/Week</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Avg/Month</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Avg/Quarter</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Avg/Year</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-ink-2 uppercase">Total (all time)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-hairline">
                     {usageRows.map((row) => (
                       <tr key={row.id}>
-                        <td className="px-4 py-3 font-medium text-gray-900">{row.code || row.id}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.name || '—'}</td>
+                        <td className="px-4 py-3 font-medium text-ink">{row.code || row.id}</td>
+                        <td className="px-4 py-3 text-ink-2">{row.name || '—'}</td>
                         <td className="px-4 py-3">{row.type}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgDay).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgWeek).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgMonth).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgQuarter).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{Number(row.avgYear).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{Number(row.totalAllTime).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-ink-2">{Number(row.avgDay).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-ink-2">{Number(row.avgWeek).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-ink-2">{Number(row.avgMonth).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-ink-2">{Number(row.avgQuarter).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-ink-2">{Number(row.avgYear).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-ink">{Number(row.totalAllTime).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1969,10 +1943,10 @@ const WarehouseInventory = () => {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className="bg-surface rounded-lg border border-border overflow-hidden">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-surface-2 border-b border-border sticky top-0 z-20 [&_th]:bg-surface-2">
                     <tr>
                       <SortableInventoryTh label="Code" column="code" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
                       <SortableInventoryTh label="Item Name" column="name" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
@@ -1999,7 +1973,7 @@ const WarehouseInventory = () => {
                       <SortableInventoryTh label="QC / Status" column="status" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleInventorySort} />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-hairline">
                     {pagedItems.map((item) => {
                       const planKey =
                         (item.type === 'RM' || item.type === 'PM') && item.sourceId != null && item.sourceId > 0
@@ -2025,18 +1999,18 @@ const WarehouseInventory = () => {
                         <tr
                           key={item.id}
                           onClick={() => setSelectedItem(item)}
-                          className="hover:bg-gray-50 transition-colors cursor-pointer"
+                          className="hover:bg-surface-2 transition-colors cursor-pointer"
                         >
                           <td className="px-4 py-3">
-                            <div className="text-sm font-medium text-cyan-600">{item.code}</div>
+                            <div className="text-sm font-medium text-brand">{item.code}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm font-semibold text-gray-900">{item.name}</div>
-                            <div className="text-xs text-gray-500">{item.subtitle}</div>
+                            <div className="text-sm font-semibold text-ink">{item.name}</div>
+                            <div className="text-xs text-ink-3">{item.subtitle}</div>
                           </td>
                           <td className="px-4 py-3">{getTypeBadge(item.type)}</td>
                           <td className="px-4 py-3">
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm text-ink-2">
                               {item.itemGroupNames?.length ? item.itemGroupNames.join(', ') : '—'}
                             </span>
                           </td>
@@ -2045,7 +2019,7 @@ const WarehouseInventory = () => {
                               item={item}
                               type="wh"
                               value={`${item.whStock} ${item.whUnit}`}
-                              className="inline-flex items-center px-2.5 py-1 bg-teal-50 text-teal-700 rounded-md border border-teal-200 cursor-pointer"
+                              className="inline-flex items-center px-2.5 py-1 bg-brand-soft text-brand rounded-md border border-brand-soft cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
                             />
                           </td>
@@ -2054,7 +2028,7 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml1"
                               value={String(item.ml1Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200 cursor-pointer"
+                              className="inline-flex items-center px-2.5 py-1 bg-brand-soft text-brand rounded-full border border-brand-soft cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
                             />
                           </td>
@@ -2063,28 +2037,28 @@ const WarehouseInventory = () => {
                               item={item}
                               type="ml2"
                               value={String(item.ml2Stock)}
-                              className="inline-flex items-center px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 cursor-pointer"
+                              className="inline-flex items-center px-2.5 py-1 bg-brand-soft text-brand rounded-full border border-brand-soft cursor-pointer"
                               onShowLocations={(i, t) => setLocationPopover({ item: i, type: t })}
                             />
                           </td>
                           <td className="px-4 py-3">
                             {plan ? (
                               item.type === 'RM' || String(plan.unit).toUpperCase() === 'KG' ? (
-                                <div className="text-sm font-semibold text-gray-900">
+                                <div className="text-sm font-semibold text-ink">
                                   {formatQtyExact(plannedOpenQty, 'kg')} kg
                                 </div>
                               ) : (
-                                <div className="text-sm font-semibold text-gray-900">
+                                <div className="text-sm font-semibold text-ink">
                                   {Math.round(plannedOpenQty).toLocaleString()}{' '}
-                                  <span className="text-xs font-normal text-gray-500">pcs (planning)</span>
+                                  <span className="text-xs font-normal text-ink-3">pcs (planning)</span>
                                 </div>
                               )
                             ) : (
-                              <span className="text-sm text-gray-400">0</span>
+                              <span className="text-sm text-ink-4">0</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600" title="PO-stage remaining after quantities moved to Under GRN.">
+                            <div className="text-sm text-ink-2" title="PO-stage remaining after quantities moved to Under GRN.">
                               {item.poQuantity != null ? item.poQuantity : '—'}
                             </div>
                           </td>
@@ -2093,34 +2067,34 @@ const WarehouseInventory = () => {
                               <button
                                 type="button"
                                 onClick={() => setInTransitPopoverItem(inTransitPopoverItem?.id === item.id ? null : item)}
-                                className="inline-flex items-center px-2.5 py-1 bg-red-50 text-red-700 rounded-full border border-red-200 hover:ring-2 hover:ring-red-300 font-semibold text-sm"
+                                className="inline-flex items-center px-2.5 py-1 bg-err-soft text-err rounded-full border border-err-soft hover:ring-2 hover:ring-err font-semibold text-sm"
                                 title="In Transit stage only (Under GRN shown separately)."
                               >
                                 {item.inTransit} {item.whUnit}
                                 {(item.inTransitBreakdown?.length ?? 0) > 0 && (
-                                  <span className="ml-1 text-red-500" aria-hidden>▼</span>
+                                  <span className="ml-1 text-err" aria-hidden>▼</span>
                                 )}
                               </button>
                               {inTransitPopoverItem?.id === item.id && (item.inTransitBreakdown?.length ?? 0) > 0 && (
-                                <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-gray-200 bg-white shadow-lg p-3">
-                                  <div className="text-xs font-semibold text-gray-700 mb-2">Vendor · PO · Expected</div>
+                                <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-surface shadow-lg p-3">
+                                  <div className="text-xs font-semibold text-ink-2 mb-2">Vendor · PO · Expected</div>
                                   <ul className="space-y-2">
                                     {item.inTransitBreakdown!.map((b, idx) => (
-                                      <li key={idx} className="text-xs text-gray-600 border-b border-gray-100 pb-2 last:border-0 last:pb-0">
-                                        <span className="font-medium text-gray-800">{b.vendor || '—'}</span>
+                                      <li key={idx} className="text-xs text-ink-2 border-b border-hairline pb-2 last:border-0 last:pb-0">
+                                        <span className="font-medium text-ink">{b.vendor || '—'}</span>
                                         <span className="mx-1">·</span>
                                         <span>PO {b.poNo || (b.poId != null ? `#${b.poId}` : '—')}</span>
                                         {b.expectedDate && (
-                                          <span className="block text-gray-500 mt-0.5">Expected: {b.expectedDate}</span>
+                                          <span className="block text-ink-3 mt-0.5">Expected: {b.expectedDate}</span>
                                         )}
-                                        <span className="block text-red-600 font-medium mt-0.5">{b.quantity} {item.whUnit}</span>
+                                        <span className="block text-err font-medium mt-0.5">{b.quantity} {item.whUnit}</span>
                                       </li>
                                     ))}
                                   </ul>
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setInTransitPopoverItem(null); }}
-                                    className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                                    className="mt-2 text-xs text-ink-3 hover:text-ink-2"
                                   >
                                     Close
                                   </button>
@@ -2129,13 +2103,13 @@ const WarehouseInventory = () => {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 text-violet-700 rounded-full border border-violet-200">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-brand-soft text-brand rounded-full border border-brand-soft">
                               <span className="font-semibold text-sm">{Number(item.underGrn || 0)} {item.whUnit}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <div
-                              className="text-sm font-bold text-emerald-700"
+                              className="text-sm font-bold text-ok"
                               title={
                                 item.reserved > 0
                                   ? `Physical total ${item.stockInHand} ${item.whUnit}; ${item.reserved} ${item.whUnit} reserved`
@@ -2145,28 +2119,28 @@ const WarehouseInventory = () => {
                               {availableQty} {item.whUnit}
                             </div>
                             {item.reserved > 0 ? (
-                              <div className="text-[10px] text-gray-500 mt-0.5">
+                              <div className="text-[10px] text-ink-3 mt-0.5">
                                 Total {item.stockInHand} {item.whUnit}
                               </div>
                             ) : null}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                            <div className="inline-flex items-center px-2.5 py-1 bg-warn-soft text-warn rounded-full border border-warn-soft">
                               <span className="font-semibold text-sm">{item.reserved}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">{item.reorderPt}</div>
+                            <div className="text-sm text-ink-2">{item.reorderPt}</div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-sm text-gray-600">{item.avgMo}</div>
+                            <div className="text-sm text-ink-2">{item.avgMo}</div>
                           </td>
                           <td className="px-4 py-3">{getStatusBadge(item.status)}</td>
                           {/* <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                             {canReleaseToPlanning && item.sourceId != null ? (
                               <button
                                 type="button"
-                                className="px-2 py-1 text-[11px] font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 whitespace-nowrap"
+                                className="px-2 py-1 text-[11px] font-semibold rounded-md bg-brand text-white hover:bg-brand-press whitespace-nowrap"
                                 onClick={() => {
                                   const surplusQty = Math.max(0, item.stockInHand - (plan?.totalRequired ?? 0));
                                   navigate('/planning/items-involved', {
@@ -2184,7 +2158,7 @@ const WarehouseInventory = () => {
                                 Release to Planning
                               </button>
                             ) : (
-                              <span className="text-xs text-gray-400">—</span>
+                              <span className="text-xs text-ink-4">—</span>
                             )}
                           </td> */}
                         </tr>
@@ -2196,37 +2170,35 @@ const WarehouseInventory = () => {
 
               {/* Empty State */}
               {sortedItems.length === 0 && (
-                <div className="py-16 text-center">
-                  <div className="text-gray-400 text-5xl mb-4"></div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No items found</h3>
-                  <p className="text-gray-500 text-sm">
-                    {searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
-                  </p>
-                </div>
+                <EmptyState
+                  icon={<PackageSearch />}
+                  title="No items found"
+                  description={searchQuery ? 'Try adjusting your search terms' : 'No inventory items match the selected filter'}
+                />
               )}
             </div>
 
             {/* Footer Info */}
             {sortedItems.length > 0 && (
               <div className="mt-4">
-                <div className="flex items-center justify-between text-sm text-gray-600">
+                <div className="flex items-center justify-between text-sm text-ink-2">
                   <div>
                     Showing{' '}
-                    <span className="font-semibold text-gray-900">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
-                    <span className="font-semibold text-gray-900">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
-                    <span className="font-semibold text-gray-900">{totalFiltered}</span> (filtered) • Total{' '}
-                    <span className="font-semibold text-gray-900">{inventoryData.length}</span> items
+                    <span className="font-semibold text-ink">{totalFiltered === 0 ? 0 : startIndex + 1}</span>–{' '}
+                    <span className="font-semibold text-ink">{Math.min(startIndex + pageSize, totalFiltered)}</span> of{' '}
+                    <span className="font-semibold text-ink">{totalFiltered}</span> (filtered) • Total{' '}
+                    <span className="font-semibold text-ink">{inventoryData.length}</span> items
                   </div>
-                  <div className="text-gray-500">
+                  <div className="text-ink-3">
                     Last updated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
                   </div>
                 </div>
 
                 {totalPages > 1 && (
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm text-gray-500">
-                      Page <span className="font-semibold text-gray-900">{safeCurrentPage}</span> of{' '}
-                      <span className="font-semibold text-gray-900">{totalPages}</span>
+                    <div className="text-sm text-ink-3">
+                      Page <span className="font-semibold text-ink">{safeCurrentPage}</span> of{' '}
+                      <span className="font-semibold text-ink">{totalPages}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <select
@@ -2235,7 +2207,8 @@ const WarehouseInventory = () => {
                           setPageSize(Number(e.target.value));
                           setCurrentPage(1);
                         }}
-                        className="text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Rows per page"
+                        className="text-sm px-3 py-2 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
                       >
                         <option value={10}>10</option>
                         <option value={25}>25</option>
@@ -2245,7 +2218,7 @@ const WarehouseInventory = () => {
                         type="button"
                         onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                         disabled={safeCurrentPage <= 1}
-                        className="px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-2 text-sm font-semibold border border-border rounded-lg bg-surface text-ink-2 hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Prev
                       </button>
@@ -2253,7 +2226,7 @@ const WarehouseInventory = () => {
                         type="button"
                         onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                         disabled={safeCurrentPage >= totalPages}
-                        className="px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-2 text-sm font-semibold border border-border rounded-lg bg-surface text-ink-2 hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next
                       </button>
@@ -2274,7 +2247,7 @@ const WarehouseInventory = () => {
           role="presentation"
         >
           <div
-            className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-xl w-full mx-4 overflow-hidden"
+            className="bg-surface rounded-lg border border-border shadow-xl max-w-xl w-full mx-4 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-label={
@@ -2283,21 +2256,21 @@ const WarehouseInventory = () => {
                 : 'Manufacturing stock by location'
             }
           >
-            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">
+                <h3 className="text-sm font-semibold text-ink">
                   {locationPopover.type === 'wh'
                     ? `WH stock distribution — ${locationPopover.item.code}`
                     : locationPopover.type === 'ml1'
                       ? `ML1 stock — ${locationPopover.item.code}`
                       : `ML2 stock — ${locationPopover.item.code}`}
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">{locationPopover.item.name}</p>
+                <p className="text-[11px] text-ink-3 mt-0.5">{locationPopover.item.name}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setLocationPopover(null)}
-                className="p-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-50 shrink-0"
+                className="p-1 rounded border border-border text-ink-2 hover:bg-surface-2 shrink-0"
               >
                 <span className="sr-only">Close</span>×
               </button>
@@ -2320,11 +2293,11 @@ const WarehouseInventory = () => {
               )}
             </div>
             {locationPopover.type === 'wh' && locationPopover.item.warehouseInventoryId != null && (
-              <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+              <div className="px-4 py-3 border-t border-border flex justify-end gap-2 bg-surface-2">
                 <button
                   type="button"
                   onClick={() => setLocationPopover(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-300 rounded-md hover:bg-white"
+                  className="px-3 py-1.5 text-xs font-semibold text-ink-2 border border-border rounded-md hover:bg-surface"
                 >
                   Close
                 </button>
@@ -2335,7 +2308,7 @@ const WarehouseInventory = () => {
                     setSelectedItem(locationPopover.item);
                     setLocationPopover(null);
                   }}
-                  className="px-3 py-1.5 text-xs font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700"
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-brand rounded-md hover:bg-brand-press"
                 >
                   Adjust stock…
                 </button>
@@ -2348,7 +2321,7 @@ const WarehouseInventory = () => {
       {/* Item detail popup (replaces sidebar) */}
       {selectedItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           onClick={() => setSelectedItem(null)}
           role="dialog"
           aria-modal="true"

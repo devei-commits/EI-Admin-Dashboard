@@ -3,25 +3,37 @@
 /* Font Family Configuration */
 @layer base {
   :root {
-    --font-archivo: 'Archivo', sans-serif;
-    --font-outfit: 'Outfit', sans-serif;
+    /* Apple-grade design language fonts (Phase 1). Old names kept as ALIASES so every existing
+       var(--font-outfit) / var(--font-archivo) / .font-outfit / .font-archivo usage resolves to
+       the new type without a code change. Archivo/Outfit are no longer loaded. */
+    --font-sans: 'Montserrat', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-display: 'Montserrat', -apple-system, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    --font-outfit: var(--font-sans);   /* deprecated alias */
+    --font-archivo: var(--font-display); /* deprecated alias */
   }
-  
+
   body {
-    font-family: var(--font-outfit);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  
+
   h1, h2, h3, h4, h5, h6, .heading {
-    font-family: var(--font-archivo);
+    font-family: var(--font-display);
   }
-  
+
   code, pre {
     @apply font-mono;
   }
 }
 
-/* PIS Theme Variables */
-@custom-variant dark (&:is(.dark *));
+/* Dark mode is REMOVED — the app is light-only (<html data-theme="light">, no toggle).
+   This variant is intentionally kept so any leftover `dark:` utilities (e.g. in the pis
+   shadcn primitives) stay INERT: they bind to `.dark` / `[data-theme="dark"]`, which never
+   occur. Do NOT delete it — without it Tailwind's default `dark:` falls back to
+   prefers-color-scheme and those utilities would reactivate under system dark. */
+@custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 
 :root {
  /* New Minimalist Theme based on reference image */
@@ -35,46 +47,57 @@
  --color-text-secondary: #71717a;
  --color-border: #e4e4e7;
 
- /* PIS Component Variables - Monochrome */
+ /* =====================================================================
+    PIS TOKEN BRIDGE (shadcn semantic tokens → main design language)
+    Re-points every shadcn-named var to the nearest main token so the pis
+    mini-app inherits the main look (Montserrat, blue accent, surfaces)
+    WITHOUT editing any pis consumer. Values reference the theme-aware main
+    tokens defined in [data-theme="light|dark"] below, so both themes track
+    automatically. Fallbacks = light-theme values for the (unused) no-attr case.
+    Collision tokens --border / --ring / --accent are intentionally NOT set
+    here: the [data-theme] blocks already drive them to the main values
+    (border / ring / blue-brand), and shadcn's `bg-accent` utility is decoupled
+    to --secondary in the @theme block, so the pis accent surface is remapped
+    via --secondary below while --accent stays the main brand blue.
+    ===================================================================== */
  --font-size: 16px;
- --background: #ececf0; 
- --foreground: #09090b;
- --card: #ffffff;
- --card-foreground: #09090b;
- --popover: #ffffff;
- --popover-foreground: #09090b;
- --primary: #09090b;
- --primary-foreground: #ffffff;
- --secondary: #f4f4f5;
- --secondary-foreground: #09090b;
- --muted: #f4f4f5;
- --muted-foreground: #71717a;
- --accent: #f4f4f5;
- --accent-foreground: #09090b;
- --destructive: #ef4444;    
+ --background: var(--canvas, #f5f5f7);           /* → canvas */
+ --foreground: var(--ink, #1d1d1f);              /* → ink */
+ --card: var(--surface, #ffffff);                /* → surface */
+ --card-foreground: var(--ink, #1d1d1f);         /* → ink */
+ --popover: var(--surface, #ffffff);             /* → surface */
+ --popover-foreground: var(--ink, #1d1d1f);      /* → ink */
+ --primary: var(--accent, #0071e3);              /* → brand accent */
+ --primary-foreground: var(--accent-ink, #ffffff); /* → #fff */
+ --secondary: var(--surface-3, #f0f0f3);         /* → surface-3 (also feeds bg-accent util) */
+ --secondary-foreground: var(--ink, #1d1d1f);    /* → ink */
+ --muted: var(--surface-2, #fafafc);             /* → surface-2 */
+ --muted-foreground: var(--ink-3, #6e6e73);      /* → ink-3 */
+ --accent-foreground: var(--ink, #1d1d1f);       /* → ink (surface accent text) */
+ --destructive: var(--st-red-fg, #c9281f);       /* → status red fg */
  --destructive-foreground: #ffffff;
- --border: #e4e4e7;
- --input: transparent;
- --input-background: #f4f4f5;
- --switch-background: #e4e4e7;
+ --input: var(--border, #e4e4e7);                /* → border */
+ --input-background: var(--surface-2, #fafafc);  /* → surface-2 */
+ --switch-background: var(--border, #e4e4e7);    /* → border */
  --font-weight-medium: 500;
  --font-weight-normal: 400;
- --ring: #09090b;
- /* Accents from reference image (Attendance=Green, Absences=Orange, Delayed=Purple) */
+ /* Accents from reference image (Attendance=Green, Absences=Orange, Delayed=Purple).
+    No clean 5-way categorical equivalent in the main system (main defines only
+    --c1..--c4), so the chart palette is kept as-is. See report note. */
  --chart-1: #10b981; /* Emerald 500 */
  --chart-2: #f97316; /* Orange 500 */
  --chart-3: #8b5cf6; /* Violet 500 */
  --chart-4: #0ea5e9; /* Sky 500 */
  --chart-5: #f43f5e; /* Rose 500 */
- --radius: 0.75rem; /* Smoother cards */
- --sidebar: #ececf0; /* Match main background */
- --sidebar-foreground: #09090b;
- --sidebar-primary: #09090b;
- --sidebar-primary-foreground: #ffffff;
- --sidebar-accent: #ffffff; /* Active items get white background */
- --sidebar-accent-foreground: #09090b;
- --sidebar-border: #e4e4e7;
- --sidebar-ring: #09090b;
+ --radius: var(--r-md, 12px); /* → r-md */
+ --sidebar: var(--surface, #ffffff);                     /* → surface */
+ --sidebar-foreground: var(--ink, #1d1d1f);              /* → ink */
+ --sidebar-primary: var(--accent, #0071e3);              /* → brand accent */
+ --sidebar-primary-foreground: var(--accent-ink, #ffffff); /* → #fff */
+ --sidebar-accent: var(--surface-3, #f0f0f3);            /* → surface-3 (active item) */
+ --sidebar-accent-foreground: var(--ink, #1d1d1f);       /* → ink */
+ --sidebar-border: var(--border, #e4e4e7);               /* → border */
+ --sidebar-ring: var(--ring, rgba(0,113,227,.34));       /* → ring */
 }
 
 @theme inline {
@@ -90,7 +113,10 @@
  --color-secondary-foreground: var(--secondary-foreground);
  --color-muted: var(--muted);
  --color-muted-foreground: var(--muted-foreground);
- --color-accent: var(--accent);
+ /* Decoupled: the new design language repurposes --accent as the single blue brand accent
+    (see [data-theme] blocks below). Keep the Tailwind `accent` utility neutral so existing
+    bg-accent/hover:bg-accent surfaces stay gray until retinted per-module in Phase 3. */
+ --color-accent: var(--secondary);
  --color-accent-foreground: var(--accent-foreground);
  --color-destructive: var(--destructive);
  --color-destructive-foreground: var(--destructive-foreground);
@@ -129,6 +155,94 @@
  --color-amber-800: #000000;
  --color-amber-900: #000000;
  --color-amber-950: #000000;
+}
+
+/* =========================================================================
+   APPLE-GRADE DESIGN LANGUAGE — token foundation (Phase 1).
+   Additive + collision-safe: new tokens live under their own names and their own
+   @theme blocks, so existing utilities (bg-gray-*, bg-card, rounded-lg, amber-*, …)
+   are untouched. Screens are retinted onto these tokens module-by-module (Phase 3).
+   Values mirror ei-redesign-prototype.html exactly. Light + Dark parity.
+   Theme is driven by <html data-theme="light|dark">.
+   ========================================================================= */
+
+/* Theme-agnostic scales (spacing / radius / type / motion) */
+:root {
+ --s1: 4px;  --s2: 8px;   --s3: 12px; --s4: 16px; --s5: 20px;
+ --s6: 24px; --s7: 32px;  --s8: 40px; --s9: 56px; --s10: 72px;
+
+ --r-xs: 7px; --r-sm: 9px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-2xl: 26px; --r-full: 999px;
+
+ --t-hero: clamp(30px, 3vw, 42px); --t-h1: 27px; --t-h2: 20px; --t-h3: 16px;
+ --t-body: 14px; --t-sm: 13px; --t-xs: 12px; --t-2xs: 11px;
+
+ --ease: cubic-bezier(.4, 0, .2, 1); --ease-out: cubic-bezier(.16, 1, .3, 1); --dur: .22s;
+}
+
+/* Light-only theme (dark mode removed). Tokens apply unconditionally. */
+:root {
+ --canvas: #f5f5f7; --surface: #ffffff; --surface-2: #fafafc; --surface-3: #f0f0f3; --surface-sunken: #ececf0;
+ --rail: rgba(252, 252, 253, .72); --nav-bg: rgba(255, 255, 255, .72); --topbar-bg: rgba(245, 245, 247, .68);
+ --ink: #1d1d1f; --ink-2: #48484a; --ink-3: #6e6e73; --ink-4: #86868b;
+ --border: rgba(0, 0, 0, .085); --border-2: rgba(0, 0, 0, .14); --hairline: rgba(0, 0, 0, .06);
+ --accent: #0071e3; --accent-press: #0062c4; --accent-soft: rgba(0, 113, 227, .10); --accent-soft-2: rgba(0, 113, 227, .16); --accent-ink: #ffffff;
+ --accent-gradient: linear-gradient(180deg, #1a8cff 0%, #0071e3 100%);
+ --brand-gradient: linear-gradient(180deg, #3a3a3c 0%, #1d1d1f 100%);
+ --ring: rgba(0, 113, 227, .34);
+ --c1: #0071e3; --c2: #86868b; --c3: #c7c7cc; --c4: #e0e0e4;
+ --st-blue-bg: rgba(0, 113, 227, .10); --st-blue-fg: #0067cf;
+ --st-green-bg: rgba(52, 199, 89, .13); --st-green-fg: #248a3d;
+ --st-amber-bg: rgba(255, 149, 0, .14); --st-amber-fg: #a05a00;
+ --st-red-bg: rgba(255, 59, 48, .11); --st-red-fg: #c9281f;
+ --st-neutral-bg: rgba(0, 0, 0, .05); --st-neutral-fg: #52525a;
+ --e1: 0 .5px 1px rgba(0, 0, 0, .04), 0 1px 2px rgba(0, 0, 0, .04);
+ --e2: 0 2px 6px rgba(0, 0, 0, .05), 0 8px 24px rgba(0, 0, 0, .05);
+ --e3: 0 8px 24px rgba(0, 0, 0, .10), 0 32px 64px rgba(0, 0, 0, .14);
+ --inset-hi: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+/* Fonts → Tailwind utilities (font-sans / font-mono) + preflight default. */
+@theme {
+ --font-sans: 'Montserrat', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+ --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* New tokens → Tailwind utilities under NEW names (no clash with existing bg-gray/bg-card/…):
+   bg-canvas, bg-surface, bg-surface-2/3, text-ink, text-ink-2/3/4, border-hairline,
+   border-strong, bg-brand, text-brand, bg-brand-soft, ring-brand, rounded-r-lg, …
+   Consumed by Phase 2 primitives + Phase 3 retints. */
+@theme inline {
+ --color-canvas: var(--canvas);
+ --color-surface: var(--surface);
+ --color-surface-2: var(--surface-2);
+ --color-surface-3: var(--surface-3);
+ --color-surface-sunken: var(--surface-sunken);
+ --color-ink: var(--ink);
+ --color-ink-2: var(--ink-2);
+ --color-ink-3: var(--ink-3);
+ --color-ink-4: var(--ink-4);
+ --color-hairline: var(--hairline);
+ --color-border-strong: var(--border-2);
+ --color-brand: var(--accent);
+ --color-brand-press: var(--accent-press);
+ --color-brand-soft: var(--accent-soft);
+ --color-brand-soft-2: var(--accent-soft-2);
+ --color-brand-ink: var(--accent-ink);
+ /* Semantic status tones (fg + soft bg). Use: text-ok / bg-ok-soft, text-err / bg-err-soft, … */
+ --color-ok: var(--st-green-fg);
+ --color-ok-soft: var(--st-green-bg);
+ --color-warn: var(--st-amber-fg);
+ --color-warn-soft: var(--st-amber-bg);
+ --color-err: var(--st-red-fg);
+ --color-err-soft: var(--st-red-bg);
+ --color-info: var(--st-blue-fg);
+ --color-info-soft: var(--st-blue-bg);
+ --color-neut: var(--st-neutral-fg);
+ --color-neut-soft: var(--st-neutral-bg);
+ --radius-r-sm: var(--r-sm);
+ --radius-r-md: var(--r-md);
+ --radius-r-lg: var(--r-lg);
+ --radius-r-xl: var(--r-xl);
 }
 
 @layer base {

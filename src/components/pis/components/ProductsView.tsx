@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { UserRole, Product } from '../types/pis';
 import { usePIS } from '../context/PISContext';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 interface ProductsViewProps {
  currentRole: UserRole;
@@ -137,9 +138,9 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
 
  const getStatusBadge = (status: Product['status']) => {
   const styles = {
-   ACTIVE: 'bg-green-100 text-green-800',
-   DEVELOPMENT: 'bg-gray-100 text-amber-800',
-   DISCONTINUED: 'bg-gray-100 text-gray-800',
+   ACTIVE: 'bg-ok-soft text-ok',
+   DEVELOPMENT: 'bg-surface-3 text-warn',
+   DISCONTINUED: 'bg-surface-3 text-ink',
   };
   return <Badge className={styles[status]}>{status}</Badge>;
  };
@@ -153,8 +154,8 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
    {/* Header */}
    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
-     <h2 className="text-3xl font-bold text-gray-900">Product Catalog</h2>
-     <p className="text-gray-600">Browse and manage product formulations</p>
+     <h2 className="text-3xl font-bold text-ink">Product Catalog</h2>
+     <p className="text-ink-2">Browse and manage product formulations</p>
     </div>
     <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2">
      <Plus className="h-4 w-4" />
@@ -171,33 +172,33 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-blue-100 rounded-lg">
-       <Package className="h-5 w-5 text-blue-600" />
+      <div className="p-2 bg-brand-soft rounded-lg">
+       <Package className="h-5 w-5 text-brand" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Total Products</p>
+       <p className="text-sm text-ink-3">Total Products</p>
        <p className="text-2xl font-bold">{stats.total}</p>
       </div>
      </div>
     </Card>
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-green-100 rounded-lg">
-       <Package className="h-5 w-5 text-green-600" />
+      <div className="p-2 bg-ok-soft rounded-lg">
+       <Package className="h-5 w-5 text-ok" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Active</p>
+       <p className="text-sm text-ink-3">Active</p>
        <p className="text-2xl font-bold">{stats.active}</p>
       </div>
      </div>
     </Card>
     <Card className="p-4">
      <div className="flex items-center gap-3">
-      <div className="p-2 bg-gray-100 rounded-lg">
-       <FlaskConical className="h-5 w-5 text-slate-800" />
+      <div className="p-2 bg-surface-3 rounded-lg">
+       <FlaskConical className="h-5 w-5 text-ink" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">In Development</p>
+       <p className="text-sm text-ink-3">In Development</p>
        <p className="text-2xl font-bold">{stats.development}</p>
       </div>
      </div>
@@ -208,7 +209,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
        <Tag className="h-5 w-5 text-purple-600" />
       </div>
       <div>
-       <p className="text-sm text-gray-500">Categories</p>
+       <p className="text-sm text-ink-3">Categories</p>
        <p className="text-2xl font-bold">{stats.categories}</p>
       </div>
      </div>
@@ -220,7 +221,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
     <div className="flex flex-col md:flex-row gap-4">
      <div className="flex-1">
       <div className="relative">
-       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-4" />
        <Input
         placeholder="Search products..."
         value={searchQuery}
@@ -300,9 +301,9 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
      </TableHeader>
      <TableBody>
       {filteredProducts.map((product) => (
-       <TableRow key={product.id} className="hover:bg-gray-50">
+       <TableRow key={product.id} className="hover:bg-surface-2">
         <TableCell>
-         <div className="h-10 w-10 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center">
+         <div className="h-10 w-10 rounded-lg overflow-hidden bg-brand-soft flex items-center justify-center">
           {(product as any).imageUrl ? (
            <img
             src={(product as any).imageUrl}
@@ -310,18 +311,18 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
             className="h-full w-full object-cover"
            />
           ) : (
-           <Package className="h-5 w-5 text-indigo-600" />
+           <Package className="h-5 w-5 text-brand" />
           )}
          </div>
         </TableCell>
         <TableCell>
          <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-           <Package className="h-5 w-5 text-indigo-600" />
+          <div className="h-10 w-10 bg-brand-soft rounded-lg flex items-center justify-center">
+           <Package className="h-5 w-5 text-brand" />
           </div>
           <div>
-           <p className="font-medium text-gray-900">{product.name}</p>
-           <p className="text-xs text-gray-500">{product.ingredients.slice(0, 3).join(', ')}</p>
+           <p className="font-medium text-ink">{product.name}</p>
+           <p className="text-xs text-ink-3">{product.ingredients.slice(0, 3).join(', ')}</p>
           </div>
          </div>
         </TableCell>
@@ -349,7 +350,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
               Edit
              </DropdownMenuItem>
              <DropdownMenuItem
-              className="text-red-600"
+              className="text-err"
               onClick={() => handleDeleteProduct(product.id)}
              >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -366,9 +367,7 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
     </Table>
 
     {filteredProducts.length === 0 && (
-     <div className="p-8 text-center text-gray-500">
-      No products found matching your criteria
-     </div>
+     <EmptyState icon={<Package />} title="No products found matching your criteria" />
     )}
    </Card>
 
@@ -484,13 +483,13 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
      </DialogHeader>
      {selectedProduct && (
       <div className="space-y-4 py-4">
-       <div className="flex items-start gap-4 p-4 bg-indigo-50 rounded-lg">
-        <div className="h-16 w-16 bg-white rounded-xl flex items-center justify-center shadow-sm">
-         <Package className="h-8 w-8 text-indigo-600" />
+       <div className="flex items-start gap-4 p-4 bg-brand-soft rounded-lg">
+        <div className="h-16 w-16 bg-surface rounded-xl flex items-center justify-center shadow-sm">
+         <Package className="h-8 w-8 text-brand" />
         </div>
         <div className="flex-1">
          <h3 className="text-lg font-semibold">{selectedProduct.name}</h3>
-         <p className="font-mono text-sm text-gray-500">{selectedProduct.code}</p>
+         <p className="font-mono text-sm text-ink-3">{selectedProduct.code}</p>
          <div className="flex gap-2 mt-2">
           {getStatusBadge(selectedProduct.status)}
           {getTypeBadge(selectedProduct.type)}
@@ -500,18 +499,18 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
 
        <div className="space-y-3">
         <div>
-         <p className="text-sm font-medium text-gray-500 mb-1">Category</p>
+         <p className="text-sm font-medium text-ink-3 mb-1">Category</p>
          <p className="font-medium">{selectedProduct.category}</p>
         </div>
         <div>
-         <p className="text-sm font-medium text-gray-500 mb-1">Description</p>
-         <p className="text-gray-700">{selectedProduct.description}</p>
+         <p className="text-sm font-medium text-ink-3 mb-1">Description</p>
+         <p className="text-ink-2">{selectedProduct.description}</p>
         </div>
         <div>
-         <p className="text-sm font-medium text-gray-500 mb-2">Key Ingredients</p>
+         <p className="text-sm font-medium text-ink-3 mb-2">Key Ingredients</p>
          <div className="flex flex-wrap gap-2">
           {selectedProduct.ingredients.map((ing, idx) => (
-           <Badge key={idx} variant="outline" className="bg-green-50 text-green-700 border-green-200">
+           <Badge key={idx} variant="outline" className="bg-ok-soft text-ok border-ok">
             {ing}
            </Badge>
           ))}
@@ -519,12 +518,12 @@ export function ProductsView({ currentRole }: ProductsViewProps) {
         </div>
        </div>
 
-       <div className="p-4 bg-blue-50 rounded-lg">
-        <p className="text-sm text-blue-600">Price</p>
-        <p className="text-3xl font-bold text-blue-900">₹{selectedProduct.price.toLocaleString()}</p>
+       <div className="p-4 bg-brand-soft rounded-lg">
+        <p className="text-sm text-brand">Price</p>
+        <p className="text-3xl font-bold text-brand">₹{selectedProduct.price.toLocaleString()}</p>
        </div>
 
-       <p className="text-sm text-gray-500">
+       <p className="text-sm text-ink-3">
         Added: {selectedProduct.createdAt.toLocaleDateString()}
        </p>
       </div>

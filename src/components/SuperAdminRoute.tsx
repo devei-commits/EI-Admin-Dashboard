@@ -20,10 +20,10 @@ export const SuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({ child
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-surface-2">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-slate-800 rounded-full animate-spin"></div>
-          <p className="text-gray-500 font-medium">Checking permissions...</p>
+          <div className="w-12 h-12 border-4 border-border border-t-slate-800 rounded-full animate-spin"></div>
+          <p className="text-ink-3 font-medium">Checking permissions...</p>
         </div>
       </div>
     );

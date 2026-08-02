@@ -1,4 +1,10 @@
 import React, { ReactNode } from 'react';
+import { ModalOverlay } from './ModalOverlay';
+
+/* -------------------------------------------------------------------------------------------------
+ * Apple-grade design language primitives. Token-driven (see index.css) so every variant is
+ * theme-aware (light + dark) automatically. Public APIs are unchanged — these are drop-in restyles.
+ * ---------------------------------------------------------------------------------------------- */
 
 // Unified Button Component
 export interface UnifiedButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -9,6 +15,25 @@ export interface UnifiedButtonProps extends React.ButtonHTMLAttributes<HTMLButto
  isLoading?: boolean;
 }
 
+const BTN_BASE =
+ 'inline-flex items-center gap-2 justify-center whitespace-nowrap rounded-[var(--r-sm)] font-medium ' +
+ 'transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] ' +
+ 'focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--canvas)] ' +
+ 'disabled:opacity-50 disabled:cursor-not-allowed';
+
+const BTN_VARIANT: Record<NonNullable<UnifiedButtonProps['variant']>, string> = {
+ primary: 'bg-brand text-brand-ink hover:bg-brand-press shadow-[var(--e1)]',
+ secondary: 'bg-surface text-ink border border-border hover:bg-surface-3',
+ ghost: 'bg-transparent text-ink-2 hover:bg-surface-3',
+ danger: 'bg-[color:var(--st-red-bg)] text-[color:var(--st-red-fg)] hover:brightness-95',
+};
+
+const BTN_SIZE: Record<NonNullable<UnifiedButtonProps['size']>, string> = {
+ sm: 'px-3 py-1.5 text-sm',
+ md: 'px-4 py-2 text-sm',
+ lg: 'px-5 py-2.5 text-base',
+};
+
 export const UnifiedButton: React.FC<UnifiedButtonProps> = ({
  variant = 'primary',
  size = 'md',
@@ -16,39 +41,24 @@ export const UnifiedButton: React.FC<UnifiedButtonProps> = ({
  icon,
  isLoading = false,
  disabled,
- className,
+ className = '',
  ...props
-}) => {
- const variantStyles = {
-  primary: 'px-6 py-3 bg-slate-800 text-white rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-800 focus:ring-offset-2 transition-all font-semibold tracking-wider disabled:opacity-50 disabled:cursor-not-allowed',
-  secondary: 'px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all font-medium tracking-wide disabled:opacity-50',
-  ghost: 'px-6 py-3 bg-transparent text-gray-700 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all font-medium disabled:opacity-50',
-  danger: 'px-6 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all font-medium tracking-wide disabled:opacity-50',
- };
-
- const sizeStyles = {
-  sm: 'px-4 py-2 text-sm',
-  md: 'px-6 py-3 text-sm',
-  lg: 'px-8 py-4 text-base',
- };
-
- return (
-  <button
-   {...props}
-   disabled={disabled || isLoading}
-   className={`
-    ${variantStyles[variant]}
-    ${size === 'sm' ? sizeStyles.sm : size === 'lg' ? sizeStyles.lg : sizeStyles.md}
-    flex items-center gap-2 justify-center whitespace-nowrap
-    ${className}
-   `}
-  >
-   {isLoading && <span className="inline-block">Loading...</span>}
-   {icon && !isLoading && icon}
-   {children}
-  </button>
- );
-};
+}) => (
+ <button
+  {...props}
+  disabled={disabled || isLoading}
+  className={`${BTN_BASE} ${BTN_VARIANT[variant]} ${BTN_SIZE[size]} ${className}`}
+ >
+  {isLoading && (
+   <span
+    aria-hidden
+    className="inline-block w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current animate-spin"
+   />
+  )}
+  {icon && !isLoading && icon}
+  {children}
+ </button>
+);
 
 // Unified Badge Component
 export interface UnifiedBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -56,27 +66,27 @@ export interface UnifiedBadgeProps extends React.HTMLAttributes<HTMLSpanElement>
  children: ReactNode;
 }
 
+const BADGE_BASE = 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider';
+
+const BADGE_VARIANT: Record<NonNullable<UnifiedBadgeProps['variant']>, string> = {
+ primary: 'bg-ink text-[color:var(--surface)]',
+ success: 'bg-[color:var(--st-green-bg)] text-[color:var(--st-green-fg)]',
+ warning: 'bg-[color:var(--st-amber-bg)] text-[color:var(--st-amber-fg)]',
+ error: 'bg-[color:var(--st-red-bg)] text-[color:var(--st-red-fg)]',
+ info: 'bg-[color:var(--st-blue-bg)] text-[color:var(--st-blue-fg)]',
+ outline: 'bg-transparent border border-border text-ink-2',
+};
+
 export const UnifiedBadge: React.FC<UnifiedBadgeProps> = ({
  variant = 'primary',
  children,
- className,
+ className = '',
  ...props
-}) => {
- const variantStyles = {
-  primary: 'px-3 py-1.5 bg-slate-800 text-white rounded-full text-xs font-semibold uppercase tracking-wider',
-  success: 'px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100 uppercase tracking-wider',
-  warning: 'px-3 py-1.5 bg-gray-100 text-slate-900 rounded-full text-xs font-semibold border border-gray-100 uppercase tracking-wider',
-  error: 'px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-xs font-semibold border border-red-100 uppercase tracking-wider',
-  info: 'px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold border border-blue-100 uppercase tracking-wider',
-  outline: 'px-3 py-1.5 bg-transparent border border-gray-200 text-gray-700 rounded-full text-xs font-semibold uppercase tracking-wider',
- };
-
- return (
-  <span {...props} className={`inline-flex items-center gap-1 ${variantStyles[variant]} ${className}`}>
-   {children}
-  </span>
- );
-};
+}) => (
+ <span {...props} className={`${BADGE_BASE} ${BADGE_VARIANT[variant]} ${className}`}>
+  {children}
+ </span>
+);
 
 // Unified Card Component
 export interface UnifiedCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -84,24 +94,22 @@ export interface UnifiedCardProps extends React.HTMLAttributes<HTMLDivElement> {
  children: ReactNode;
 }
 
+const CARD_VARIANT: Record<NonNullable<UnifiedCardProps['variant']>, string> = {
+ default: 'bg-surface rounded-[var(--r-lg)] border border-hairline shadow-[var(--e1)] p-6',
+ elevated: 'bg-surface rounded-[var(--r-lg)] border border-hairline shadow-[var(--e2)] hover:shadow-[var(--e3)] transition-shadow p-6',
+ outlined: 'bg-surface rounded-[var(--r-lg)] border border-strong p-6',
+};
+
 export const UnifiedCard: React.FC<UnifiedCardProps> = ({
  variant = 'default',
  children,
- className,
+ className = '',
  ...props
-}) => {
- const variantStyles = {
-  default: 'bg-white rounded-lg shadow-sm border border-gray-100 p-6',
-  elevated: 'bg-white rounded-lg shadow-md border border-gray-100 p-6 hover:shadow-lg transition-shadow',
-  outlined: 'bg-white rounded-lg border-2 border-gray-200 p-6',
- };
-
- return (
-  <div {...props} className={`${variantStyles[variant]} ${className}`}>
-   {children}
-  </div>
- );
-};
+}) => (
+ <div {...props} className={`${CARD_VARIANT[variant]} ${className}`}>
+  {children}
+ </div>
+);
 
 // Unified Modal Component
 export interface UnifiedModalProps {
@@ -132,13 +140,21 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
  if (!isOpen) return null;
 
  return (
-  <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-   <div className={`bg-white rounded-xl shadow-lg w-full ${modalSizeClass[size]} max-h-[90vh] overflow-auto`}>
-    <div className="flex justify-between items-center p-6 border-b-2 border-gray-200">
-     <div className="flex-1 min-w-0">{typeof title === 'string' ? <h3 className="text-2xl font-semibold text-gray-800 tracking-tight">{title}</h3> : title}</div>
+  <ModalOverlay onClose={onClose} z="z-[50]" dismissable={false}>
+   <div
+    role="dialog"
+    aria-modal="true"
+    {...(typeof title === 'string' ? { 'aria-labelledby': 'unified-modal-title' } : { 'aria-label': 'Dialog' })}
+    className={`bg-surface text-ink rounded-[var(--r-lg)] shadow-[var(--e3)] border border-hairline w-full ${modalSizeClass[size]} max-h-[90vh] overflow-auto`}
+   >
+    <div className="flex justify-between items-center p-6 border-b border-hairline">
+     <div className="flex-1 min-w-0">
+      {typeof title === 'string' ? <h3 id="unified-modal-title" className="text-2xl font-semibold text-ink tracking-tight">{title}</h3> : title}
+     </div>
      <button
       onClick={onClose}
-      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      aria-label="Close"
+      className="w-8 h-8 flex items-center justify-center rounded-[var(--r-sm)] text-ink-4 hover:text-ink hover:bg-surface-3 transition-colors"
      >
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -149,10 +165,10 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
     <div className="p-6 space-y-8">{children}</div>
 
     {footer && (
-     <div className="p-6 border-t-2 border-gray-200 flex justify-end gap-3">{footer}</div>
+     <div className="p-6 border-t border-hairline flex justify-end gap-3">{footer}</div>
     )}
    </div>
-  </div>
+  </ModalOverlay>
  );
 };
 
@@ -163,18 +179,17 @@ export interface UnifiedTableHeaderCellProps extends React.ThHTMLAttributes<HTML
 
 export const UnifiedTableHeaderCell: React.FC<UnifiedTableHeaderCellProps> = ({
  children,
- className,
+ className = '',
  ...props
-}) => {
- return (
-  <th
-   {...props}
-   className={`py-4 px-5 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider leading-relaxed border-b-2 border-gray-200 ${className}`}
-  >
-   {children}
-  </th>
- );
-};
+}) => (
+ <th
+  scope="col"
+  {...props}
+  className={`py-4 px-5 text-left text-xs font-semibold text-ink-3 uppercase tracking-wider leading-relaxed border-b border-border ${className}`}
+ >
+  {children}
+ </th>
+);
 
 // Unified Table Cell Component
 export interface UnifiedTableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
@@ -183,18 +198,22 @@ export interface UnifiedTableCellProps extends React.TdHTMLAttributes<HTMLTableC
 
 export const UnifiedTableCell: React.FC<UnifiedTableCellProps> = ({
  children,
- className,
+ className = '',
  ...props
-}) => {
- return (
-  <td
-   {...props}
-   className={`py-4 px-5 text-gray-700 leading-relaxed border-b border-gray-100 ${className}`}
-  >
-   {children}
-  </td>
- );
-};
+}) => (
+ <td
+  {...props}
+  className={`py-4 px-5 text-ink-2 leading-relaxed border-b border-hairline ${className}`}
+ >
+  {children}
+ </td>
+);
+
+// Shared field control class (input / select) — token-driven.
+const FIELD_BASE =
+ 'w-full px-3.5 py-2.5 rounded-[var(--r-sm)] border bg-surface text-ink placeholder:text-ink-4 ' +
+ 'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus:border-[color:var(--accent)] ' +
+ 'transition-all leading-normal';
 
 // Unified Input Component
 export interface UnifiedInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -205,29 +224,23 @@ export interface UnifiedInputProps extends React.InputHTMLAttributes<HTMLInputEl
 export const UnifiedInput: React.FC<UnifiedInputProps> = ({
  label,
  error,
- className,
+ className = '',
  ...props
 }) => {
  const isRequired = Boolean(props.required);
  return (
   <div className="space-y-2">
    {label && (
-    <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+    <label className="block text-sm font-semibold text-ink-2 uppercase tracking-wide">
      {label}
-     {isRequired && <span className="text-red-500 ml-0.5">*</span>}
+     {isRequired && <span className="text-[color:var(--st-red-fg)] ml-0.5">*</span>}
     </label>
    )}
    <input
     {...props}
-    className={`
-     w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 
-     focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all 
-     leading-normal tracking-wide
-     ${error ? 'border-red-200 focus:ring-red-500' : 'border-gray-200'}
-     ${className}
-    `}
+    className={`${FIELD_BASE} ${error ? 'border-[color:var(--st-red-fg)]/40' : 'border-border'} ${className}`}
    />
-   {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+   {error && <p className="text-xs text-[color:var(--st-red-fg)] font-medium">{error}</p>}
   </div>
  );
 };
@@ -243,7 +256,7 @@ export const UnifiedSelect: React.FC<UnifiedSelectProps> = ({
  label,
  error,
  options,
- className,
+ className = '',
  ...props
 }) => {
  const hasCustomEmptyOption = options.some((opt) => String(opt.value) === '');
@@ -252,20 +265,14 @@ export const UnifiedSelect: React.FC<UnifiedSelectProps> = ({
  return (
   <div className="space-y-2">
    {label && (
-    <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wide">
+    <label className="block text-sm font-semibold text-ink-2 uppercase tracking-wide">
      {label}
-     {isRequired && <span className="text-red-500 ml-0.5">*</span>}
+     {isRequired && <span className="text-[color:var(--st-red-fg)] ml-0.5">*</span>}
     </label>
    )}
    <select
     {...props}
-    className={`
-     w-full px-5 py-3 border rounded-lg focus:outline-none focus:ring-2 
-     focus:ring-slate-800 focus:border-transparent bg-gray-50/50 transition-all 
-     leading-normal tracking-wide
-     ${error ? 'border-red-200 focus:ring-red-500' : 'border-gray-200'}
-     ${className}
-    `}
+    className={`${FIELD_BASE} ${error ? 'border-[color:var(--st-red-fg)]/40' : 'border-border'} ${className}`}
    >
     {!hasCustomEmptyOption && <option value="">Select an option</option>}
     {options.map((opt) => (
@@ -274,7 +281,7 @@ export const UnifiedSelect: React.FC<UnifiedSelectProps> = ({
      </option>
     ))}
    </select>
-   {error && <p className="text-xs text-red-600 font-medium">{error}</p>}
+   {error && <p className="text-xs text-[color:var(--st-red-fg)] font-medium">{error}</p>}
   </div>
  );
 };
@@ -286,15 +293,13 @@ export interface UnifiedLabelProps extends React.LabelHTMLAttributes<HTMLLabelEl
 
 export const UnifiedLabel: React.FC<UnifiedLabelProps> = ({
  children,
- className,
+ className = '',
  ...props
-}) => {
- return (
-  <label
-   {...props}
-   className={`block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide ${className}`}
-  >
-   {children}
-  </label>
- );
-};
+}) => (
+ <label
+  {...props}
+  className={`block text-sm font-semibold text-ink-2 mb-3 uppercase tracking-wide ${className}`}
+ >
+  {children}
+ </label>
+);

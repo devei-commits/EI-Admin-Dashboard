@@ -127,11 +127,11 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 p-4">
+    <section className="rounded-xl border border-border p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-800">5 · Generate Labels</h3>
-          <p className="mt-1 text-xs text-slate-500">
+          <h3 className="text-sm font-semibold text-ink">5 · Generate Labels</h3>
+          <p className="mt-1 text-xs text-ink-3">
             One label per pack from the packaging list. The QR encodes the packaging number; print and
             affix to each pack.
           </p>
@@ -140,28 +140,28 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
           type="button"
           onClick={handlePrint}
           disabled={disabled || rows.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Printer className="h-4 w-4" aria-hidden /> Print all {rows.length} label{rows.length === 1 ? '' : 's'}
         </button>
       </div>
 
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
+        <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-ink-3">
           No packs to label — complete the packaging list first.
         </p>
       ) : (
         <div ref={gridRef} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
-            <div key={row.packagingNo} className="rounded-lg border border-slate-300 p-3">
-              <div className="mb-2 text-xs font-bold text-slate-900">📦 {row.packagingNo}</div>
+            <div key={row.packagingNo} className="rounded-lg border border-border p-3">
+              <div className="mb-2 text-xs font-bold text-ink">📦 {row.packagingNo}</div>
               <div className="mb-2 flex justify-center">
                 <QRCodeCanvas value={row.packagingNo} size={132} includeMargin />
               </div>
               {fieldsFor(row).map((f) => (
                 <div key={f.label} className="flex justify-between gap-2 py-0.5 text-xs">
-                  <span className="font-semibold text-slate-500">{f.label}</span>
-                  <span className="text-right font-bold text-slate-800">{f.value}</span>
+                  <span className="font-semibold text-ink-3">{f.label}</span>
+                  <span className="text-right font-bold text-ink">{f.value}</span>
                 </div>
               ))}
             </div>

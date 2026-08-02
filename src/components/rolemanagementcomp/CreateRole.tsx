@@ -128,18 +128,18 @@ const CreateRole: React.FC = () => {
 
  return (
   <div className="w-full max-w-7xl">
-   <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2 tracking-tight">
+   <h2 className="text-xl sm:text-2xl font-semibold text-ink mb-2 tracking-tight">
     Create Role
    </h2>
-   <p className="text-sm text-gray-600 mb-4 sm:mb-6">
+   <p className="text-sm text-ink-2 mb-4 sm:mb-6">
     Enter a custom role name, then choose module permissions for that role.
    </p>
 
-   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-0 mb-6 sm:mb-8 p-4 bg-gray-50 rounded-xl sm:bg-transparent sm:p-0">
+   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-0 mb-6 sm:mb-8 p-4 bg-surface-2 rounded-xl sm:bg-transparent sm:p-0">
     <div className="flex items-center">
      <div
       className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
-       activeStep === 'basic' ? 'bg-slate-800 text-white' : 'bg-emerald-500 text-white'
+       activeStep === 'basic' ? 'bg-ink text-white' : 'bg-ok text-white'
       }`}
      >
       {activeStep === 'permissions' ? (
@@ -152,15 +152,15 @@ const CreateRole: React.FC = () => {
      </div>
      <span
       className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${
-       activeStep === 'basic' ? 'text-slate-800' : 'text-gray-600'
+       activeStep === 'basic' ? 'text-ink' : 'text-ink-2'
       }`}
      >
       Role Information
      </span>
     </div>
-    <div className="hidden sm:block flex-1 h-1 mx-4 bg-gray-200 rounded">
+    <div className="hidden sm:block flex-1 h-1 mx-4 bg-surface-3 rounded">
      <div
-      className={`h-full bg-slate-800 rounded transition-all duration-300 ${
+      className={`h-full bg-ink rounded transition-all duration-300 ${
        activeStep === 'permissions' ? 'w-full' : 'w-0'
       }`}
      />
@@ -168,14 +168,14 @@ const CreateRole: React.FC = () => {
     <div className="flex items-center">
      <div
       className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm sm:text-base ${
-       activeStep === 'permissions' ? 'bg-slate-800 text-white' : 'bg-gray-200 text-gray-500'
+       activeStep === 'permissions' ? 'bg-ink text-white' : 'bg-surface-3 text-ink-3'
       }`}
      >
       2
      </div>
      <span
       className={`ml-2 sm:ml-3 text-sm sm:text-base font-medium ${
-       activeStep === 'permissions' ? 'text-slate-800' : 'text-gray-400'
+       activeStep === 'permissions' ? 'text-ink' : 'text-ink-4'
       }`}
      >
       Permissions
@@ -186,7 +186,7 @@ const CreateRole: React.FC = () => {
    <form onSubmit={(e) => e.preventDefault()}>
     {activeStep === 'basic' && (
      <UnifiedCard>
-      <h3 className="text-sm sm:text-md font-semibold text-gray-800 mb-4 sm:mb-6 uppercase tracking-wider">
+      <h3 className="text-sm sm:text-md font-semibold text-ink mb-4 sm:mb-6 uppercase tracking-wider">
        Role Information
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
@@ -202,7 +202,7 @@ const CreateRole: React.FC = () => {
          required
          maxLength={120}
         />
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-ink-3">
          Display name shown in User Management and role lists.
         </p>
        </div>
@@ -213,9 +213,9 @@ const CreateRole: React.FC = () => {
          type="text"
          value={roleCodePreview || '—'}
          readOnly
-         className={`${inputClassName} bg-gray-50 text-gray-600 font-mono`}
+         className={`${inputClassName} bg-surface-2 text-ink-2 font-mono`}
         />
-        <p className="mt-1 text-xs text-gray-500">Auto-generated from role name (used internally).</p>
+        <p className="mt-1 text-xs text-ink-3">Auto-generated from role name (used internally).</p>
        </div>
 
        <div>
@@ -281,13 +281,13 @@ const CreateRole: React.FC = () => {
 
     {activeStep === 'permissions' && (
      <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 sm:p-6">
+      <div className="bg-surface-2 border border-hairline rounded-xl p-4 sm:p-6">
        <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-         <h3 className="text-lg font-semibold text-gray-800">
+         <h3 className="text-lg font-semibold text-ink">
           Permissions for &ldquo;{formData.roleName.trim()}&rdquo;
          </h3>
-         <p className="text-sm text-gray-600 mt-1">
+         <p className="text-sm text-ink-2 mt-1">
           Level: <span className="capitalize font-medium">{formData.roleLevel}</span>
           {' · '}
           Code: <span className="font-mono text-xs">{roleCodePreview}</span>
@@ -296,7 +296,7 @@ const CreateRole: React.FC = () => {
         <button
          type="button"
          onClick={() => setActiveStep('basic')}
-         className="text-slate-800 hover:text-slate-900 font-medium flex items-center gap-2 text-sm"
+         className="text-ink hover:text-ink font-medium flex items-center gap-2 text-sm"
         >
          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -324,7 +324,7 @@ const CreateRole: React.FC = () => {
       </UnifiedCard>
 
       <UnifiedCard className="!p-4 sm:!p-6">
-       <h4 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">
+       <h4 className="text-sm font-semibold text-ink-2 uppercase tracking-wider mb-3">
         Global Settings
        </h4>
        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -343,7 +343,7 @@ const CreateRole: React.FC = () => {
         ).map(([key, label]) => (
          <label
           key={String(key)}
-          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-2 cursor-pointer"
          >
           <input
            type="checkbox"
@@ -351,14 +351,14 @@ const CreateRole: React.FC = () => {
            onChange={() =>
             setGlobalSettings((prev) => ({ ...prev, [key]: !prev[key] } as GlobalSettings))
            }
-           className="w-4 h-4 rounded border-gray-300"
+           className="w-4 h-4 rounded border-border"
           />
-          <span className="text-sm text-gray-700">{label}</span>
+          <span className="text-sm text-ink-2">{label}</span>
          </label>
         ))}
        </div>
        <div className="mt-4">
-        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+        <label className="block text-xs font-semibold text-ink-2 uppercase tracking-wider mb-1">
          Session Timeout (minutes)
         </label>
         <input
@@ -372,13 +372,13 @@ const CreateRole: React.FC = () => {
            sessionTimeout: parseInt(e.target.value, 10) || 30,
           }))
          }
-         className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+         className="w-full max-w-xs px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-border"
         />
        </div>
       </UnifiedCard>
 
       {submitSuccess && (
-       <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+       <div className="p-3 rounded-lg bg-ok-soft border border-ok text-ok text-sm">
         {submitSuccess}
        </div>
       )}
@@ -387,7 +387,7 @@ const CreateRole: React.FC = () => {
        <button
         type="button"
         onClick={() => setActiveStep('basic')}
-        className="px-6 py-3 text-gray-600 hover:text-gray-800 font-medium flex items-center gap-2"
+        className="px-6 py-3 text-ink-2 hover:text-ink font-medium flex items-center gap-2"
        >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -396,7 +396,7 @@ const CreateRole: React.FC = () => {
        </button>
 
        <div className="flex items-center gap-3">
-        {submitError && <p className="text-red-600 text-sm">{submitError}</p>}
+        {submitError && <p className="text-err text-sm">{submitError}</p>}
         <UnifiedButton
          type="button"
          variant="primary"

@@ -98,11 +98,11 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
     : undefined;
 
  return (
-  <div className="min-h-screen bg-gray-50 flex flex-col">
+  <div className="min-h-screen bg-surface-3 flex flex-col">
    {/* Top header bar */}
-   <div className="bg-white border-b border-gray-200">
+   <div className="bg-surface border-b border-border">
     <div className="w-full px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between gap-6">
-     <h1 className="text-base md:text-lg font-bold text-gray-800 leading-tight truncate">
+     <h1 className="text-base md:text-lg font-bold text-ink leading-tight truncate">
       {title}
      </h1>
      <div className="flex items-center gap-2">
@@ -110,7 +110,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        <button
         type="button"
         onClick={onReset}
-        className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+        className="px-3 py-1.5 border border-border text-ink-3 text-sm font-medium rounded-lg hover:bg-surface-3 transition"
        >
         Reset Form
        </button>
@@ -119,7 +119,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        <button
         type="button"
         onClick={onSave}
-        className="px-3 py-1.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
+        className="px-3 py-1.5 border border-border text-ink-3 text-sm font-medium rounded-lg hover:bg-surface-3 transition"
        >
         Save draft
        </button>
@@ -128,7 +128,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        <button
         type="button"
         onClick={onRevert}
-        className="px-3 py-1.5 border border-amber-200 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-50 transition"
+        className="px-3 py-1.5 border border-[color:var(--st-amber-fg)]/30 text-warn text-sm font-medium rounded-lg hover:bg-warn-soft transition"
        >
         {revertLabel}
        </button>
@@ -137,7 +137,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        <button
         type="button"
         onClick={onSubmit}
-        className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition"
+        className="px-4 py-1.5 bg-brand text-white text-sm font-semibold rounded-lg hover:bg-brand-press shadow-sm transition"
        >
         {submitLabel}
        </button>
@@ -150,9 +150,9 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
    <div className="flex-1 min-w-0">
     <div className="flex w-full min-w-0 flex-col gap-4 px-4 py-4 md:px-6 lg:h-[calc(100vh-5.25rem)] lg:flex-row lg:items-stretch lg:px-8 lg:overflow-hidden">
      {/* Left sidebar with stages */}
-     <aside className="flex w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm lg:w-60">
-      <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-       <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
+     <aside className="flex w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-border bg-surface shadow-sm lg:w-60">
+      <div className="px-4 pt-4 pb-3 border-b border-hairline">
+       <span className="text-xs font-bold uppercase tracking-widest text-ink-3">
         Sections
        </span>
       </div>
@@ -170,8 +170,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
          }}
          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium mb-0.5 transition-colors ${
           currentStage === idx
-           ? 'bg-indigo-50 text-indigo-700 font-semibold'
-           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+           ? 'bg-brand-soft text-brand font-semibold'
+           : 'text-ink-3 hover:bg-surface-3 hover:text-ink'
          } ${disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
         >
          {idx + 1}) {stage}
@@ -179,17 +179,17 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
         );
        })}
       </nav>
-      <div className="px-4 py-3 border-t border-gray-100 text-[11px] text-gray-500">
+      <div className="px-4 py-3 border-t border-hairline text-[11px] text-ink-3">
        {currentStage + 1}) {stages.length} sections
       </div>
      </aside>
 
      {/* Right content card */}
-     <main className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
+     <main className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-surface-3 shadow-sm">
      {/* Section header with stage title + Prev/Next (mirrors Packaging master) */}
-     <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+     <div className="sticky top-0 z-10 bg-surface-3 border-b border-border">
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
-       <h2 className="text-sm font-bold text-gray-800 truncate">
+       <h2 className="text-sm font-bold text-ink truncate">
         {stages[currentStage]}
        </h2>
        <div className="flex items-center gap-2 shrink-0">
@@ -197,7 +197,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
          type="button"
          onClick={() => onStageChange(Math.max(0, currentStage - 1))}
          disabled={currentStage === 0}
-         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
+         className="px-4 py-2 bg-surface-3 text-ink rounded-lg text-sm hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
          Previous
         </button>
@@ -206,7 +206,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
          title={nextButtonTitle}
          onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
          disabled={nextButtonDisabled}
-         className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+         className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
          Next
         </button>
@@ -219,8 +219,8 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
        <div className="mx-auto max-w-4xl min-w-0 space-y-4">
         {/* Primary Fields Notice */}
         {primaryFields.length > 0 && currentStage === 0 && (
-         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-xs text-blue-800">
+         <div className="bg-brand-soft border border-brand-soft rounded-lg p-4">
+          <p className="text-xs text-brand">
            <strong>Tip:</strong> Fill the highlighted primary fields first. Derived fields can auto-populate from them.
           </p>
          </div>
@@ -231,11 +231,11 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
 
         {/* Global Errors */}
         {Object.entries(errors).some(([, message]) => String(message ?? '').trim()) && (
-         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+         <div className="bg-err-soft border border-[color:var(--st-red-fg)]/30 rounded-lg p-4">
           {Object.entries(errors)
            .filter(([, message]) => String(message ?? '').trim())
            .map(([field, message]) => (
-           <p key={field} className="text-sm text-red-700 mb-1">
+           <p key={field} className="text-sm text-err mb-1">
             • {message}
            </p>
           ))}
@@ -245,13 +245,13 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
       </div>
 
       {/* Bottom sticky actions for long sections */}
-      <div className="sticky bottom-0 z-10 border-t border-gray-200 bg-white/95 backdrop-blur">
+      <div className="sticky bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur">
        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
         <button
          type="button"
          onClick={() => onStageChange(Math.max(0, currentStage - 1))}
          disabled={currentStage === 0}
-         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition"
+         className="px-4 py-2 bg-surface-3 text-ink rounded-lg text-sm hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
          Previous
         </button>
@@ -260,7 +260,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           <button
            type="button"
            onClick={onSave}
-           className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+           className="px-4 py-2 border border-border text-ink-2 rounded-lg text-sm font-medium hover:bg-surface-3 transition"
           >
            Save draft
           </button>
@@ -269,7 +269,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           <button
            type="button"
            onClick={onSubmit}
-           className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition"
+           className="px-4 py-2 bg-ok text-white rounded-lg text-sm font-semibold hover:brightness-95 transition"
           >
            {submitLabel}
           </button>
@@ -279,7 +279,7 @@ const MasterFormBase: React.FC<MasterFormBaseProps> = ({
           title={nextButtonTitle}
           onClick={() => onStageChange(Math.min(stages.length - 1, currentStage + 1))}
           disabled={nextButtonDisabled}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          className="px-4 py-2 bg-brand text-white rounded-lg text-sm hover:bg-brand-press disabled:opacity-50 disabled:cursor-not-allowed transition"
          >
           Next
          </button>

@@ -11,40 +11,43 @@ import type {
   DashboardRecentActivity,
 } from '../services/dashboard.service';
 import { queryKeys } from '../lib/queryClient';
+import { TableSkeleton, SkeletonText } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+// Icons: Phosphor (design language). Aliased to the previous lucide names to keep JSX unchanged.
 import {
-  LayoutDashboard,
+  SquaresFour as LayoutDashboard,
   Package,
   Users,
-  Shield,
-  ClipboardList,
-  MessageSquare,
-  Mail,
-  FlaskConical,
-  TestTubes,
+  ShieldCheck as Shield,
+  ClipboardText as ClipboardList,
+  ChatCircle as MessageSquare,
+  Envelope as Mail,
+  Flask as FlaskConical,
+  TestTube as TestTubes,
   Wallet,
-  Box,
-  Layers,
-  Building2,
+  Cube as Box,
+  Stack as Layers,
+  Buildings as Building2,
   CheckSquare,
   Clock,
-  AlertCircle,
+  WarningCircle as AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
   Plus,
-  RefreshCw,
+  ArrowsClockwise as RefreshCw,
   Truck,
   Tag,
   Percent,
   BookOpen,
   Pill,
   Stethoscope,
-  Beaker,
-  ChevronRight,
-  Activity,
-  Zap,
-  Search,
-  ExternalLink,
-} from 'lucide-react';
+  Flask as Beaker,
+  CaretRight as ChevronRight,
+  Pulse as Activity,
+  Lightning as Zap,
+  MagnifyingGlass as Search,
+  ArrowSquareOut as ExternalLink,
+} from '@phosphor-icons/react';
 
 // ==================== TYPES ====================
 interface StatCardProps {
@@ -289,39 +292,29 @@ const MODULE_CARDS: ModuleCard[] = [
 ];
 
 // ==================== HELPER COMPONENTS ====================
-const StatCard = ({ title, value, icon, change, changeType, color, link }: StatCardProps) => {
-  const colorClasses: Record<string, { bg: string; icon: string }> = {
-    amber: { bg: 'bg-gray-50 border-gray-100', icon: 'text-slate-700' },
-    blue: { bg: 'bg-blue-50 border-blue-100', icon: 'text-blue-500' },
-    green: { bg: 'bg-green-50 border-green-100', icon: 'text-green-500' },
-    purple: { bg: 'bg-purple-50 border-purple-100', icon: 'text-purple-500' },
-    red: { bg: 'bg-red-50 border-red-100', icon: 'text-red-500' },
-    orange: { bg: 'bg-orange-50 border-orange-100', icon: 'text-slate-700' },
-  };
-  const colors = colorClasses[color] || colorClasses.amber;
-
+const StatCard = ({ title, value, icon, change, changeType, link }: StatCardProps) => {
   const content = (
-    <div className={`${colors.bg} rounded-xl p-5 border hover:shadow-md transition-all duration-200 group cursor-pointer`}>
+    <div className="bg-surface rounded-[var(--r-lg)] p-5 border border-hairline hover:shadow-[var(--e2)] transition-all duration-200 group cursor-pointer">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 font-medium">{title}</p>
-          <p className="text-2xl md:text-3xl font-bold text-gray-800 mt-1">{value}</p>
+          <p className="text-sm text-ink-3 font-medium">{title}</p>
+          <p className="text-2xl md:text-3xl font-semibold text-ink tabular-nums mt-1">{value}</p>
           {change && (
-            <div className={`flex items-center gap-1 mt-2 text-sm ${changeType === 'up' ? 'text-green-600' : changeType === 'down' ? 'text-red-600' : 'text-gray-500'}`}>
+            <div className={`flex items-center gap-1 mt-2 text-sm ${changeType === 'up' ? 'text-ok' : changeType === 'down' ? 'text-err' : 'text-ink-3'}`}>
               {changeType === 'up' && <ArrowUpRight className="w-4 h-4" />}
               {changeType === 'down' && <ArrowDownRight className="w-4 h-4" />}
               <span>{change}</span>
             </div>
           )}
         </div>
-        <div className={`p-3 rounded-xl bg-white shadow-sm ${colors.icon}`}>
+        <div className="p-3 rounded-[var(--r-md)] bg-brand-soft text-brand">
           {icon}
         </div>
       </div>
       {link && (
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="text-xs text-gray-500">View details</span>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
+        <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs text-ink-3">View details</span>
+          <ChevronRight className="w-4 h-4 text-ink-4" />
         </div>
       )}
     </div>
@@ -343,20 +336,20 @@ const getActivityIcon = (type: DashboardRecentActivity['type']) => {
 
 const getActivityColor = (type: DashboardRecentActivity['type']) => {
   const colors = {
-    order: 'bg-gray-100 text-slate-800',
-    user: 'bg-blue-100 text-blue-600',
-    enquiry: 'bg-purple-100 text-purple-600',
-    task: 'bg-green-100 text-green-600',
-    system: 'bg-gray-100 text-gray-600',
+    order: 'bg-neut-soft text-ink-2',
+    user: 'bg-info-soft text-info',
+    enquiry: 'bg-brand-soft text-brand',
+    task: 'bg-ok-soft text-ok',
+    system: 'bg-neut-soft text-ink-3',
   };
   return colors[type];
 };
 
 const getPriorityColor = (priority: DashboardPendingItem['priority']) => {
   const colors = {
-    high: 'bg-red-100 text-red-700 border-red-200',
-    medium: 'bg-gray-100 text-slate-900 border-gray-200',
-    low: 'bg-gray-100 text-gray-600 border-gray-200',
+    high: 'bg-err-soft text-err border-[color:var(--st-red-fg)]/25',
+    medium: 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/25',
+    low: 'bg-neut-soft text-ink-3 border-hairline',
   };
   return colors[priority];
 };
@@ -499,34 +492,34 @@ const Dashboard = () => {
   const greeting = currentHour < 12 ? 'Good Morning' : currentHour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   return (
-    <div className="min-h-screen min-w-0 max-w-full bg-background p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen min-w-0 max-w-full bg-canvas p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="bg-gray-900 rounded-2xl p-6 md:p-8 text-white shadow-xl mb-6">
+      <div className="bg-[image:var(--brand-gradient)] rounded-[var(--r-xl)] p-6 md:p-8 text-white shadow-[var(--e3)] mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div>
-            <p className="text-gray-300 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            <h1 className="text-2xl md:text-3xl font-bold mt-1">{greeting}, {user?.name || 'Admin'}!</h1>
-            <p className="text-gray-100 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
+            <p className="text-white/60 text-sm font-medium">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold mt-1">{greeting}, {user?.name || 'Admin'}!</h1>
+            <p className="text-white/80 mt-2">Welcome to your Admin Tool. Here's an overview of your system.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{statValue(stats?.totalOrders)}</p>
-              <p className="text-xs text-gray-100">Total Orders</p>
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+              <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.totalOrders)}</p>
+              <p className="text-xs text-white/70">Total Orders</p>
             </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{statValue(stats?.lowStockItems)}</p>
-              <p className="text-xs text-gray-100">Low Stock</p>
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+              <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.lowStockItems)}</p>
+              <p className="text-xs text-white/70">Low Stock</p>
             </div>
-            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 text-center min-w-30">
-              <p className="text-3xl font-bold">{statValue(stats?.issuedPos)}</p>
-              <p className="text-xs text-gray-100">Issued POs</p>
+            <div className="bg-surface/10 backdrop-blur-sm rounded-[var(--r-md)] p-4 text-center min-w-30">
+              <p className="text-3xl font-semibold tabular-nums">{statValue(stats?.issuedPos)}</p>
+              <p className="text-xs text-white/70">Issued POs</p>
             </div>
           </div>
         </div>
       </div>
 
       {overviewError && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="mb-4 rounded-[var(--r-md)] border border-[color:var(--st-red-fg)]/30 bg-err-soft px-4 py-3 text-sm text-err">
           Could not load dashboard data
           {overviewErrorDetail instanceof Error ? `: ${overviewErrorDetail.message}` : ''}.{' '}
           <button type="button" onClick={() => void refetchOverview()} className="font-medium underline">
@@ -540,62 +533,62 @@ const Dashboard = () => {
         <button
           type="button"
           onClick={() => setDashboardTab('overview')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${dashboardTab === 'overview' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          className={`px-4 py-2 rounded-[var(--r-sm)] text-sm font-medium transition-colors ${dashboardTab === 'overview' ? 'bg-brand text-brand-ink' : 'bg-surface-3 text-ink-2 hover:bg-surface-2'}`}
         >
           Overview
         </button>
         <button
           type="button"
           onClick={() => setDashboardTab('lowThreshold')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${dashboardTab === 'lowThreshold' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          className={`px-4 py-2 rounded-[var(--r-sm)] text-sm font-medium flex items-center gap-2 transition-colors ${dashboardTab === 'lowThreshold' ? 'bg-brand text-brand-ink' : 'bg-surface-3 text-ink-2 hover:bg-surface-2'}`}
         >
           <AlertCircle className="w-4 h-4" />
           Low threshold alert
           {lowThresholdRows.length > 0 && (
-            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{lowThresholdRows.length}</span>
+            <span className="bg-err text-white text-xs px-1.5 py-0.5 rounded-full tabular-nums">{lowThresholdRows.length}</span>
           )}
         </button>
       </div>
 
       {/* Low threshold alert tab content */}
       {dashboardTab === 'lowThreshold' && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
-            <AlertCircle className="w-5 h-5 text-amber-600" /> Items at or below reorder point (planning alert)
+        <div className="bg-surface rounded-[var(--r-lg)] shadow-[var(--e1)] border border-hairline p-5 mb-6">
+          <h2 className="text-lg font-semibold text-ink flex items-center gap-2 mb-4">
+            <AlertCircle className="w-5 h-5 text-warn" /> Items at or below reorder point (planning alert)
           </h2>
           {lowThresholdLoading ? (
-            <p className="text-gray-500 text-sm">Loading…</p>
+            <TableSkeleton rows={6} cols={7} />
           ) : lowThresholdRows.length === 0 ? (
-            <p className="text-gray-500 text-sm">No items currently at or below reorder point.</p>
+            <EmptyState icon={<AlertCircle />} title="No items currently at or below reorder point." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Code</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Name</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Type</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Stock in hand</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Reorder PT</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Status</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-600">Action</th>
+                <thead className="sticky top-0 z-20 bg-surface-3 border-b border-border">
+                  <tr className="[&_th]:bg-surface-3">
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Code</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Name</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Type</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Stock in hand</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Reorder PT</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Status</th>
+                    <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-hairline">
                   {lowThresholdRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-gray-900">{row.code}</td>
-                      <td className="px-4 py-2 text-gray-700">{row.name}</td>
+                    <tr key={row.id} className="hover:bg-surface-3">
+                      <td className="px-4 py-2 font-medium text-ink">{row.code}</td>
+                      <td className="px-4 py-2 text-ink-2">{row.name}</td>
                       <td className="px-4 py-2">{row.type}</td>
-                      <td className="px-4 py-2 text-amber-700 font-medium">{row.stockInHand} {row.whUnit}</td>
-                      <td className="px-4 py-2 text-gray-600">{row.reorderPt}</td>
+                      <td className="px-4 py-2 text-warn font-medium tabular-nums">{row.stockInHand} {row.whUnit}</td>
+                      <td className="px-4 py-2 text-ink-3 tabular-nums">{row.reorderPt}</td>
                       <td className="px-4 py-2">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.status === 'Critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.status === 'Critical' ? 'bg-err-soft text-err' : 'bg-warn-soft text-warn'}`}>
                           {row.status}
                         </span>
                       </td>
                       <td className="px-4 py-2">
-                        <Link to="/warehouse/inventory" className="text-blue-600 hover:underline font-medium">View inventory</Link>
+                        <Link to="/warehouse/inventory" className="text-brand hover:underline font-medium">View inventory</Link>
                       </td>
                     </tr>
                   ))}
@@ -619,16 +612,16 @@ const Dashboard = () => {
       )}
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+      <div className="bg-surface rounded-[var(--r-lg)] shadow-[var(--e1)] border border-hairline p-5 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-slate-700" /> Quick Actions
+          <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
+            <Zap className="w-5 h-5 text-brand" /> Quick Actions
           </h2>
           <button
             type="button"
             onClick={() => void refetchOverview()}
             disabled={overviewFetching}
-            className="text-sm text-slate-800 hover:text-slate-900 font-medium flex items-center gap-1 disabled:opacity-50"
+            className="text-sm text-brand hover:text-brand-press font-medium flex items-center gap-1 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${overviewFetching ? 'animate-spin' : ''}`} /> Refresh
           </button>
@@ -638,13 +631,13 @@ const Dashboard = () => {
             <Link
               key={action.label}
               to={action.href}
-              className="flex flex-col items-center p-4 bg-gray-50 hover:bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-all duration-200 group"
+              className="flex flex-col items-center p-4 bg-surface-2 hover:bg-surface-3 rounded-[var(--r-md)] border border-hairline hover:border-strong transition-all duration-200 group"
             >
-              <div className="p-3 bg-white rounded-xl shadow-sm text-slate-700 group-hover:text-slate-800 group-hover:shadow-md transition-all">
+              <div className="p-3 bg-surface rounded-[var(--r-md)] shadow-[var(--e1)] text-brand group-hover:shadow-[var(--e2)] transition-all">
                 {action.icon}
               </div>
-              <span className="text-sm font-medium text-gray-700 mt-2 text-center">{action.label}</span>
-              <span className="text-xs text-gray-400 text-center">{action.description}</span>
+              <span className="text-sm font-medium text-ink-2 mt-2 text-center">{action.label}</span>
+              <span className="text-xs text-ink-4 text-center">{action.description}</span>
             </Link>
           ))}
         </div>
@@ -653,59 +646,59 @@ const Dashboard = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Recent Activity */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="lg:col-span-2 bg-surface rounded-[var(--r-lg)] shadow-[var(--e1)] border border-hairline p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-slate-700" /> Recent Activity
+            <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
+              <Activity className="w-5 h-5 text-brand" /> Recent Activity
             </h2>
-            <button type="button" onClick={() => void refetchOverview()} className="text-sm text-slate-800 hover:text-slate-900 font-medium">Refresh</button>
+            <button type="button" onClick={() => void refetchOverview()} className="text-sm text-brand hover:text-brand-press font-medium">Refresh</button>
           </div>
           <div className="space-y-3">
             {overviewLoading ? (
-              <p className="text-sm text-gray-500 py-6 text-center col-span-full">Loading activity…</p>
+              <SkeletonText lines={4} className="py-2" />
             ) : recentActivity.length === 0 ? (
-              <p className="text-sm text-gray-500 py-6 text-center">No recent activity.</p>
+              <EmptyState icon={<Activity />} title="No recent activity." compact />
             ) : recentActivity.map((activity) => (
-              <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}>
+              <div key={activity.id} className="flex items-start gap-3 p-3 rounded-[var(--r-md)] hover:bg-surface-3 transition-colors">
+                <div className={`p-2 rounded-[var(--r-sm)] ${getActivityColor(activity.type)}`}>
                   {getActivityIcon(activity.type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700">{activity.action}</p>
-                  <p className="text-xs text-gray-500">{activity.user} • {activity.module}</p>
+                  <p className="text-sm font-medium text-ink-2">{activity.action}</p>
+                  <p className="text-xs text-ink-3">{activity.user} • {activity.module}</p>
                 </div>
-                <span className="text-xs text-gray-400 whitespace-nowrap">{activity.time}</span>
+                <span className="text-xs text-ink-4 whitespace-nowrap">{activity.time}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Pending Items */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="bg-surface rounded-[var(--r-lg)] shadow-[var(--e1)] border border-hairline p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-slate-700" /> Pending Items
+            <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-brand" /> Pending Items
             </h2>
-            <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">{pendingItems.length} items</span>
+            <span className="px-2 py-1 bg-err-soft text-err text-xs font-medium rounded-full tabular-nums">{pendingItems.length} items</span>
           </div>
           <div className="space-y-3">
             {overviewLoading ? (
-              <p className="text-sm text-gray-500 py-6 text-center">Loading pending items…</p>
+              <SkeletonText lines={4} className="py-2" />
             ) : pendingItems.length === 0 ? (
-              <p className="text-sm text-gray-500 py-6 text-center">Nothing pending right now.</p>
+              <EmptyState icon={<AlertCircle />} title="Nothing pending right now." compact />
             ) : pendingItems.map((item) => (
-              <div key={item.id} className="p-3 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all cursor-pointer">
+              <div key={item.id} className="p-3 rounded-[var(--r-md)] border border-hairline hover:border-strong hover:bg-surface-3 transition-all cursor-pointer">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-gray-700">{item.title}</p>
-                    <p className="text-xs text-gray-500">{item.module}</p>
+                    <p className="text-sm font-medium text-ink-2">{item.title}</p>
+                    <p className="text-xs text-ink-3">{item.module}</p>
                   </div>
                   <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getPriorityColor(item.priority)}`}>
                     {item.priority}
                   </span>
                 </div>
                 {item.dueDate && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                  <div className="mt-2 flex items-center gap-1 text-xs text-ink-3">
                     <Clock className="w-3 h-3" /> Due: {item.dueDate}
                   </div>
                 )}
@@ -716,20 +709,20 @@ const Dashboard = () => {
       </div>
 
       {/* All Modules Section */}
-      <div className="min-w-0 max-w-full overflow-hidden bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
+      <div className="min-w-0 max-w-full overflow-hidden bg-surface rounded-[var(--r-lg)] shadow-[var(--e1)] border border-hairline p-4 sm:p-5">
         <div className="mb-6 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-gray-800">
-            <LayoutDashboard className="h-5 w-5 shrink-0 text-slate-700" /> All Modules
+          <h2 className="flex shrink-0 items-center gap-2 text-lg font-semibold text-ink">
+            <LayoutDashboard className="h-5 w-5 shrink-0 text-brand" /> All Modules
           </h2>
           <div className="flex min-w-0 w-full flex-col gap-3 lg:max-w-2xl xl:max-w-none xl:flex-1">
             <div className="relative min-w-0 w-full">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-4" />
               <input
                 type="text"
                 placeholder="Search modules..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full min-w-0 rounded-lg border border-gray-200 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-slate-700"
+                className="w-full min-w-0 rounded-[var(--r-sm)] border border-border bg-surface text-ink placeholder:text-ink-4 py-2 pl-9 pr-4 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
               />
             </div>
             <div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
@@ -738,9 +731,9 @@ const Dashboard = () => {
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${selectedCategory === cat.id
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  className={`shrink-0 rounded-[var(--r-sm)] px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${selectedCategory === cat.id
+                    ? 'bg-brand text-brand-ink'
+                    : 'bg-surface-3 text-ink-3 hover:bg-surface-2 hover:text-ink'
                     }`}
                 >
                   {cat.label}
@@ -751,71 +744,46 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filteredModules.map((module) => {
-            const colorMap: Record<string, string> = {
-              amber: 'bg-amber-500',
-              blue: 'bg-blue-500',
-              green: 'bg-green-600',
-              purple: 'bg-purple-600',
-              indigo: 'bg-indigo-500',
-              teal: 'bg-teal-500',
-              emerald: 'bg-emerald-500',
-              cyan: 'bg-cyan-500',
-              lime: 'bg-lime-500',
-              yellow: 'bg-yellow-500',
-              pink: 'bg-pink-500',
-              rose: 'bg-rose-500',
-              red: 'bg-red-500',
-              orange: 'bg-orange-500',
-              violet: 'bg-violet-500',
-              sky: 'bg-sky-500',
-              fuchsia: 'bg-fuchsia-500',
-              slate: 'bg-slate-500',
-              gray: 'bg-gray-500',
-            };
-            const gradient = colorMap[module.color] || colorMap.amber;
-
-            return (
-              <Link
-                key={module.title}
-                to={module.href}
-                className="group p-4 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-lg transition-all duration-200 bg-white"
-              >
-                <div className={`w-12 h-12 rounded-xl ${gradient} flex items-center justify-center text-white mb-3 group-hover:scale-110 transition-transform`}>
-                  {module.icon}
+          {filteredModules.map((module) => (
+            <Link
+              key={module.title}
+              to={module.href}
+              className="group p-4 rounded-[var(--r-lg)] border border-hairline hover:border-strong hover:shadow-[var(--e2)] transition-all duration-200 bg-surface"
+            >
+              <div className="w-12 h-12 rounded-[var(--r-md)] bg-brand-soft text-brand flex items-center justify-center mb-3 group-hover:bg-brand group-hover:text-brand-ink transition-colors">
+                {module.icon}
+              </div>
+              <h3 className="font-semibold text-ink group-hover:text-brand transition-colors">{module.title}</h3>
+              <p className="text-xs text-ink-3 mt-1">{module.description}</p>
+              {module.stats && (
+                <div className="flex gap-3 mt-3 pt-3 border-t border-hairline">
+                  {module.stats.map((stat, idx) => (
+                    <div key={idx} className="text-center">
+                      <p className="text-lg font-semibold text-ink-2 tabular-nums">{stat.value}</p>
+                      <p className="text-xs text-ink-4">{stat.label}</p>
+                    </div>
+                  ))}
                 </div>
-                <h3 className="font-semibold text-gray-800 group-hover:text-slate-800 transition-colors">{module.title}</h3>
-                <p className="text-xs text-gray-500 mt-1">{module.description}</p>
-                {module.stats && (
-                  <div className="flex gap-3 mt-3 pt-3 border-t border-gray-100">
-                    {module.stats.map((stat, idx) => (
-                      <div key={idx} className="text-center">
-                        <p className="text-lg font-bold text-gray-700">{stat.value}</p>
-                        <p className="text-xs text-gray-400">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-3 flex items-center justify-between text-xs text-gray-400 group-hover:text-slate-700 transition-colors">
-                  <span>Open</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </div>
-              </Link>
-            );
-          })}
+              )}
+              <div className="mt-3 flex items-center justify-between text-xs text-ink-4 group-hover:text-brand transition-colors">
+                <span>Open</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+          ))}
         </div>
 
         {filteredModules.length === 0 && (
-          <div className="text-center py-12">
-            <Search className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <p className="text-gray-500 font-medium">No modules found</p>
-            <p className="text-sm text-gray-400">Try adjusting your search or filter</p>
-          </div>
+          <EmptyState
+            icon={<Search />}
+            title="No modules found"
+            description="Try adjusting your search or filter"
+          />
         )}
       </div>
 
       {/* Footer Info */}
-      <div className="mt-6 text-center text-xs text-gray-400">
+      <div className="mt-6 text-center text-xs text-ink-4">
         <p>
           Admin Tool • {filteredModules.length} Modules Available
           {overview?.fetchedAt

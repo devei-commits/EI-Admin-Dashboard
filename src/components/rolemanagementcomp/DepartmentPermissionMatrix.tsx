@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { ModulePermission, SubModulePermission } from './types/permissions.types';
+import { Tabs } from '../ui';
 
 type ActionKey = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
 
@@ -241,10 +242,10 @@ const TriStateCheckbox: React.FC<{
    disabled={disabled}
    title={title}
    className={`w-4 h-4 rounded border-2 transition-all cursor-pointer
-    ${checked ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-gray-300'}
-    ${state === 'partial' ? 'border-amber-400' : ''}
-    ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-amber-400'}
-    focus:ring-2 focus:ring-slate-800 focus:ring-offset-1`}
+    ${checked ? 'bg-ink border-slate-800 text-white' : 'bg-surface border-border'}
+    ${state === 'partial' ? 'border-warn' : ''}
+    ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-warn'}
+    focus:ring-2 focus:ring-border focus:ring-offset-1`}
   />
  );
 };
@@ -346,7 +347,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
 
  if (!modules.length) {
   return (
-   <div className="p-6 text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-lg">
+   <div className="p-6 text-sm text-ink-3 bg-surface-2 border border-hairline rounded-lg">
     No modules available for this role level.
    </div>
   );
@@ -355,28 +356,12 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
  return (
   <div className="w-full">
    {/* Module tab strip */}
-   <div className="border-b border-gray-200 mb-4 overflow-x-auto">
-    <nav className="flex gap-1 min-w-max" role="tablist">
-     {modules.map((m) => {
-      const isActive = m.moduleId === activeModuleIdSafe;
-      return (
-       <button
-        key={m.moduleId}
-        type="button"
-        role="tab"
-        aria-selected={isActive}
-        onClick={() => setActiveModuleId(m.moduleId)}
-        className={`px-3 py-2 text-xs sm:text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-         isActive
-          ? 'border-slate-800 text-slate-800'
-          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-        }`}
-       >
-        {m.moduleName}
-       </button>
-      );
-     })}
-    </nav>
+   <div className="mb-4 overflow-x-auto">
+    <Tabs
+     tabs={modules.map((m) => ({ key: m.moduleId, label: m.moduleName }))}
+     value={activeModuleIdSafe}
+     onChange={setActiveModuleId}
+    />
    </div>
 
    {/* Active module description */}
@@ -385,22 +370,22 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
     return active ? (
      <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
-       <h3 className="text-sm font-semibold text-gray-800">{active.moduleName}</h3>
-       <p className="text-xs text-gray-500">{active.description}</p>
+       <h3 className="text-sm font-semibold text-ink">{active.moduleName}</h3>
+       <p className="text-xs text-ink-3">{active.description}</p>
       </div>
       {!readOnly && (
        <div className="flex flex-wrap items-center gap-2">
         <button
          type="button"
          onClick={() => handleApplyActiveModuleToAll('full', true)}
-         className="px-3 py-1.5 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100"
+         className="px-3 py-1.5 text-xs bg-ok-soft text-ok border border-ok rounded-lg hover:bg-ok-soft"
         >
          Grant all actions to every department
         </button>
         <button
          type="button"
          onClick={() => handleApplyActiveModuleToAll('full', false)}
-         className="px-3 py-1.5 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100"
+         className="px-3 py-1.5 text-xs bg-err-soft text-err border border-err rounded-lg hover:bg-err-soft"
         >
          Revoke this module for every department
         </button>
@@ -411,35 +396,35 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
    })()}
 
    {/* Department × Action table */}
-   <div className="overflow-x-auto border border-gray-200 rounded-lg">
+   <div className="overflow-auto max-h-[70vh] border border-border rounded-lg">
     <table className="w-full text-sm">
-     <thead className="bg-gray-50">
-      <tr>
+     <thead className="sticky top-0 z-20 bg-surface-2">
+      <tr className="[&_th]:bg-surface-2">
        {showInclude && (
-        <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-12">Include</th>
+        <th scope="col" className="px-3 py-2 text-left text-[11px] font-semibold text-ink-3 uppercase tracking-wider w-12">Include</th>
        )}
        {showDepartmentColumn && (
-        <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Department</th>
+        <th scope="col" className="px-3 py-2 text-left text-[11px] font-semibold text-ink-3 uppercase tracking-wider">Department</th>
        )}
        {ACTION_KEYS.map((a) => (
-        <th
+        <th scope="col"
          key={a}
-         className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-20"
+         className="px-3 py-2 text-center text-[11px] font-semibold text-ink-3 uppercase tracking-wider w-20"
         >
          {ACTION_LABELS[a]}
         </th>
        ))}
-       <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-28">
+       <th scope="col" className="px-3 py-2 text-center text-[11px] font-semibold text-ink-3 uppercase tracking-wider w-28">
         Full (this module)
        </th>
        {!readOnly && (
-        <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-32">
+        <th scope="col" className="px-3 py-2 text-center text-[11px] font-semibold text-ink-3 uppercase tracking-wider w-32">
          Full (all modules)
         </th>
        )}
       </tr>
      </thead>
-     <tbody className="divide-y divide-gray-100 bg-white">
+     <tbody className="divide-y divide-hairline bg-surface">
       {departments.map((dept) => {
        const included = isDeptIncluded(dept);
        const deptTree = permissionsByDept[dept];
@@ -457,7 +442,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
        return (
         <React.Fragment key={dept}>
          <tr
-          className={`transition-colors ${rowMuted ? 'bg-gray-50/60 text-gray-400' : 'hover:bg-gray-50/50'}`}
+          className={`transition-colors ${rowMuted ? 'bg-surface-2/60 text-ink-4' : 'hover:bg-surface-2/50'}`}
          >
          {showInclude && (
           <td className="px-3 py-2">
@@ -466,7 +451,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
             checked={included}
             onChange={(e) => onIncludeChange?.(dept, e.target.checked)}
             disabled={readOnly}
-            className="w-4 h-4 rounded border-2 border-gray-300"
+            className="w-4 h-4 rounded border-2 border-border"
             aria-label={`Include ${dept} in save`}
            />
           </td>
@@ -502,7 +487,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
             checked={fullAllModules}
             onChange={(e) => handleDeptFullAllModules(dept, e.target.checked)}
             disabled={rowMuted}
-            className="w-4 h-4 rounded border-2 border-gray-300"
+            className="w-4 h-4 rounded border-2 border-border"
             title={`Grant every action on every module for ${dept}`}
             aria-label={`Full access to all modules for ${dept}`}
            />
@@ -510,26 +495,26 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
          )}
          </tr>
          {/* Granular submodule + step controls for active module */}
-         <tr className={rowMuted ? 'bg-gray-50/30' : 'bg-white'}>
-          <td colSpan={spanCols} className="px-3 py-3 border-t border-dashed border-gray-100">
+         <tr className={rowMuted ? 'bg-surface-2/30' : 'bg-surface'}>
+          <td colSpan={spanCols} className="px-3 py-3 border-t border-dashed border-hairline">
            {activeMod ? (
             <div className="space-y-3">
-             <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+             <div className="text-[11px] font-semibold text-ink-3 uppercase tracking-wider">
               Submodule and Step Controls ({activeMod.moduleName}) - {dept}
              </div>
              {activeMod.subModules.map((sub) => (
-              <div key={sub.subModuleId} className="rounded-lg border border-gray-100 p-3">
+              <div key={sub.subModuleId} className="rounded-lg border border-hairline p-3">
                <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-gray-700">{sub.subModuleName}</div>
+                <div className="text-xs font-semibold text-ink-2">{sub.subModuleName}</div>
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
                  {ACTION_KEYS.map((a) => (
-                  <label key={`${sub.subModuleId}-${a}`} className="inline-flex items-center gap-1 text-gray-600">
+                  <label key={`${sub.subModuleId}-${a}`} className="inline-flex items-center gap-1 text-ink-2">
                    <input
                     type="checkbox"
                     checked={!!sub.actions[a]}
                     onChange={(e) => handleSubModuleAction(dept, sub.subModuleId, a, e.target.checked)}
                     disabled={readOnly || rowMuted}
-                    className="w-3.5 h-3.5 rounded border border-gray-300"
+                    className="w-3.5 h-3.5 rounded border border-border"
                    />
                    {ACTION_LABELS[a]}
                   </label>
@@ -539,10 +524,10 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
                {sub.columns.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                  {sub.columns.map((col) => (
-                  <div key={col.columnId} className="flex items-center justify-between rounded bg-gray-50 px-2 py-1.5 text-[11px]">
-                   <span className="text-gray-700 mr-2">{col.columnName}</span>
+                  <div key={col.columnId} className="flex items-center justify-between rounded bg-surface-2 px-2 py-1.5 text-[11px]">
+                   <span className="text-ink-2 mr-2">{col.columnName}</span>
                    <span className="flex items-center gap-2">
-                    <label className="inline-flex items-center gap-1 text-gray-600">
+                    <label className="inline-flex items-center gap-1 text-ink-2">
                      <input
                       type="checkbox"
                       checked={!!col.view}
@@ -550,11 +535,11 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
                        handleColumnToggle(dept, sub.subModuleId, col.columnId, 'view', e.target.checked)
                       }
                       disabled={readOnly || rowMuted}
-                      className="w-3.5 h-3.5 rounded border border-gray-300"
+                      className="w-3.5 h-3.5 rounded border border-border"
                      />
                      View
                     </label>
-                    <label className="inline-flex items-center gap-1 text-gray-600">
+                    <label className="inline-flex items-center gap-1 text-ink-2">
                      <input
                       type="checkbox"
                       checked={!!col.edit}
@@ -562,7 +547,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
                        handleColumnToggle(dept, sub.subModuleId, col.columnId, 'edit', e.target.checked)
                       }
                       disabled={readOnly || rowMuted}
-                      className="w-3.5 h-3.5 rounded border border-gray-300"
+                      className="w-3.5 h-3.5 rounded border border-border"
                      />
                      Edit
                     </label>
@@ -575,7 +560,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
              ))}
             </div>
            ) : (
-            <span className="text-xs text-gray-500">No submodules found for active module.</span>
+            <span className="text-xs text-ink-3">No submodules found for active module.</span>
            )}
           </td>
          </tr>
@@ -587,7 +572,7 @@ const DepartmentPermissionMatrix: React.FC<DepartmentPermissionMatrixProps> = ({
    </div>
 
    {!readOnly && (
-    <p className="mt-2 text-[11px] text-gray-500">
+    <p className="mt-2 text-[11px] text-ink-3">
      Tick a cell to grant that action on <span className="font-medium">{modules.find((m) => m.moduleId === activeModuleIdSafe)?.moduleName ?? 'the module'}</span> for that department.
      "Full (this module)" grants all six actions on the active module; "Full (all modules)" grants everything everywhere for that row.
     </p>

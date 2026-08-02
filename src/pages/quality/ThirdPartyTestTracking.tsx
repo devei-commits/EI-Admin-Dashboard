@@ -40,7 +40,7 @@ const STATUS_OPTIONS: Array<ThirdPartyPoStatus | 'all'> = [
 ];
 
 const FILTER_SELECT_CLASS =
-  'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500';
+  'rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-ink-2 focus:outline-none focus:ring-2 focus:ring-violet-500';
 
 const ThirdPartyTestTracking: React.FC = () => {
   const location = useLocation();
@@ -131,12 +131,12 @@ const ThirdPartyTestTracking: React.FC = () => {
   }, [viewRow, grns]);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-6 sm:p-8">
+    <div className="flex-1 overflow-y-auto bg-surface-2 p-6 sm:p-8">
       <div className="max-w-[96rem] mx-auto space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Quality / Integration</p>
-            <h1 className="text-2xl font-bold text-slate-900 mt-1">3rd-Party Test PO Tracking</h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-3">Quality / Integration</p>
+            <h1 className="text-2xl font-bold text-ink mt-1">3rd-Party Test PO Tracking</h1>
             <p className="text-sm text-violet-900 mt-2 font-medium">
               🧫 3rd-Party Test PO Tracking · {summary.active} active · {summary.inLab} in lab ·{' '}
               {summary.reportsReceived} reports received
@@ -147,15 +147,15 @@ const ThirdPartyTestTracking: React.FC = () => {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="text-xs font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+            className="text-xs font-semibold text-ink-2 hover:text-ink disabled:opacity-50"
           >
             Refresh
           </button>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold text-slate-600">Filter by Status · Lab · Item · Export</p>
+        <div className="rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-surface-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold text-ink-2">Filter by Status · Lab · Item · Export</p>
             <div className="flex flex-wrap items-center gap-2">
               <SearchInput
                 value={filters.search}
@@ -194,7 +194,7 @@ const ThirdPartyTestTracking: React.FC = () => {
                 type="button"
                 onClick={() => exportThirdPartyTrackingCsv(tableRows)}
                 disabled={tableRows.length === 0}
-                className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-ink hover:bg-surface-2 disabled:opacity-50"
               >
                 Export
               </button>
@@ -202,40 +202,40 @@ const ThirdPartyTestTracking: React.FC = () => {
           </div>
 
           {loading ? (
-            <p className="px-4 py-8 text-sm text-slate-500">Loading 3rd-party test POs…</p>
+            <p className="px-4 py-8 text-sm text-ink-3">Loading 3rd-party test POs…</p>
           ) : tableRows.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-slate-500">
+            <p className="px-4 py-8 text-sm text-ink-3">
               No released 3rd-party test POs yet. Release a PO from Quality → Order Management → QC checklist.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-xs min-w-[1100px]">
-                <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-                    <th className="px-3 py-2">PO Date</th>
-                    <th className="px-3 py-2">PO #</th>
-                    <th className="px-3 py-2">Lab Vendor</th>
-                    <th className="px-3 py-2 min-w-[10rem]">Item + Test</th>
-                    <th className="px-3 py-2">Linked QC</th>
-                    <th className="px-3 py-2 text-center">Sample Photo</th>
-                    <th className="px-3 py-2 text-center">Report</th>
-                    <th className="px-3 py-2">Result</th>
-                    <th className="px-3 py-2">PO Status</th>
-                    <th className="px-3 py-2">SLA</th>
-                    <th className="px-3 py-2">Action</th>
+                <thead className="sticky top-0 z-20">
+                  <tr className="text-left text-[10px] uppercase tracking-wide text-ink-3 bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                    <th scope="col" className="px-3 py-2">PO Date</th>
+                    <th scope="col" className="px-3 py-2">PO #</th>
+                    <th scope="col" className="px-3 py-2">Lab Vendor</th>
+                    <th scope="col" className="px-3 py-2 min-w-[10rem]">Item + Test</th>
+                    <th scope="col" className="px-3 py-2">Linked QC</th>
+                    <th scope="col" className="px-3 py-2 text-center">Sample Photo</th>
+                    <th scope="col" className="px-3 py-2 text-center">Report</th>
+                    <th scope="col" className="px-3 py-2">Result</th>
+                    <th scope="col" className="px-3 py-2">PO Status</th>
+                    <th scope="col" className="px-3 py-2">SLA</th>
+                    <th scope="col" className="px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 align-top hover:bg-slate-50/80">
-                      <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{row.poDateDisplay}</td>
+                    <tr key={row.id} className="border-b border-hairline align-top hover:bg-surface-2/80">
+                      <td className="px-3 py-3 text-ink-2 whitespace-nowrap">{row.poDateDisplay}</td>
                       <td className="px-3 py-3 font-mono font-semibold text-violet-800 whitespace-nowrap">
                         {row.poNo}
                       </td>
-                      <td className="px-3 py-3 text-slate-800">{row.labVendorDisplay}</td>
+                      <td className="px-3 py-3 text-ink">{row.labVendorDisplay}</td>
                       <td className="px-3 py-3">
-                        <p className="font-semibold text-slate-900">{row.itemName}</p>
-                        <p className="text-[10px] text-slate-600 mt-0.5">
+                        <p className="font-semibold text-ink">{row.itemName}</p>
+                        <p className="text-[10px] text-ink-2 mt-0.5">
                           {row.testParameter}
                           {row.specLimit ? ` · ${row.specLimit}` : ''}
                         </p>
@@ -243,7 +243,7 @@ const ThirdPartyTestTracking: React.FC = () => {
                       <td className="px-3 py-3 font-mono text-teal-800">{row.qcRef}</td>
                       <td className="px-3 py-3 text-center">
                         {row.samplePhotoOk ? (
-                          <span className="text-emerald-700 font-semibold" title={row.samplePhotoFileName ?? undefined}>
+                          <span className="text-ok font-semibold" title={row.samplePhotoFileName ?? undefined}>
                             ✓
                           </span>
                         ) : (
@@ -259,7 +259,7 @@ const ThirdPartyTestTracking: React.FC = () => {
                       </td>
                       <td className="px-3 py-3 text-center">
                         {row.reportReady ? (
-                          <span className="text-emerald-700 font-semibold" title={row.reportFileName ?? undefined}>
+                          <span className="text-ok font-semibold" title={row.reportFileName ?? undefined}>
                             ✓
                           </span>
                         ) : row.samplePhotoOk ? (
@@ -272,17 +272,17 @@ const ThirdPartyTestTracking: React.FC = () => {
                             +
                           </button>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-ink-4">—</span>
                         )}
                       </td>
                       <td className="px-3 py-3 whitespace-pre-line">
                         <span
                           className={
                             row.resultTone === 'pass'
-                              ? 'text-emerald-700 font-semibold'
+                              ? 'text-ok font-semibold'
                               : row.resultTone === 'fail'
                                 ? 'text-rose-700 font-semibold'
-                                : 'text-slate-500'
+                                : 'text-ink-3'
                           }
                         >
                           {row.resultDisplay}
@@ -304,8 +304,8 @@ const ThirdPartyTestTracking: React.FC = () => {
                             row.slaTone === 'bad'
                               ? 'text-rose-700 font-semibold'
                               : row.slaTone === 'ok'
-                                ? 'text-emerald-700'
-                                : 'text-amber-800'
+                                ? 'text-ok'
+                                : 'text-warn'
                           }
                         >
                           {row.slaDisplay}

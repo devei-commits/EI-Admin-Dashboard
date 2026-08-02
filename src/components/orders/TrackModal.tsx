@@ -57,7 +57,7 @@ function Stepper({ split }: { split: { ffStatus: string; fgLocation?: string | n
             <div
               className={`
                 w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold
-                ${done ? 'bg-emerald-500 text-white' : active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}
+                ${done ? 'bg-ok text-white' : active ? 'bg-brand text-white' : 'bg-surface-3 text-ink-3'}
               `}
             >
               {done && <Check className="w-3.5 h-3.5" />}
@@ -65,10 +65,10 @@ function Stepper({ split }: { split: { ffStatus: string; fgLocation?: string | n
               {!done && !active && idx === 6 && <span className="text-[10px]">?</span>}
             </div>
             <div className="pb-4">
-              <div className={`text-xs font-bold ${done ? 'text-emerald-600' : active ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`text-xs font-bold ${done ? 'text-ok' : active ? 'text-brand' : 'text-ink-4'}`}>
                 {step.key === 'fg_stored' && split.fgLocation ? `FG Stored — ${split.fgLocation}` : step.label}
               </div>
-              <div className="text-[10px] text-gray-500 mt-0.5">
+              <div className="text-[10px] text-ink-3 mt-0.5">
                 {step.key === 'picked' && (split.pickedQty != null) && split.pickedQty > 0 && `${split.pickedQty.toLocaleString('en-IN')} units`}
                 {step.key === 'invoiced' && split.invoiceNo && `${split.invoiceNo} · ${split.dispatchDate ? formatDate(split.dispatchDate) : ''}`}
                 {step.key === 'dispatched' && (split.courier || split.awbNo) && `${split.courier || ''} ${split.awbNo ? `AWB: ${split.awbNo}` : ''} ${split.dispatchDate ? formatDate(split.dispatchDate) : ''}`}
@@ -148,14 +148,14 @@ export const TrackModal: React.FC<TrackModalProps> = ({
     >
       <div className="p-6">
         {allDelivered ? (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex gap-3">
-            <CheckCircle className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-green-700">This order has been fully delivered.</p>
+          <div className="mb-6 p-4 bg-ok-soft border border-[color:var(--st-green-fg)]/30 rounded-lg flex gap-3">
+            <CheckCircle className="h-5 w-5 text-ok shrink-0 mt-0.5" />
+            <p className="text-sm text-ok">This order has been fully delivered.</p>
           </div>
         ) : !hasShipped ? (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex gap-3">
-            <Package className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-yellow-700">
+          <div className="mb-6 p-4 bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg flex gap-3">
+            <Package className="h-5 w-5 text-warn shrink-0 mt-0.5" />
+            <p className="text-sm text-warn">
               This order has not been shipped yet. Complete dispatch first.
             </p>
           </div>
@@ -163,16 +163,16 @@ export const TrackModal: React.FC<TrackModalProps> = ({
 
         <div className="space-y-6">
           {allSplits.filter((s) => ['fg_ready', 'picking', 'invoiced', 'shipped', 'delivered', 'closed'].includes(s.ffStatus)).map((split, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
+            <div key={idx} className="border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-surface-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="font-bold text-gray-800 text-sm">{split.productName}</p>
-                  <p className="text-xs text-gray-500">{split.pack} · {split.bprNo} · {(split.pickedQty ?? split.fgQty ?? 0).toLocaleString('en-IN')} units</p>
+                  <p className="font-bold text-ink text-sm">{split.productName}</p>
+                  <p className="text-xs text-ink-3">{split.pack} · {split.bprNo} · {(split.pickedQty ?? split.fgQty ?? 0).toLocaleString('en-IN')} units</p>
                 </div>
                 {(split.awbNo || split.courier) && (
                   <div className="text-right">
-                    <p className="font-mono text-xs font-bold text-gray-700">AWB: {split.awbNo || '—'}</p>
-                    <p className="text-[10px] text-gray-500">{split.courier}</p>
+                    <p className="font-mono text-xs font-bold text-ink-2">AWB: {split.awbNo || '—'}</p>
+                    <p className="text-[10px] text-ink-3">{split.courier}</p>
                   </div>
                 )}
               </div>
@@ -180,9 +180,9 @@ export const TrackModal: React.FC<TrackModalProps> = ({
                 <Stepper split={split} />
               </div>
               {split.ffStatus === 'shipped' && (
-                <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                  <span className="text-[10px] text-gray-500">
-                    ETA: <b className="text-gray-700">{split.etaDate ? formatDate(split.etaDate) : '—'}</b>
+                <div className="px-4 py-2 bg-surface-3 border-t border-border flex items-center justify-between">
+                  <span className="text-[10px] text-ink-3">
+                    ETA: <b className="text-ink-2">{split.etaDate ? formatDate(split.etaDate) : '—'}</b>
                   </span>
                   <Button size="sm" variant="secondary" onClick={() => handleMarkSplitDelivered(split.bprNo)}>
                     <Check className="w-3.5 h-3.5 mr-1" />
@@ -194,7 +194,7 @@ export const TrackModal: React.FC<TrackModalProps> = ({
           ))}
         </div>
       </div>
-      <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t">
+      <div className="flex justify-end gap-2 p-4 bg-surface-3 border-t">
         <Button variant="ghost" onClick={handleClose}>
           Close
         </Button>

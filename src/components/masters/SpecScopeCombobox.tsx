@@ -13,9 +13,9 @@ export type SpecScopeComboboxProps = {
 };
 
 const ACCENTS: Record<NonNullable<SpecScopeComboboxProps['accent']>, { active: string; ring: string }> = {
-  slate: { active: 'bg-slate-100 text-slate-900', ring: 'focus:border-slate-800 focus:ring-slate-800/30' },
-  emerald: { active: 'bg-emerald-50 text-emerald-900', ring: 'focus:border-emerald-500 focus:ring-emerald-500/25' },
-  indigo: { active: 'bg-indigo-50 text-indigo-900', ring: 'focus:border-indigo-500 focus:ring-indigo-500/25' },
+  slate: { active: 'bg-surface-3 text-ink', ring: 'focus:border-brand focus:ring-[color:var(--ring)]' },
+  emerald: { active: 'bg-ok-soft text-ok', ring: 'focus:border-[color:var(--st-green-fg)] focus:ring-[color:var(--st-green-fg)]/25' },
+  indigo: { active: 'bg-brand-soft text-brand', ring: 'focus:border-brand focus:ring-[color:var(--ring)]/25' },
 };
 
 /**
@@ -85,7 +85,7 @@ export function SpecScopeCombobox({
           role="combobox"
           aria-expanded={open}
           autoComplete="off"
-          className={`w-full rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 placeholder:text-gray-400 transition-shadow focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 ${theme.ring}`}
+          className={`w-full rounded-lg border border-border bg-surface py-2 pl-3 pr-8 text-sm text-ink placeholder:text-ink-4 transition-shadow focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-ink-4 ${theme.ring}`}
           value={value}
           disabled={disabled}
           placeholder={placeholder}
@@ -102,7 +102,7 @@ export function SpecScopeCombobox({
           tabIndex={-1}
           disabled={disabled}
           onClick={() => !disabled && setOpen((v) => !v)}
-          className="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+          className="absolute inset-y-0 right-0 flex items-center pr-2 text-ink-4 hover:text-ink-3 disabled:opacity-40"
           aria-label="Toggle options"
         >
           <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -112,10 +112,10 @@ export function SpecScopeCombobox({
       {open && !disabled && (
         <ul
           role="listbox"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface py-1 shadow-lg ring-1 ring-black/5"
         >
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-xs italic text-gray-400">
+            <li className="px-3 py-2 text-xs italic text-ink-4">
               No matches — press Enter to keep “{value.trim()}”.
             </li>
           ) : (
@@ -133,7 +133,7 @@ export function SpecScopeCombobox({
                   }}
                   onMouseEnter={() => setHighlight(i)}
                   className={`flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${
-                    active ? theme.active : 'text-gray-700'
+                    active ? theme.active : 'text-ink-2'
                   }`}
                 >
                   <span>{opt}</span>

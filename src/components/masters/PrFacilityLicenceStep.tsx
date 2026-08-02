@@ -15,22 +15,22 @@ type PrFacilityLicenceStepProps = {
 function statusBadgeClass(status: PrFacilityLicenceRecord['licenceStatus']): string {
   switch (status) {
     case 'active':
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      return 'bg-ok-soft text-ok border-[color:var(--st-green-fg)]/30';
     case 'expired':
-      return 'bg-red-50 text-red-800 border-red-200';
+      return 'bg-err-soft text-err border-[color:var(--st-red-fg)]/30';
     case 'suspended':
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-warn-soft text-warn border-[color:var(--st-amber-fg)]/30';
     case 'pending':
-      return 'bg-sky-50 text-sky-800 border-sky-200';
+      return 'bg-brand-soft text-brand border-brand-soft';
     default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+      return 'bg-surface-3 text-ink-3 border-border';
   }
 }
 
 function clearanceBannerClass(status: ReturnType<typeof evaluatePrFacilityLicenceClearance>['status']): string {
-  if (status === 'cleared') return 'bg-emerald-50 border-emerald-200 text-emerald-900';
-  if (status === 'blocked') return 'bg-red-50 border-red-200 text-red-900';
-  return 'bg-amber-50 border-amber-200 text-amber-900';
+  if (status === 'cleared') return 'bg-ok-soft border-[color:var(--st-green-fg)]/30 text-ok';
+  if (status === 'blocked') return 'bg-err-soft border-[color:var(--st-red-fg)]/30 text-err';
+  return 'bg-warn-soft border-[color:var(--st-amber-fg)]/30 text-warn';
 }
 
 function formatDisplayDate(iso: string): string {
@@ -55,8 +55,8 @@ export function PrFacilityLicenceStep({
   return (
     <div className="min-w-0 space-y-5">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">PR Licence Status — per Facility</h3>
-        <p className="text-xs text-slate-500 mt-1">
+        <h3 className="text-sm font-semibold text-ink">PR Licence Status — per Facility</h3>
+        <p className="text-xs text-ink-3 mt-1">
           Edit ML1 / ML2 licence info here · Production module reads this in real time to gate batch start
           {productLabel ? ` for ${productLabel}` : ''}.
         </p>
@@ -90,18 +90,18 @@ export function PrFacilityLicenceStep({
           return (
             <section
               key={record.facilityCode}
-              className="border border-slate-200 rounded-lg bg-white overflow-hidden"
+              className="border border-border rounded-lg bg-surface overflow-hidden"
               aria-labelledby={`pr-licence-${record.facilityCode}-title`}
             >
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-surface-3 border-b border-border">
                 <div>
-                  <h4 id={`pr-licence-${record.facilityCode}-title`} className="text-sm font-semibold text-slate-900">
+                  <h4 id={`pr-licence-${record.facilityCode}-title`} className="text-sm font-semibold text-ink">
                     <span aria-hidden="true" className="mr-1">
                       🏭
                     </span>
                     {record.facilityCode}
                   </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">{record.facilityLabel || '—'}</p>
+                  <p className="text-xs text-ink-3 mt-0.5">{record.facilityLabel || '—'}</p>
                 </div>
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeClass(record.licenceStatus)}`}
@@ -114,7 +114,7 @@ export function PrFacilityLicenceStep({
                 <div className="sm:col-span-2">
                   <label
                     htmlFor={`facility-label-${record.facilityCode}`}
-                    className="block text-xs font-semibold text-slate-700 mb-1"
+                    className="block text-xs font-semibold text-ink-2 mb-1"
                   >
                     Facility label
                   </label>
@@ -123,13 +123,13 @@ export function PrFacilityLicenceStep({
                     type="text"
                     value={record.facilityLabel}
                     onChange={(e) => updateRecord(record.facilityCode, { facilityLabel: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     placeholder="e.g. Hyderabad ML1 · Plot 24"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor={`applicable-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`applicable-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Applicable?
                   </label>
                   <select
@@ -140,7 +140,7 @@ export function PrFacilityLicenceStep({
                         applicable: e.target.value as PrFacilityLicenceRecord['applicable'],
                       })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   >
                     <option value="">Select…</option>
                     <option value="yes">Yes — produced at {record.facilityCode}</option>
@@ -149,7 +149,7 @@ export function PrFacilityLicenceStep({
                 </div>
 
                 <div>
-                  <label htmlFor={`licence-status-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`licence-status-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Licence Status
                   </label>
                   <select
@@ -160,7 +160,7 @@ export function PrFacilityLicenceStep({
                         licenceStatus: e.target.value as PrFacilityLicenceRecord['licenceStatus'],
                       })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   >
                     <option value="">Select status…</option>
                     {PR_FACILITY_LICENCE_STATUS_OPTIONS.map((opt) => (
@@ -172,7 +172,7 @@ export function PrFacilityLicenceStep({
                 </div>
 
                 <div>
-                  <label htmlFor={`licence-type-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`licence-type-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Licence Type
                   </label>
                   <select
@@ -184,7 +184,7 @@ export function PrFacilityLicenceStep({
                         licenceType: v === 'Other' ? 'Other' : v,
                       });
                     }}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   >
                     <option value="">Select type…</option>
                     {PR_FACILITY_LICENCE_TYPE_OPTIONS.map((opt) => (
@@ -198,7 +198,7 @@ export function PrFacilityLicenceStep({
                       type="text"
                       value={record.licenceType === 'Other' ? '' : record.licenceType}
                       onChange={(e) => updateRecord(record.facilityCode, { licenceType: e.target.value })}
-                      className="mt-2 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="mt-2 w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                       placeholder="Custom licence type"
                       aria-label={`Custom licence type for ${record.facilityCode}`}
                     />
@@ -206,7 +206,7 @@ export function PrFacilityLicenceStep({
                 </div>
 
                 <div>
-                  <label htmlFor={`licence-number-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`licence-number-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Licence Number
                   </label>
                   <input
@@ -214,13 +214,13 @@ export function PrFacilityLicenceStep({
                     type="text"
                     value={record.licenceNumber}
                     onChange={(e) => updateRecord(record.facilityCode, { licenceNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     placeholder="e.g. TS-COS-2023-00214"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor={`issued-on-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`issued-on-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Issued On
                   </label>
                   <input
@@ -228,15 +228,15 @@ export function PrFacilityLicenceStep({
                     type="date"
                     value={record.issuedOn}
                     onChange={(e) => updateRecord(record.facilityCode, { issuedOn: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   />
                   {record.issuedOn ? (
-                    <p className="text-xs text-slate-500 mt-1">{formatDisplayDate(record.issuedOn)}</p>
+                    <p className="text-xs text-ink-3 mt-1">{formatDisplayDate(record.issuedOn)}</p>
                   ) : null}
                 </div>
 
                 <div>
-                  <label htmlFor={`valid-till-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`valid-till-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Valid Till
                   </label>
                   <input
@@ -244,15 +244,15 @@ export function PrFacilityLicenceStep({
                     type="date"
                     value={record.validTill}
                     onChange={(e) => updateRecord(record.facilityCode, { validTill: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                   />
                   {record.validTill ? (
-                    <p className="text-xs text-slate-500 mt-1">{formatDisplayDate(record.validTill)}</p>
+                    <p className="text-xs text-ink-3 mt-1">{formatDisplayDate(record.validTill)}</p>
                   ) : null}
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label htmlFor={`remarks-${record.facilityCode}`} className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor={`remarks-${record.facilityCode}`} className="block text-xs font-semibold text-ink-2 mb-1">
                     Remarks
                   </label>
                   <textarea
@@ -260,7 +260,7 @@ export function PrFacilityLicenceStep({
                     value={record.remarks}
                     onChange={(e) => updateRecord(record.facilityCode, { remarks: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     placeholder="Notes for production / regulatory"
                   />
                 </div>

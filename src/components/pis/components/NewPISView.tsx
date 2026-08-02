@@ -5,6 +5,7 @@ import { UserPlus, FileText, Eye, Plus } from 'lucide-react';
 import { usePIS } from '../context/PISContext';
 import { PISRecord } from '../types/pis';
 import { getRolePermissions } from '../utils/permissions';
+import { EmptyState } from '../../ui/EmptyState';
 
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -138,7 +139,7 @@ export function NewPISView() {
      </p>
     </div>
     <Card className="p-6">
-     <p className="text-gray-600">
+     <p className="text-ink-2">
       Please contact your administrator if you need access to create PIS records.
      </p>
     </Card>
@@ -860,9 +861,9 @@ export function NewPISView() {
 
     {unassignedClientPIS.length === 0 ? (
      <Card className="p-8 text-center">
-      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+      <FileText className="h-12 w-12 mx-auto mb-4 text-ink-4" />
       <h3 className="text-lg font-medium mb-2">No Unassigned Requests</h3>
-      <p className="text-gray-600 mb-4">
+      <p className="text-ink-2 mb-4">
        There are currently no PIS records requested by clients that need assignment.
       </p>
       <Button onClick={() => setShowCreateForm(true)} variant="outline" className="gap-2">
@@ -880,11 +881,11 @@ export function NewPISView() {
        {unassignedClientPIS.map((pis) => (
         <div
          key={pis.id}
-         className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+         className="flex items-center justify-between p-4 border rounded-lg hover:bg-surface-2 transition-colors"
         >
          <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
-           <h4 className="font-medium text-blue-600 hover:underline cursor-pointer" onClick={() => handleViewDetails(pis)}>
+           <h4 className="font-medium text-brand hover:underline cursor-pointer" onClick={() => handleViewDetails(pis)}>
             {pis.pisCode}
            </h4>
            <Badge variant="outline">{pis.stage}</Badge>
@@ -892,14 +893,14 @@ export function NewPISView() {
             {pis.status}
            </Badge>
           </div>
-          <p className="text-sm text-gray-700 mb-1">
+          <p className="text-sm text-ink-2 mb-1">
            <span className="font-medium">Formulation:</span> {pis.formulation}
           </p>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-2">
            <span className="font-medium">Customer:</span> {pis.customer}
           </p>
           {(pis as any).createdBy && (
-           <p className="text-xs text-gray-500 mt-1">
+           <p className="text-xs text-ink-3 mt-1">
             Requested by: {(pis as any).createdBy.firstName} {(pis as any).createdBy.lastName} ({(pis as any).createdBy.email})
            </p>
           )}
@@ -936,9 +937,12 @@ export function NewPISView() {
        <DialogTitle>Assign to BD Staff</DialogTitle>
       </DialogHeader>
       {bdStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active BD Staff users found. Please create or activate BD Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserPlus />}
+        title="No active BD Staff users"
+        description="Please create or activate BD Staff users first."
+       />
       ) : (
        <div className="space-y-4 mt-2">
         <div className="space-y-2">
@@ -971,10 +975,10 @@ export function NewPISView() {
          </Select>
         </div>
         {assignTargetPis && (
-         <div className="p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600 mb-1">Assigning PIS:</p>
+         <div className="p-3 bg-surface-2 rounded-lg">
+          <p className="text-sm text-ink-2 mb-1">Assigning PIS:</p>
           <p className="font-medium">{assignTargetPis.pisCode}</p>
-          <p className="text-sm text-gray-600">{assignTargetPis.formulation}</p>
+          <p className="text-sm text-ink-2">{assignTargetPis.formulation}</p>
          </div>
         )}
         <div className="flex justify-end gap-2 pt-4">

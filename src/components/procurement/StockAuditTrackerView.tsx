@@ -4,6 +4,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Search, PackageSearch } from 'lucide-react';
+import { Package } from '@phosphor-icons/react';
 import type { ProcurementRequest } from '../../types/procurement.types';
 import type { InventoryAuditLine } from '../../lib/inventoryAuditLines';
 import { buildInventoryAuditLines } from '../../lib/inventoryAuditLines';
@@ -13,6 +14,7 @@ import {
   type AuditStatus,
 } from '../../constants/procurement';
 import { auditSlaLevel } from '../../lib/procurementSla';
+import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -94,91 +96,80 @@ export const StockAuditTrackerView: React.FC<StockAuditTrackerViewProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
-        <div className="text-xs text-slate-600">
-          📦 <b className="text-slate-800">Stock Audit Tracker</b> · {auditLines.length} audits · {requested} requested · {awaiting} awaiting reconciliation
-        </div>
-      </div>
+      <ProcSectionHeader
+        icon={<Package className="w-4 h-4 shrink-0" />}
+        title="Stock Audit Tracker"
+        stats={[
+          { value: auditLines.length, label: 'audits' },
+          { value: requested, label: 'requested', tone: 'brand' },
+          { value: awaiting, label: 'awaiting reconciliation', tone: 'warn' },
+        ]}
+      />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search audit ID, item, PR, warehouse…"
-            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+      <ProcFilterBar>
+        <ProcSearch value={search} onChange={setSearch} placeholder="Search audit ID, item, PR, warehouse…" />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className={procSelectClass}>
           <option value="all">All Statuses</option>
           <option value="requested">Requested</option>
           <option value="audited">Audited</option>
           <option value="updated">Updated</option>
           <option value="terminated">Terminated</option>
         </select>
-        <select value={whFilter} onChange={(e) => setWhFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+        <select value={whFilter} onChange={(e) => setWhFilter(e.target.value)} aria-label="Filter by warehouse" className={procSelectClass}>
           <option value="all">All Warehouses</option>
           {warehouses.map((w) => <option key={w} value={w}>{w}</option>)}
         </select>
-      </div>
+      </ProcFilterBar>
 
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-400 text-sm">
-          <PackageSearch size={30} className="mx-auto mb-2 opacity-30" />
-          No stock audits yet — raise one from a PR row's 📦 Audit action.
-        </div>
+        <ProcEmpty icon={<PackageSearch size={30} />}>
+          No stock audits yet — raise one from a PR row&apos;s <Package className="inline w-3 h-3 align-[-1px]" /> Audit action.
+        </ProcEmpty>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                {['Req Date', 'Audit ID', 'Item', 'WH Location', 'SIH (system)', 'Status', 'Linked PR', 'SLA'].map((h) => (
-                  <th key={h} className={`px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap ${h === 'SIH (system)' ? 'text-center' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+        <ProcTableCard>
+            <ProcThead cols={['Req Date', 'Audit ID', 'Item', 'WH Location', { label: 'SIH (system)', align: 'center' }, 'Status', 'Linked PR', 'SLA']} />
+            <tbody className="divide-y divide-hairline">
               {rows.map(({ line, pr, status, reqDate, daysOpen }) => {
                 const slaLevel = auditSlaLevel(daysOpen);
                 return (
                   <tr
                     key={line.lineKey}
-                    className="hover:bg-blue-50/30 transition-colors cursor-pointer"
+                    className="hover:bg-brand-soft transition-colors cursor-pointer"
                     onClick={() => onOpenAudit(line)}
                   >
-                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-slate-700">{fmtDate(reqDate)}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-blue-700 hover:underline">{line.auditRef}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(reqDate)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-brand hover:underline">{line.auditRef}</td>
                     <td className="px-3 py-2.5 max-w-[170px]">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={line.itemName}>{line.itemName}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{line.itemCode}</p>
+                      <p className="text-xs font-semibold text-ink truncate" title={line.itemName}>{line.itemName}</p>
+                      <p className="text-[10px] text-ink-4 font-mono">{line.itemCode}</p>
                     </td>
-                    <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-slate-700 truncate" title={line.location}>{line.location}</p></td>
-                    <td className="px-3 py-2.5 text-center tabular-nums text-xs text-slate-700">{line.systemQty != null ? line.systemQty.toLocaleString('en-IN') : '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-ink-2 truncate" title={line.location}>{line.location}</p></td>
+                    <td className="px-3 py-2.5 text-center tabular-nums text-xs text-ink-2">{line.systemQty != null ? line.systemQty.toLocaleString('en-IN') : '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap"><StatusPill status={status} /></td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {pr ? (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); onOpenPr(pr); }}
-                          className="font-mono text-[11px] font-semibold text-blue-600 hover:underline decoration-dotted"
+                          className="font-mono text-[11px] font-semibold text-brand hover:underline decoration-dotted"
                         >
                           {line.requestCode}
                         </button>
                       ) : (
-                        <span className="font-mono text-[11px] text-slate-500">{line.requestCode}</span>
+                        <span className="font-mono text-[11px] text-ink-3">{line.requestCode}</span>
                       )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className={`text-[11px] font-mono ${SLA_LEVEL_CLASSES[slaLevel]}`}>
                         {SLA_LEVEL_PREFIX[slaLevel]} {daysOpen}d open
                       </span>
-                      <span className="text-[9.5px] text-slate-400 ml-1">/ {SLA_DEFAULTS.auditDays}d</span>
+                      <span className="text-[9.5px] text-ink-4 ml-1">/ {SLA_DEFAULTS.auditDays}d</span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
-        </div>
+        </ProcTableCard>
       )}
     </div>
   );

@@ -52,24 +52,24 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
  const displayColumns = columns.length > 0 ? columns : defaultColumns;
 
  return (
-  <div className="border border-gray-300 rounded-lg p-4 mb-4">
-   <h3 className="font-semibold text-gray-800 mb-4 capitalize">{itemLabel} Manager</h3>
+  <div className="border border-border rounded-lg p-4 mb-4">
+   <h3 className="font-semibold text-ink mb-4 capitalize">{itemLabel} Manager</h3>
 
    {/* Input Fields */}
-   <div className="bg-gray-50 p-4 rounded-lg mb-4">
+   <div className="bg-surface-3 p-4 rounded-lg mb-4">
     <div className="grid grid-cols-2 gap-4 mb-4">
      {displayColumns.map(col => (
       <div key={col.key}>
-      <label htmlFor={`${itemType}-${col.key}`} className="block text-xs font-medium text-gray-600 mb-1">
+      <label htmlFor={`${itemType}-${col.key}`} className="block text-xs font-medium text-ink-3 mb-1">
         {col.label}
-        {col.required ? <span className="text-red-600 ml-0.5" aria-hidden>*</span> : null}
+        {col.required ? <span className="text-err ml-0.5" aria-hidden>*</span> : null}
        </label>
        {col.type === 'select' && col.options ? (
         <select
          id={`${itemType}-${col.key}`}
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
-         className="w-full p-2 border border-gray-300 rounded text-sm"
+         className="w-full p-2 border border-border rounded text-sm"
         >
          <option value="">Select {col.label}</option>
          {col.options.map(opt => (
@@ -82,7 +82,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
          type="date"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
-         className="w-full p-2 border border-gray-300 rounded text-sm"
+         className="w-full p-2 border border-border rounded text-sm"
         />
        ) : col.type === 'number' ? (
         <input
@@ -90,7 +90,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
          type="number"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
-         className="w-full p-2 border border-gray-300 rounded text-sm"
+         className="w-full p-2 border border-border rounded text-sm"
          placeholder="0"
         />
        ) : (
@@ -99,12 +99,12 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
          type="text"
          value={tempFields[col.key] || ''}
          onChange={(e) => onTempFieldChange(col.key, e.target.value)}
-         className="w-full p-2 border border-gray-300 rounded text-sm"
+         className="w-full p-2 border border-border rounded text-sm"
          placeholder={`Enter ${col.label.toLowerCase()}`}
         />
        )}
        {errors[col.key] && (
-        <p className="text-red-500 text-xs mt-1">{errors[col.key]}</p>
+        <p className="text-err text-xs mt-1">{errors[col.key]}</p>
        )}
       </div>
      ))}
@@ -112,7 +112,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
 
     <button
      onClick={onAdd}
-     className="w-full py-2 px-4 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition font-medium"
+     className="w-full py-2 px-4 bg-brand text-white rounded text-sm hover:bg-brand-press transition font-medium"
     >
      + Add {itemLabel}
     </button>
@@ -120,32 +120,32 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
 
    {/* Items List */}
    {items.length > 0 && (
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[70vh]">
      <table className="w-full text-sm">
-      <thead>
-       <tr className="bg-gray-100 border-b border-gray-300">
+      <thead className="sticky top-0 z-20">
+       <tr className="[&_th]:bg-surface-3 bg-surface-3 border-b border-border">
         {displayColumns.map(col => (
-         <th key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-gray-700 capitalize">
+         <th scope="col" key={col.key} className="px-3 py-2 text-left text-xs font-semibold text-ink-2 capitalize">
           {col.label}
          </th>
         ))}
-        <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 w-12">
+        <th scope="col" className="px-3 py-2 text-center text-xs font-semibold text-ink-2 w-12">
          Action
         </th>
        </tr>
       </thead>
       <tbody>
        {items.map((item, idx) => (
-        <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50 transition">
+        <tr key={idx} className="border-b border-border hover:bg-surface-3 transition">
          {displayColumns.map(col => (
-          <td key={col.key} className="px-3 py-2 text-gray-700">
+          <td key={col.key} className="px-3 py-2 text-ink-2">
            {typeof item[col.key] === 'object' ? JSON.stringify(item[col.key]) : String(item[col.key] || '-')}
           </td>
          ))}
          <td className="px-3 py-2 text-center">
           <button
            onClick={() => onRemove(idx)}
-           className="text-red-600 hover:text-red-800 font-medium text-xs hover:underline"
+           className="text-err hover:brightness-90 font-medium text-xs hover:underline"
           >
            Remove
           </button>
@@ -158,7 +158,7 @@ const ArrayItemManager: React.FC<ArrayItemManagerProps> = ({
    )}
 
    {items.length === 0 && (
-    <p className="text-gray-500 text-sm text-center py-4">
+    <p className="text-ink-3 text-sm text-center py-4">
      No {itemLabel}s added yet
     </p>
    )}

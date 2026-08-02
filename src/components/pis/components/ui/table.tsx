@@ -8,7 +8,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
  return (
   <div
    data-slot="table-container"
-   className="relative w-full overflow-x-auto rounded-xl border border-gray-100 shadow-sm"
+   className="relative w-full overflow-auto max-h-[70vh] rounded-xl border border-hairline shadow-sm"
   >
    <table
     data-slot="table"
@@ -23,7 +23,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
  return (
   <thead
    data-slot="table-header"
-   className={cn("bg-gray-50/80 [&_tr]:border-b [&_tr]:border-gray-100", className)}
+   className={cn("sticky top-0 z-20 bg-surface-2/80 [&_tr]:bg-surface-2 [&_th]:bg-surface-2 [&_tr]:border-b [&_tr]:border-hairline", className)}
    {...props}
   />
  );
@@ -57,7 +57,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   <tr
    data-slot="table-row"
    className={cn(
-    "hover:bg-gray-50/50 data-[state=selected]:bg-gray-50 border-b border-gray-100 transition-colors duration-150",
+    "hover:bg-surface-2/50 data-[state=selected]:bg-surface-2 border-b border-hairline transition-colors duration-150",
     className,
    )}
    {...props}
@@ -67,10 +67,10 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
  return (
-  <th
+  <th scope="col"
    data-slot="table-head"
    className={cn(
-    "text-gray-600 h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wider whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+    "text-ink-2 h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wider whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
     className,
    )}
    {...props}
@@ -83,7 +83,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   <td
    data-slot="table-cell"
    className={cn(
-    "p-4 align-middle text-gray-700 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+    "p-4 align-middle text-ink-2 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
     className,
    )}
    {...props}

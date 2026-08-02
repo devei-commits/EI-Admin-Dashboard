@@ -35,10 +35,10 @@ export const GrnReceiptStepper: React.FC<GrnReceiptStepperProps> = ({ currentSte
               className={[
                 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
                 done
-                  ? 'bg-emerald-600 text-white'
+                  ? 'bg-ok text-white'
                   : active
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-400',
+                    ? 'bg-ink text-white'
+                    : 'bg-surface-3 text-ink-4',
               ].join(' ')}
             >
               {done ? <Check className="h-3.5 w-3.5" /> : step}
@@ -46,13 +46,13 @@ export const GrnReceiptStepper: React.FC<GrnReceiptStepperProps> = ({ currentSte
             <span
               className={[
                 'text-xs whitespace-nowrap',
-                active ? 'font-semibold text-slate-900' : done ? 'text-slate-600' : 'text-slate-400',
+                active ? 'font-semibold text-ink' : done ? 'text-ink-2' : 'text-ink-4',
               ].join(' ')}
             >
               {label}
             </span>
             {step < GRN_FLOW_STEPS.length ? (
-              <span className="mx-0.5 hidden h-px w-4 bg-slate-200 sm:block" aria-hidden />
+              <span className="mx-0.5 hidden h-px w-4 bg-border sm:block" aria-hidden />
             ) : null}
           </li>
         );

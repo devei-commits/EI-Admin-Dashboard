@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, DollarSign, Loader2 } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedInput as Input, UnifiedSelect as Select, UnifiedButton as Button } from '../ui/UnifiedComponents';
+import { CardSkeleton } from '../ui/Skeleton';
 import type { InvoiceModalProps, OrderItem } from '../../types/orderFulfillment';
 import { formatNumber, getTodayISO } from '../../utils/orderFulfillmentUtils';
 import {
@@ -206,16 +207,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     <Modal isOpen={isOpen} onClose={handleClose} title={`Create Invoice for SO: ${saleOrder.soNo}`} size="xl">
       <div className="p-6">
         {loadingData ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="animate-spin text-orange-500 mr-3" size={20} />
-            <span className="text-gray-500 text-sm">Loading invoice data...</span>
-          </div>
+          <CardSkeleton />
         ) : (
           <>
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mb-6 p-4 bg-brand-soft border border-brand-soft rounded-lg">
               <div className="flex gap-3">
-                <DollarSign className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-700">
+                <DollarSign className="h-5 w-5 text-brand shrink-0 mt-0.5" />
+                <p className="text-sm text-brand">
                   Generate an invoice for the picked items. When Zoho Books is enabled, the server saves the invoice
                   and syncs it to Zoho in one step — if Zoho fails, nothing is committed.
                 </p>
@@ -225,8 +223,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <form ref={formRef} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4" onSubmit={(e) => e.preventDefault()}>
               <div className="space-y-4">
                 <div>
-                  <span className="mb-1.5 block text-sm font-medium text-gray-700">Invoice No.</span>
-                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                  <span className="mb-1.5 block text-sm font-medium text-ink-2">Invoice No.</span>
+                  <div className="rounded-md border border-border bg-surface-3 px-3 py-2 text-sm text-ink-3">
                     Assigned on the server when you confirm (avoids duplicate numbers if several invoices are created at once).
                   </div>
                 </div>
@@ -251,44 +249,44 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             </form>
 
             <div className="mt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Items to be Invoiced</h3>
+              <h3 className="text-lg font-medium text-ink mb-2">Items to be Invoiced</h3>
               {pickedSplits.length > 0 ? (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-auto max-h-[70vh] rounded-lg border">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-surface-3 sticky top-0 z-20 [&_th]:bg-surface-3">
                       <tr>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">Product</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">BPR No</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-600">Picked Qty</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-600">Rate</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-600">Amount</th>
+                        <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">Product</th>
+                        <th scope="col" className="px-4 py-2 text-left font-semibold text-ink-3">BPR No</th>
+                        <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Picked Qty</th>
+                        <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Rate</th>
+                        <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Amount</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {pickedSplits.map(({ item, split }, idx) => (
                         <tr key={idx}>
                           <td className="px-4 py-3">
-                            <p className="font-medium text-gray-800">{item.productName}</p>
-                            <p className="text-xs text-gray-500">{item.pack}</p>
+                            <p className="font-medium text-ink">{item.productName}</p>
+                            <p className="text-xs text-ink-3">{item.pack}</p>
                           </td>
-                          <td className="px-4 py-3 font-mono text-purple-600">{split.bprNo}</td>
-                          <td className="px-4 py-3 text-right font-medium text-blue-600">{formatNumber(split.pickedQty ?? 0)}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">₹{formatNumber(item.unitPrice ?? item.rate)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-gray-800">₹{formatNumber((split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0))}</td>
+                          <td className="px-4 py-3 font-mono text-brand">{split.bprNo}</td>
+                          <td className="px-4 py-3 text-right font-medium text-brand">{formatNumber(split.pickedQty ?? 0)}</td>
+                          <td className="px-4 py-3 text-right text-ink-3">₹{formatNumber(item.unitPrice ?? item.rate)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-ink">₹{formatNumber((split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0))}</td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-gray-50 border-t-2">
+                    <tfoot className="bg-surface-3 border-t-2">
                       <tr>
-                        <td colSpan={4} className="px-4 py-3 text-right font-bold text-gray-800">Total Invoice Value</td>
-                        <td className="px-4 py-3 text-right font-bold text-xl text-gray-900">₹{formatNumber(totalInvoiceValue)}</td>
+                        <td colSpan={4} className="px-4 py-3 text-right font-bold text-ink">Total Invoice Value</td>
+                        <td className="px-4 py-3 text-right font-bold text-xl text-ink">₹{formatNumber(totalInvoiceValue)}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               ) : (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-700">
+                <div className="p-4 bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg">
+                  <p className="text-sm text-warn">
                     No items have been picked for this order yet. Please complete the picking process first.
                   </p>
                 </div>
@@ -297,9 +295,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </>
         )}
       </div>
-      <div className="p-4 bg-gray-50 border-t space-y-3">
+      <div className="p-4 bg-surface-3 border-t space-y-3">
         {submitError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+          <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2 text-sm text-err" role="alert">
             {submitError}
           </div>
         ) : null}

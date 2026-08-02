@@ -1,11 +1,16 @@
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
-import { useLocation, NavLink, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronDown, Loader2, Search, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Layers, Loader2, Search, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 import { SearchInput } from '../components/ui/SearchInput';
+import { StatCard } from '../components/ui/StatCard';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
+import { ProcFilterBar } from '../components/procurement/ProcSection';
+import { PlanningModalShell } from '../components/planning/PlanningModalShell';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import { parsePlanningSlaTimestamp, planningBomConfirmedAtIso } from '../utils/planningSlaDates';
 import {
@@ -201,7 +206,7 @@ import {
 import { fetchWarehouseInventory } from '../services/warehouseInventory.service';
 import { toPmDisplayUnit } from '../lib/pmDisplayUnit';
 import { formatQtyExact, MATERIAL_QTY_MAX_DECIMALS, roundMaterialQty } from '../utils/formatQty';
-import AdminMainMenuButton from '../components/AdminMainMenuButton';
+import { PlanningSidebar } from '../components/planning/PlanningSidebar';
 
 /**
  * Invalidate EVERY Planning query whose data depends on planning batches, so a batch create/delete
@@ -851,15 +856,15 @@ function releaseToPlanningStatusBadgeClass(kind: ReleaseToPlanningStatusKind): s
   switch (kind) {
     case 'released':
     case 'covered':
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      return 'bg-ok-soft text-ok border-ok-soft';
     case 'partial':
-      return 'bg-amber-50 text-amber-900 border-amber-200';
+      return 'bg-warn-soft text-warn border-warn-soft';
     case 'not-released':
-      return 'bg-red-50 text-red-800 border-red-200';
+      return 'bg-err-soft text-err border-err-soft';
     case 'no-shortage':
-      return 'bg-slate-100 text-slate-700 border-slate-200';
+      return 'bg-surface-3 text-ink-2 border-border';
     default:
-      return 'bg-gray-50 text-gray-600 border-gray-200';
+      return 'bg-surface-2 text-ink-2 border-border';
   }
 }
 
@@ -1360,12 +1365,12 @@ type PisBatchStatusTag = { text: string; dot: string; badge: string };
 
 /** PIs table batch status — from planning batches / send state, not API `bom_status` ("Confirmed" = product has BOM). */
 function getPisBatchStatusTag(order: SalesOrder): PisBatchStatusTag {
-  const gray = { dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700 border-gray-200' };
-  const amber = { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800 border-amber-200' };
-  const emerald = { dot: 'bg-green-500', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
-  const indigo = { dot: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
-  const cyan = { dot: 'bg-cyan-500', badge: 'bg-cyan-100 text-cyan-800 border-cyan-200' };
-  const blue = { dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800 border-blue-200' };
+  const gray = { dot: 'bg-ink-4', badge: 'bg-surface-3 text-ink-2 border-border' };
+  const amber = { dot: 'bg-warn', badge: 'bg-warn-soft text-warn border-warn-soft' };
+  const emerald = { dot: 'bg-ok', badge: 'bg-ok-soft text-ok border-ok-soft' };
+  const indigo = { dot: 'bg-brand', badge: 'bg-brand-soft text-brand border-brand-soft' };
+  const cyan = { dot: 'bg-brand', badge: 'bg-brand-soft text-brand border-brand-soft' };
+  const blue = { dot: 'bg-brand', badge: 'bg-brand-soft text-brand border-brand-soft' };
 
   const bomStatus = String(order.bomStatus ?? '').trim();
   const sentCount = (order.sentBatchIndices ?? []).length;
@@ -1502,38 +1507,38 @@ function DetailFulfillmentBar({
   const unitLabel = variant === 'rm' ? 'KG' : row.unit;
   const barColor =
     row.fulfillmentPct >= 100
-      ? 'bg-emerald-500'
+      ? 'bg-ok'
       : row.fulfillmentPct > 0
         ? variant === 'rm'
-          ? 'bg-teal-500'
-          : 'bg-orange-500'
-        : 'bg-red-400';
+          ? 'bg-brand'
+          : 'bg-warn'
+        : 'bg-err';
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-            <span className="text-sm font-medium text-gray-900">{row.name}</span>
+            <span className="text-sm font-medium text-ink">{row.name}</span>
             {variant === 'rm' && row.pct != null && row.pct > 0 && (
-              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+              <span className="text-xs text-ink-3 font-medium whitespace-nowrap">
                 BOM {formatQtyExact(row.pct, 'raw')}% w/w
               </span>
             )}
           </div>
-          {row.sku ? <div className="text-xs text-gray-500 truncate mt-0.5">SKU: {row.sku}</div> : null}
+          {row.sku ? <div className="text-xs text-ink-3 truncate mt-0.5">SKU: {row.sku}</div> : null}
         </div>
         <div className="text-right text-xs shrink-0">
-          <div className={variant === 'rm' ? 'text-teal-800 font-semibold' : 'text-orange-800 font-semibold'}>
+          <div className={variant === 'rm' ? 'text-brand font-semibold' : 'text-warn font-semibold'}>
             {formatQtyExact(row.fulfillmentPct, 'raw')}% can fulfill
           </div>
-          <div className="text-gray-600 font-medium">
+          <div className="text-ink-2 font-medium">
             Free {formatQtyExact(row.freeStock, qtyKind)} / Req {formatQtyExact(row.required, qtyKind)} {unitLabel}
           </div>
         </div>
       </div>
       <div
-        className="relative h-3 bg-gray-200 rounded-full overflow-hidden"
+        className="relative h-3 bg-surface-3 rounded-full overflow-hidden"
         title="Full width = order required · Fill = coverable from free stock"
       >
         <div
@@ -1541,20 +1546,20 @@ function DetailFulfillmentBar({
           style={{ width: `${row.fulfillmentPct}%` }}
         />
       </div>
-      <p className="text-[10px] text-gray-500 leading-snug">
+      <p className="text-[10px] text-ink-3 leading-snug">
         {row.fulfillmentPct >= 100
           ? `Stock can fully fulfill this line (${formatQtyExact(row.fulfillable, qtyKind)} ${unitLabel}).`
           : row.fulfillmentPct > 0
             ? `Can fulfill ${formatQtyExact(row.fulfillable, qtyKind)} of ${formatQtyExact(row.required, qtyKind)} ${unitLabel} from warehouse.`
             : 'No free stock — cannot fulfill from warehouse.'}
         {row.shortfall > 0 && (
-          <span className="text-red-600 font-semibold">
+          <span className="text-err font-semibold">
             {' '}
             Short {formatQtyExact(row.shortfall, qtyKind)} {unitLabel}.
           </span>
         )}
         {row.reserved > 0 && (
-          <span className="text-gray-400">
+          <span className="text-ink-4">
             {' '}
             SIH {formatQtyExact(row.sih, qtyKind)}, reserved {formatQtyExact(row.reserved, qtyKind)}.
           </span>
@@ -1657,25 +1662,25 @@ function getPisAvailabilityTier(
 
 function pisAvailabilityRowClass(tier: PisAvailabilityTier): string {
   const base =
-    'border-b border-gray-100/80 cursor-pointer transition-all duration-200 ease-out';
+    'border-b border-hairline/80 cursor-pointer transition-all duration-200 ease-out';
   switch (tier) {
     case 'loading':
-      return `${base} bg-slate-50/95 border-l-[3px] border-l-slate-400 hover:bg-slate-100/95 hover:shadow-md`;
+      return `${base} bg-surface-2/95 border-l-[3px] border-l-slate-400 hover:bg-surface-3/95 hover:shadow-md`;
     case 'unknown':
-      return `${base} bg-gray-50/95 border-l-[3px] border-l-gray-400 hover:bg-gray-100/95 hover:shadow-md`;
+      return `${base} bg-surface-2/95 border-l-[3px] border-l-gray-400 hover:bg-surface-3/95 hover:shadow-md`;
     case 'full':
-      return `${base} bg-emerald-50/95 border-l-[4px] border-l-emerald-500 hover:bg-emerald-100/90 hover:shadow-[0_2px_12px_-2px_rgba(16,185,129,0.35)]`;
+      return `${base} bg-ok-soft/95 border-l-[4px] border-l-emerald-500 hover:bg-ok-soft/90 hover:shadow-[0_2px_12px_-2px_rgba(16,185,129,0.35)]`;
     case 'partial':
-      return `${base} bg-amber-50/95 border-l-[4px] border-l-amber-500 hover:bg-amber-100/90 hover:shadow-[0_2px_12px_-2px_rgba(245,158,11,0.4)]`;
+      return `${base} bg-warn-soft/95 border-l-[4px] border-l-amber-500 hover:bg-warn-soft/90 hover:shadow-[0_2px_12px_-2px_rgba(245,158,11,0.4)]`;
     case 'none':
-      return `${base} bg-rose-50/95 border-l-[4px] border-l-rose-500 hover:bg-rose-100/90 hover:shadow-[0_2px_12px_-2px_rgba(244,63,94,0.38)]`;
+      return `${base} bg-err-soft/95 border-l-[4px] border-l-rose-500 hover:bg-err-soft/90 hover:shadow-[0_2px_12px_-2px_rgba(244,63,94,0.38)]`;
     default:
-      return `${base} hover:bg-gray-50`;
+      return `${base} hover:bg-surface-2`;
   }
 }
 
 const PIS_TABLE_LINK_CLASS =
-  'text-left text-indigo-700 hover:text-indigo-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded';
+  'text-left text-brand hover:text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded';
 
 function buildFulfillmentSoPath(soNumber: string): string {
   const so = String(soNumber || '').trim();
@@ -1846,12 +1851,12 @@ function ItemsReleasedSplitBadges({
   return (
     <div className={`flex flex-wrap items-center gap-1 ${className}`.trim()}>
       {split.rm.total > 0 ? (
-        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 tabular-nums">
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-brand-soft text-brand border border-brand-soft tabular-nums">
           {formatItemsReleasedSplitLabel('RM', split.rm)}
         </span>
       ) : null}
       {split.pm.total > 0 ? (
-        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-800 border border-orange-200 tabular-nums">
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-warn-soft text-warn border border-warn-soft tabular-nums">
           {formatItemsReleasedSplitLabel('PM', split.pm)}
         </span>
       ) : null}
@@ -1860,7 +1865,7 @@ function ItemsReleasedSplitBadges({
 }
 
 const BATCH_TABLE_LINK_CLASS =
-  'text-left text-indigo-700 hover:text-indigo-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer';
+  'text-left text-brand hover:text-brand hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded cursor-pointer';
 
 function BatchTableLinkButton({
   children,
@@ -2006,11 +2011,11 @@ function PlanningBatchTableRow({
   return (
     <tr
       onClick={handleRowClick}
-      className={`border-b border-gray-100 cursor-pointer transition-colors text-xs ${
-        batchShort ? 'bg-rose-50/70 hover:bg-rose-100/70' : 'hover:bg-emerald-50/80'
+      className={`border-b border-hairline cursor-pointer transition-colors text-xs ${
+        batchShort ? 'bg-err-soft/70 hover:bg-err-soft/70' : 'hover:bg-ok-soft/80'
       }`}
     >
-      <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+      <td className="px-3 py-2.5 text-ink-2 whitespace-nowrap">
         {formatPlanningBatchCreatedDate(row.createdAt)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -2045,10 +2050,10 @@ function PlanningBatchTableRow({
           '—'
         )}
       </td>
-      <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
+      <td className="px-3 py-2.5 text-ink-2 whitespace-nowrap">
         {formatPlanningBatchSoDate(row.orderDate)}
       </td>
-      <td className="px-3 py-2.5 text-gray-800 min-w-[120px]">
+      <td className="px-3 py-2.5 text-ink min-w-[120px]">
         {row.customerName ? (
           <BatchTableLinkButton
             onClick={(e) => {
@@ -2059,7 +2064,7 @@ function PlanningBatchTableRow({
           >
             <span className="font-medium block text-left">{row.customerName}</span>
             {clientCode ? (
-              <span className="text-[10px] text-indigo-600/80 font-mono block text-left">{clientCode}</span>
+              <span className="text-[10px] text-brand/80 font-mono block text-left">{clientCode}</span>
             ) : null}
           </BatchTableLinkButton>
         ) : (
@@ -2082,7 +2087,7 @@ function PlanningBatchTableRow({
           '—'
         )}
       </td>
-      <td className="px-3 py-2.5 text-gray-900 min-w-[120px]">
+      <td className="px-3 py-2.5 text-ink min-w-[120px]">
         {row.productName ? (
           <BatchTableLinkButton
             onClick={(e) => {
@@ -2097,7 +2102,7 @@ function PlanningBatchTableRow({
           '—'
         )}
       </td>
-      <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-900 whitespace-nowrap">
+      <td className="px-3 py-2.5 text-right font-mono font-semibold text-ink whitespace-nowrap">
         {formatPlanningBatchPlannedQty(plannedQty)}
       </td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -2111,21 +2116,21 @@ function PlanningBatchTableRow({
             value={sizeKgStr}
             onChange={(e) => setSizeKgStr(e.target.value)}
             disabled={!batchEditable}
-            className="w-[72px] border border-gray-300 rounded-md px-2 py-1 text-xs font-mono text-right text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
+            className="w-[72px] border border-border rounded-md px-2 py-1 text-xs font-mono text-right text-ink disabled:bg-surface-3 disabled:text-ink-3"
             aria-label="Batch size kg"
           />
-          <span className="text-gray-500">kg</span>
+          <span className="text-ink-3">kg</span>
           <button
             type="button"
             onClick={handleSaveSize}
             disabled={saving || !batchEditable}
-            className="px-2 py-1 text-[10px] font-semibold rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="px-2 py-1 text-[10px] font-semibold rounded bg-ok text-white hover:bg-ok disabled:opacity-50"
           >
             {saving ? '…' : 'Save'}
           </button>
         </div>
         {!batchEditable ? (
-          <div className="text-[10px] text-gray-500 mt-0.5">{formatPlanningBatchSizeKg(row.sizeKg)}</div>
+          <div className="text-[10px] text-ink-3 mt-0.5">{formatPlanningBatchSizeKg(row.sizeKg)}</div>
         ) : null}
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -2138,7 +2143,7 @@ function PlanningBatchTableRow({
           title="Open RM items panel"
         >
           <span className={planningBatchMaterialStatusClass(rmStatus.tone)}>{rmShort ? '🚩 ' : ''}{rmStatus.label}</span>
-          {rmStatus.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{rmStatus.sub}</span> : null}
+          {rmStatus.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{rmStatus.sub}</span> : null}
         </BatchTableLinkButton>
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -2151,7 +2156,7 @@ function PlanningBatchTableRow({
           title="Open PM items panel"
         >
           <span className={planningBatchMaterialStatusClass(pmStatus.tone)}>{pmShort ? '🚩 ' : ''}{pmStatus.label}</span>
-          {pmStatus.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{pmStatus.sub}</span> : null}
+          {pmStatus.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{pmStatus.sub}</span> : null}
         </BatchTableLinkButton>
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -2165,12 +2170,12 @@ function PlanningBatchTableRow({
             title="Open Production batch detail"
           >
             <span className={planningBatchProductionStatusClass(production.tone)}>{production.label}</span>
-            {production.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{production.sub}</span> : null}
+            {production.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{production.sub}</span> : null}
           </BatchTableLinkButton>
         ) : (
           <>
             <div className={`text-[11px] ${planningBatchProductionStatusClass(production.tone)}`}>{production.label}</div>
-            {production.sub ? <div className="text-[10px] text-gray-500 mt-0.5">{production.sub}</div> : null}
+            {production.sub ? <div className="text-[10px] text-ink-3 mt-0.5">{production.sub}</div> : null}
           </>
         )}
       </td>
@@ -2185,12 +2190,12 @@ function PlanningBatchTableRow({
             title="Open Fulfillment batch"
           >
             <span className={planningBatchMaterialStatusClass(fulfillment.tone)}>{fulfillment.label}</span>
-            {fulfillment.sub ? <span className="block text-[10px] text-gray-500 mt-0.5 font-normal">{fulfillment.sub}</span> : null}
+            {fulfillment.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{fulfillment.sub}</span> : null}
           </BatchTableLinkButton>
         ) : (
           <>
             <div className={`text-[11px] ${planningBatchMaterialStatusClass(fulfillment.tone)}`}>{fulfillment.label}</div>
-            {fulfillment.sub ? <div className="text-[10px] text-gray-500 mt-0.5">{fulfillment.sub}</div> : null}
+            {fulfillment.sub ? <div className="text-[10px] text-ink-3 mt-0.5">{fulfillment.sub}</div> : null}
           </>
         )}
       </td>
@@ -2205,8 +2210,8 @@ function PlanningBatchTableRow({
           }
           className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
             batchEditable
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-ok text-white hover:bg-ok'
+              : 'bg-surface-3 text-ink-2 hover:bg-surface-3'
           }`}
         >
           {batchEditable ? 'Edit' : 'View'}
@@ -2216,7 +2221,7 @@ function PlanningBatchTableRow({
           onClick={handleDelete}
           disabled={deleting}
           title="Delete this batch"
-          className="ml-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+          className="ml-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-err-soft text-err hover:bg-err-soft disabled:opacity-50"
         >
           {deleting ? '…' : 'Delete'}
         </button>
@@ -2232,6 +2237,7 @@ function PlanningBatchesTab({
   onOpenRmPanel,
   onOpenPmPanel,
   dateFilter,
+  onDateFilterChange,
   itemsInvolvedAll,
   procurementRequests,
   plannedLinesFromBackend,
@@ -2244,6 +2250,7 @@ function PlanningBatchesTab({
   onOpenRmPanel: (row: PlanningBatchAllRow) => void;
   onOpenPmPanel: (row: PlanningBatchAllRow) => void;
   dateFilter: { from: string; to: string };
+  onDateFilterChange: (value: { from: string; to: string }) => void;
   itemsInvolvedAll: ItemsInvolvedDisplayRow[];
   procurementRequests: ProcurementRequest[];
   plannedLinesFromBackend: PlannedLine[];
@@ -2474,19 +2481,15 @@ function PlanningBatchesTab({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className="py-6">
+        <TableSkeleton rows={8} cols={7} />
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600">
-        Planning batches (sent + planned drafts) — click column headers to sort. Use links to jump to Order Hub, Client Hub, Masters, Production, or Fulfillment.
-        Row click opens all batch items; RM/PM status opens the filtered items panel. Filter to <span className="font-medium">Planned</span> to see draft batches not yet sent to production.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
+      <ProcFilterBar>
         <SearchInput
           value={searchTerm}
           onChange={setSearchTerm}
@@ -2494,9 +2497,10 @@ function PlanningBatchesTab({
           widthClass="min-w-[240px] flex-1"
         />
         <select
+          aria-label="Batch type filter"
           value={batchTypeFilter}
           onChange={(e) => setBatchTypeFilter(e.target.value as typeof batchTypeFilter)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          className="px-3 py-2 border border-border rounded-lg text-sm bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
         >
           <option value="all">All</option>
           <option value="planned">Planned</option>
@@ -2505,27 +2509,32 @@ function PlanningBatchesTab({
           <option value="released">Released</option>
           <option value="on-hold">On Hold</option>
         </select>
-      </div>
-      <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+        <DateRangeFilterInputs
+          value={dateFilter}
+          onChange={onDateFilterChange}
+          dateFieldLabel="Due date"
+        />
+      </ProcFilterBar>
+      <div className="border border-border rounded-lg overflow-hidden bg-surface">
         {/* Vertical scroll container so the column header can stay pinned (sticky) while rows scroll. */}
         <div className="overflow-auto max-h-[calc(100vh-300px)]">
           <table className="w-full text-sm min-w-[1440px]">
-            <thead className="sticky top-0 z-20 [&_th]:bg-gray-50">
-              <tr className="bg-gray-50 border-b border-gray-200 text-[11px] shadow-[0_1px_0_0_rgb(229,231,235)]">
+            <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
+              <tr className="bg-surface-2 border-b border-border text-[11px] shadow-[0_1px_0_0_var(--border)]">
                 <SortableTableTh label="Created" column="created" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Batch #" column="batchNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO #" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO Date" column="soDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Client" column="client" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Product Code" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
-                <th className="px-3 py-2 text-left font-semibold text-gray-700">Product Name</th>
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product Name</th>
                 <SortableTableTh label="Planned Qty" column="plannedQty" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
                 <SortableTableTh label="Batch Size" column="batchSize" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
                 <SortableTableTh label="RM Status" column="rmStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
                 <SortableTableTh label="PM Status" column="pmStatus" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
                 <SortableTableTh label="Production Status" column="production" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
                 <SortableTableTh label="Fulfillment Status" column="fulfillment" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} align="right" />
-                <th className="px-3 py-2 text-right font-semibold text-gray-700">Action</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -2572,23 +2581,28 @@ function PlanningBatchesTab({
           </table>
         </div>
         {sortedRows.length === 0 ? (
-          <div className="px-4 py-8 text-center text-gray-500 text-sm">
-            {allBatches.length === 0
-              ? 'No batches yet. Create batches from Plan Batches (PIs Extracted) per SO line.'
-              : 'No batches matched your current filters/search.'}
-          </div>
+          <EmptyState
+            icon={<Layers />}
+            title={allBatches.length === 0 ? 'No batches yet' : 'No batches matched your current filters/search.'}
+            description={
+              allBatches.length === 0
+                ? 'Create batches from Plan Batches (PIs Extracted) per SO line.'
+                : undefined
+            }
+            compact
+          />
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-gray-200 bg-gray-50/60">
-            <span className="text-xs text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{batchesPageStart + 1}</span>
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-border bg-surface-2/60">
+            <span className="text-xs text-ink-2">
+              Showing <span className="font-semibold text-ink">{batchesPageStart + 1}</span>
               –
-              <span className="font-semibold text-gray-900">
+              <span className="font-semibold text-ink">
                 {Math.min(batchesPageStart + batchesPageSize, sortedRows.length)}
               </span>{' '}
-              of <span className="font-semibold text-gray-900">{sortedRows.length}</span>
+              of <span className="font-semibold text-ink">{sortedRows.length}</span>
             </span>
             <div className="flex flex-wrap items-center gap-3">
-              <label htmlFor="planning-batches-page-size" className="text-xs text-gray-600">
+              <label htmlFor="planning-batches-page-size" className="text-xs text-ink-2">
                 Rows per page
               </label>
               <select
@@ -2598,7 +2612,7 @@ function PlanningBatchesTab({
                   setBatchesPageSize(Number(e.target.value));
                   setBatchesPage(1);
                 }}
-                className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="text-xs px-3 py-2 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
@@ -7171,281 +7185,226 @@ const Planning = () => {
   const _getStatusColor = (status: string) => {
     switch (status) {
       case 'Production Released':
-        return 'bg-teal-100 text-teal-700';
+        return 'bg-brand-soft text-brand';
       case 'In Progress':
-        return 'bg-blue-100 text-blue-700';
+        return 'bg-brand-soft text-brand';
       case 'Planned':
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-surface-3 text-ink-2';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-surface-3 text-ink-2';
     }
   };
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'Production Released':
-        return 'bg-emerald-100 text-emerald-700';
+        return 'bg-ok-soft text-ok';
       case 'Production Ready':
-        return 'bg-green-100 text-green-700';
+        return 'bg-ok-soft text-ok';
       case 'In Progress':
-        return 'bg-yellow-100 text-yellow-700';
+        return 'bg-warn-soft text-warn';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-surface-3 text-ink-2';
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#F7F7F9]">
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 px-6 pt-3">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <AdminMainMenuButton />
-              <div className="w-7 h-7 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-extrabold">EI</div>
-              <div className="text-sm font-semibold text-gray-900">Planning Dashboard</div>
-            </div>
-            <div className="text-xs text-gray-500">Production Planning Hub</div>
-          </div>
-        </div>
-      </div>
+  const PLANNING_VIEW_TITLE: Record<'pis-extracted' | 'items-involved' | 'batches', string> = {
+    'pis-extracted': 'PIS Extracted',
+    'items-involved': 'Items Involved',
+    'batches': 'Batches',
+  };
 
-      <div className="max-w-[1600px] mx-auto px-6 py-5">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <div className="text-xs text-gray-500 mb-1">Order Management / Planning</div>
-            <h1 className="text-[22px] font-bold tracking-tight text-gray-900">Planning</h1>
-            <p className="text-sm text-gray-500">Production Planning Hub</p>
+  return (
+    <div className="flex min-h-screen bg-canvas text-ink">
+      <PlanningSidebar
+        activeView={activeMainTab}
+        onNavigate={(v) => navigate(`/planning/${v}`)}
+      />
+      <div className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
+        <div className="sticky top-0 z-20 bg-surface/95 backdrop-blur border-b border-hairline px-4 sm:px-6 py-3 shadow-[var(--e1)]">
+          <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs text-ink-4">Order Management / Planning</div>
+              <h1 className="text-lg font-semibold tracking-tight text-ink truncate">{PLANNING_VIEW_TITLE[activeMainTab]}</h1>
+            </div>
+            <div className="text-xs text-ink-3 shrink-0">Production Planning Hub</div>
           </div>
-          {/* <button
-            onClick={() => {
-              try {
-                const list = pisRows.length > 0 ? pisRows : salesOrders;
-                if (list.length > 0) {
-                  handleRaisePR(list[0], false);
-                } else {
-                  addToast('warning', 'No sales orders available to raise PR');
-                }
-              } catch (_error) {
-                addToast('error', 'Error opening PR modal');
-              }
-            }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-full font-medium transition-colors"
-          >
-            Raise PR
-          </button> */}
         </div>
+
+      <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-5">
 
         {/* Status Badges */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-full text-xs font-semibold">
+        <div className="flex gap-2 mb-4 flex-wrap items-center">
+          <div className="bg-ok-soft text-ok px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['pis-extracted'].totalSOs} Active SOs
           </div>
-          <div className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
+          <div className="bg-warn-soft text-warn px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['pis-extracted'].shortages} Shortages
           </div>
-          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-1 rounded-full text-xs font-semibold">
+          <div className="bg-err-soft text-err px-3 py-1 rounded-full text-xs font-semibold">
             {tabStats['items-involved'].prsRaised} PRs Raised
           </div>
-          <div className="text-gray-500 text-xs ml-auto">Planning: Feb 2026</div>
+          <div className="text-ink-3 text-xs ml-auto">Planning: Feb 2026</div>
         </div>
 
         {/* Summary Cards */}
         <div className={`grid gap-3 mb-5 ${activeMainTab === 'items-involved' ? 'grid-cols-6' : 'grid-cols-7'}`}>
           {activeMainTab === 'items-involved' ? (
             <>
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">CONFIRMED PRODUCTS</p>
-                <p className="text-2xl font-bold text-emerald-600">{(currentStats as PlanningTabStats).confirmedProducts.value}</p>
-                <p className="text-xs text-gray-500 mt-1">of {(currentStats as PlanningTabStats).confirmedProducts.total} total</p>
-              </div>
+              <StatCard
+                title="CONFIRMED PRODUCTS"
+                tone="ok"
+                value={(currentStats as PlanningTabStats).confirmedProducts.value}
+                description={`of ${(currentStats as PlanningTabStats).confirmedProducts.total} total`}
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM RELEASED</p>
-                <p className="text-2xl font-bold text-cyan-600 tabular-nums">
-                  {itemsInvolvedReleaseSplit.rm.released}/{itemsInvolvedReleaseSplit.rm.total}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {itemsInvolvedReleaseSplit.rm.remaining} remaining · {(currentStats as PlanningTabStats).rmItems?.short ?? 0} short
-                </p>
-              </div>
+              <StatCard
+                title="RM RELEASED"
+                tone="brand"
+                value={`${itemsInvolvedReleaseSplit.rm.released}/${itemsInvolvedReleaseSplit.rm.total}`}
+                description={`${itemsInvolvedReleaseSplit.rm.remaining} remaining · ${(currentStats as PlanningTabStats).rmItems?.short ?? 0} short`}
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PM RELEASED</p>
-                <p className="text-2xl font-bold text-purple-600 tabular-nums">
-                  {itemsInvolvedReleaseSplit.pm.released}/{itemsInvolvedReleaseSplit.pm.total}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {itemsInvolvedReleaseSplit.pm.remaining} remaining · {(currentStats as PlanningTabStats).pmItems?.short ?? 0} short
-                </p>
-              </div>
+              <StatCard
+                title="PM RELEASED"
+                tone="brand"
+                value={`${itemsInvolvedReleaseSplit.pm.released}/${itemsInvolvedReleaseSplit.pm.total}`}
+                description={`${itemsInvolvedReleaseSplit.pm.remaining} remaining · ${(currentStats as PlanningTabStats).pmItems?.short ?? 0} short`}
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM SHORTAGES</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).rmShortages}</p>
-                <p className="text-xs text-gray-500 mt-1">Items below order req</p>
-              </div>
+              <StatCard
+                title="RM SHORTAGES"
+                value={(currentStats as PlanningTabStats).rmShortages}
+                description="Items below order req"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PM SHORTAGES</p>
-                <p className="text-2xl font-bold text-red-600">{(currentStats as PlanningTabStats).pmShortages}</p>
-                <p className="text-xs text-gray-500 mt-1">Items below order req</p>
-              </div>
+              <StatCard
+                title="PM SHORTAGES"
+                tone="err"
+                value={(currentStats as PlanningTabStats).pmShortages}
+                description="Items below order req"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PRS RAISED</p>
-                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).prsRaised}</p>
-                <p className="text-xs text-gray-500 mt-1">Pending procurement</p>
-              </div>
+              <StatCard
+                title="PRS RAISED"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).prsRaised}
+                description="Pending procurement"
+              />
             </>
           ) : (
             <>
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">TOTAL SOS</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).totalSOs ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">Approved orders</p>
-              </div>
+              <StatCard
+                title="TOTAL SOS"
+                value={(currentStats as PlanningTabStats).totalSOs ?? 0}
+                description="Approved orders"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">PROD. RELEASED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).prodReleased ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">Released to production</p>
-              </div>
+              <StatCard
+                title="PROD. RELEASED"
+                value={(currentStats as PlanningTabStats).prodReleased ?? 0}
+                description="Released to production"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">RM/PM SHORTAGES</p>
-                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).shortages ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">needs below order req</p>
-              </div>
+              <StatCard
+                title="RM/PM SHORTAGES"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).shortages ?? 0}
+                description="needs below order req"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BATCHES REQUIRED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesRequired ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">Across all products</p>
-              </div>
+              <StatCard
+                title="BATCHES REQUIRED"
+                value={(currentStats as PlanningTabStats).batchesRequired ?? 0}
+                description="Across all products"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">BOMS CONFIRMED</p>
-                <p className="text-2xl font-bold text-gray-900">{(currentStats as PlanningTabStats).batchesConfirmed ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">Products with confirmed BOM</p>
-              </div>
+              <StatCard
+                title="BOMS CONFIRMED"
+                value={(currentStats as PlanningTabStats).batchesConfirmed ?? 0}
+                description="Products with confirmed BOM"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">NOT PLANNED</p>
-                <p className="text-2xl font-bold text-red-600">{(currentStats as PlanningTabStats).notPlanned ?? 0}</p>
-                <p className="text-xs text-gray-500 mt-1">SOs pending planning confirmation</p>
-              </div>
+              <StatCard
+                title="NOT PLANNED"
+                tone="err"
+                value={(currentStats as PlanningTabStats).notPlanned ?? 0}
+                description="SOs pending planning confirmation"
+              />
 
-              <div className="bg-white rounded-xl p-4 border border-gray-200">
-                <p className="text-gray-500 text-[11px] font-semibold mb-1 tracking-wide">SO VALUE</p>
-                <p className="text-2xl font-bold text-orange-600">{(currentStats as PlanningTabStats).soValue ?? 'N/A'}</p>
-                <p className="text-xs text-gray-500 mt-1">Order value not in planning API yet</p>
-              </div>
+              <StatCard
+                title="SO VALUE"
+                tone="warn"
+                value={(currentStats as PlanningTabStats).soValue ?? 'N/A'}
+                description="Order value not in planning API yet"
+              />
             </>
           )}
-        </div>
-
-        {/* Main Tabs Navigation — each tab is a sub-route */}
-        <div className="flex gap-1 mb-5 border-b border-gray-200 bg-white px-2 pt-1 rounded-t-lg">
-          <NavLink
-            to="/planning/pis-extracted"
-            className={({ isActive }) =>
-              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
-              }`
-            }
-          >
-            PIs Extracted
-          </NavLink>
-          <NavLink
-            to="/planning/batches"
-            className={({ isActive }) =>
-              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
-              }`
-            }
-          >
-            Batches
-          </NavLink>
-          <NavLink
-            to="/planning/items-involved"
-            className={({ isActive }) =>
-              `px-4 py-2.5 font-semibold text-sm border-b-2 transition-colors ${isActive ? 'text-indigo-700 border-indigo-600' : 'text-gray-600 border-transparent hover:text-gray-900'
-              }`
-            }
-          >
-            Items Involved
-          </NavLink>
-        </div>
-
-        <div className="mb-4">
-          <DateRangeFilterInputs
-            value={dateFilter}
-            onChange={setDateFilter}
-            dateFieldLabel={
-              activeMainTab === 'batches'
-                ? 'Due date (batches)'
-                : 'SO order date (PIs / items)'
-            }
-          />
         </div>
 
         {/* PIs Extracted Tab Content */}
         {activeMainTab === 'pis-extracted' && (
           <>
-            {/* Order Management Header */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Order Management</h2>
-                <div className="text-xs text-gray-500 mt-0.5">Client PO → Internal SO → Ordered Products → Items involved (syncs to procurement)</div>
-              </div>
-            </div>
-            {/* Tabs and Filter */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            {/* Unified filter bar */}
+            <ProcFilterBar stack className="mb-5">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-gray-600 font-medium">STATUS:</span>
+                <span className="text-xs text-ink-3 font-semibold uppercase tracking-wide">Status</span>
                 {['All', 'Prod Released', 'In Progress', 'Planned', 'Not Planned'].map((status) => (
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${statusFilter === status
-                      ? 'bg-white text-gray-800 border border-gray-300 shadow-xs'
-                      : 'bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200'
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${statusFilter === status
+                      ? 'bg-brand text-white'
+                      : 'bg-surface-3 text-ink-2 hover:bg-surface-2'
                       }`}
                   >
                     {status}
                   </button>
                 ))}
               </div>
-
-              {/* Search */}
-              <div className="flex flex-wrap items-center gap-3 mt-4">
+              <div className="flex flex-wrap items-center gap-2">
                 <SearchInput
                   value={searchTerm}
                   onChange={setSearchTerm}
                   placeholder="Search product, SO, client…"
                   widthClass="flex-1 min-w-[220px]"
                 />
+                <DateRangeFilterInputs
+                  value={dateFilter}
+                  onChange={setDateFilter}
+                  dateFieldLabel="SO order date"
+                />
                 <button
                   type="button"
                   onClick={handleExportPisCsv}
-                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-slate-700 hover:bg-gray-50 transition-colors"
+                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 transition-colors"
                 >
                   Export CSV
                 </button>
               </div>
-            </div>
+            </ProcFilterBar>
 
             {/* PIs Extracted: list from API; row click opens detail popup */}
             {planningLoading && (
-              <div className="py-8 text-center text-gray-500">Loading…</div>
+              <div className="py-6">
+                <TableSkeleton rows={8} cols={7} />
+              </div>
             )}
             {!planningLoading && filteredPisOrders.length === 0 && (
-              <div className="py-8 text-center text-gray-500 border border-gray-200 rounded-lg bg-white">No PRs extracted. Create SOs and they will appear here.</div>
+              <div className="border border-border rounded-lg bg-surface">
+                <EmptyState
+                  icon={<Layers />}
+                  title="No PRs extracted."
+                  description="Create SOs and they will appear here."
+                  compact
+                />
+              </div>
             )}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className="bg-surface rounded-lg border border-border overflow-hidden">
+              <div className="overflow-auto max-h-[70vh]">
                 <table className="w-full text-sm min-w-[1280px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <SortableTableTh
                         label="SO Date"
                         column="soDate"
@@ -7493,7 +7452,7 @@ const Planning = () => {
                         label={
                           <span className="inline-flex flex-col items-start gap-0.5 normal-case tracking-normal">
                             <span>Plan Status</span>
-                            <span className="text-[10px] font-normal text-gray-500">Batch # · units · % cov · stage</span>
+                            <span className="text-[10px] font-normal text-ink-3">Batch # · units · % cov · stage</span>
                           </span>
                         }
                         column="planStatus"
@@ -7508,7 +7467,7 @@ const Planning = () => {
                         sortDirection={pisSortDirection}
                         onSort={togglePisSort}
                       />
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
+                      <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-ink-2">
                         Action
                       </th>
                     </tr>
@@ -7532,12 +7491,12 @@ const Planning = () => {
                       const hasBatches = batches.length > 0;
                       const slaToneCls =
                         slaView.tone === 'ok'
-                          ? 'text-emerald-700'
+                          ? 'text-ok'
                           : slaView.tone === 'warn'
-                            ? 'text-amber-800'
+                            ? 'text-warn'
                             : slaView.tone === 'breach'
-                              ? 'text-red-700'
-                              : 'text-gray-700';
+                              ? 'text-err'
+                              : 'text-ink-2';
 
                       return (
                         <tr
@@ -7545,7 +7504,7 @@ const Planning = () => {
                           onClick={() => openDetailModal(order)}
                           className={pisAvailabilityRowClass(availabilityTier)}
                         >
-                          <td className="px-4 py-3 text-gray-700 text-xs whitespace-nowrap">
+                          <td className="px-4 py-3 text-ink-2 text-xs whitespace-nowrap">
                             {formatPisTableDate(order.orderDate)}
                           </td>
                           <td className="px-4 py-3 text-xs whitespace-nowrap">
@@ -7573,10 +7532,10 @@ const Planning = () => {
                                 {order.customerName}
                               </button>
                             ) : (
-                              <span className="font-semibold text-gray-900">—</span>
+                              <span className="font-semibold text-ink">—</span>
                             )}
                             {clientCode ? (
-                              <div className="text-xs text-gray-500 font-mono">{clientCode}</div>
+                              <div className="text-xs text-ink-3 font-mono">{clientCode}</div>
                             ) : null}
                           </td>
                           <td className="px-4 py-3 font-mono text-xs">
@@ -7611,35 +7570,35 @@ const Planning = () => {
                               '—'
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-900 text-xs whitespace-nowrap">
+                          <td className="px-4 py-3 text-right text-ink text-xs whitespace-nowrap">
                             {formatPisOrdQty(order.orderQty)}
                           </td>
                           <td className="px-4 py-3 min-w-[220px]">
                             {planView.kind === 'pending' ? (
                               <div className="space-y-0.5">
-                                <div className="text-[11px] font-bold tracking-wide text-amber-800 uppercase">
+                                <div className="text-[11px] font-bold tracking-wide text-warn uppercase">
                                   PLANNING PENDING
                                 </div>
-                                <div className="text-xs text-gray-500">no batch yet</div>
+                                <div className="text-xs text-ink-3">no batch yet</div>
                               </div>
                             ) : (
                               <div className="space-y-1.5">
                                 {planView.batchLines.map((line) => (
-                                  <div key={line.key} className="text-xs text-gray-800 leading-snug">
+                                  <div key={line.key} className="text-xs text-ink leading-snug">
                                     <span className="font-mono font-semibold">{line.batchLabel}</span>
                                     {' · '}
                                     <span>{line.units.toLocaleString('en-IN')}</span>
                                     {' · '}
                                     <span>{line.coveragePct}%</span>
                                     {' · '}
-                                    <span className="font-semibold text-gray-900">{line.stage}</span>
+                                    <span className="font-semibold text-ink">{line.stage}</span>
                                   </div>
                                 ))}
                                 {planView.summary ? (
-                                  <div className="text-xs text-gray-600">{planView.summary}</div>
+                                  <div className="text-xs text-ink-2">{planView.summary}</div>
                                 ) : null}
                                 {planView.underCoveredUnits > 0 ? (
-                                  <div className="text-xs text-amber-700">
+                                  <div className="text-xs text-warn">
                                     ⚠ Under-covered · {planView.underCoveredUnits.toLocaleString('en-IN')} units still to plan
                                   </div>
                                 ) : null}
@@ -7656,7 +7615,7 @@ const Planning = () => {
                                     {slaView.text}
                                   </span>
                                   {slaView.sub ? (
-                                    <div className="text-[11px] text-gray-500 mt-0.5">{slaView.sub}</div>
+                                    <div className="text-[11px] text-ink-3 mt-0.5">{slaView.sub}</div>
                                   ) : null}
                                 </div>
                               );
@@ -7669,7 +7628,7 @@ const Planning = () => {
                                 e.stopPropagation();
                                 handlePlanBatches(order);
                               }}
-                              className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 rounded text-xs font-semibold"
+                              className="px-3 py-1.5 bg-surface hover:bg-surface-2 text-ink border border-border rounded text-xs font-semibold"
                             >
                               {hasBatches ? '✏ Edit Plan' : '➕ Plan Batches'}
                             </button>
@@ -7681,15 +7640,16 @@ const Planning = () => {
                 </table>
               </div>
               {!planningLoading && filteredPisOrders.length > 0 && (
-                <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-200 bg-gray-50">
-                  <div className="text-xs text-gray-600">
+                <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border bg-surface-2">
+                  <div className="text-xs text-ink-2">
                     Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {sortedFilteredPisOrders.length} rows
                   </div>
                   <div className="flex items-center gap-2">
                     <select
+                      aria-label="Rows per page"
                       value={pisPageSize}
                       onChange={(e) => setPisPageSize(Number(e.target.value) || 20)}
-                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                      className="text-xs border border-border rounded px-2 py-1 bg-surface"
                     >
                       <option value={20}>20 / page</option>
                       <option value={50}>50 / page</option>
@@ -7699,7 +7659,7 @@ const Planning = () => {
                       type="button"
                       onClick={() => setPisPage((p) => Math.max(1, p - 1))}
                       disabled={safePisPage <= 1}
-                      className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                      className="px-2 py-1 text-xs rounded border border-border disabled:opacity-50"
                     >
                       Prev
                     </button>
@@ -7707,7 +7667,7 @@ const Planning = () => {
                       type="button"
                       onClick={() => setPisPage((p) => Math.min(pisTotalPages, p + 1))}
                       disabled={safePisPage >= pisTotalPages}
-                      className="px-2 py-1 text-xs rounded border border-gray-300 disabled:opacity-50"
+                      className="px-2 py-1 text-xs rounded border border-border disabled:opacity-50"
                     >
                       Next
                     </button>
@@ -7718,19 +7678,22 @@ const Planning = () => {
 
             {/* Detail popup: full order details, RM/PM, Plan Batches & Raise PR */}
             {detailModalOpen && selectedRowForDetail && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={closeDetailModal}>
+              <PlanningModalShell onClose={closeDetailModal} z="z-[100]">
                 <div
-                  className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={selectedRowForDetail.productName}
+                  className="bg-surface rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-gray-900">{selectedRowForDetail.productName}</h2>
-                    <button type="button" onClick={closeDetailModal} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
+                  <div className="sticky top-0 bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-ink">{selectedRowForDetail.productName}</h2>
+                    <button type="button" onClick={closeDetailModal} className="p-2 rounded-lg hover:bg-surface-3 text-ink-2" aria-label="Close">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
                   <div className="p-6">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6 pb-4 border-b border-gray-200 text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6 pb-4 border-b border-border text-center">
                       {[
                         ['SO Number', selectedRowForDetail.soNumber],
                         ['Order Qty', selectedRowForDetail.orderQty],
@@ -7744,20 +7707,20 @@ const Planning = () => {
                         ['Approved By', selectedRowForDetail.approvedBy],
                       ].map(([label, value]) => (
                         <div key={String(label)}>
-                          <p className="text-xs text-gray-500 font-medium uppercase mb-1">{label}</p>
-                          <p className="text-sm font-semibold text-gray-900">{value}</p>
+                          <p className="text-xs text-ink-3 font-medium uppercase mb-1">{label}</p>
+                          <p className="text-sm font-semibold text-ink">{value}</p>
                         </div>
                       ))}
                     </div>
 
                     <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
-                      <p className="text-xs font-semibold text-gray-500 uppercase">
+                      <p className="text-xs font-semibold text-ink-3 uppercase">
                         {selectedRowForDetail.batchesRequired} batches required
                       </p>
                       <button
                         type="button"
                         onClick={() => { handlePlanBatches(selectedRowForDetail); closeDetailModal(); }}
-                        className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+                        className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-ok hover:bg-ok"
                       >
                         Plan Batches & Confirm BOM
                       </button>
@@ -7765,12 +7728,12 @@ const Planning = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                       <div>
-                        <h4 className="font-bold text-gray-900 mb-3 flex items-center text-sm">
-                          <span className="w-2.5 h-2.5 bg-teal-500 rounded-full mr-2" />
+                        <h4 className="font-bold text-ink mb-3 flex items-center text-sm">
+                          <span className="w-2.5 h-2.5 bg-brand rounded-full mr-2" />
                           RM — {detailRmItems.length} items
-                          <span className="ml-2 text-xs font-normal text-gray-500">(bar = order fulfillment from stock)</span>
+                          <span className="ml-2 text-xs font-normal text-ink-3">(bar = order fulfillment from stock)</span>
                         </h4>
-                        <p className="text-[11px] text-gray-500 mb-2">
+                        <p className="text-[11px] text-ink-3 mb-2">
                           Gray track = qty required for this SO · Fill = how much free stock (SIH − reserved) can cover.
                         </p>
                         <div className="space-y-4">
@@ -7780,12 +7743,12 @@ const Planning = () => {
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-bold text-gray-900 mb-3 flex items-center text-sm">
-                          <span className="w-2.5 h-2.5 bg-orange-500 rounded-full mr-2" />
+                        <h4 className="font-bold text-ink mb-3 flex items-center text-sm">
+                          <span className="w-2.5 h-2.5 bg-warn rounded-full mr-2" />
                           PM — {detailPmItems.length} items
-                          <span className="ml-2 text-xs font-normal text-gray-500">(bar = order fulfillment from stock)</span>
+                          <span className="ml-2 text-xs font-normal text-ink-3">(bar = order fulfillment from stock)</span>
                         </h4>
-                        <p className="text-[11px] text-gray-500 mb-2">
+                        <p className="text-[11px] text-ink-3 mb-2">
                           Gray track = pcs required for this SO · Fill = coverable from free stock (SIH − reserved).
                         </p>
                         <div className="space-y-4">
@@ -7796,22 +7759,22 @@ const Planning = () => {
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm text-gray-500">
-                        Approved by <span className="font-semibold text-gray-700">{selectedRowForDetail.approvedBy}</span>
+                    <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-ink-3">
+                        Approved by <span className="font-semibold text-ink-2">{selectedRowForDetail.approvedBy}</span>
                       </p>
                       {/* <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => handleRaisePRFromDetailPopup()}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200"
+                          className="px-4 py-2 rounded-lg text-sm font-semibold text-warn bg-warn-soft hover:bg-warn-soft"
                         >
                           Raise PR
                         </button>
                         <button
                           type="button"
                           onClick={() => { handlePlanBatches(selectedRowForDetail); closeDetailModal(); }}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-ok hover:bg-ok"
                         >
                           Plan Batches
                         </button>
@@ -7819,7 +7782,7 @@ const Planning = () => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </PlanningModalShell>
             )}
 
           </>
@@ -7827,32 +7790,32 @@ const Planning = () => {
 
         {activeMainTab === 'items-involved' && (
           <div className="space-y-4">
-            {/* Filters Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            {/* Unified filter bar */}
+            <ProcFilterBar stack>
               <div
-                className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 pb-3 border-b border-gray-100 text-sm"
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-3 border-b border-hairline text-sm"
                 aria-label="Items released to Planning summary"
               >
-                <span className="font-semibold text-gray-700">Items released</span>
+                <span className="font-semibold text-ink-2">Items released</span>
                 <span className="inline-flex items-center gap-1.5 tabular-nums">
-                  <span className="px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 text-xs font-bold">
+                  <span className="px-2 py-0.5 rounded-md bg-brand-soft text-brand text-xs font-bold">
                     {formatItemsReleasedSplitLabel('RM', itemsInvolvedReleaseSplit.rm)}
                   </span>
-                  <span className="text-gray-400 text-xs" aria-hidden>
+                  <span className="text-ink-4 text-xs" aria-hidden>
                     ·
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-800 border border-orange-200 text-xs font-bold">
+                  <span className="px-2 py-0.5 rounded-md bg-warn-soft text-warn text-xs font-bold">
                     {formatItemsReleasedSplitLabel('PM', itemsInvolvedReleaseSplit.pm)}
                   </span>
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-ink-3">
                   {itemsInvolvedReleaseSplit.rm.remaining + itemsInvolvedReleaseSplit.pm.remaining} item
                   {itemsInvolvedReleaseSplit.rm.remaining + itemsInvolvedReleaseSplit.pm.remaining === 1 ? '' : 's'}{' '}
                   not yet released to Planning
                 </span>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3 pb-3 border-b border-gray-100">
-                <span className="font-medium text-sm text-gray-700 shrink-0">Product</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pb-3 border-b border-hairline">
+                <span className="font-medium text-sm text-ink-2 shrink-0">Product</span>
                 <PlanningItemsInvolvedProductFilter
                   options={itemsInvolvedProductSelectOptions}
                   selectedIds={itemsInvolvedSelectedProductIds}
@@ -7870,72 +7833,80 @@ const Planning = () => {
                   disabled={activeItemsInvolvedLoading && itemsInvolvedProductFilterMode !== 'all'}
                 />
               </div>
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                <span className="font-medium text-sm text-gray-600">CATEGORY:</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-ink-3 font-semibold uppercase tracking-wide">Category</span>
                 {(['all', 'RM', 'PM', 'shortage', 'available'] as const).map((key) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setItemsInvolvedCategoryFilter(key)}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${itemsInvolvedCategoryFilter === key
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${itemsInvolvedCategoryFilter === key
                       ? key === 'shortage'
-                        ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+                        ? 'bg-err-soft text-err ring-1 ring-[color:var(--st-red-fg)]/40'
                         : key === 'available'
-                          ? 'bg-green-100 text-green-700 ring-1 ring-green-300'
-                          : 'bg-slate-200 text-slate-800 ring-1 ring-slate-400'
+                          ? 'bg-ok-soft text-ok ring-1 ring-[color:var(--st-green-fg)]/40'
+                          : 'bg-brand text-white'
                       : key === 'shortage'
-                        ? 'bg-gray-100 text-gray-600 hover:bg-red-50'
+                        ? 'bg-surface-3 text-ink-2 hover:bg-err-soft'
                         : key === 'available'
-                          ? 'bg-gray-100 text-gray-600 hover:bg-green-50'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-surface-3 text-ink-2 hover:bg-ok-soft'
+                          : 'bg-surface-3 text-ink-2 hover:bg-surface-2'
                       }`}
                   >
                     {key === 'all' ? 'All' : key === 'shortage' ? 'Shortage' : key === 'available' ? 'Available' : key}
                   </button>
                 ))}
               </div>
-              <SearchInput
-                value={itemsInvolvedSearchTerm}
-                onChange={setItemsInvolvedSearchTerm}
-                placeholder="Search item, code, INCI…"
-                widthClass="w-full"
-              />
-            </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <SearchInput
+                  value={itemsInvolvedSearchTerm}
+                  onChange={setItemsInvolvedSearchTerm}
+                  placeholder="Search item, code, INCI…"
+                  widthClass="flex-1 min-w-[220px]"
+                />
+                <DateRangeFilterInputs
+                  value={dateFilter}
+                  onChange={setDateFilter}
+                  dateFieldLabel="SO order date"
+                />
+              </div>
+            </ProcFilterBar>
 
             {/* Items Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto w-full">
+            <div className="bg-surface rounded-lg border border-border overflow-auto max-h-[70vh] w-full">
               {activeItemsInvolvedLoading && (
-                <div className="p-8 text-center text-gray-500 text-sm">
-                  {itemsInvolvedProductFilterMode !== 'all'
-                    ? 'Loading items for selected products…'
-                    : 'Loading items from confirmed BOMs…'}
+                <div className="p-6">
+                  <TableSkeleton rows={8} cols={6} />
                 </div>
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length === 0 && (
-                <div className="p-12 text-center border border-dashed border-gray-200 rounded-lg">
-                  <div className="text-4xl mb-2">⧖</div>
-                  <div className="font-semibold text-gray-700 mb-1">
-                    {itemsInvolvedProductFilterMode !== 'all'
+                <EmptyState
+                  icon={<Layers />}
+                  title={
+                    itemsInvolvedProductFilterMode !== 'all'
                       ? 'No items for selected product(s)'
-                      : 'No confirmed batches'}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {itemsInvolvedProductFilterMode !== 'all'
+                      : 'No confirmed batches'
+                  }
+                  description={
+                    itemsInvolvedProductFilterMode !== 'all'
                       ? 'Try another product, clear the product filter, or confirm BOM in Plan Batches (PIs Extracted).'
-                      : 'Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.'}
-                  </div>
-                </div>
+                      : 'Confirm BOM in Plan Batches (PRs Extracted) to see RM/PM items here.'
+                  }
+                />
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm border border-dashed border-gray-200 rounded-lg">
-                  No items match the current filters or search. Try changing category, product, or search term.
-                </div>
+                <EmptyState
+                  icon={<Layers />}
+                  title="No items match the current filters or search."
+                  description="Try changing category, product, or search term."
+                  compact
+                />
               )}
               {!activeItemsInvolvedLoading && itemsInvolved.length > 0 && filteredItemsInvolved.length > 0 && (
                 <>
                 <table className="w-full text-xs border-collapse min-w-[1500px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
                       <SortableTableTh
                         label="Item Code"
                         column="itemCode"
@@ -8051,7 +8022,7 @@ const Planning = () => {
                         align="right"
                         title="Open gap vs TOTAL REQ after SIH + planned + PO + in-transit"
                       />
-                      <th className="px-2 py-2 text-center font-semibold text-gray-700 whitespace-nowrap">Actions</th>
+                      <th scope="col" className="px-2 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -8105,7 +8076,7 @@ const Planning = () => {
                         );
                         const quotationBtnClass = planningQuotationActionButtonClass(quotationAskUi.status);
                         const quotationRowHighlight =
-                          quotationAskUi.status === 'pending' ? 'bg-yellow-50/90' : '';
+                          quotationAskUi.status === 'pending' ? 'bg-warn-soft/90' : '';
                         const quotationBtnLabel =
                           quotationAskUi.status === 'fulfilled_unread'
                             ? 'Quotation ready'
@@ -8128,15 +8099,15 @@ const Planning = () => {
                               quotationRowHighlight
                                 ? ''
                                 : idx % 2 === 0
-                                  ? 'bg-white'
-                                  : 'bg-gray-50'
+                                  ? 'bg-surface'
+                                  : 'bg-surface-2'
                             }`}
                           >
                             <td className="px-2 py-2 whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => setUsedInModalItem(item)}
-                                className="text-cyan-700 hover:text-cyan-900 hover:underline font-medium font-mono text-xs"
+                                className="text-brand hover:text-brand hover:underline font-medium font-mono text-xs"
                                 title={`View batches using this ${item.itemType}`}
                               >
                                 {item.code}
@@ -8146,7 +8117,7 @@ const Planning = () => {
                               <div className="flex items-start gap-1.5">
                                 {quotationAskUi.status === 'fulfilled_unread' ? (
                                   <span
-                                    className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-500"
+                                    className="mt-1 h-2 w-2 shrink-0 rounded-full bg-err"
                                     title="Quotation recorded on Items List"
                                     aria-hidden
                                   />
@@ -8163,7 +8134,7 @@ const Planning = () => {
                                         navigate(code ? `/raw-material?rm=${encodeURIComponent(code)}` : '/raw-material');
                                       }
                                     }}
-                                    className="text-gray-900 hover:text-cyan-800 hover:underline font-medium text-xs text-left"
+                                    className="text-ink hover:text-brand hover:underline font-medium text-xs text-left"
                                     title={`Open ${item.itemType} item detail (${item.code || 'this item'})`}
                                   >
                                     {item.name}
@@ -8171,8 +8142,8 @@ const Planning = () => {
                                   <span
                                     className={`inline-flex mt-0.5 text-[10px] font-semibold px-1 py-0.5 rounded ${
                                       item.itemType === 'PM'
-                                        ? 'bg-orange-100 text-orange-700'
-                                        : 'bg-cyan-100 text-cyan-700'
+                                        ? 'bg-warn-soft text-warn'
+                                        : 'bg-brand-soft text-brand'
                                     }`}
                                   >
                                     {item.itemType}
@@ -8184,18 +8155,18 @@ const Planning = () => {
                               <button
                                 type="button"
                                 onClick={() => setUsedInModalItem(item)}
-                                className="w-5 h-5 bg-pink-100 hover:bg-pink-200 rounded-full flex items-center justify-center mx-auto transition-colors"
+                                className="w-5 h-5 bg-brand-soft hover:bg-brand-soft rounded-full flex items-center justify-center mx-auto transition-colors"
                                 title="Click to view batches using this item"
                               >
-                                <span className="text-xs font-bold text-pink-700">{item.usedIn}</span>
+                                <span className="text-xs font-bold text-brand">{item.usedIn}</span>
                               </button>
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
-                              <span className="text-gray-900 font-semibold">{item.totalReq}</span>
+                              <span className="text-ink font-semibold">{item.totalReq}</span>
                             </td>
                             <td
                               className={`px-2 py-2 text-right tabular-nums min-w-[88px] ${
-                                item.sihNum < parseKgCount(item.reorderPt) ? 'bg-amber-50' : ''
+                                item.sihNum < parseKgCount(item.reorderPt) ? 'bg-warn-soft' : ''
                               }`}
                               title={
                                 item.sihNum < parseKgCount(item.reorderPt)
@@ -8206,23 +8177,23 @@ const Planning = () => {
                               <button
                                 type="button"
                                 onClick={() => navigate(`/warehouse?q=${encodeURIComponent(String(item.code ?? '').trim())}`)}
-                                className="text-gray-900 hover:text-cyan-800 hover:underline"
+                                className="text-ink hover:text-brand hover:underline"
                                 title="Open Warehouse stock for this item"
                               >
                                 {item.sih}
                               </button>
-                              <div className="text-[10px] text-gray-500">({item.sihCovPct}%)</div>
+                              <div className="text-[10px] text-ink-3">({item.sihCovPct}%)</div>
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums min-w-[88px]">
-                              <div className="text-gray-900">{item.plannedQty}</div>
-                              <div className="text-[10px] text-gray-500">({item.plannedCovPct}%)</div>
+                              <div className="text-ink">{item.plannedQty}</div>
+                              <div className="text-[10px] text-ink-3">({item.plannedCovPct}%)</div>
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink">
                               {item.poBreakdown.length > 0 ? (
                                 <button
                                   type="button"
                                   onClick={() => setRefPopup({ title: 'Purchase Orders', sub: `${item.name} · PO Qty ${item.poQtyStr}`, refLabel: 'PO #', rows: item.poBreakdown })}
-                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the POs behind this quantity"
                                 >
                                   {item.poQtyStr}
@@ -8231,12 +8202,12 @@ const Planning = () => {
                                 item.poQtyStr
                               )}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink">
                               {item.inTransitBreakdown.length > 0 ? (
                                 <button
                                   type="button"
                                   onClick={() => setRefPopup({ title: 'In-Transit GRNs', sub: `${item.name} · In-Transit ${item.inTransitQtyStr}`, refLabel: 'GRN #', rows: item.inTransitBreakdown })}
-                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the GRNs in transit"
                                 >
                                   {item.inTransitQtyStr}
@@ -8245,12 +8216,12 @@ const Planning = () => {
                                 item.inTransitQtyStr
                               )}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-800">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink">
                               {item.underGrnBreakdown.length > 0 ? (
                                 <button
                                   type="button"
                                   onClick={() => setRefPopup({ title: 'Under-GRN', sub: `${item.name} · Under-GRN ${item.underGrnStr}`, refLabel: 'GRN #', rows: item.underGrnBreakdown })}
-                                  className="text-cyan-700 font-semibold hover:text-cyan-900 hover:underline"
+                                  className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the GRNs under review"
                                 >
                                   {item.underGrnStr}
@@ -8259,35 +8230,35 @@ const Planning = () => {
                                 item.underGrnStr
                               )}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink-2">
                               {item.reserved}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink-2">
                               {item.avgMo}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink-2">
                               {item.reorderPt}
                             </td>
-                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-gray-700">
+                            <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink-2">
                               {item.moqStr}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">
                               {item.netNum < -1e-9 ? (
                                 <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-err-soft text-err border border-err-soft"
                                   title="Planning SLA gap — shortfall vs full requirement (§6.3)"
                                 >
                                   🚩 SHORTAGE {item.slaGapStr}
                                 </span>
                               ) : (
-                                <span className="text-emerald-700 font-semibold">✓ 0</span>
+                                <span className="text-ok font-semibold">✓ 0</span>
                               )}
                             </td>
                             <td className="px-2 py-2 text-center min-w-[170px]">
                               <div className="flex flex-col items-center gap-1 min-w-[7rem]">
                                 {shortageForRelease && releasedTowardGap > 1e-6 && (
                                   <span
-                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-800 border border-slate-200"
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-surface-3 text-ink border border-border"
                                     title="Quantity already on Procurement / draft PO from Release to Planning."
                                   >
                                     Released{' '}
@@ -8310,7 +8281,7 @@ const Planning = () => {
                                 )}
                                 {hasShortfall && hasExistingPlannedLine && gapNeed > 1e-6 && (
                                   <span
-                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-ok-soft text-ok border border-ok-soft"
                                     title="Open procurement / draft PO lines exist; you can release more until the gap is covered."
                                   >
                                     Partial release
@@ -8319,7 +8290,7 @@ const Planning = () => {
                                 {canReleaseToPlanning ? (
                                   <>
                                     <span
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-800 border border-red-200"
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-err-soft text-err border border-err-soft"
                                       title="Open gap vs TOTAL REQ after SIH + planned + PO + in-transit."
                                     >
                                       Shortage{' '}
@@ -8330,7 +8301,7 @@ const Planning = () => {
                                     </span>
                                     <button
                                       type="button"
-                                      className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold w-full"
+                                      className="px-2 py-1 rounded bg-brand hover:bg-brand text-white text-[11px] font-semibold w-full"
                                       onClick={() => openReleaseToPlanningModal(item)}
                                     >
                                       Release to Planning
@@ -8338,14 +8309,14 @@ const Planning = () => {
                                   </>
                                 ) : shortageForRelease ? (
                                   <span
-                                    className="inline-flex items-center px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200 w-full justify-center"
+                                    className="inline-flex items-center px-2 py-1 rounded bg-ok-soft text-ok text-[11px] font-semibold border border-ok-soft w-full justify-center"
                                     title={`Supply (incl. planned + PO + in-transit) meets TOTAL REQ — no open gap (${gapNeed.toLocaleString()} remaining).`}
                                   >
                                     Covered
                                   </span>
                                 ) : (
                                   <span
-                                    className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200 w-full justify-center"
+                                    className="inline-flex items-center px-2 py-1 rounded bg-surface-3 text-ink-2 text-[11px] font-semibold border border-border w-full justify-center"
                                     title="Planning fulfilled — no open shortage vs TOTAL REQ."
                                   >
                                     No shortage
@@ -8367,14 +8338,14 @@ const Planning = () => {
                                 >
                                   {quotationAskUi.status === 'fulfilled_unread' ? (
                                     <span
-                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"
+                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-err ring-2 ring-white"
                                       title="New quotation on Items List"
                                       aria-hidden
                                     />
                                   ) : null}
                                   {quotationAskUi.status === 'pending' ? (
                                     <span
-                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-yellow-700 ring-2 ring-white animate-pulse"
+                                      className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-warn ring-2 ring-white animate-pulse"
                                       title="Quotation requested"
                                       aria-hidden
                                     />
@@ -8389,24 +8360,24 @@ const Planning = () => {
                     ))}
                   </tbody>
                 </table>
-                <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-gray-200 bg-gray-50/60">
-                  <span className="text-xs text-gray-600">
+                <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 border-t border-border bg-surface-2/60">
+                  <span className="text-xs text-ink-2">
                     Showing{' '}
-                    <span className="font-semibold text-gray-900">
+                    <span className="font-semibold text-ink">
                       {sortedFilteredItemsInvolved.length === 0 ? 0 : itemsInvolvedPageStart + 1}
                     </span>
                     –
-                    <span className="font-semibold text-gray-900">
+                    <span className="font-semibold text-ink">
                       {Math.min(
                         itemsInvolvedPageStart + itemsInvolvedPageSize,
                         sortedFilteredItemsInvolved.length
                       )}
                     </span>{' '}
                     of{' '}
-                    <span className="font-semibold text-gray-900">{sortedFilteredItemsInvolved.length}</span>
+                    <span className="font-semibold text-ink">{sortedFilteredItemsInvolved.length}</span>
                   </span>
                   <div className="flex flex-wrap items-center gap-3">
-                    <label htmlFor="items-involved-page-size" className="text-xs text-gray-600">
+                    <label htmlFor="items-involved-page-size" className="text-xs text-ink-2">
                       Rows per page
                     </label>
                     <select
@@ -8416,7 +8387,7 @@ const Planning = () => {
                         setItemsInvolvedPageSize(Number(e.target.value));
                         setItemsInvolvedPage(1);
                       }}
-                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      className="text-xs px-3 py-2 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-brand"
                     >
                       <option value={10}>10</option>
                       <option value={25}>25</option>
@@ -8445,6 +8416,7 @@ const Planning = () => {
             onOpenRmPanel={(row) => openBatchItemsPanel(row, 'RM')}
             onOpenPmPanel={(row) => openBatchItemsPanel(row, 'PM')}
             dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
             itemsInvolvedAll={itemsInvolvedAll}
             procurementRequests={procurementRequests}
             plannedLinesFromBackend={plannedLinesFromBackend}
@@ -8454,6 +8426,7 @@ const Planning = () => {
           />
         )}
 
+      </div>
       </div>
 
       {/* Used In popup: list all batches (sent + draft) that consume selected RM/PM */}
@@ -8469,81 +8442,82 @@ const Planning = () => {
       )}
 
       {refPopup && (
-        <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4" onClick={() => setRefPopup(null)}>
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-gray-200 max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+        <PlanningModalShell onClose={() => setRefPopup(null)} z="z-[100]">
+          <div role="dialog" aria-modal="true" aria-label={refPopup.title} className="bg-surface w-full max-w-lg rounded-xl shadow-xl border border-border max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-border flex items-start justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-900">{refPopup.title}</h3>
-                <p className="text-xs text-gray-500 mt-1">{refPopup.sub}</p>
+                <h3 className="text-base font-bold text-ink">{refPopup.title}</h3>
+                <p className="text-xs text-ink-3 mt-1">{refPopup.sub}</p>
               </div>
-              <button type="button" onClick={() => setRefPopup(null)} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+              <button type="button" onClick={() => setRefPopup(null)} className="text-ink-4 hover:text-ink-2 text-2xl leading-none">×</button>
             </div>
             <div className="p-4 overflow-y-auto max-h-[64vh]">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-[11px] font-semibold text-gray-500 uppercase border-b border-gray-200">
-                    <th className="px-2 py-1.5">{refPopup.refLabel}</th>
-                    <th className="px-2 py-1.5 text-right">Qty</th>
-                    <th className="px-2 py-1.5">Status</th>
-                    <th className="px-2 py-1.5">Expected</th>
+                  <tr className="text-left text-[11px] font-semibold text-ink-3 uppercase border-b border-border">
+                    <th scope="col" className="px-2 py-1.5">{refPopup.refLabel}</th>
+                    <th scope="col" className="px-2 py-1.5 text-right">Qty</th>
+                    <th scope="col" className="px-2 py-1.5">Status</th>
+                    <th scope="col" className="px-2 py-1.5">Expected</th>
                   </tr>
                 </thead>
                 <tbody>
                   {refPopup.rows.map((r, i) => (
-                    <tr key={`${r.ref}-${i}`} className="border-b border-gray-100">
-                      <td className="px-2 py-1.5 font-mono text-xs text-gray-800">{r.ref}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-gray-800 whitespace-nowrap">{(Number(r.qty) || 0).toLocaleString('en-IN')} {r.unit}</td>
-                      <td className="px-2 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200">{r.status}</span></td>
-                      <td className="px-2 py-1.5 text-xs text-gray-600 whitespace-nowrap">{r.expectedDate ? new Date(r.expectedDate).toLocaleDateString('en-IN') : '—'}</td>
+                    <tr key={`${r.ref}-${i}`} className="border-b border-hairline">
+                      <td className="px-2 py-1.5 font-mono text-xs text-ink">{r.ref}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-ink whitespace-nowrap">{(Number(r.qty) || 0).toLocaleString('en-IN')} {r.unit}</td>
+                      <td className="px-2 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-soft text-brand border border-brand-soft">{r.status}</span></td>
+                      <td className="px-2 py-1.5 text-xs text-ink-2 whitespace-nowrap">{r.expectedDate ? new Date(r.expectedDate).toLocaleDateString('en-IN') : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
 
       {usedInModalItem && (() => {
         const rows = getUsedInBatchesForItem(usedInModalItem);
         return (
-          <div className="fixed inset-0 z-95 bg-black/35 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-4xl rounded-xl shadow-xl border border-gray-200 max-h-[85vh] overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
+          <PlanningModalShell onClose={() => setUsedInModalItem(null)} z="z-[100]">
+            <div role="dialog" aria-modal="true" aria-label={`Batches using ${usedInModalItem.code}`} className="bg-surface w-full max-w-4xl rounded-xl shadow-xl border border-border max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-border flex items-start justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Batches using {usedInModalItem.code}</h3>
-                  <p className="text-xs text-gray-500 mt-1">{usedInModalItem.name} ({usedInModalItem.itemType})</p>
+                  <h3 className="text-base font-bold text-ink">Batches using {usedInModalItem.code}</h3>
+                  <p className="text-xs text-ink-3 mt-1">{usedInModalItem.name} ({usedInModalItem.itemType})</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setUsedInModalItem(null)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-ink-3 hover:text-ink-2"
+                  aria-label="Close"
                 >
                   <X size={18} />
                 </button>
               </div>
               <div className="p-4 overflow-auto max-h-[70vh]">
                 {rows.length === 0 ? (
-                  <div className="text-sm text-gray-500 p-6 text-center">No batches found for this item.</div>
+                  <div className="text-sm text-ink-3 p-6 text-center">No batches found for this item.</div>
                 ) : (
                   <table className="w-full text-xs border-collapse">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Batch Code</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">SO</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Product</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Batch Size</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-700">Required ({usedInModalItem.unit})</th>
+                      <tr className="bg-surface-2 border-b border-border">
+                        <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Batch Code</th>
+                        <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">SO</th>
+                        <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product</th>
+                        <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Batch Size</th>
+                        <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Required ({usedInModalItem.unit})</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((row, idx) => (
-                        <tr key={`${row.id}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="px-3 py-2 text-gray-900">{row.batchCode ?? `B-${idx + 1}`}</td>
-                          <td className="px-3 py-2 text-gray-700">{row.soNumber ?? '—'}</td>
-                          <td className="px-3 py-2 text-gray-700">{row.productName ?? row.productCode ?? '—'}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{(Number(row.sizeKg) || 0).toLocaleString()} KG</td>
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        <tr key={`${row.id}-${idx}`} className={idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
+                          <td className="px-3 py-2 text-ink">{row.batchCode ?? `B-${idx + 1}`}</td>
+                          <td className="px-3 py-2 text-ink-2">{row.soNumber ?? '—'}</td>
+                          <td className="px-3 py-2 text-ink-2">{row.productName ?? row.productCode ?? '—'}</td>
+                          <td className="px-3 py-2 text-right text-ink-2">{(Number(row.sizeKg) || 0).toLocaleString()} KG</td>
+                          <td className="px-3 py-2 text-right font-semibold text-ink">
                             {/* RM is decimal kg (0.195, 120.056) — Math.round wrongly floored sub-1 values to 0.
                                 Show full meaningful decimals for RM; keep whole pieces for PM. */}
                             {formatQtyExact(
@@ -8557,8 +8531,8 @@ const Planning = () => {
                   </table>
                 )}
               </div>
-              <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-gray-600">
+              <div className="px-5 py-3 border-t border-border bg-surface-2 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-ink-2">
                   Edit batch size, BOM, and send to Production from the Batches tab.
                 </p>
                 <button
@@ -8574,13 +8548,13 @@ const Planning = () => {
                       state: searchHint ? { batchesSearch: searchHint } : undefined,
                     });
                   }}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-ok text-white hover:bg-ok transition-colors"
                 >
                   Open Batches tab →
                 </button>
               </div>
             </div>
-          </div>
+          </PlanningModalShell>
         );
       })()}
 
@@ -8886,22 +8860,26 @@ const Planning = () => {
         };
 
         return (
-          <div className="fixed inset-0 z-95 bg-black/35 flex items-end sm:items-center justify-center p-2 sm:p-4">
+          <PlanningModalShell onClose={closeReleaseModal} z="z-[100]" align="end-mobile" dismissable={false}>
             <div
-              className={`bg-white w-full rounded-xl shadow-xl max-h-[min(92vh,100dvh)] overflow-hidden flex flex-col ${
-                isQuotationOnlyModal ? 'max-w-xl border-2 border-yellow-400' : 'max-w-6xl border border-gray-200'
+              role="dialog"
+              aria-modal="true"
+              aria-label={isQuotationOnlyModal ? 'Request quotation' : 'Release to Planning'}
+              onClick={(e) => e.stopPropagation()}
+              className={`bg-surface w-full rounded-xl shadow-xl max-h-[min(92vh,100dvh)] overflow-hidden flex flex-col ${
+                isQuotationOnlyModal ? 'max-w-xl border-2 border-warn-soft' : 'max-w-6xl border border-border'
               }`}
             >
               <div
                 className={`px-3 sm:px-5 py-3 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${
-                  isQuotationOnlyModal ? 'border-b border-yellow-300 bg-yellow-50' : 'border-b border-gray-200'
+                  isQuotationOnlyModal ? 'border-b border-warn-soft bg-warn-soft' : 'border-b border-border'
                 }`}
               >
                 <div className="min-w-0 pr-2">
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
+                  <h2 className="text-base sm:text-lg font-bold text-ink leading-snug">
                     {isQuotationOnlyModal ? 'Request vendor quotation' : 'Release to PO Planned Stage'}
                   </h2>
-                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  <p className="text-xs text-ink-2 mt-1 leading-relaxed">
                     {isQuotationOnlyModal
                       ? 'Enter quantity only. Vendor, price, MOQ, and lead time are set by Procurement after you send the request.'
                       : 'Pick vendor & MOQ price, choose qty, set payment terms. Add Planned Line updates procurement release; Request quotation does not.'}
@@ -8910,7 +8888,7 @@ const Planning = () => {
                 <button
                   type="button"
                   onClick={closeReleaseModal}
-                  className="shrink-0 self-end sm:self-start px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                  className="shrink-0 self-end sm:self-start px-3 py-1.5 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-2"
                 >
                   Close
                 </button>
@@ -8959,70 +8937,70 @@ const Planning = () => {
                 ) : null}
                 <div className={`grid grid-cols-1 gap-4 xl:gap-5 ${isQuotationOnlyModal ? 'max-w-xl mx-auto' : 'xl:grid-cols-2'}`}>
                   {!isQuotationOnlyModal && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0">
-                    <h3 className="font-bold text-slate-900 text-sm leading-snug break-words" title={item.name}>
+                  <div className="rounded-xl border border-border bg-surface p-3 sm:p-4 shadow-sm min-w-0">
+                    <h3 className="font-bold text-ink text-sm leading-snug break-words" title={item.name}>
                       {item.name}
                     </h3>
-                    <p className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 inline-block mt-1.5 break-all">
+                    <p className="font-mono text-xs px-2 py-0.5 rounded bg-surface-3 text-ink-2 inline-block mt-1.5 break-all">
                       {item.code}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2.5 mb-3">
-                      <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                      <span className="inline-flex items-center rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">
                         {item.itemType} · {item.unit}
                       </span>
                       {isQuotationOnlyModal ? (
-                        <span className="inline-flex items-center rounded-md border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[11px] font-semibold text-yellow-950">
+                        <span className="inline-flex items-center rounded-md border border-warn-soft bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
                           Quotation request
                         </span>
                       ) : (
                         <>
-                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-900">
+                          <span className="inline-flex items-center rounded-md border border-err-soft bg-err-soft px-2 py-0.5 text-[11px] font-medium text-err">
                             Gap {qtyFmt(gapNeedModal)}
                           </span>
-                          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                          <span className="inline-flex items-center rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] text-ink-2">
                             On PR / draft {qtyFmt(releasedModal)}
                           </span>
                         </>
                       )}
                     </div>
-                    <div className="border-t border-slate-200 my-3" />
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                    <div className="border-t border-border my-3" />
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-3 mb-2">
                       Items List rates
                     </p>
                     <ul className="space-y-2 2xl:hidden">
                       {slabs.map((s, i) => (
                         <li
                           key={`card-${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`}
-                          className="rounded-lg border border-slate-200 bg-slate-50/80 p-3"
+                          className="rounded-lg border border-border bg-surface-2/80 p-3"
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900 leading-snug break-words min-w-0">
+                            <p className="text-sm font-semibold text-ink leading-snug break-words min-w-0">
                               {s.vendorName}
                             </p>
                             <button
                               type="button"
                               onClick={() => applyVendorSlabPick(s)}
-                              className="shrink-0 px-2.5 py-1 rounded border border-cyan-400 text-cyan-700 text-[11px] font-semibold hover:bg-cyan-50"
+                              className="shrink-0 px-2.5 py-1 rounded border border-brand-soft text-brand text-[11px] font-semibold hover:bg-brand-soft"
                             >
                               Pick
                             </button>
                           </div>
                           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                             <div>
-                              <dt className="text-slate-500">MOQ</dt>
-                              <dd className="font-medium text-slate-800">{s.moq || '—'}</dd>
+                              <dt className="text-ink-3">MOQ</dt>
+                              <dd className="font-medium text-ink">{s.moq || '—'}</dd>
                             </div>
                             <div>
-                              <dt className="text-slate-500">Unit price</dt>
-                              <dd className="font-medium text-slate-800">₹{s.unitPrice.toLocaleString('en-IN')}</dd>
+                              <dt className="text-ink-3">Unit price</dt>
+                              <dd className="font-medium text-ink">₹{s.unitPrice.toLocaleString('en-IN')}</dd>
                             </div>
                             <div>
-                              <dt className="text-slate-500">Lead time</dt>
-                              <dd className="text-slate-800">{s.leadTimeDays}d</dd>
+                              <dt className="text-ink-3">Lead time</dt>
+                              <dd className="text-ink">{s.leadTimeDays}d</dd>
                             </div>
                             <div className="col-span-2">
-                              <dt className="text-slate-500">Payment terms</dt>
-                              <dd className="text-slate-700 leading-snug mt-0.5">
+                              <dt className="text-ink-3">Payment terms</dt>
+                              <dd className="text-ink-2 leading-snug mt-0.5">
                                 {formatStagedPaymentTermsSummary(s.paymentTerms)}
                               </dd>
                             </div>
@@ -9030,9 +9008,9 @@ const Planning = () => {
                         </li>
                       ))}
                       {slabs.length === 0 && (
-                        <li className="rounded-lg border border-dashed border-slate-200 py-6 px-3 text-center">
-                          <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
-                          <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                        <li className="rounded-lg border border-dashed border-border py-6 px-3 text-center">
+                          <p className="text-ink-2 text-sm font-medium">No vendor rates on Items List</p>
+                          <p className="text-ink-3 text-xs mt-1 leading-relaxed">
                             Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
                             so Procurement can quote this material.
                           </p>
@@ -9042,36 +9020,36 @@ const Planning = () => {
                     <div className="hidden 2xl:block overflow-x-auto -mx-1 px-1">
                       <table className="w-full min-w-[36rem] text-xs">
                         <thead>
-                          <tr className="text-slate-500 border-b border-slate-200">
-                            <th className="text-left py-2 pr-2 font-medium">Vendor</th>
-                            <th className="text-left py-2 pr-2 font-medium whitespace-nowrap">MOQ</th>
-                            <th className="text-right py-2 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
-                            <th className="text-right py-2 pr-2 font-medium whitespace-nowrap">Lead</th>
-                            <th className="text-left py-2 pr-2 font-medium min-w-[9rem]">Terms</th>
-                            <th className="w-14 py-2" />
+                          <tr className="text-ink-3 border-b border-border">
+                            <th scope="col" className="text-left py-2 pr-2 font-medium">Vendor</th>
+                            <th scope="col" className="text-left py-2 pr-2 font-medium whitespace-nowrap">MOQ</th>
+                            <th scope="col" className="text-right py-2 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
+                            <th scope="col" className="text-right py-2 pr-2 font-medium whitespace-nowrap">Lead</th>
+                            <th scope="col" className="text-left py-2 pr-2 font-medium min-w-[9rem]">Terms</th>
+                            <th scope="col" className="w-14 py-2" />
                           </tr>
                         </thead>
                         <tbody>
                           {slabs.map((s, i) => (
-                            <tr key={`${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`} className="border-b border-slate-100">
-                              <td className="py-2 pr-2 font-medium text-slate-900 align-top break-words max-w-[10rem]">
+                            <tr key={`${s.vendorName}-${s.moq}-${s.unitPrice}-${i}`} className="border-b border-hairline">
+                              <td className="py-2 pr-2 font-medium text-ink align-top break-words max-w-[10rem]">
                                 {s.vendorName}
                               </td>
-                              <td className="py-2 pr-2 text-slate-700 whitespace-nowrap align-top">{s.moq || '—'}</td>
+                              <td className="py-2 pr-2 text-ink-2 whitespace-nowrap align-top">{s.moq || '—'}</td>
                               <td className="py-2 pr-2 text-right font-medium whitespace-nowrap align-top">
                                 ₹{s.unitPrice.toLocaleString('en-IN')}
                               </td>
-                              <td className="py-2 pr-2 text-right text-slate-700 whitespace-nowrap align-top">
+                              <td className="py-2 pr-2 text-right text-ink-2 whitespace-nowrap align-top">
                                 {s.leadTimeDays}d
                               </td>
-                              <td className="py-2 pr-2 text-slate-600 text-[11px] leading-snug align-top">
+                              <td className="py-2 pr-2 text-ink-2 text-[11px] leading-snug align-top">
                                 {formatStagedPaymentTermsSummary(s.paymentTerms)}
                               </td>
                               <td className="py-2 align-top">
                                 <button
                                   type="button"
                                   onClick={() => applyVendorSlabPick(s)}
-                                  className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50 whitespace-nowrap"
+                                  className="px-2 py-1 rounded border border-brand-soft text-brand text-[10px] font-semibold hover:bg-brand-soft whitespace-nowrap"
                                 >
                                   Pick
                                 </button>
@@ -9081,8 +9059,8 @@ const Planning = () => {
                           {slabs.length === 0 && (
                             <tr>
                               <td colSpan={6} className="py-4 text-center">
-                                <p className="text-slate-600 text-sm font-medium">No vendor rates on Items List</p>
-                                <p className="text-slate-500 text-xs mt-1 max-w-md mx-auto leading-relaxed">
+                                <p className="text-ink-2 text-sm font-medium">No vendor rates on Items List</p>
+                                <p className="text-ink-3 text-xs mt-1 max-w-md mx-auto leading-relaxed">
                                   Add vendor tiers under Procurement → Quotations (Items List), or request a quotation below
                                   so Procurement can quote this material.
                                 </p>
@@ -9093,11 +9071,11 @@ const Planning = () => {
                       </table>
                     </div>
                     {hasVendorSlabs ? (
-                      <p className="text-xs text-slate-500 mt-2">Pick a slab or select manually.</p>
+                      <p className="text-xs text-ink-3 mt-2">Pick a slab or select manually.</p>
                     ) : (
-                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                        <p className="text-xs font-semibold text-amber-900">No vendor on Items List</p>
-                        <p className="text-[11px] text-amber-800 mt-0.5">
+                      <div className="mt-3 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2.5">
+                        <p className="text-xs font-semibold text-warn">No vendor on Items List</p>
+                        <p className="text-[11px] text-warn mt-0.5">
                           <span className="font-semibold">Request quotation</span> sends a quote ask to Procurement → Quotations
                           only. It does not add planned qty or change Items Involved NET until Procurement records a vendor rate.
                           {gapNeedModal > 1e-6
@@ -9107,7 +9085,7 @@ const Planning = () => {
                       </div>
                     )}
                     {hasVendorSlabs && (
-                      <p className="text-[11px] text-slate-500 mt-2">
+                      <p className="text-[11px] text-ink-3 mt-2">
                         Need another vendor or rate? Use <span className="font-medium">Request quotation</span> with qty
                         only — Procurement sets vendor and price. Use <span className="font-medium">Add Planned Line</span>{' '}
                         after rates exist.
@@ -9115,37 +9093,37 @@ const Planning = () => {
                     )}
                   </div>
                   )}
-                  <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-w-0">
+                  <div className="rounded-xl border border-border bg-surface p-3 sm:p-4 shadow-sm min-w-0">
                     {isQuotationOnlyModal ? (
                       <>
-                        <h3 className="font-bold text-slate-900 text-sm leading-snug break-words" title={item.name}>
+                        <h3 className="font-bold text-ink text-sm leading-snug break-words" title={item.name}>
                           {item.name}
                         </h3>
-                        <p className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 inline-block mt-1.5 break-all">
+                        <p className="font-mono text-xs px-2 py-0.5 rounded bg-surface-3 text-ink-2 inline-block mt-1.5 break-all">
                           {item.code}
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2.5 mb-3">
-                          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                          <span className="inline-flex items-center rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">
                             {item.itemType} · {item.unit}
                           </span>
-                          <span className="inline-flex items-center rounded-md border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[11px] font-semibold text-yellow-950">
+                          <span className="inline-flex items-center rounded-md border border-warn-soft bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
                             Quotation request
                           </span>
                           {gapNeedModal > 1e-6 ? (
-                            <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-900">
+                            <span className="inline-flex items-center rounded-md border border-err-soft bg-err-soft px-2 py-0.5 text-[11px] font-medium text-err">
                               Gap {qtyFmt(gapNeedModal)}
                             </span>
                           ) : null}
                         </div>
-                        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                          <p className="text-xs font-semibold text-amber-900">Planning sends quantity only</p>
-                          <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        <div className="mb-3 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2.5">
+                          <p className="text-xs font-semibold text-warn">Planning sends quantity only</p>
+                          <p className="text-[11px] text-warn mt-0.5 leading-relaxed">
                             Vendor, unit price, MOQ, and lead time will be decided by Procurement. This does not change
                             Items Involved planned qty, NET, or shortages.
                           </p>
                         </div>
                         <div className="mb-3">
-                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                             Quantity to quote
                             {releaseToPlanningItem?.itemType === 'RM'
                               ? procurementUnitSuffix(
@@ -9164,22 +9142,22 @@ const Planning = () => {
                             min={0}
                             value={String(releaseToPlanningForm.qty ?? '').replace(/,/g, '')}
                             onChange={(e) => handleReleaseFormQtyChange(e.target.value)}
-                            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                            className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                           />
-                          <p className="text-[10px] text-slate-500 mt-0.5">
+                          <p className="text-[10px] text-ink-3 mt-0.5">
                             Enter how much Procurement should quote — may exceed BOM gap (e.g. vendor MOQ). After rates
                             are on Items List, use Release to Planning to add a planned line.
                           </p>
                           {releaseBatchRows.length > 0 ? (
-                            <p className="text-[10px] text-indigo-700 mt-0.5">
+                            <p className="text-[10px] text-brand mt-0.5">
                               Per-batch picks above update this total automatically.
                             </p>
                           ) : null}
                           {slabMoqModal > 0 &&
                           releasePreviewTotalQty > 1e-6 &&
                           releasePreviewTotalQty < slabMoqModal - 1e-4 ? (
-                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-                              <p className="text-[11px] text-amber-800 leading-snug min-w-0">
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warn-soft bg-warn-soft px-3 py-2">
+                              <p className="text-[11px] text-warn leading-snug min-w-0">
                                 ⚠ Releasing {qtyFmt(releasePreviewTotalQty)} — below the vendor MOQ of{' '}
                                 {qtyFmt(slabMoqModal)}. Procurement will reject it. Bump the total to the
                                 minimum (clears per-batch picks).
@@ -9187,7 +9165,7 @@ const Planning = () => {
                               <button
                                 type="button"
                                 onClick={fillReleaseQtyToMoq}
-                                className="shrink-0 px-2.5 py-1 rounded-md bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700 whitespace-nowrap"
+                                className="shrink-0 px-2.5 py-1 rounded-md bg-warn text-white text-[11px] font-bold hover:bg-warn whitespace-nowrap"
                               >
                                 Bump to MOQ ({qtyFmt(slabMoqModal)})
                               </button>
@@ -9198,7 +9176,7 @@ const Planning = () => {
                           <button
                             type="button"
                             onClick={prefillReleaseQtyFromGap}
-                            className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                            className="px-3 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold hover:bg-surface-2"
                           >
                             Prefill qty = Gap ({qtyFmt(gapNeedModal)})
                           </button>
@@ -9206,17 +9184,17 @@ const Planning = () => {
                       </>
                     ) : (
                       <>
-                        <h3 className="font-bold text-slate-900 text-sm mb-3">Planned line details</h3>
+                        <h3 className="font-bold text-ink text-sm mb-3">Planned line details</h3>
                         {displayWeekRows.length > 0 ? (
-                          <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/40 px-3 py-2 sm:hidden">
-                            <p className="text-[10px] font-bold text-indigo-900 uppercase tracking-wide mb-1">
+                          <div className="mb-3 rounded-lg border border-brand-soft bg-brand-soft/40 px-3 py-2 sm:hidden">
+                            <p className="text-[10px] font-bold text-brand uppercase tracking-wide mb-1">
                               Releasing this week
                             </p>
-                            <ul className="space-y-1 text-xs text-slate-800">
+                            <ul className="space-y-1 text-xs text-ink">
                               {displayWeekRows.map((row) => (
                                 <li key={row.weekKey} className="flex justify-between gap-2">
                                   <span className="font-medium">{row.weekLabel}</span>
-                                  <span className="font-bold text-indigo-950 whitespace-nowrap">
+                                  <span className="font-bold text-brand whitespace-nowrap">
                                     {formatReleasePickQty(row.qty)} {releasePickUnitLabel}
                                   </span>
                                 </li>
@@ -9227,16 +9205,16 @@ const Planning = () => {
                         <div
                           className={`mb-3 rounded-lg border px-3 py-2.5 ${
                             canAddPlannedLineRelease
-                              ? 'border-red-200 bg-red-50'
+                              ? 'border-err-soft bg-err-soft'
                               : shortageForReleaseModal
-                                ? 'border-emerald-200 bg-emerald-50'
-                                : 'border-slate-200 bg-slate-50'
+                                ? 'border-ok-soft bg-ok-soft'
+                                : 'border-border bg-surface-2'
                           }`}
                         >
                           {canAddPlannedLineRelease ? (
                             <>
-                              <p className="text-xs font-semibold text-red-900">Open shortage for release</p>
-                              <p className="text-[11px] text-red-800 mt-0.5">
+                              <p className="text-xs font-semibold text-err">Open shortage for release</p>
+                              <p className="text-[11px] text-err mt-0.5">
                                 Gap vs TOTAL REQ (after SIH + planned + PO + in-transit):{' '}
                                 <span className="font-bold">{qtyFmt(gapNeedModal)}</span>
                                 {releasedModal > 1e-6 ? (
@@ -9248,17 +9226,17 @@ const Planning = () => {
                               </p>
                             </>
                           ) : shortageForReleaseModal ? (
-                            <p className="text-xs font-semibold text-emerald-800">
+                            <p className="text-xs font-semibold text-ok">
                               Supply covers TOTAL REQ — no open release gap. Use Request quotation if you only need vendor
                               rates.
                             </p>
                           ) : (
-                            <p className="text-xs font-semibold text-slate-700">No BOM shortage for this item.</p>
+                            <p className="text-xs font-semibold text-ink-2">No BOM shortage for this item.</p>
                           )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                           <div className="min-w-0">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                               Vendor
                             </label>
                             <VendorClientNameTypeahead
@@ -9274,14 +9252,14 @@ const Planning = () => {
                               }}
                               partyKind="vendor"
                               placeholder="Search vendor from master…"
-                              className="[&_input]:rounded-lg [&_input]:border-slate-300 [&_input]:px-2 [&_input]:py-1.5 [&_input]:text-sm"
+                              className="[&_input]:rounded-lg [&_input]:border-border [&_input]:px-2 [&_input]:py-1.5 [&_input]:text-sm"
                             />
-                            <p className="text-[10px] text-slate-500 mt-0.5">
+                            <p className="text-[10px] text-ink-3 mt-0.5">
                               Search vendors from Vendor Master. Items List rates still auto-fill MOQ and price when available.
                             </p>
                           </div>
                           <div className="min-w-0">
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                               MOQ
                             </label>
                             <input
@@ -9289,13 +9267,13 @@ const Planning = () => {
                               min={0}
                               value={releaseToPlanningForm.moq || ''}
                               onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, moq: Number(e.target.value || 0) }))}
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                              className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                             />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                               Quantity
                               {releaseToPlanningItem?.itemType === 'RM'
                                 ? procurementUnitSuffix(
@@ -9314,26 +9292,26 @@ const Planning = () => {
                               min={0}
                               value={releaseToPlanningForm.qty}
                               onChange={(e) => handleReleaseFormQtyChange(e.target.value)}
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                              className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                             />
                             {releaseToPlanningItem?.itemType === 'RM' ? (
-                              <p className="text-[10px] text-slate-500 mt-0.5">
+                              <p className="text-[10px] text-ink-3 mt-0.5">
                                 Items Involved totals stay in kg; PO/procurement uses this RM&apos;s primary unit. Qty
                                 may exceed BOM gap to meet vendor MOQ — editing here clears per-batch picks.
                               </p>
                             ) : (
-                              <p className="text-[10px] text-slate-500 mt-0.5">
+                              <p className="text-[10px] text-ink-3 mt-0.5">
                                 May exceed BOM gap to meet vendor MOQ. Editing here clears per-batch picks.
                               </p>
                             )}
                             {releaseBatchRows.length > 0 ? (
-                              <p className="text-[10px] text-indigo-700 mt-0.5">
+                              <p className="text-[10px] text-brand mt-0.5">
                                 Per-batch picks above update this total automatically.
                               </p>
                             ) : null}
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                               Unit price (₹)
                             </label>
                             <input
@@ -9341,13 +9319,13 @@ const Planning = () => {
                               min={0}
                               value={releaseToPlanningForm.unitPrice}
                               onChange={(e) => setReleaseToPlanningForm((f) => ({ ...f, unitPrice: e.target.value }))}
-                              className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                              className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                             />
                           </div>
                         </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                       <div className="min-w-0">
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Payment terms (type)</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Payment terms (type)</label>
                         <select
                           value={releaseToPlanningForm.paymentTermsType}
                           onChange={(e) =>
@@ -9357,7 +9335,7 @@ const Planning = () => {
                               paymentTermsRaw: null,
                             }))
                           }
-                          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full rounded-lg border border-border px-2 py-1.5 text-sm"
                         >
                           {PAYMENT_TERMS_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -9367,16 +9345,16 @@ const Planning = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Lead time</label>
-                        <div className="py-1.5 text-sm font-medium text-slate-800">{releaseToPlanningForm.leadTimeDays} days</div>
-                        <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Lead time</label>
+                        <div className="py-1.5 text-sm font-medium text-ink">{releaseToPlanningForm.leadTimeDays} days</div>
+                        <p className="text-[10px] text-ink-3 mt-1 leading-snug">
                           Expected date is set per batch line above (or defaults from lead time when no batch split).
                         </p>
                       </div>
                     </div>
                     {paymentTermsTypeRequiresAdvancePercent(releaseToPlanningForm.paymentTermsType) && (
                       <div className="mb-3">
-                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Advance %</label>
+                        <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Advance %</label>
                         <input
                           type="number"
                           min={1}
@@ -9389,69 +9367,69 @@ const Planning = () => {
                               paymentTermsRaw: null,
                             }))
                           }
-                          className="w-full max-w-xs rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                          className="w-full max-w-xs rounded-lg border border-border px-2 py-1.5 text-sm"
                         />
                       </div>
                     )}
-                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">
+                    <div className="mb-3 rounded-lg border border-border bg-surface-2 px-3 py-2">
+                      <p className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-2">
                         Payment split (advance · pre-shipment · post-shipment)
                       </p>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                         <div>
-                          <div className="text-[10px] text-slate-500">Advance</div>
-                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.advance_pct}%</div>
+                          <div className="text-[10px] text-ink-3">Advance</div>
+                          <div className="text-sm font-semibold text-ink">{releasePtStages.advance_pct}%</div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-slate-500">Pre-shipment</div>
-                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.pre_shipment_pct}%</div>
+                          <div className="text-[10px] text-ink-3">Pre-shipment</div>
+                          <div className="text-sm font-semibold text-ink">{releasePtStages.pre_shipment_pct}%</div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-slate-500">Post-shipment</div>
-                          <div className="text-sm font-semibold text-slate-900">{releasePtStages.post_shipment_pct}%</div>
+                          <div className="text-[10px] text-ink-3">Post-shipment</div>
+                          <div className="text-sm font-semibold text-ink">{releasePtStages.post_shipment_pct}%</div>
                         </div>
                         <div>
-                          <div className="text-[10px] text-slate-500">Credit</div>
-                          <div className="text-sm font-semibold text-slate-900">
+                          <div className="text-[10px] text-ink-3">Credit</div>
+                          <div className="text-sm font-semibold text-ink">
                             {releasePtStages.credit_days > 0 ? `Net ${releasePtStages.credit_days}d` : '—'}
                           </div>
                         </div>
                       </div>
-                      <p className="text-[11px] text-slate-600 mt-2">{formatStagedPaymentTermsObject(releasePtStages)}</p>
+                      <p className="text-[11px] text-ink-2 mt-2">{formatStagedPaymentTermsObject(releasePtStages)}</p>
                     </div>
                     {canAddPlannedLineRelease && (
                       <div className="flex gap-2 mb-3">
                         <button
                           type="button"
                           onClick={prefillReleaseQtyFromGap}
-                          className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50"
+                          className="px-3 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold hover:bg-surface-2"
                         >
                           Prefill qty = Gap ({qtyFmt(gapNeedModal)})
                         </button>
                       </div>
                     )}
-                    <div className="border-t border-slate-200 my-3" />
-                    <h3 className="font-bold text-slate-900 text-sm mb-1">Previous purchases</h3>
-                    <p className="text-[11px] text-slate-500 mb-2">
+                    <div className="border-t border-border my-3" />
+                    <h3 className="font-bold text-ink text-sm mb-1">Previous purchases</h3>
+                    <p className="text-[11px] text-ink-3 mb-2">
                       Issued PO history for this material (all sales orders) and prior planning draft PO lines.
                     </p>
                     <div className="overflow-x-auto -mx-1 px-1">
                     <table className="w-full min-w-[20rem] text-xs">
                       <thead>
-                        <tr className="text-slate-500 border-b border-slate-200">
-                          <th className="text-left py-1 pr-2 font-medium whitespace-nowrap">Date</th>
-                          <th className="text-left py-1 pr-2 font-medium">Vendor</th>
-                          <th className="text-right py-1 pr-2 font-medium whitespace-nowrap">Qty</th>
-                          <th className="text-right py-1 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
-                          <th className="text-right py-1 font-medium w-14">Pick</th>
+                        <tr className="text-ink-3 border-b border-border">
+                          <th scope="col" className="text-left py-1 pr-2 font-medium whitespace-nowrap">Date</th>
+                          <th scope="col" className="text-left py-1 pr-2 font-medium">Vendor</th>
+                          <th scope="col" className="text-right py-1 pr-2 font-medium whitespace-nowrap">Qty</th>
+                          <th scope="col" className="text-right py-1 pr-2 font-medium whitespace-nowrap">Unit ₹</th>
+                          <th scope="col" className="text-right py-1 font-medium w-14">Pick</th>
                         </tr>
                       </thead>
                       <tbody>
                         {previous.map((r, i) => (
-                          <tr key={`${r.createdAt}-${i}`} className="border-b border-slate-100">
-                            <td className="py-1.5 pr-2 text-slate-700 whitespace-nowrap align-top">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                            <td className="py-1.5 pr-2 text-slate-700 align-top break-words max-w-[8rem] sm:max-w-none">{r.vendorName}</td>
-                            <td className="py-1.5 pr-2 text-right text-slate-700 whitespace-nowrap align-top">{r.qty} <span className="text-slate-500">{r.unit}</span></td>
+                          <tr key={`${r.createdAt}-${i}`} className="border-b border-hairline">
+                            <td className="py-1.5 pr-2 text-ink-2 whitespace-nowrap align-top">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                            <td className="py-1.5 pr-2 text-ink-2 align-top break-words max-w-[8rem] sm:max-w-none">{r.vendorName}</td>
+                            <td className="py-1.5 pr-2 text-right text-ink-2 whitespace-nowrap align-top">{r.qty} <span className="text-ink-3">{r.unit}</span></td>
                             <td className="py-1.5 pr-2 text-right font-medium whitespace-nowrap align-top">₹{r.unitPrice.toLocaleString('en-IN')}</td>
                             <td className="py-1.5 text-right align-top">
                               <button
@@ -9477,7 +9455,7 @@ const Planning = () => {
                                     seedReleaseBatchExpectedDates(releaseBatchRowKeys, r.leadTimeDays, prev, releaseBatchDueByKey)
                                   );
                                 }}
-                                className="px-2 py-1 rounded border border-cyan-400 text-cyan-700 text-[10px] font-semibold hover:bg-cyan-50"
+                                className="px-2 py-1 rounded border border-brand-soft text-brand text-[10px] font-semibold hover:bg-brand-soft"
                               >
                                 Pick
                               </button>
@@ -9486,13 +9464,13 @@ const Planning = () => {
                         ))}
                         {purchaseOrdersLoading && (
                           <tr>
-                            <td colSpan={5} className="py-3 text-center text-slate-500">
+                            <td colSpan={5} className="py-3 text-center text-ink-3">
                               Loading previous picks...
                             </td>
                           </tr>
                         )}
                         {!purchaseOrdersLoading && previous.length === 0 && (
-                          <tr><td colSpan={5} className="py-3 text-center text-slate-500">No issued PO or planning draft lines found for this material.</td></tr>
+                          <tr><td colSpan={5} className="py-3 text-center text-ink-3">No issued PO or planning draft lines found for this material.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -9502,8 +9480,8 @@ const Planning = () => {
                   </div>
                 </div>
               </div>
-              <div className="px-3 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-slate-500 leading-relaxed min-w-0">
+              <div className="px-3 sm:px-5 py-3 border-t border-border bg-surface-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-ink-3 leading-relaxed min-w-0">
                   {isQuotationOnlyModal
                     ? 'Sends quantity to Procurement → Quotations only. Vendor, price, MOQ, and lead time are set by Procurement.'
                     : hasVendorSlabs
@@ -9514,7 +9492,7 @@ const Planning = () => {
                   <button
                     type="button"
                     onClick={closeReleaseModal}
-                    className="flex-1 sm:flex-none px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                    className="flex-1 sm:flex-none px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-2"
                   >
                     Cancel
                   </button>
@@ -9533,8 +9511,8 @@ const Planning = () => {
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 ${
                       isQuotationOnlyModal || !hasVendorSlabs
-                        ? 'bg-yellow-500 text-yellow-950 hover:bg-yellow-600 border border-yellow-600 shadow-sm'
-                        : 'border border-yellow-500 bg-yellow-50 text-yellow-950 hover:bg-yellow-100'
+                        ? 'bg-warn text-warn hover:bg-warn border border-warn-soft shadow-sm'
+                        : 'border border-warn-soft bg-warn-soft text-warn hover:bg-warn-soft'
                     }`}
                   >
                     {releaseToPlanningSaving ? 'Sending…' : 'Request quotation'}
@@ -9566,7 +9544,7 @@ const Planning = () => {
                           setReleaseToPlanningSaving(false);
                         }
                       }}
-                      className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                      className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand disabled:opacity-50"
                     >
                       Add Planned Line
                     </button>
@@ -9574,7 +9552,7 @@ const Planning = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </PlanningModalShell>
         );
       })()}
 
@@ -9639,32 +9617,32 @@ const Planning = () => {
 
       {/* Send planned batch → confirm, then success */}
       {sendToProductionConfirm && (
-        <div className="fixed inset-0 backdrop-blur-md bg-black/40 flex items-center justify-center z-[62] p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Send batch to Production?</h3>
+        <PlanningModalShell onClose={() => setSendToProductionConfirm(null)} z="z-[110]" dismissable={!sendToProductionSending}>
+          <div role="dialog" aria-modal="true" aria-label="Send batch to Production?" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-xl shadow-xl w-full max-w-md border border-border">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="text-lg font-bold text-ink">Send batch to Production?</h3>
               <button
                 type="button"
                 disabled={sendToProductionSending}
                 onClick={() => setSendToProductionConfirm(null)}
-                className="text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                className="text-ink-3 hover:text-ink-2 disabled:opacity-50"
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4 space-y-3 text-sm text-gray-700">
+            <div className="p-4 space-y-3 text-sm text-ink-2">
               {sendToProductionConfirm.source === 'plan-modal' ? (
                 <>
                   <p>
                     This will mark{' '}
-                    <strong className="text-gray-900">
+                    <strong className="text-ink">
                       B-{String(sendToProductionConfirm.batchIndex + 1).padStart(2, '0')}
                     </strong>{' '}
                     as sent, update planning, and sync batches so Production can schedule it.
                   </p>
                   {selectedSOForBatch && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-3">
                       SO {selectedSOForBatch.soNumber}
                       {selectedSOForBatch.productName ? ` · ${selectedSOForBatch.productName}` : ''}
                     </p>
@@ -9674,22 +9652,22 @@ const Planning = () => {
                 <>
                   <p>
                     Send{' '}
-                    <strong className="text-gray-900">
+                    <strong className="text-ink">
                       {sendToProductionConfirm.batch.batchCode ??
                         `PE-${sendToProductionConfirm.batch.planningExtractedId}-B${sendToProductionConfirm.batch.sequence}`}
                     </strong>{' '}
                     to Production?
                   </p>
-                  <p className="text-xs text-gray-500">After this, open Production → Calendar to schedule the batch.</p>
+                  <p className="text-xs text-ink-3">After this, open Production → Calendar to schedule the batch.</p>
                 </>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50/80 rounded-b-xl">
+            <div className="flex justify-end gap-2 p-4 border-t border-border bg-surface-2/80 rounded-b-xl">
               <button
                 type="button"
                 disabled={sendToProductionSending}
                 onClick={() => setSendToProductionConfirm(null)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-ink-2 bg-surface border border-border hover:bg-surface-2 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -9697,7 +9675,7 @@ const Planning = () => {
                 type="button"
                 disabled={sendToProductionSending}
                 onClick={() => void runConfirmedSendToProduction()}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-ok hover:bg-ok disabled:opacity-50 flex items-center gap-2"
               >
                 {sendToProductionSending ? (
                   <>
@@ -9710,50 +9688,50 @@ const Planning = () => {
               </button>
             </div>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
 
       {sendToProductionSuccess && (
-        <div className="fixed inset-0 backdrop-blur-md bg-black/40 flex items-center justify-center z-[63] p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md border border-gray-200 p-6 text-center">
-            <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto mb-3" strokeWidth={1.75} aria-hidden />
-            <h3 className="text-lg font-bold text-gray-900">{sendToProductionSuccess.title}</h3>
-            <p className="text-sm text-gray-600 mt-3 leading-relaxed">{sendToProductionSuccess.message}</p>
+        <PlanningModalShell onClose={() => setSendToProductionSuccess(null)} z="z-[110]">
+          <div role="dialog" aria-modal="true" aria-label={sendToProductionSuccess.title} onClick={(e) => e.stopPropagation()} className="bg-surface rounded-xl shadow-xl w-full max-w-md border border-border p-6 text-center">
+            <CheckCircle2 className="w-14 h-14 text-ok mx-auto mb-3" strokeWidth={1.75} aria-hidden />
+            <h3 className="text-lg font-bold text-ink">{sendToProductionSuccess.title}</h3>
+            <p className="text-sm text-ink-2 mt-3 leading-relaxed">{sendToProductionSuccess.message}</p>
             <button
               type="button"
               onClick={() => setSendToProductionSuccess(null)}
-              className="mt-6 w-full sm:w-auto px-6 py-2.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700"
+              className="mt-6 w-full sm:w-auto px-6 py-2.5 rounded-lg text-sm font-semibold text-white bg-ok hover:bg-ok"
             >
               OK
             </button>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
 
       {/* Raise Procurement Request popup — confirm and send PR linked to batch id */}
       {batchPrModal && (
-        <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Raise Procurement Request</h3>
-              <button type="button" onClick={() => setBatchPrModal(null)} className="text-gray-500 hover:text-gray-700">
+        <PlanningModalShell onClose={() => setBatchPrModal(null)} z="z-[110]" dismissable={false}>
+          <div role="dialog" aria-modal="true" aria-label="Raise Procurement Request" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-lg shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="text-lg font-bold text-ink">Raise Procurement Request</h3>
+              <button type="button" onClick={() => setBatchPrModal(null)} className="text-ink-3 hover:text-ink-2" aria-label="Close">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4 space-y-4">
-              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Batch</p>
-                <p className="text-sm font-bold text-slate-900">{batchPrModal.batch.batchCode ?? `PE-${batchPrModal.batch.planningExtractedId}-B${batchPrModal.batch.sequence}`} <span className="text-slate-500 font-normal">(ID: {batchPrModal.batch.id})</span></p>
+              <div className="rounded-lg bg-surface-2 border border-border p-3">
+                <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider">Batch</p>
+                <p className="text-sm font-bold text-ink">{batchPrModal.batch.batchCode ?? `PE-${batchPrModal.batch.planningExtractedId}-B${batchPrModal.batch.sequence}`} <span className="text-ink-3 font-normal">(ID: {batchPrModal.batch.id})</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Item</label>
-                  <p className="text-sm text-gray-900">{batchPrModal.row.name}</p>
-                  <p className="text-xs text-gray-500">{batchPrModal.row.code}</p>
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Item</label>
+                  <p className="text-sm text-ink">{batchPrModal.row.name}</p>
+                  <p className="text-xs text-ink-3">{batchPrModal.row.code}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Shortfall</label>
-                  <p className="text-sm font-mono text-gray-900">
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Shortfall</label>
+                  <p className="text-sm font-mono text-ink">
                     {formatQtyExact(
                       batchPrModal.row.shortfall,
                       batchPrModal.row.unit?.toUpperCase() === 'KG' ? 'kg' : 'pcs'
@@ -9763,37 +9741,37 @@ const Planning = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Quantity to request</label>
+                <label className="block text-xs font-semibold text-ink-2 mb-1">Quantity to request</label>
                 <input
                   type="number"
                   min={1}
                   step={batchPrModal.row.unit === 'KG' ? 0.01 : 1}
                   value={batchPrQty}
                   onChange={(e) => setBatchPrQty(batchPrModal.row.unit === 'KG' ? Math.max(0, parseFloat(e.target.value) || 0) : Math.max(1, parseInt(e.target.value, 10) || 0))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Priority</label>
-                  <select value={batchPrPriority} onChange={(e) => setBatchPrPriority(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Priority</label>
+                  <select value={batchPrPriority} onChange={(e) => setBatchPrPriority(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm">
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
                     <option value="Low">Low</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Required by</label>
-                  <input type="date" value={batchPrRequiredBy} onChange={(e) => setBatchPrRequiredBy(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <label className="block text-xs font-semibold text-ink-2 mb-1">Required by</label>
+                  <input type="date" value={batchPrRequiredBy} onChange={(e) => setBatchPrRequiredBy(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Notes</label>
-                <textarea value={batchPrNotes} onChange={(e) => setBatchPrNotes(e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none" />
+                <label className="block text-xs font-semibold text-ink-2 mb-1">Notes</label>
+                <textarea value={batchPrNotes} onChange={(e) => setBatchPrNotes(e.target.value)} rows={2} className="w-full px-3 py-2 border border-border rounded-lg text-sm resize-none" />
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-gray-200">
-              <button type="button" onClick={() => setBatchPrModal(null)} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200">
+            <div className="flex justify-end gap-2 p-4 border-t border-border">
+              <button type="button" onClick={() => setBatchPrModal(null)} className="px-4 py-2 rounded-lg text-sm font-semibold text-ink-2 bg-surface-3 hover:bg-surface-3">
                 Cancel
               </button>
               <button
@@ -9839,56 +9817,53 @@ const Planning = () => {
                     setBatchPrSending(false);
                   }
                 }}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand hover:bg-brand disabled:opacity-50"
               >
                 {batchPrSending ? 'Sending...' : 'Send to Procurement'}
               </button>
             </div>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
 
       {/* Plan Batches & Confirm BOM Modal — global: opens from PIs Extracted (Plan Batches & Confirm BOM) or Availability Summary (Plan Batches) */}
       {planBatchesModalOpen && selectedSOForBatch && (
-        <div
-          ref={planBatchesModalOverlayRef}
-          className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto"
-        >
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl my-8">
+        <PlanningModalShell onClose={() => setPlanBatchesModalOpen(false)} overlayRef={planBatchesModalOverlayRef} z="z-[100]" scroll dismissable={false}>
+          <div role="dialog" aria-modal="true" aria-label="Plan Batches" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-lg shadow-xl w-full max-w-6xl my-8">
             {/* Modal Header — pinned across scroll (spec §4) */}
-            <div className="sticky top-0 z-10 bg-white rounded-t-lg flex items-center justify-between p-6 border-b border-gray-200">
+            <div className="sticky top-0 z-10 bg-surface rounded-t-lg flex items-center justify-between p-6 border-b border-border">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Plan Batches</h2>
-                <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-gray-800">
+                <h2 className="text-lg font-bold text-ink">Plan Batches</h2>
+                <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-ink">
                   {selectedSOForBatch.productCode?.trim() ? (
-                    <span className="font-mono font-semibold text-indigo-700">
+                    <span className="font-mono font-semibold text-brand">
                       {selectedSOForBatch.productCode.trim()}
                     </span>
                   ) : null}
                   {selectedSOForBatch.productName?.trim() ? (
-                    <span className="font-medium text-gray-900">{selectedSOForBatch.productName.trim()}</span>
+                    <span className="font-medium text-ink">{selectedSOForBatch.productName.trim()}</span>
                   ) : null}
                   {!selectedSOForBatch.productCode?.trim() && !selectedSOForBatch.productName?.trim() ? (
-                    <span className="text-gray-500">—</span>
+                    <span className="text-ink-3">—</span>
                   ) : null}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-ink-3 mt-1">
                   {selectedSOForBatch.soNumber} · {selectedSOForBatch.orderQty} · Total KG: {selectedSOForBatch.totalKg}
                   {selectedSOForBatch.customerName?.trim() ? (
                     <>
                       {' · '}
-                      <span className="text-gray-700 font-medium">{selectedSOForBatch.customerName.trim()}</span>
+                      <span className="text-ink-2 font-medium">{selectedSOForBatch.customerName.trim()}</span>
                       {selectedSOForBatch.clientCode?.trim() ? (
-                        <span className="font-mono text-gray-500"> ({selectedSOForBatch.clientCode.trim()})</span>
+                        <span className="font-mono text-ink-3"> ({selectedSOForBatch.clientCode.trim()})</span>
                       ) : null}
                     </>
                   ) : null}
                 </p>
                 {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
-                  <p className="text-xs text-slate-600 mt-1.5">
-                    <span className="font-semibold text-slate-800">Pending to plan:</span>{' '}
+                  <p className="text-xs text-ink-2 mt-1.5">
+                    <span className="font-semibold text-ink">Pending to plan:</span>{' '}
                     {planBatchesAllocationSummary.pendKg <= 0.01 ? (
-                      <span className="text-emerald-700 font-semibold">SO fully planned</span>
+                      <span className="text-ok font-semibold">SO fully planned</span>
                     ) : (
                       <>
                         {Number.isInteger(planBatchesAllocationSummary.pendUnits)
@@ -9900,8 +9875,8 @@ const Planning = () => {
                     {planBatchesAllocationSummary.totalBufferKg > 0.01 && (
                       <>
                         {' · '}
-                        <span className="font-semibold text-amber-700">Buffer:</span>{' '}
-                        <span className="text-amber-700">
+                        <span className="font-semibold text-warn">Buffer:</span>{' '}
+                        <span className="text-warn">
                           +{Number.isInteger(planBatchesAllocationSummary.totalBufferUnits)
                             ? Math.round(planBatchesAllocationSummary.totalBufferUnits).toLocaleString()
                             : planBatchesAllocationSummary.totalBufferUnits.toFixed(1)}{' '}
@@ -9928,7 +9903,8 @@ const Planning = () => {
                   setExpandedBatchIndex(null);
                   setActiveBatchTab('bom-editor');
                 }}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-ink-3 hover:text-ink-2"
+                aria-label="Close"
               >
                 <X size={20} />
               </button>
@@ -9937,13 +9913,13 @@ const Planning = () => {
             {/* Modal Body */}
             <div ref={planBatchesModalBodyRef} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
               {/* Tabs */}
-              <div className="flex gap-4 border-b border-gray-200">
+              <div className="flex gap-4 border-b border-border">
                 <button
                   type="button"
                   onClick={() => setActiveBatchTab('bom-editor')}
                   className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'bom-editor'
-                    ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'text-ok border-b-2 border-ok-soft'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   BOM Editor
@@ -9953,8 +9929,8 @@ const Planning = () => {
                   type="button"
                   onClick={() => setActiveBatchTab('batch-plan')}
                   className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'batch-plan'
-                    ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'text-ok border-b-2 border-ok-soft'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   Batch Plan
@@ -9963,8 +9939,8 @@ const Planning = () => {
                   type="button"
                   onClick={() => setActiveBatchTab('swap-add')}
                   className={`px-4 py-2 text-sm font-semibold transition-colors ${activeBatchTab === 'swap-add'
-                    ? 'text-emerald-700 border-b-2 border-emerald-700'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'text-ok border-b-2 border-ok-soft'
+                    : 'text-ink-2 hover:text-ink'
                     }`}
                 >
                   Swap
@@ -9973,7 +9949,7 @@ const Planning = () => {
 
               {!isSelectedBatchEditable ? (
                 <div
-                  className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+                  className="rounded-lg border border-err-soft bg-err-soft px-4 py-3 text-sm text-err"
                   role="status"
                 >
                   This batch is <strong>confirmed by Production</strong> and is view-only. Quantities are fixed once
@@ -9982,7 +9958,7 @@ const Planning = () => {
               ) : isEditingExistingBatch ? (
                 isSelectedBatchAlreadySent ? (
                   <div
-                    className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                    className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                     role="status"
                   >
                     This batch is <strong>already sent to Production</strong>. Change preview qty, then click{' '}
@@ -9991,7 +9967,7 @@ const Planning = () => {
                   </div>
                 ) : (
                   <div
-                    className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900"
+                    className="rounded-lg border border-brand-soft bg-brand-soft px-4 py-3 text-sm text-brand"
                     role="status"
                   >
                     <strong>Edit batch</strong> — update BOM and preview qty, then click <strong>Send batch</strong> to
@@ -10001,7 +9977,7 @@ const Planning = () => {
               ) : selectedBatchPlanIndex >= 0 &&
                 (selectedSOForBatch?.sentBatchIndices ?? []).includes(selectedBatchPlanIndex) ? (
                 <div
-                  className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                  className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                   role="status"
                 >
                   This batch is <strong>sent to Production</strong> but still editable here until Production confirms
@@ -10010,10 +9986,11 @@ const Planning = () => {
               ) : null}
 
               {/* Working batch — single context for BOM Editor, Batch Plan, and Swap / Add */}
-              <div className="flex items-center gap-2 flex-wrap py-3 -mx-6 px-6 border-b border-gray-100 bg-gray-50/50">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Working batch</span>
-                <div className="flex items-center gap-1 border border-gray-300 rounded-lg bg-white overflow-hidden">
+              <div className="flex items-center gap-2 flex-wrap py-3 -mx-6 px-6 border-b border-hairline bg-surface-2/50">
+                <span className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Working batch</span>
+                <div className="flex items-center gap-1 border border-border rounded-lg bg-surface overflow-hidden">
                   <select
+                    aria-label="Working batch"
                     value={selectedBatchId != null ? String(selectedBatchId) : ''}
                     disabled={isEditingExistingBatch}
                     onChange={(e) => {
@@ -10022,7 +9999,7 @@ const Planning = () => {
                       const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
                       setSelectedBatchId(Number.isNaN(v) ? null : v);
                     }}
-                    className="min-w-[140px] px-3 py-2 text-sm font-medium text-gray-900 bg-transparent focus:outline-none focus:ring-0"
+                    className="min-w-[140px] px-3 py-2 text-sm font-medium text-ink bg-transparent focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
                   >
                     {planningBatches.length === 0 && (
                       <option value="">{selectedBatchId ? 'Loading...' : 'batch-01'}</option>
@@ -10063,7 +10040,7 @@ const Planning = () => {
                         addToast('error', e instanceof Error ? e.message : 'Failed to add batch');
                       }
                     }}
-                    className="px-2 py-2 text-emerald-600 hover:bg-emerald-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    className="px-2 py-2 text-ok hover:bg-ok-soft border-l border-border disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                     title={
                       planningBatches.length > 0 && !canAddAnotherPlanningBatch
                         ? 'Send the latest batch to production before adding another'
@@ -10105,7 +10082,7 @@ const Planning = () => {
                         addToast('error', e instanceof Error ? e.message : 'Failed to add buffer batch');
                       }
                     }}
-                    className="px-2 py-2 text-amber-600 hover:bg-amber-50 border-l border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    className="px-2 py-2 text-warn hover:bg-warn-soft border-l border-border disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                     title={
                       planningBatches.length > 0 && !canAddAnotherPlanningBatch
                         ? 'Send the latest batch to production before adding a buffer batch'
@@ -10117,8 +10094,8 @@ const Planning = () => {
                   )}
                 </div>
                 {selectedBatchId != null && (
-                  <span className="text-xs text-gray-600">
-                    <span className="font-mono font-semibold text-emerald-700">
+                  <span className="text-xs text-ink-2">
+                    <span className="font-mono font-semibold text-ok">
                       B-{String(selectedBatchPlanSequence).padStart(2, '0')}
                     </span>
                     {' '}— Confirm BOM and Batch Plan apply to this batch only. Switch batch here to work on another.
@@ -10130,42 +10107,42 @@ const Planning = () => {
               {activeBatchTab === 'batch-plan' && (
                 <div className="space-y-0">
                   {/* Availability bar — ORDER QTY, RM/PM COVERS, EXECUTABLE, STATUS */}
-                  <div className="flex flex-wrap gap-5 items-center p-4 border-b border-gray-200 bg-gray-50/80">
+                  <div className="flex flex-wrap gap-5 items-center p-4 border-b border-border bg-surface-2/80">
                     <div className="flex-1 min-w-[140px]">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">ORDER QTY</div>
-                      <div className="text-xl font-bold text-gray-900">
-                        {orderQtyNum.toLocaleString()} <span className="text-gray-500 text-sm font-normal">units</span>
+                      <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">ORDER QTY</div>
+                      <div className="text-xl font-bold text-ink">
+                        {orderQtyNum.toLocaleString()} <span className="text-ink-3 text-sm font-normal">units</span>
                       </div>
                     </div>
                     {planBatchesAllocationSummary && planBatchesAllocationSummary.orderTotalKg > 0 && (
                       <div className="flex-1 min-w-[130px]">
                         {/* Once the SO is fully planned (no pending) but there's over-production,
                             show the buffer as the headline (+N units) instead of a bare 0. */}
-                        <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                        <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
                           {planBatchesAllocationSummary.pendKg <= 0.01 && planBatchesAllocationSummary.totalBufferUnits > 0.01
                             ? 'BUFFER PLANNED'
                             : 'PENDING PLAN'}
                         </div>
                         {planBatchesAllocationSummary.pendKg > 0.01 ? (
-                          <div className="text-lg font-bold text-amber-700">
+                          <div className="text-lg font-bold text-warn">
                             {Number.isInteger(planBatchesAllocationSummary.pendUnits)
                               ? Math.round(planBatchesAllocationSummary.pendUnits).toLocaleString()
                               : planBatchesAllocationSummary.pendUnits.toFixed(1)}{' '}
-                            <span className="text-gray-500 text-xs font-normal">units</span>
+                            <span className="text-ink-3 text-xs font-normal">units</span>
                           </div>
                         ) : planBatchesAllocationSummary.totalBufferUnits > 0.01 ? (
-                          <div className="text-lg font-bold text-amber-700">
+                          <div className="text-lg font-bold text-warn">
                             +{Number.isInteger(planBatchesAllocationSummary.totalBufferUnits)
                               ? Math.round(planBatchesAllocationSummary.totalBufferUnits).toLocaleString()
                               : planBatchesAllocationSummary.totalBufferUnits.toFixed(1)}{' '}
-                            <span className="text-gray-500 text-xs font-normal">units</span>
+                            <span className="text-ink-3 text-xs font-normal">units</span>
                           </div>
                         ) : (
-                          <div className="text-lg font-bold text-emerald-600">
-                            0 <span className="text-gray-500 text-xs font-normal">units</span>
+                          <div className="text-lg font-bold text-ok">
+                            0 <span className="text-ink-3 text-xs font-normal">units</span>
                           </div>
                         )}
-                        <div className="text-[10px] text-gray-500">
+                        <div className="text-[10px] text-ink-3">
                           {planBatchesAllocationSummary.pendKg > 0.01
                             ? `${planBatchesAllocationSummary.pendKg.toFixed(1)} kg left`
                             : planBatchesAllocationSummary.totalBufferKg > 0.01
@@ -10181,56 +10158,57 @@ const Planning = () => {
                       </div>
                     )}
                     <div className="flex-1 min-w-[120px]">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">RM COVERS</div>
-                      <div className={`text-lg font-bold ${feasibilityRmCoversUnits >= orderQtyNum ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {Math.round(feasibilityRmCoversUnits).toLocaleString()} <span className="text-gray-500 text-xs font-normal">units</span>
+                      <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">RM COVERS</div>
+                      <div className={`text-lg font-bold ${feasibilityRmCoversUnits >= orderQtyNum ? 'text-ok' : 'text-warn'}`}>
+                        {Math.round(feasibilityRmCoversUnits).toLocaleString()} <span className="text-ink-3 text-xs font-normal">units</span>
                       </div>
-                      <div className="text-[10px] text-gray-500">{feasibilityRmRows.length} RM item{feasibilityRmRows.length !== 1 ? 's' : ''}</div>
+                      <div className="text-[10px] text-ink-3">{feasibilityRmRows.length} RM item{feasibilityRmRows.length !== 1 ? 's' : ''}</div>
                     </div>
                     <div className="flex-1 min-w-[120px]">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">PM COVERS</div>
-                      <div className={`text-lg font-bold ${feasibilityPmCoversUnits >= orderQtyNum ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {Math.round(feasibilityPmCoversUnits).toLocaleString()} <span className="text-gray-500 text-xs font-normal">units</span>
+                      <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">PM COVERS</div>
+                      <div className={`text-lg font-bold ${feasibilityPmCoversUnits >= orderQtyNum ? 'text-ok' : 'text-warn'}`}>
+                        {Math.round(feasibilityPmCoversUnits).toLocaleString()} <span className="text-ink-3 text-xs font-normal">units</span>
                       </div>
-                      <div className="text-[10px] text-gray-500">{feasibilityPmRows.length} PM item{feasibilityPmRows.length !== 1 ? 's' : ''}</div>
+                      <div className="text-[10px] text-ink-3">{feasibilityPmRows.length} PM item{feasibilityPmRows.length !== 1 ? 's' : ''}</div>
                     </div>
                     <div className="flex-1 min-w-[120px]">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">EXECUTABLE</div>
-                      <div className={`text-lg font-bold ${feasibilityExecutableUnits >= orderQtyNum ? 'text-emerald-600' : 'text-amber-600'}`}>
-                        {Math.round(feasibilityExecutableUnits).toLocaleString()} <span className="text-gray-500 text-xs font-normal">units</span>
+                      <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">EXECUTABLE</div>
+                      <div className={`text-lg font-bold ${feasibilityExecutableUnits >= orderQtyNum ? 'text-ok' : 'text-warn'}`}>
+                        {Math.round(feasibilityExecutableUnits).toLocaleString()} <span className="text-ink-3 text-xs font-normal">units</span>
                       </div>
-                      <div className="mt-1 h-1.5 w-24 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="mt-1 h-1.5 w-24 bg-surface-3 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${feasibilityExecutableUnits >= orderQtyNum ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                          className={`h-full rounded-full ${feasibilityExecutableUnits >= orderQtyNum ? 'bg-ok' : 'bg-warn'}`}
                           style={{ width: `${orderQtyNum > 0 ? Math.min(100, (feasibilityExecutableUnits / orderQtyNum) * 100) : 0}%` }}
                         />
                       </div>
                     </div>
                     <div className="flex-[2] min-w-[180px]">
-                      <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">STATUS</div>
-                      <div className="text-xs leading-relaxed text-gray-700">
+                      <div className="text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1.5">STATUS</div>
+                      <div className="text-xs leading-relaxed text-ink-2">
                         {feasibilityRmCoversUnits < orderQtyNum && (
-                          <>RM: <b className="text-amber-600">Only {Math.round(feasibilityRmCoversUnits).toLocaleString()} units</b><br /></>
+                          <>RM: <b className="text-warn">Only {Math.round(feasibilityRmCoversUnits).toLocaleString()} units</b><br /></>
                         )}
                         {feasibilityPmCoversUnits < orderQtyNum && (
-                          <>PM: <b className="text-amber-600">Only {Math.round(feasibilityPmCoversUnits).toLocaleString()} units</b><br /></>
+                          <>PM: <b className="text-warn">Only {Math.round(feasibilityPmCoversUnits).toLocaleString()} units</b><br /></>
                         )}
                         {feasibilityExecutableUnits < orderQtyNum && (
-                          <span className="text-amber-600 font-medium">Raise POs for shortages</span>
+                          <span className="text-warn font-medium">Raise POs for shortages</span>
                         )}
                         {feasibilityExecutableUnits >= orderQtyNum && (
-                          <span className="text-emerald-600 font-medium">Materials cover full order</span>
+                          <span className="text-ok font-medium">Materials cover full order</span>
                         )}
                       </div>
                     </div>
                   </div>
 
                   {/* Preview qty + send — working batch is chosen in the bar above */}
-                  <div className="p-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4">
+                  <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-4">
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold text-gray-500">Preview qty:</span>
+                        <span className="text-[11px] font-semibold text-ink-3">Preview qty:</span>
                         <input
+                          aria-label="Preview qty"
                           type="number"
                           min={1}
                           value={feasibilityPreviewQty || ''}
@@ -10239,16 +10217,16 @@ const Planning = () => {
                             const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
                             setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
                           }}
-                          className="w-24 border border-gray-300 bg-white text-gray-900 px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
+                          className="w-24 border border-border bg-surface text-ink px-2 py-1.5 rounded-lg text-sm font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-ok disabled:bg-surface-3 disabled:text-ink-3"
                         />
-                        <span className="text-[11px] font-semibold text-gray-500">units</span>
+                        <span className="text-[11px] font-semibold text-ink-3">units</span>
                       </div>
                       {isEditingExistingBatch && isSelectedBatchAlreadySent && isSelectedBatchEditable ? (
                         <button
                           type="button"
                           disabled={sentBatchSizeSaving || (feasibilityPreviewQty || 0) <= 0}
                           onClick={() => void handleSaveSentBatchSizeFromPreview()}
-                          className="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="shrink-0 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Save preview qty as batch size (batch already sent — no re-send)"
                         >
                           {sentBatchSizeSaving ? 'Saving…' : 'Save size'}
@@ -10266,7 +10244,7 @@ const Planning = () => {
                             setSendToProductionConfirm({ source: 'plan-modal', batchIndex: selectedBatchPlanIndex });
                           }
                         }}
-                        className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-ok hover:bg-ok text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title={
                           isSelectedBatchAlreadySent
                             ? 'Already sent — use Save size to update qty on this batch'
@@ -10281,9 +10259,9 @@ const Planning = () => {
                       </button>
                     </div>
                     {selectedBatchId != null && (
-                      <span className="text-[11px] text-gray-500">
+                      <span className="text-[11px] text-ink-3">
                         Applies to working batch{' '}
-                        <span className="font-mono font-semibold text-emerald-700">
+                        <span className="font-mono font-semibold text-ok">
                           B-{String(selectedBatchPlanSequence).padStart(2, '0')}
                         </span>
                         ; preview qty updates that row in BATCH BREAKDOWN.
@@ -10294,7 +10272,7 @@ const Planning = () => {
                   {/* BOM / Material Status — RM & PM tables driven by preview qty */}
                   <div className="p-4 overflow-auto max-h-[58vh] space-y-6">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-bold text-gray-900">BOM / Material Status</h3>
+                      <h3 className="text-sm font-bold text-ink">BOM / Material Status</h3>
                     </div>
                     {(() => {
                       const orderQtyNum = parseInt(
@@ -10302,7 +10280,7 @@ const Planning = () => {
                         10
                       ) || 0;
                       return (
-                        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-900">
+                        <div className="rounded-md border border-brand-soft bg-brand-soft px-3 py-2 text-[11px] text-brand">
                           Calculation basis:{' '}
                           <span className="font-semibold">
                             Req this order = Formula % (or PM qty/unit) × units for this view
@@ -10393,7 +10371,7 @@ const Planning = () => {
                     return (
                       <div className="space-y-6">
                         {canSendToProduction && (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
+                          <div className="bg-ok-soft border border-ok-soft rounded-lg p-4 text-sm text-ok">
                             <span className="font-semibold">BOM confirmed.</span> Use <strong>Send batch</strong> next to Preview qty for the current working batch. Allocate units in the rows below; expand a row to see required materials. Batches already sent are marked Sent.
                           </div>
                         )}
@@ -10401,12 +10379,12 @@ const Planning = () => {
                         {/* Schedule & production line */}
                         <div className="grid grid-cols-2 gap-6">
                           <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2">PLANNED START DATE</label>
-                            <input type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} disabled={bomFieldsReadOnly} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500" />
+                            <label className="block text-xs font-bold text-ink-2 mb-2">PLANNED START DATE</label>
+                            <input type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} disabled={bomFieldsReadOnly} className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ok disabled:bg-surface-3 disabled:text-ink-3" />
                           </div>
                           <div>
-                            <label className="block text-xs font-bold text-gray-700 mb-2">PRODUCTION LINE</label>
-                            <select value={productionLine} onChange={(e) => setProductionLine(e.target.value)} disabled={bomFieldsReadOnly} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500">
+                            <label className="block text-xs font-bold text-ink-2 mb-2">PRODUCTION LINE</label>
+                            <select value={productionLine} onChange={(e) => setProductionLine(e.target.value)} disabled={bomFieldsReadOnly} className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ok disabled:bg-surface-3 disabled:text-ink-3">
                               <option>Line 1 — Primary Mixer</option>
                               <option>Line 2 — Secondary Mixer</option>
                               <option>Multi-line split</option>
@@ -10415,26 +10393,26 @@ const Planning = () => {
                         </div>
 
                         {/* Summary banner — quantity (units) to be made */}
-                        <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-emerald-50 border-emerald-200' : remaining > 0 ? 'bg-amber-50 border-amber-200' : 'bg-cyan-50 border-cyan-200'}`}>
+                        <div className={`border rounded-lg p-4 ${Math.abs(remaining) < 0.01 ? 'bg-ok-soft border-ok-soft' : remaining > 0 ? 'bg-warn-soft border-warn-soft' : 'bg-brand-soft border-brand-soft'}`}>
                           <p className="text-sm font-semibold flex items-center gap-2">
-                            <span className={Math.abs(remaining) < 0.01 ? 'text-emerald-900' : remaining > 0 ? 'text-amber-900' : 'text-cyan-900'}>
+                            <span className={Math.abs(remaining) < 0.01 ? 'text-ok' : remaining > 0 ? 'text-warn' : 'text-brand'}>
                               {customBatches.length} batch{customBatches.length !== 1 ? 'es' : ''} — {Math.round(batchTotalUnits).toLocaleString()} units to be made
                               {orderQtyNum > 0 && <> of {orderQtyNum.toLocaleString()} units ordered</>}
                             </span>
                           </p>
                           {remaining > 0.01 ? (
-                            <p className="text-xs mt-1 text-amber-700">
+                            <p className="text-xs mt-1 text-warn">
                               {Math.round(remainingUnits).toLocaleString()} SO units remaining to allocate
                             </p>
                           ) : (
-                            <p className="text-xs text-emerald-700 mt-1">SO fully allocated to order qty.</p>
+                            <p className="text-xs text-ok mt-1">SO fully allocated to order qty.</p>
                           )}
                           {bufferBatchTotal > 0.01 && (
-                            <p className="text-xs mt-1 text-amber-700">
+                            <p className="text-xs mt-1 text-warn">
                               +{Math.round(bufferBannerUnits).toLocaleString()} buffer units over SO ({bufferBatchTotal.toFixed(1)} kg over-production)
                             </p>
                           )}
-                          <p className="text-xs mt-1.5 text-slate-700">
+                          <p className="text-xs mt-1.5 text-ink-2">
                             {(() => {
                               const sentBatchIndices = selectedSOForBatch?.sentBatchIndices ?? [];
                               const unsent = customBatches.filter((_, i) => !sentBatchIndices.includes(i)).length;
@@ -10453,22 +10431,22 @@ const Planning = () => {
                         {/* Custom batch list — add batches from Working batch bar; preview qty updates the selected working batch row */}
                         <div>
                           <div className="mb-4">
-                            <h3 className="text-sm font-bold text-gray-900">BATCH BREAKDOWN</h3>
-                            <p className="text-[11px] text-gray-500 mt-1">
+                            <h3 className="text-sm font-bold text-ink">BATCH BREAKDOWN</h3>
+                            <p className="text-[11px] text-ink-3 mt-1">
                               Use <strong>+ Add</strong> next to <strong>Working batch</strong> to create planning batches. Set units per row; changing <strong>Preview qty</strong> updates the row that matches the working batch.
                             </p>
                           </div>
 
                           {customBatches.length === 0 && !isEditingExistingBatch && (
-                            <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                              <p className="text-sm text-gray-600">No unit split yet. Use <strong>+ Add</strong> next to Working batch, then allocate units per row below.</p>
+                            <div className="text-center py-8 bg-surface-2 rounded-lg border border-border">
+                              <p className="text-sm text-ink-2">No unit split yet. Use <strong>+ Add</strong> next to Working batch, then allocate units per row below.</p>
                               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                                 {orderQtyNum > 0 && (
                                   <button
                                     type="button"
                                     disabled={planningBatches.length > 0 && !canAddAnotherPlanningBatch}
                                     onClick={() => addBatch()}
-                                    className="px-4 py-2 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="px-4 py-2 border border-ok-soft text-ok text-xs font-semibold rounded-lg hover:bg-ok-soft disabled:opacity-40 disabled:cursor-not-allowed"
                                     title={
                                       planningBatches.length > 0 && !canAddAnotherPlanningBatch
                                         ? 'Send the latest batch to production first'
@@ -10493,15 +10471,15 @@ const Planning = () => {
                               const rmReqs = isExpanded ? getBatchRmRequirementsForBatch(batch.sizeKg, row) : [];
                               const pmReqs = isExpanded ? getBatchPmRequirementsForBatch(batch.sizeKg, row) : [];
                               return (
-                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-gray-200 bg-gray-100 opacity-90' : isBuffer ? 'border-amber-300 bg-amber-50/30' : isExpanded ? 'border-emerald-400 bg-emerald-50/30' : 'border-gray-200 bg-white'}`}>
+                                <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-border bg-surface-3 opacity-90' : isBuffer ? 'border-warn-soft bg-warn-soft/30' : isExpanded ? 'border-ok-soft bg-ok-soft/30' : 'border-border bg-surface'}`}>
                                   <div className="flex items-center gap-3 p-4">
                                     {isSent && (
-                                      <span className={`shrink-0 text-xs font-semibold px-2 py-1 rounded ${isLockedSent ? 'text-gray-500 bg-gray-200' : 'text-amber-800 bg-amber-100'}`}>
+                                      <span className={`shrink-0 text-xs font-semibold px-2 py-1 rounded ${isLockedSent ? 'text-ink-3 bg-surface-3' : 'text-warn bg-warn-soft'}`}>
                                         {isLockedSent ? 'Sent' : 'Sent · editable'}
                                       </span>
                                     )}
                                     {isBuffer && (
-                                      <span className="shrink-0 text-xs font-bold px-2 py-1 rounded text-amber-800 bg-amber-100" title="Buffer / over-production batch (above the SO qty)">
+                                      <span className="shrink-0 text-xs font-bold px-2 py-1 rounded text-warn bg-warn-soft" title="Buffer / over-production batch (above the SO qty)">
                                         BUFFER
                                       </span>
                                     )}
@@ -10509,20 +10487,21 @@ const Planning = () => {
                                       className="flex-1 flex items-center gap-4 cursor-pointer"
                                       onClick={() => setExpandedBatchIndex(isExpanded ? null : originalIndex)}
                                     >
-                                      <span className={`text-sm font-bold px-3 py-1 rounded-md ${isLockedSent ? 'text-gray-500 bg-gray-200' : 'text-emerald-700 bg-emerald-100'}`}>
+                                      <span className={`text-sm font-bold px-3 py-1 rounded-md ${isLockedSent ? 'text-ink-3 bg-surface-3' : 'text-ok bg-ok-soft'}`}>
                                         B-{String(sequence).padStart(2, '0')}
                                       </span>
                                       {row?.batchCode && (
-                                        <span className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded" title="Batch ID (BOM copy saved for this batch)">
+                                        <span className="text-xs font-mono text-ink-2 bg-surface-3 px-2 py-0.5 rounded" title="Batch ID (BOM copy saved for this batch)">
                                           {row.batchCode}
                                         </span>
                                       )}
-                                      <span className="text-xs text-gray-500">
+                                      <span className="text-xs text-ink-3">
                                         {isExpanded ? '▼' : '▶'} {isExpanded ? 'Hide materials' : 'View required materials'}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <input
+                                        aria-label="Units per batch"
                                         type="number"
                                         value={kgPerUnit > 0 ? Math.round(batch.sizeKg / kgPerUnit) : batch.sizeKg}
                                         onChange={(e) => {
@@ -10533,18 +10512,19 @@ const Planning = () => {
                                           !getPlanningBatchEditableAtIndex(originalIndex) ||
                                           (isEditingExistingBatch && originalIndex !== selectedBatchPlanIndex)
                                         }
-                                        className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                        className="w-28 px-3 py-1.5 border border-border rounded-lg text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-ok disabled:bg-surface-3 disabled:text-ink-3"
                                         min={0}
 
                                       />
-                                      <span className="text-xs font-semibold text-gray-600">units</span>
+                                      <span className="text-xs font-semibold text-ink-2">units</span>
                                       {!isEditingExistingBatch ? (
                                         <button
                                           type="button"
                                           onClick={() => void removeBatchAtPlanIndex(originalIndex)}
                                           disabled={!planningBatchesLoaded || !planningBatchesFetched}
                                           title={!planningBatchesLoaded || !planningBatchesFetched ? 'Loading batches…' : 'Delete this batch'}
-                                          className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                          aria-label="Delete this batch"
+                                          className="text-err hover:text-err p-1 rounded hover:bg-err-soft transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                           <X size={14} />
                                         </button>
@@ -10554,28 +10534,28 @@ const Planning = () => {
 
                                   {/* Per-batch material requirements */}
                                   {isExpanded && (
-                                    <div className="border-t border-gray-200 p-4 bg-white space-y-4">
+                                    <div className="border-t border-border p-4 bg-surface space-y-4">
                                       {rmReqs.length > 0 && (
                                         <div>
-                                          <h4 className="text-xs font-bold text-teal-700 mb-2">RM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
-                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                          <h4 className="text-xs font-bold text-brand mb-2">RM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
+                                          <div className="border border-border rounded-lg overflow-hidden">
                                             <table className="w-full text-xs">
-                                              <thead><tr className="bg-gray-50 border-b border-gray-200">
-                                                <th className="px-3 py-1.5 text-left font-semibold text-gray-600">RM ITEM</th>
-                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">% W/W</th>
-                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                              <thead><tr className="bg-surface-2 border-b border-border">
+                                                <th scope="col" className="px-3 py-1.5 text-left font-semibold text-ink-2">RM ITEM</th>
+                                                <th scope="col" className="px-3 py-1.5 text-right font-semibold text-ink-2">% W/W</th>
+                                                <th scope="col" className="px-3 py-1.5 text-right font-semibold text-ink-2">REQUIRED</th>
                                               </tr></thead>
                                               <tbody>
                                                 {rmReqs.map((r, ri) => (
-                                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                    <td className="px-3 py-1.5 text-gray-900 font-medium">{r.name} <span className="text-gray-400 text-xs">({r.code})</span></td>
-                                                    <td className="px-3 py-1.5 text-right text-gray-600">{r.pct.toFixed(2)}%</td>
-                                                    <td className="px-3 py-1.5 text-right text-teal-700 font-bold">{formatQtyExact(r.requiredKg ?? r.required, 'kg')} kg</td>
+                                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
+                                                    <td className="px-3 py-1.5 text-ink font-medium">{r.name} <span className="text-ink-4 text-xs">({r.code})</span></td>
+                                                    <td className="px-3 py-1.5 text-right text-ink-2">{r.pct.toFixed(2)}%</td>
+                                                    <td className="px-3 py-1.5 text-right text-brand font-bold">{formatQtyExact(r.requiredKg ?? r.required, 'kg')} kg</td>
                                                   </tr>
                                                 ))}
-                                                <tr className="bg-teal-50 border-t border-teal-200">
-                                                  <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-teal-800">Total RM</td>
-                                                  <td className="px-3 py-1.5 text-right font-bold text-teal-800">
+                                                <tr className="bg-brand-soft border-t border-brand-soft">
+                                                  <td colSpan={2} className="px-3 py-1.5 text-right font-bold text-brand">Total RM</td>
+                                                  <td className="px-3 py-1.5 text-right font-bold text-brand">
                                                     {formatQtyExact(rmReqs.reduce((s, r) => s + (r.requiredKg ?? 0), 0), 'kg')} kg
                                                   </td>
                                                 </tr>
@@ -10586,20 +10566,20 @@ const Planning = () => {
                                       )}
                                       {pmReqs.length > 0 && (
                                         <div>
-                                          <h4 className="text-xs font-bold text-orange-700 mb-2">PM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
-                                          <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                          <h4 className="text-xs font-bold text-warn mb-2">PM REQUIRED FOR B-{String(sequence).padStart(2, '0')} ({Math.round(batchUnits).toLocaleString()} units)</h4>
+                                          <div className="border border-border rounded-lg overflow-hidden">
                                             <table className="w-full text-xs">
-                                              <thead><tr className="bg-gray-50 border-b border-gray-200">
-                                                <th className="px-3 py-1.5 text-left font-semibold text-gray-600">PM ITEM</th>
-                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">QTY/UNIT</th>
-                                                <th className="px-3 py-1.5 text-right font-semibold text-gray-600">REQUIRED</th>
+                                              <thead><tr className="bg-surface-2 border-b border-border">
+                                                <th scope="col" className="px-3 py-1.5 text-left font-semibold text-ink-2">PM ITEM</th>
+                                                <th scope="col" className="px-3 py-1.5 text-right font-semibold text-ink-2">QTY/UNIT</th>
+                                                <th scope="col" className="px-3 py-1.5 text-right font-semibold text-ink-2">REQUIRED</th>
                                               </tr></thead>
                                               <tbody>
                                                 {pmReqs.map((p, pi) => (
-                                                  <tr key={pi} className={pi % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                    <td className="px-3 py-1.5 text-gray-900 font-medium">{p.name} <span className="text-gray-400 text-xs">({p.code})</span></td>
-                                                    <td className="px-3 py-1.5 text-right text-gray-600">{p.qtyPerUnit}</td>
-                                                    <td className="px-3 py-1.5 text-right text-orange-700 font-bold">{p.required.toLocaleString()} {p.uom}</td>
+                                                  <tr key={pi} className={pi % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
+                                                    <td className="px-3 py-1.5 text-ink font-medium">{p.name} <span className="text-ink-4 text-xs">({p.code})</span></td>
+                                                    <td className="px-3 py-1.5 text-right text-ink-2">{p.qtyPerUnit}</td>
+                                                    <td className="px-3 py-1.5 text-right text-warn font-bold">{p.required.toLocaleString()} {p.uom}</td>
                                                   </tr>
                                                 ))}
                                               </tbody>
@@ -10608,7 +10588,7 @@ const Planning = () => {
                                         </div>
                                       )}
                                       {rmReqs.length === 0 && pmReqs.length === 0 && (
-                                        <p className="text-xs text-gray-500 text-center py-2">No BOM data available to calculate materials.</p>
+                                        <p className="text-xs text-ink-3 text-center py-2">No BOM data available to calculate materials.</p>
                                       )}
                                     </div>
                                   )}
@@ -10627,19 +10607,19 @@ const Planning = () => {
               {activeBatchTab === 'bom-editor' && (
                 <div className="space-y-6">
                   {(planningBatches as PlanningBatchRow[]).length > 0 && (
-                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                      <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wide px-4 py-2 bg-slate-50 border-b border-slate-200">
+                    <div className="border border-border rounded-lg overflow-hidden bg-surface">
+                      <h3 className="text-xs font-bold text-ink-2 uppercase tracking-wide px-4 py-2 bg-surface-2 border-b border-border">
                         Planned batches (quantity history)
                       </h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="bg-slate-50/80 border-b border-slate-200">
-                              <th className="text-left px-3 py-2 font-semibold text-slate-700">B</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-700">Code</th>
-                              <th className="text-right px-3 py-2 font-semibold text-slate-700">Size (kg)</th>
-                              <th className="text-right px-3 py-2 font-semibold text-slate-700">Units (est.)</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-700">Status</th>
+                            <tr className="bg-surface-2/80 border-b border-border">
+                              <th scope="col" className="text-left px-3 py-2 font-semibold text-ink-2">B</th>
+                              <th scope="col" className="text-left px-3 py-2 font-semibold text-ink-2">Code</th>
+                              <th scope="col" className="text-right px-3 py-2 font-semibold text-ink-2">Size (kg)</th>
+                              <th scope="col" className="text-right px-3 py-2 font-semibold text-ink-2">Units (est.)</th>
+                              <th scope="col" className="text-left px-3 py-2 font-semibold text-ink-2">Status</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -10656,12 +10636,12 @@ const Planning = () => {
                                 return (
                                   <tr
                                     key={row.id ?? `pb-${originalIndex}`}
-                                    className={displayIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}
+                                    className={displayIdx % 2 === 0 ? 'bg-surface' : 'bg-surface-2/40'}
                                   >
-                                    <td className="px-3 py-2 font-mono font-semibold text-emerald-800">
+                                    <td className="px-3 py-2 font-mono font-semibold text-ok">
                                       B-{String(seq).padStart(2, '0')}
                                     </td>
-                                    <td className="px-3 py-2 font-mono text-xs text-slate-600">
+                                    <td className="px-3 py-2 font-mono text-xs text-ink-2">
                                       {row.batchCode ?? '—'}
                                     </td>
                                     <td className="px-3 py-2 text-right font-mono tabular-nums">{formatQtyExact(sk, 'kg')}</td>
@@ -10670,11 +10650,11 @@ const Planning = () => {
                                     </td>
                                     <td className="px-3 py-2">
                                       {isSent ? (
-                                        <span className="text-xs font-semibold text-slate-600 bg-slate-200 px-2 py-0.5 rounded">
+                                        <span className="text-xs font-semibold text-ink-2 bg-surface-3 px-2 py-0.5 rounded">
                                           Sent
                                         </span>
                                       ) : (
-                                        <span className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                                        <span className="text-xs font-semibold text-warn bg-warn-soft px-2 py-0.5 rounded">
                                           Pending
                                         </span>
                                       )}
@@ -10692,9 +10672,9 @@ const Planning = () => {
                         );
                         const nextSeq = maxSeq + 1;
                         return (
-                          <p className="text-[11px] text-slate-500 px-4 py-2 bg-slate-50/50 border-t border-slate-100">
-                            Next new batch from <strong className="text-slate-700">+ Add</strong> uses sequence{' '}
-                            <span className="font-mono font-semibold text-emerald-800">
+                          <p className="text-[11px] text-ink-3 px-4 py-2 bg-surface-2/50 border-t border-hairline">
+                            Next new batch from <strong className="text-ink-2">+ Add</strong> uses sequence{' '}
+                            <span className="font-mono font-semibold text-ok">
                               B-{String(nextSeq).padStart(2, '0')}
                             </span>{' '}
                             (after the highest existing batch number).
@@ -10703,34 +10683,34 @@ const Planning = () => {
                       })()}
                     </div>
                   )}
-                  <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 flex items-start gap-3">
-                    <span className="text-yellow-600 text-lg mt-0.5">!</span>
+                  <div className="bg-warn-soft border border-warn-soft rounded-lg p-4 flex items-start gap-3">
+                    <span className="text-warn text-lg mt-0.5">!</span>
                     <div>
-                      <p className="text-sm font-semibold text-yellow-900">Editing BOM for {selectedSOForBatch.productName}. Make all BOM updates here (add/swap materials). When done, click <strong>Confirm BOM</strong> below — then use the <strong>Batch Plan</strong> tab to set how many batches and schedule. Each batch gets its own saved BOM copy (e.g. PE-5-B1) when you save the batch plan, so this BOM is reused per batch.</p>
+                      <p className="text-sm font-semibold text-warn">Editing BOM for {selectedSOForBatch.productName}. Make all BOM updates here (add/swap materials). When done, click <strong>Confirm BOM</strong> below — then use the <strong>Batch Plan</strong> tab to set how many batches and schedule. Each batch gets its own saved BOM copy (e.g. PE-5-B1) when you save the batch plan, so this BOM is reused per batch.</p>
                     </div>
                   </div>
-                  <div className="rounded-lg border p-4 bg-indigo-50 border-indigo-200">
+                  <div className="rounded-lg border p-4 bg-brand-soft border-brand-soft">
                       <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="min-w-0">
-                          <h3 className="text-sm font-bold text-gray-900">BOM default Specific Gravity</h3>
-                          <p className="text-xs text-gray-600 mt-1">
+                          <h3 className="text-sm font-bold text-ink">BOM default Specific Gravity</h3>
+                          <p className="text-xs text-ink-2 mt-1">
                             Default SG (vs water) for new or swapped RM lines — pre-filled from the PR master Specs field when set. Each RM line has its own SG — used to convert litre warehouse stock to kg (mass = volume × SG).{' '}
                             {canSendToProduction
                               ? 'SG stays editable after BOM confirm — use Save SG below.'
                               : 'All BOM confirmation quantities are shown in kg.'}
                           </p>
                           {prSpecBulkForBom ? (
-                            <p className="text-xs text-indigo-900 mt-2">
+                            <p className="text-xs text-brand mt-2">
                               PR product SG (master):{' '}
                               <span className="font-mono font-semibold">{prSpecBulkForBom}</span>
-                              <span className="text-indigo-700">
+                              <span className="text-brand">
                                 {' '}
                                 → {parseBulkSpecificGravity(prSpecBulkForBom).toFixed(3)} vs water
                               </span>
                             </p>
                           ) : null}
                           {bomFormula.length > 0 ? (
-                            <p className="text-xs text-slate-600 mt-1">
+                            <p className="text-xs text-ink-2 mt-1">
                               Formula blend SG (% w/w weighted):{' '}
                               <span className="font-mono font-semibold">
                                 {inferBlendSpecificGravity(
@@ -10755,24 +10735,24 @@ const Planning = () => {
                             placeholder="1.00"
                             readOnly={bomFieldsReadOnly}
                             disabled={bomFieldsReadOnly}
-                            className="no-number-spinner w-28 px-3 py-2 border border-indigo-300 rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
+                            className="no-number-spinner w-28 px-3 py-2 border border-brand-soft rounded-lg text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-surface-3 disabled:text-ink-3"
                             title="Default specific gravity for new RM lines (vs water)"
                           />
-                          <span className="text-xs text-gray-500">vs water</span>
+                          <span className="text-xs text-ink-3">vs water</span>
                         </div>
                       </div>
                     </div>
                   <div>
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                      <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-ink flex items-center gap-2">
                         FORMULA BOM ({bomFormula.length} RM ITEMS)
                       </h3>
                       {bomFormula.length > 0 ? (
                         <span
                           className={`text-xs font-semibold ${
                             planningFormulaPercentExceedsMax(bomFormulaPercentTotal)
-                              ? 'text-red-600'
-                              : 'text-slate-700'
+                              ? 'text-err'
+                              : 'text-ink-2'
                           }`}
                         >
                           Total: {bomFormulaPercentTotal.toFixed(2)}% w/w
@@ -10782,23 +10762,23 @@ const Planning = () => {
                         </span>
                       ) : null}
                     </div>
-                    <div className="space-y-3 bg-gray-50 rounded-lg p-4">
+                    <div className="space-y-3 bg-surface-2 rounded-lg p-4">
                       {bomFormula.map((item, idx) => {
                         const lineQtyKg = roundMaterialQty(
                           (effectiveBatchSizeKg * (item.percentage ?? 0)) / 100
                         );
                         return (
-                        <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200 flex-wrap">
+                        <div key={`${item.id}-${idx}`} className="bg-surface rounded-lg p-4 flex items-center gap-4 border border-border flex-wrap">
                           <div className="flex-1 min-w-[160px]">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                              <p className="text-sm font-semibold text-ink">{item.name}</p>
                               {isItemGroupFormulaLine(item) ? (
-                                <span className="text-[10px] font-bold uppercase text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded">
+                                <span className="text-[10px] font-bold uppercase text-brand bg-brand-soft px-1.5 py-0.5 rounded">
                                   Item group
                                 </span>
                               ) : null}
                             </div>
-                            <p className="text-xs text-blue-600 font-medium">
+                            <p className="text-xs text-brand font-medium">
                               {item.code ?? item.id} · {item.percentage}% w/w · {formatQtyExact(lineQtyKg, 'kg')} kg · {item.phase ?? 'Phase A'}
                               {isItemGroupFormulaLine(item) && item.raw_material_id == null
                                 ? ' · pick RM in Swap'
@@ -10807,7 +10787,7 @@ const Planning = () => {
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
                             <div className="flex items-center gap-1.5">
-                              <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">SG</label>
+                              <label className="text-xs font-semibold text-ink-2 whitespace-nowrap">SG</label>
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -10821,10 +10801,11 @@ const Planning = () => {
                                 readOnly={bomFieldsReadOnly}
                                 disabled={bomFieldsReadOnly}
                                 title="Specific gravity vs water (for L volume)"
-                                className="no-number-spinner w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                className="no-number-spinner w-16 px-2 py-1 border border-border rounded text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-surface-3 disabled:text-ink-3"
                               />
                             </div>
                             <input
+                              aria-label="Percentage"
                               type="number"
                               value={item.percentage}
                               onChange={(e) => updateBomLinePct(idx, e.target.value)}
@@ -10833,11 +10814,11 @@ const Planning = () => {
                               max={100}
                               readOnly={bomFieldsReadOnly}
                               disabled={bomFieldsReadOnly}
-                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand ${bomFieldsReadOnly ? 'bg-surface-3 border-border text-ink-2 cursor-not-allowed' : 'border-border'}`}
                             />
-                            <span className="text-sm font-semibold text-gray-600">%</span>
+                            <span className="text-sm font-semibold text-ink-2">%</span>
                             {!bomFieldsReadOnly && (
-                              <button onClick={() => setBomFormula(bomFormula.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                              <button onClick={() => setBomFormula(bomFormula.filter((_, i) => i !== idx))} className="text-err hover:bg-err-soft p-2 rounded transition-colors"><X size={16} /></button>
                             )}
                           </div>
                         </div>
@@ -10845,50 +10826,51 @@ const Planning = () => {
                       })}
                     </div>
                     {!bomFieldsReadOnly && (
-                      <button className="mt-4 text-sm font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
+                      <button className="mt-4 text-sm font-semibold text-brand hover:text-brand flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
                         <span>↔</span>Swap RM in Swap panel
                       </button>
                     )}
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-ink mb-4 flex items-center gap-2">
                       PACK BOM ({bomPackaging.length} PM ITEMS)
                     </h3>
-                    <div className="space-y-3 bg-gray-50 rounded-lg p-4">
+                    <div className="space-y-3 bg-surface-2 rounded-lg p-4">
                       {bomPackaging.map((item, idx) => (
-                        <div key={`${item.id}-${idx}`} className="bg-white rounded-lg p-4 flex items-center gap-4 border border-gray-200">
+                        <div key={`${item.id}-${idx}`} className="bg-surface rounded-lg p-4 flex items-center gap-4 border border-border">
                           <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-900">{item.name}</p>
-                            <p className="text-xs text-blue-600 font-medium">{item.code ?? item.id} · {idx === 0 ? 'Primary' : 'Secondary'}</p>
+                            <p className="text-sm font-semibold text-ink">{item.name}</p>
+                            <p className="text-xs text-brand font-medium">{item.code ?? item.id} · {idx === 0 ? 'Primary' : 'Secondary'}</p>
                           </div>
                           <div className="flex items-center gap-3">
                             <input
+                              aria-label="Qty per unit"
                               type="number"
                               value={item.value}
                               onChange={(e) => { const updated = [...bomPackaging]; updated[idx] = { ...item, value: parseFloat(e.target.value) }; setBomPackaging(updated); }}
                               step="0.1"
                               readOnly={bomFieldsReadOnly}
                               disabled={bomFieldsReadOnly}
-                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                              className={`w-20 px-2 py-1 border rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand ${bomFieldsReadOnly ? 'bg-surface-3 border-border text-ink-2 cursor-not-allowed' : 'border-border'}`}
                             />
-                            <span className="text-sm font-semibold text-gray-600">Qty/unit</span>
+                            <span className="text-sm font-semibold text-ink-2">Qty/unit</span>
                             {!bomFieldsReadOnly && (
-                              <button onClick={() => setBomPackaging(bomPackaging.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2 rounded transition-colors"><X size={16} /></button>
+                              <button onClick={() => setBomPackaging(bomPackaging.filter((_, i) => i !== idx))} className="text-err hover:bg-err-soft p-2 rounded transition-colors"><X size={16} /></button>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-200">
+                  <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border">
                     {bomFieldsReadOnly ? (
-                      <span className="px-4 py-2 rounded-lg text-sm font-semibold text-rose-900 bg-rose-50 border border-rose-200">
+                      <span className="px-4 py-2 rounded-lg text-sm font-semibold text-err bg-err-soft border border-err-soft">
                         Locked by Production — view only
                       </span>
                     ) : editModeShowSaveBom ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {canSendToProduction ? (
-                          <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
+                          <span className="px-4 py-2 rounded-lg text-sm font-semibold text-ok bg-ok-soft border border-ok-soft">
                             BOM ready
                           </span>
                         ) : null}
@@ -10896,11 +10878,11 @@ const Planning = () => {
                           type="button"
                           onClick={() => void handleSaveBomSg()}
                           disabled={bomSgSaving}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {bomSgSaving ? 'Saving…' : 'Save BOM'}
                         </button>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-ink-3">
                           Updates {selectedBatchCodeLabel || 'this batch'} only
                         </span>
                       </div>
@@ -10927,7 +10909,7 @@ const Planning = () => {
                             onClick={() => handleConfirmBOM()}
                             disabled={!canConfirm}
                             title={disabledReason}
-                            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${canConfirm ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${canConfirm ? 'bg-ok hover:bg-ok' : 'bg-ink-4 cursor-not-allowed'}`}
                           >
                             Confirm BOM
                           </button>
@@ -10935,14 +10917,14 @@ const Planning = () => {
                       })()
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-4 py-2 rounded-lg text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200">
+                        <span className="px-4 py-2 rounded-lg text-sm font-semibold text-ok bg-ok-soft border border-ok-soft">
                           BOM Confirmed
                         </span>
                         <button
                           type="button"
                           onClick={() => void handleSaveBomSg()}
                           disabled={bomSgSaving}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {bomSgSaving ? 'Saving…' : 'Save BOM'}
                         </button>
@@ -10954,9 +10936,9 @@ const Planning = () => {
 
               {/* Swap Tab */}
               {activeBatchTab === 'swap-add' && (
-                <div className="bg-white">
-                  <div className="bg-cyan-50 border-y border-cyan-200 px-6 py-3">
-                    <p className="text-xs text-cyan-800 font-semibold">
+                <div className="bg-surface">
+                  <div className="bg-brand-soft border-y border-brand-soft px-6 py-3">
+                    <p className="text-xs text-brand font-semibold">
                       {swapSourceLine
                         ? swapTargetItemGroups.length > 0
                           ? isItemGroupFormulaLine(swapSourceLine)
@@ -10966,11 +10948,11 @@ const Planning = () => {
                         : 'Edit % w/w on each BOM line below, click Swap on a line, then search for a replacement RM or pick from an item group.'}
                     </p>
                   </div>
-                  <div className="px-6 py-4 border-b border-gray-200 bg-slate-50/90">
+                  <div className="px-6 py-4 border-b border-border bg-surface-2/90">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                       <div>
-                        <h4 className="text-sm font-bold text-gray-900">BOM formula — % w/w &amp; batch qty</h4>
-                        <p className="text-xs text-gray-600 mt-0.5">
+                        <h4 className="text-sm font-bold text-ink">BOM formula — % w/w &amp; batch qty</h4>
+                        <p className="text-xs text-ink-2 mt-0.5">
                           Batch size: <span className="font-semibold">{formatQtyExact(effectiveBatchSizeKg, 'kg')} kg</span>
                           {' · '}Qty per line = (batch kg × % w/w) ÷ 100
                           {bomFormula.length > 0 ? (
@@ -10979,8 +10961,8 @@ const Planning = () => {
                               <span
                                 className={
                                   planningFormulaPercentExceedsMax(bomFormulaPercentTotal)
-                                    ? 'font-semibold text-red-600'
-                                    : 'font-semibold text-slate-800'
+                                    ? 'font-semibold text-err'
+                                    : 'font-semibold text-ink'
                                 }
                               >
                                 {bomFormulaPercentTotal.toFixed(2)}% w/w
@@ -10990,14 +10972,14 @@ const Planning = () => {
                         </p>
                       </div>
                       {swapSourceIndex !== null && (
-                        <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
+                        <span className="text-xs font-semibold text-brand bg-brand-soft px-2.5 py-1 rounded-full">
                           Swapping: {bomFormula[swapSourceIndex]?.name}
                         </span>
                       )}
                     </div>
-                    <div className="space-y-2 max-h-[min(320px,40vh)] overflow-y-auto pr-1 border border-dashed border-slate-200 rounded-lg p-2 bg-white/60">
+                    <div className="space-y-2 max-h-[min(320px,40vh)] overflow-y-auto pr-1 border border-dashed border-border rounded-lg p-2 bg-surface/60">
                       {bomFormula.length === 0 ? (
-                        <p className="text-sm text-slate-500">No RM lines in this batch BOM.</p>
+                        <p className="text-sm text-ink-3">No RM lines in this batch BOM.</p>
                       ) : (
                         bomFormula.map((item, idx) => {
                           const lineQtyKg = roundMaterialQty(
@@ -11007,23 +10989,23 @@ const Planning = () => {
                           return (
                             <div
                               key={`swap-pct-${item.id}-${idx}`}
-                              className={`flex flex-wrap items-center gap-3 bg-white border rounded-lg px-3 py-2.5 shadow-sm ${isActive ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'}`}
+                              className={`flex flex-wrap items-center gap-3 bg-surface border rounded-lg px-3 py-2.5 shadow-sm ${isActive ? 'border-brand-soft ring-2 ring-brand' : 'border-border'}`}
                             >
                               <div className="flex-1 min-w-[140px]">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+                                  <p className="text-sm font-semibold text-ink truncate">{item.name}</p>
                                   {isItemGroupFormulaLine(item) ? (
-                                    <span className="text-[9px] font-bold uppercase text-violet-700 bg-violet-100 px-1 py-0.5 rounded shrink-0">
+                                    <span className="text-[9px] font-bold uppercase text-brand bg-brand-soft px-1 py-0.5 rounded shrink-0">
                                       Group
                                     </span>
                                   ) : null}
                                 </div>
-                                <p className="text-xs text-gray-500 truncate">
+                                <p className="text-xs text-ink-3 truncate">
                                   {item.code ?? item.id} · {item.phase ?? 'Phase A'}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <label className="text-xs font-semibold text-gray-700 whitespace-nowrap">SG</label>
+                                <label className="text-xs font-semibold text-ink-2 whitespace-nowrap">SG</label>
                                 <input
                                   type="number"
                                   min={0.1}
@@ -11033,12 +11015,12 @@ const Planning = () => {
                                   onChange={(e) => updateBomLineSg(idx, e.target.value)}
                                   readOnly={bomFieldsReadOnly}
                                   disabled={bomFieldsReadOnly}
-                                  className={`no-number-spinner w-24 min-w-[6rem] px-2 py-1.5 text-sm border rounded-md text-right font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                                  className={`no-number-spinner w-24 min-w-[6rem] px-2 py-1.5 text-sm border rounded-md text-right font-mono focus:ring-2 focus:ring-brand focus:border-brand-soft ${bomFieldsReadOnly ? 'bg-surface-3 border-border text-ink-2 cursor-not-allowed' : 'border-border'}`}
                                   title="Specific gravity vs water"
                                 />
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <label className="text-xs font-semibold text-gray-700 whitespace-nowrap">% w/w</label>
+                                <label className="text-xs font-semibold text-ink-2 whitespace-nowrap">% w/w</label>
                                 <input
                                   type="number"
                                   min={0}
@@ -11048,12 +11030,12 @@ const Planning = () => {
                                   onChange={(e) => updateBomLinePct(idx, e.target.value)}
                                   readOnly={bomFieldsReadOnly}
                                   disabled={bomFieldsReadOnly}
-                                  className={`w-[72px] px-2 py-1.5 text-sm border rounded-md text-right focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${bomFieldsReadOnly ? 'bg-gray-100 border-gray-200 text-gray-600 cursor-not-allowed' : 'border-gray-300'}`}
+                                  className={`w-[72px] px-2 py-1.5 text-sm border rounded-md text-right focus:ring-2 focus:ring-brand focus:border-brand-soft ${bomFieldsReadOnly ? 'bg-surface-3 border-border text-ink-2 cursor-not-allowed' : 'border-border'}`}
                                 />
                               </div>
-                              <div className="text-xs text-gray-600 shrink-0 min-w-[100px]">
-                                <span className="text-gray-500">Qty:</span>{' '}
-                                <span className="font-semibold text-gray-900">{formatQtyExact(lineQtyKg, 'kg')} KG</span>
+                              <div className="text-xs text-ink-2 shrink-0 min-w-[100px]">
+                                <span className="text-ink-3">Qty:</span>{' '}
+                                <span className="font-semibold text-ink">{formatQtyExact(lineQtyKg, 'kg')} KG</span>
                               </div>
                               <button
                                 type="button"
@@ -11066,7 +11048,7 @@ const Planning = () => {
                                     updateBomLinePct(idx, String(item.percentage ?? 0));
                                   }
                                 }}
-                                className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${isActive ? 'bg-purple-600 text-white hover:bg-purple-700' : 'text-purple-700 bg-purple-100 hover:bg-purple-200'}`}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-md transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${isActive ? 'bg-brand text-white hover:bg-brand' : 'text-brand bg-brand-soft hover:bg-brand-soft'}`}
                               >
                                 {isActive ? 'Selected' : 'Swap'}
                               </button>
@@ -11079,12 +11061,12 @@ const Planning = () => {
                   <div className="flex max-h-[50vh]">
                     <div className="flex-1 overflow-y-auto p-6 space-y-4">
                       <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-gray-700">Search replacement RM</h4>
-                        <p className="text-[11px] text-slate-500">
+                        <h4 className="text-xs font-bold text-ink-2">Search replacement RM</h4>
+                        <p className="text-[11px] text-ink-3">
                           Type at least 2 characters (name, INCI, or SKU). Suggestions appear below — no full RM list.
                         </p>
                         <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-4 pointer-events-none" />
                           <input
                             type="text"
                             placeholder="Search by RM name, INCI, or SKU code…"
@@ -11098,17 +11080,17 @@ const Planning = () => {
                             onFocus={() => {
                               if (swapRmSearch.trim().length >= 2) setSwapRmSuggestionsOpen(true);
                             }}
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
+                            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand-soft disabled:bg-surface-3 disabled:text-ink-3"
                             autoComplete="off"
                           />
                           {swapRmSuggestionsOpen && (swapRmSearchLoading || swapRmSearch.trim().length >= 2) && (
-                            <div className="absolute z-10 left-0 right-0 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg max-h-56 overflow-y-auto">
+                            <div className="absolute z-10 left-0 right-0 mt-1 rounded-lg border border-border bg-surface shadow-lg max-h-56 overflow-y-auto">
                               {swapRmSearchLoading ? (
-                                <p className="px-3 py-2.5 text-xs text-slate-500 flex items-center gap-1.5">
+                                <p className="px-3 py-2.5 text-xs text-ink-3 flex items-center gap-1.5">
                                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> Searching…
                                 </p>
                               ) : swapRmResults.length === 0 ? (
-                                <p className="px-3 py-2.5 text-xs text-slate-500">No raw materials match this search.</p>
+                                <p className="px-3 py-2.5 text-xs text-ink-3">No raw materials match this search.</p>
                               ) : (
                                 swapRmResults.map((rm) => {
                                   const whRow = warehouseRows.find((r) => r.code === rm.code);
@@ -11122,18 +11104,18 @@ const Planning = () => {
                                       type="button"
                                       disabled={swapSourceIndex === null || swapApplying}
                                       onClick={() => void handleSwapWithRm(rm)}
-                                      className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left text-sm hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed border-b border-gray-100 last:border-b-0"
+                                      className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left text-sm hover:bg-brand-soft disabled:opacity-40 disabled:cursor-not-allowed border-b border-hairline last:border-b-0"
                                     >
                                       <div className="min-w-0 flex-1">
-                                        <p className="font-medium text-gray-800 truncate">{rm.name || rm.inci}</p>
-                                        <p className="text-xs text-gray-500 truncate">
+                                        <p className="font-medium text-ink truncate">{rm.name || rm.inci}</p>
+                                        <p className="text-xs text-ink-3 truncate">
                                           {rm.code}
                                           {rm.zohoSkuCode ? ` · SKU ${rm.zohoSkuCode}` : ''}
                                         </p>
                                       </div>
                                       <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                        <span className="text-[10px] font-semibold text-gray-600">{sih.toLocaleString()} KG</span>
-                                        <span className="text-[10px] font-semibold text-purple-600">
+                                        <span className="text-[10px] font-semibold text-ink-2">{sih.toLocaleString()} KG</span>
+                                        <span className="text-[10px] font-semibold text-brand">
                                           {swapSourceIndex === null ? 'Select BOM line' : 'Swap in'}
                                         </span>
                                       </div>
@@ -11144,7 +11126,7 @@ const Planning = () => {
                             </div>
                           )}
                         </div>
-                        <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer pt-1">
+                        <label className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer pt-1">
                           <input
                             type="checkbox"
                             checked={swapAddToGroup}
@@ -11153,7 +11135,7 @@ const Planning = () => {
                               setSwapAddToGroup(checked);
                               if (!checked) setSwapPendingGroupRm(null);
                             }}
-                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            className="rounded border-border text-brand focus:ring-brand"
                           />
                           Add replacement RM to item group
                         </label>
@@ -11164,20 +11146,20 @@ const Planning = () => {
                               placeholder="Item group name (new or existing)"
                               value={swapGroupName}
                               onChange={(e) => setSwapGroupName(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand-soft"
                             />
                             {swapPendingGroupRm ? (
-                              <p className="text-[11px] text-slate-600">
+                              <p className="text-[11px] text-ink-2">
                                 Pending: <span className="font-medium">{swapPendingGroupRm.name}</span>
                               </p>
                             ) : (
-                              <p className="text-[11px] text-slate-500">Swap an RM first, then confirm the group add.</p>
+                              <p className="text-[11px] text-ink-3">Swap an RM first, then confirm the group add.</p>
                             )}
                             <button
                               type="button"
                               disabled={!swapPendingGroupRm || !swapGroupName.trim() || swapApplying}
                               onClick={() => void handleConfirmSwapItemGroup()}
-                              className="w-full px-3 py-2 text-sm font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                              className="w-full px-3 py-2 text-sm font-semibold text-white bg-brand rounded-lg hover:bg-brand disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                               {swapApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                               Confirm add to item group
@@ -11187,34 +11169,34 @@ const Planning = () => {
                       </div>
 
                       {swapSourceLine && swapTargetItemGroups.length === 0 && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <div className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn">
                           <p className="font-semibold">No item group for this ingredient</p>
-                          <p className="text-xs mt-1 text-amber-800">
+                          <p className="text-xs mt-1 text-warn">
                             Add <span className="font-mono">{swapSourceLine.code || swapSourceLine.name}</span> to an
                             item group in Masters → Item Groups so swap alternatives appear here.
                           </p>
                         </div>
                       )}
                       {swapSourceLine && swapCategories.every((c) => c.items.length === 0) && swapTargetItemGroups.length > 0 && (
-                        <p className="text-sm text-slate-500">No other members in this item group.</p>
+                        <p className="text-sm text-ink-3">No other members in this item group.</p>
                       )}
                       {swapSourceLine && swapCategories.length > 0 && (
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider pt-2 border-t border-gray-200">
+                        <p className="text-xs font-bold text-ink-3 uppercase tracking-wider pt-2 border-t border-border">
                           Item group alternatives
                         </p>
                       )}
                       {swapCategories.map((category, catIdx) => (
                         <div key={`swap-cat-${catIdx}-${category.code || category.name || 'group'}`}>
-                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          <h3 className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-1">
                             {category.name}
                             {category.code ? (
-                              <span className="ml-1 font-mono font-normal normal-case text-slate-400">
+                              <span className="ml-1 font-mono font-normal normal-case text-ink-4">
                                 ({category.code})
                               </span>
                             ) : null}
                           </h3>
                           {category.items.length === 0 ? (
-                            <p className="text-xs text-slate-400 mb-3">No swap alternatives in this group.</p>
+                            <p className="text-xs text-ink-4 mb-3">No swap alternatives in this group.</p>
                           ) : null}
                           <div className="space-y-2">
                             {category.items.map((item) => {
@@ -11225,20 +11207,20 @@ const Planning = () => {
                               );
                               const sih = warehouseQtyToKg(whRow?.stockInHand ?? 0, whRow, rmMaster, lineSg);
                               return (
-                                <div key={`${category.name}-${item.id}`} className="px-3 py-2 rounded-lg flex items-center justify-between gap-3 text-sm bg-white border border-gray-200">
+                                <div key={`${category.name}-${item.id}`} className="px-3 py-2 rounded-lg flex items-center justify-between gap-3 text-sm bg-surface border border-border">
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-gray-800 truncate">{item.name}</p>
-                                    <p className="text-xs text-gray-500 truncate">{item.code} · {item.description}</p>
+                                    <p className="font-medium text-ink truncate">{item.name}</p>
+                                    <p className="text-xs text-ink-3 truncate">{item.code} · {item.description}</p>
                                   </div>
                                   <div className="flex items-center gap-2 shrink-0">
-                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${item.status === 'IN BOM' ? 'bg-green-100 text-green-800' : item.status === 'AVAILABLE' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{item.status}</span>
-                                    <span className="text-sm font-bold text-gray-700">{sih.toLocaleString()} KG</span>
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${item.status === 'IN BOM' ? 'bg-ok-soft text-ok' : item.status === 'AVAILABLE' ? 'bg-brand-soft text-brand' : 'bg-err-soft text-err'}`}>{item.status}</span>
+                                    <span className="text-sm font-bold text-ink-2">{sih.toLocaleString()} KG</span>
                                     {swapSourceIndex !== null ? (
                                       <button
                                         type="button"
                                         disabled={swapApplying}
                                         onClick={() => void handleSwapFromGroupMember(item)}
-                                        className="text-xs font-semibold text-purple-600 hover:text-purple-700 disabled:opacity-50"
+                                        className="text-xs font-semibold text-brand hover:text-brand disabled:opacity-50"
                                       >
                                         Use as replacement
                                       </button>
@@ -11252,16 +11234,16 @@ const Planning = () => {
                       ))}
                     </div>
                     <div className="hidden" aria-hidden>
-                      <h3 className="text-sm font-bold text-gray-800 mb-4">CURRENT BOM — {selectedSOForBatch.productName}</h3>
+                      <h3 className="text-sm font-bold text-ink mb-4">CURRENT BOM — {selectedSOForBatch.productName}</h3>
                       {swapSourceIndex !== null && (
-                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900 space-y-1">
+                        <div className="mb-4 p-3 bg-warn-soft border border-warn-soft rounded-lg text-sm text-warn space-y-1">
                           <p className="mb-2">
                             Replace <strong>{bomFormula[swapSourceIndex]?.name}</strong> via search or item group (left).
                             Edit <strong>% w/w</strong> so batch qty recalculates for the swapped RM.
                           </p>
                           <div className="flex flex-wrap items-end gap-3 mb-2">
                             <div>
-                              <label className="block text-[10px] font-semibold uppercase tracking-wide text-amber-800 mb-1">
+                              <label className="block text-[10px] font-semibold uppercase tracking-wide text-warn mb-1">
                                 SG
                               </label>
                               <input
@@ -11271,11 +11253,11 @@ const Planning = () => {
                                 step="0.01"
                                 value={bomFormula[swapSourceIndex]?.specificGravity ?? 1}
                                 onChange={(e) => updateBomLineSg(swapSourceIndex, e.target.value)}
-                                className="no-number-spinner w-20 px-2 py-1.5 text-sm border border-amber-300 rounded-md bg-white font-mono text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                className="no-number-spinner w-20 px-2 py-1.5 text-sm border border-warn-soft rounded-md bg-surface font-mono text-right focus:ring-2 focus:ring-brand focus:border-brand-soft"
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] font-semibold uppercase tracking-wide text-amber-800 mb-1">
+                              <label className="block text-[10px] font-semibold uppercase tracking-wide text-warn mb-1">
                                 % w/w
                               </label>
                               <div className="flex items-center gap-1.5">
@@ -11285,20 +11267,20 @@ const Planning = () => {
                                   step="any"
                                   value={bomFormula[swapSourceIndex]?.percentage ?? 0}
                                   onChange={(e) => updateBomLinePct(swapSourceIndex, e.target.value)}
-                                  className="w-24 px-2 py-1.5 text-sm border border-amber-300 rounded-md bg-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                  className="w-24 px-2 py-1.5 text-sm border border-warn-soft rounded-md bg-surface focus:ring-2 focus:ring-brand focus:border-brand-soft"
                                 />
                                 <span className="text-sm font-semibold">%</span>
                               </div>
                             </div>
-                            <div className="text-xs text-amber-900">
+                            <div className="text-xs text-warn">
                               <span className="font-semibold">Batch qty ({formatQtyExact(effectiveBatchSizeKg, 'kg')} kg batch):</span>
                               <br />
-                              <span className="text-base font-bold text-amber-950">
+                              <span className="text-base font-bold text-warn">
                                 {formatQtyExact(swapSelectedQtyKg, 'kg')} KG
                               </span>
                             </div>
                           </div>
-                          <button type="button" onClick={() => setSwapSourceIndex(null)} className="text-amber-700 underline text-xs">
+                          <button type="button" onClick={() => setSwapSourceIndex(null)} className="text-warn underline text-xs">
                             Cancel swap
                           </button>
                         </div>
@@ -11310,11 +11292,11 @@ const Planning = () => {
                               ? item.quantity
                               : roundMaterialQty((effectiveBatchSizeKg * (item.percentage ?? 0)) / 100);
                           return (
-                          <div key={`swap-${item.id}-${idx}`} className={`bg-white rounded-lg p-3 border shadow-sm ${swapSourceIndex === idx ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'}`}>
+                          <div key={`swap-${item.id}-${idx}`} className={`bg-surface rounded-lg p-3 border shadow-sm ${swapSourceIndex === idx ? 'border-brand-soft ring-2 ring-brand' : 'border-border'}`}>
                             <div className="flex items-center gap-3">
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-sm font-semibold text-ink truncate">{item.name}</p>
+                                <p className="text-xs text-ink-3">
                                   {item.code ?? item.id} · {item.phase ?? 'Phase A'}
                                 </p>
                               </div>
@@ -11328,32 +11310,33 @@ const Planning = () => {
                                     updateBomLinePct(idx, String(bomFormula[idx]?.percentage ?? 0));
                                   }
                                 }}
-                                className="text-xs font-semibold text-purple-700 bg-purple-100 hover:bg-purple-200 px-3 py-1.5 rounded-md transition-colors shrink-0"
+                                className="text-xs font-semibold text-brand bg-brand-soft hover:bg-brand-soft px-3 py-1.5 rounded-md transition-colors shrink-0"
                               >
                                 {swapSourceIndex === idx ? 'Cancel' : 'Swap'}
                               </button>
                             </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-2">
                               <span>
-                                SG: <span className="font-mono font-semibold text-gray-800">{Number(item.specificGravity ?? 1).toFixed(2)}</span>
+                                SG: <span className="font-mono font-semibold text-ink">{Number(item.specificGravity ?? 1).toFixed(2)}</span>
                               </span>
                               {swapSourceIndex === idx ? (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="font-semibold text-gray-700">% w/w</span>
+                                  <span className="font-semibold text-ink-2">% w/w</span>
                                   <input
+                                    aria-label="Percentage w/w"
                                     type="number"
                                     min={0}
                                     step="any"
                                     value={item.percentage}
                                     onChange={(e) => updateBomLinePct(idx, e.target.value)}
-                                    className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-purple-500"
+                                    className="w-20 px-2 py-1 border border-border rounded text-sm text-right focus:ring-2 focus:ring-brand"
                                   />
                                 </div>
                               ) : (
                                 <span>{item.percentage}% w/w</span>
                               )}
                               <span>
-                                Qty: <span className="font-semibold text-gray-800">{formatQtyExact(lineQtyKg, 'kg')} KG</span>
+                                Qty: <span className="font-semibold text-ink">{formatQtyExact(lineQtyKg, 'kg')} KG</span>
                               </span>
                             </div>
                           </div>
@@ -11366,77 +11349,78 @@ const Planning = () => {
               )}
             </div>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
 
       {/* PR Modal Popup - Global: renders across all tabs */}
       {prModalOpen && selectedSO && (
-        <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl my-8">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-gray-900">Raise Procurement Request</h2>
-              <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+        <PlanningModalShell onClose={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} z="z-[100]" scroll dismissable={false}>
+          <div role="dialog" aria-modal="true" aria-label="Raise Procurement Request" onClick={(e) => e.stopPropagation()} className="bg-surface rounded-lg shadow-xl w-full max-w-5xl my-8">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <h2 className="text-lg font-bold text-ink">Raise Procurement Request</h2>
+              <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="text-ink-3 hover:text-ink-2"><X size={20} /></button>
             </div>
             <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm flex items-start gap-3">
-                <span className="text-yellow-500 mt-0.5">i</span>
+              <div className="bg-warn-soft border border-warn-soft text-warn px-4 py-3 rounded-lg text-sm flex items-start gap-3">
+                <span className="text-warn mt-0.5">i</span>
                 <span>
                   Items are linked to Raw Materials, Pack Materials, or Products (FG). You can change type, pick another item from the dropdowns, edit unit and quantity, add lines, or remove lines. Only lines with an item selected are sent.
                   {prOmittedCount > 0 && (
-                    <span className="block mt-2 text-amber-700 font-medium">
+                    <span className="block mt-2 text-warn font-medium">
                       {prOmittedCount} BOM item{prOmittedCount !== 1 ? 's' : ''} were omitted (not in RM/PM masters). You can add them manually via “Add line” and select from masters.
                     </span>
                   )}
-                  <span className="block mt-2 text-gray-600 text-xs">On submit, the request is saved to the backend (procurement_requests). You’ll see it in Planning tab stats and in Procurement - Requests.</span>
+                  <span className="block mt-2 text-ink-2 text-xs">On submit, the request is saved to the backend (procurement_requests). You’ll see it in Planning tab stats and in Procurement - Requests.</span>
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">PRIORITY</label>
-                  <select value={prPriority} onChange={(e) => setPrPriority(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <label className="block text-xs font-bold text-ink-2 mb-2">PRIORITY</label>
+                  <select value={prPriority} onChange={(e) => setPrPriority(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand">
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
                     <option value="Low">Low</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">REQUIRED BY DATE</label>
-                  <input type="date" value={prRequiredByDate} onChange={(e) => setPrRequiredByDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <label className="block text-xs font-bold text-ink-2 mb-2">REQUIRED BY DATE</label>
+                  <input type="date" value={prRequiredByDate} onChange={(e) => setPrRequiredByDate(e.target.value)} className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">NOTES TO PROCUREMENT</label>
-                <textarea value={prNotes} onChange={(e) => setPrNotes(e.target.value)} placeholder="Any special instructions..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" rows={3} />
+                <label className="block text-xs font-bold text-ink-2 mb-2">NOTES TO PROCUREMENT</label>
+                <textarea value={prNotes} onChange={(e) => setPrNotes(e.target.value)} placeholder="Any special instructions..." className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none" rows={3} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
+                <h3 className="text-sm font-bold text-ink mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-brand rounded-full"></span>
                   Items — linked to RM/PM/FG masters (editable)
                 </h3>
                 {prItems.length === 0 && (
-                  <p className="text-sm text-gray-500 mb-2">No lines. Add a line and select an item from Raw Materials, Pack Materials, or Products.</p>
+                  <p className="text-sm text-ink-3 mb-2">No lines. Add a line and select an item from Raw Materials, Pack Materials, or Products.</p>
                 )}
                 {prItems.length > 0 && (
-                  <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                  <div className="border border-border rounded-lg overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">TYPE</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">ITEM (RM/PM/FG)</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">UNIT</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-700">REQ</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-700">SIH</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-700">SHORT</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-700">QTY REQUEST</th>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-700">NOTES</th>
-                          <th className="px-2 py-2 w-16"></th>
+                        <tr className="bg-surface-2 border-b border-border">
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">TYPE</th>
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">ITEM (RM/PM/FG)</th>
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">UNIT</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">REQ</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">SIH</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">SHORT</th>
+                          <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">QTY REQUEST</th>
+                          <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">NOTES</th>
+                          <th scope="col" className="px-2 py-2 w-16"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {prItems.map((item, idx) => (
-                          <tr key={`${item.type}-${item.code}-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <tr key={`${item.type}-${item.code}-${idx}`} className={idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
                             <td className="px-3 py-2">
                               <select
+                                aria-label="Item type"
                                 value={item.type}
                                 onChange={(e) => {
                                   const t = e.target.value as 'RM' | 'PM' | 'FG';
@@ -11450,7 +11434,7 @@ const Planning = () => {
                                     unit: t === 'PM' || t === 'FG' ? 'PCS' : 'KG',
                                   });
                                 }}
-                                className="w-full min-w-[4rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                className="w-full min-w-[4rem] px-2 py-1.5 border border-border rounded text-sm focus:ring-2 focus:ring-brand"
                               >
                                 <option value="RM">RM</option>
                                 <option value="PM">PM</option>
@@ -11460,13 +11444,14 @@ const Planning = () => {
                             <td className="px-3 py-2">
                               {item.type === 'RM' && (
                                 <select
+                                  aria-label="Select raw material"
                                   value={item.raw_material_id ?? ''}
                                   onChange={(e) => {
                                     const id = e.target.value;
                                     const master = rawMaterialsList.find((r) => String(r.id) === id);
                                     if (master) updatePrItem(idx, { raw_material_id: parseInt(String(master.id), 10), pack_material_id: undefined, product_id: undefined, code: master.code, name: master.name, unit: normRmPrimaryUom(master.uom) });
                                   }}
-                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-border rounded text-sm focus:ring-2 focus:ring-brand"
                                 >
                                   <option value="">Select RM…</option>
                                   {rawMaterialsList.map((r) => (
@@ -11476,13 +11461,14 @@ const Planning = () => {
                               )}
                               {item.type === 'PM' && (
                                 <select
+                                  aria-label="Select pack material"
                                   value={item.pack_material_id ?? ''}
                                   onChange={(e) => {
                                     const id = e.target.value;
                                     const master = packMaterialsList.find((p) => String(p.id) === id);
                                     if (master) updatePrItem(idx, { pack_material_id: parseInt(String(master.id), 10), raw_material_id: undefined, product_id: undefined, code: master.code, name: master.description, unit: 'PCS' });
                                   }}
-                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-border rounded text-sm focus:ring-2 focus:ring-brand"
                                 >
                                   <option value="">Select PM…</option>
                                   {packMaterialsList.map((p) => (
@@ -11492,13 +11478,14 @@ const Planning = () => {
                               )}
                               {item.type === 'FG' && (
                                 <select
+                                  aria-label="Select product"
                                   value={item.product_id ?? ''}
                                   onChange={(e) => {
                                     const id = e.target.value;
                                     const master = productsList.find((p) => p.product_id === parseInt(id, 10));
                                     if (master) updatePrItem(idx, { product_id: master.product_id, raw_material_id: undefined, pack_material_id: undefined, code: master.product_code, name: master.product_name, unit: 'PCS' });
                                   }}
-                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                  className="w-full min-w-[12rem] px-2 py-1.5 border border-border rounded text-sm focus:ring-2 focus:ring-brand"
                                 >
                                   <option value="">Select product…</option>
                                   {productsList.map((p) => (
@@ -11509,26 +11496,27 @@ const Planning = () => {
                             </td>
                             <td className="px-3 py-2">
                               <select
+                                aria-label="Unit"
                                 value={item.unit}
                                 onChange={(e) => updatePrItem(idx, { unit: e.target.value })}
-                                className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                                className="w-20 px-2 py-1.5 border border-border rounded text-sm focus:ring-2 focus:ring-brand"
                               >
                                 {['KG', 'PCS', 'L', 'ML', 'G', 'BOX', 'CTN'].map((u) => (
                                   <option key={u} value={u}>{u}</option>
                                 ))}
                               </select>
                             </td>
-                            <td className="px-3 py-2 text-right text-gray-700">{item.required.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-orange-600">{item.sih.toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-red-600 font-medium">{item.shortage > 0 ? `+${item.shortage.toLocaleString()}` : '0'}</td>
+                            <td className="px-3 py-2 text-right text-ink-2">{item.required.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-warn">{item.sih.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-err font-medium">{item.shortage > 0 ? `+${item.shortage.toLocaleString()}` : '0'}</td>
                             <td className="px-3 py-2 text-right">
-                              <input type="number" min={0} value={item.quantity_requested} onChange={(e) => updatePrItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })} className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-2 focus:ring-blue-500" />
+                              <input aria-label="Quantity requested" type="number" min={0} value={item.quantity_requested} onChange={(e) => updatePrItem(idx, { quantity_requested: parseFloat(e.target.value) || 0 })} className="w-20 px-2 py-1 border border-border rounded text-sm text-right focus:ring-2 focus:ring-brand" />
                             </td>
                             <td className="px-3 py-2">
-                              <input type="text" value={item.line_notes ?? ''} onChange={(e) => updatePrItem(idx, { line_notes: e.target.value })} placeholder="Line notes" className="w-full min-w-[6rem] px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500" />
+                              <input type="text" value={item.line_notes ?? ''} onChange={(e) => updatePrItem(idx, { line_notes: e.target.value })} placeholder="Line notes" className="w-full min-w-[6rem] px-2 py-1 border border-border rounded text-sm focus:ring-2 focus:ring-brand" />
                             </td>
                             <td className="px-2 py-2">
-                              <button type="button" onClick={() => removePrLine(idx)} className="text-red-600 hover:text-red-800 text-xs font-medium" title="Remove line">X</button>
+                              <button type="button" onClick={() => removePrLine(idx)} className="text-err hover:text-err text-xs font-medium" title="Remove line">X</button>
                             </td>
                           </tr>
                         ))}
@@ -11536,19 +11524,19 @@ const Planning = () => {
                     </table>
                   </div>
                 )}
-                <button type="button" onClick={addPrLine} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50">
+                <button type="button" onClick={addPrLine} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold text-ink-2 border border-border bg-surface hover:bg-surface-2">
                   + Add line (RM/PM/FG)
                 </button>
               </div>
             </div>
-            <div className="border-t border-gray-200 p-6 flex gap-3 justify-end">
-              <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 bg-transparent hover:bg-gray-100 transition-colors disabled:opacity-50" disabled={prSending}>Cancel</button>
-              <button onClick={handleSendToProcurement} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2" disabled={prSending}>
+            <div className="border-t border-border p-6 flex gap-3 justify-end">
+              <button onClick={() => { setPrModalOpen(false); setSelectedSO(null); setPrShowPMOnly(false); setPrOmittedCount(0); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-ink-2 bg-transparent hover:bg-surface-3 transition-colors disabled:opacity-50" disabled={prSending}>Cancel</button>
+              <button onClick={handleSendToProcurement} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand hover:bg-brand transition-colors disabled:opacity-50 flex items-center gap-2" disabled={prSending}>
                 {prSending ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Sending...</>) : 'Send to Procurement'}
               </button>
             </div>
           </div>
-        </div>
+        </PlanningModalShell>
       )}
     </div>
   );

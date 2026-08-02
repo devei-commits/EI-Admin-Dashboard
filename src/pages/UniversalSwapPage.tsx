@@ -11,6 +11,8 @@ import {
 import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import { fetchPackMaterialsList } from '../services/packMaterials.service';
 import { formatQtyExact } from '../utils/formatQty';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
 
 /** Ordered product row for left panel (from planning extracted). */
 type OrderedProductRow = {
@@ -171,12 +173,18 @@ const UniversalSwapPage = () => {
   if (planningLoading || orderedProducts.length === 0) {
     return (
       <div className="p-8">
-        <div className="text-center">
-          <p className="text-gray-500">{planningLoading ? 'Loading orders…' : 'No planning orders found.'}</p>
-          <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
-            Back to Planning
-          </Link>
-        </div>
+        {planningLoading ? (
+          <TableSkeleton rows={6} cols={4} />
+        ) : (
+          <EmptyState
+            title="No planning orders found."
+            action={
+              <Link to="/planning" className="text-brand hover:underline">
+                Back to Planning
+              </Link>
+            }
+          />
+        )}
       </div>
     );
   }
@@ -185,8 +193,8 @@ const UniversalSwapPage = () => {
     return (
       <div className="p-8">
         <div className="text-center">
-          <p className="text-gray-500">Please select a product and view RM Plan to see details.</p>
-          <Link to="/planning" className="mt-4 inline-block text-blue-600 hover:underline">
+          <p className="text-ink-3">Please select a product and view RM Plan to see details.</p>
+          <Link to="/planning" className="mt-4 inline-block text-brand hover:underline">
             Back to Planning
           </Link>
         </div>
@@ -195,21 +203,21 @@ const UniversalSwapPage = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-surface-2">
       {/* Left Panel */}
-      <div className="w-72 shrink-0 border-r border-gray-200 bg-white flex flex-col lg:w-80">
-        <div className="p-4 border-b border-gray-200 bg-slate-800 text-white">
+      <div className="w-72 shrink-0 border-r border-border bg-surface flex flex-col lg:w-80">
+        <div className="p-4 border-b border-border bg-ink text-white">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold">Order Management System</h2>
-            <Link to="/planning" className="text-gray-300 hover:text-white">
+            <Link to="/planning" className="text-ink-4 hover:text-white">
               <ArrowLeft size={18} />
             </Link>
           </div>
           <h1 className="text-lg font-bold">Order Management</h1>
-          <p className="text-xs text-gray-300 mt-1">Dashboard / Order Management</p>
+          <p className="text-xs text-ink-4 mt-1">Dashboard / Order Management</p>
         </div>
 
-        <div className="p-4 border-b border-gray-200 bg-blue-600 text-white">
+        <div className="p-4 border-b border-border bg-brand text-white">
           <h3 className="text-sm font-semibold">Ordered Product Management</h3>
         </div>
 
@@ -217,15 +225,15 @@ const UniversalSwapPage = () => {
           {orderedProducts.map((product) => (
             <div
               key={product.id}
-              className={`p-4 border-b border-gray-200 cursor-pointer transition ${
-                effectiveSelected?.id === product.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'
+              className={`p-4 border-b border-border cursor-pointer transition ${
+                effectiveSelected?.id === product.id ? 'bg-brand-soft border-l-4 border-l-blue-600' : 'hover:bg-surface-2'
               }`}
               onClick={() => handleProductClick(product)}
             >
               <div className="flex items-start">
                 <input 
                   type="checkbox" 
-                  className="mt-1.5 mr-3 h-4 w-4 rounded border-gray-300"
+                  className="mt-1.5 mr-3 h-4 w-4 rounded border-border"
                   checked={selectedOrders.includes(product.id) || (selectedOrders.length === 0 && effectiveSelected?.id === product.id)}
                   onChange={(e) => {
                     e.stopPropagation();
@@ -234,34 +242,34 @@ const UniversalSwapPage = () => {
                 />
                 <div className="grow">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-blue-600 text-sm">{product.mo}</span>
+                    <span className="font-semibold text-brand text-sm">{product.mo}</span>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         handleViewRMPlan(product);
                       }}
-                      className="text-xs text-blue-600 hover:underline font-medium"
+                      className="text-xs text-brand hover:underline font-medium"
                     >
                       View RM Plan
                     </button>
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="flex items-center gap-2 text-xs text-ink-2">
                       <span className="font-medium">Product Name:</span>
-                      <span className="text-gray-800">{product.productName}</span>
+                      <span className="text-ink">{product.productName}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
-                        <span className="text-gray-500">Qty:</span>
-                        <span className="ml-1 font-medium text-gray-900">{product.qty}</span>
+                        <span className="text-ink-3">Qty:</span>
+                        <span className="ml-1 font-medium text-ink">{product.qty}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Pack:</span>
-                        <span className="ml-1 font-medium text-gray-900">{product.pack}</span>
+                        <span className="text-ink-3">Pack:</span>
+                        <span className="ml-1 font-medium text-ink">{product.pack}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Status:</span>
-                        <span className="ml-1 font-medium text-blue-600">{product.status}</span>
+                        <span className="text-ink-3">Status:</span>
+                        <span className="ml-1 font-medium text-brand">{product.status}</span>
                       </div>
                     </div>
                   </div>
@@ -273,44 +281,45 @@ const UniversalSwapPage = () => {
       </div>
 
       {/* Right Panel */}
-      <div className="grow p-6 overflow-y-auto bg-gray-50">
+      <div className="grow p-6 overflow-y-auto bg-surface-2">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Selected Product - Items Involved</h1>
-            <p className="text-sm text-gray-500 mt-1">Stage-specific BOM (without touching masters)</p>
+            <h1 className="text-2xl font-bold text-ink">Selected Product - Items Involved</h1>
+            <p className="text-sm text-ink-3 mt-1">Stage-specific BOM (without touching masters)</p>
           </div>
-          <Link to="/planning" className="text-blue-600 hover:underline text-sm font-medium">
+          <Link to="/planning" className="text-brand hover:underline text-sm font-medium">
             Back to Planning
           </Link>
         </div>
 
         {/* Product Info Card */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm mb-4">
+        <div className="bg-surface p-4 rounded-lg border border-border shadow-sm mb-4">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+              <label className="block text-xs font-medium text-ink-3 mb-1">Product</label>
+              <select aria-label="Product" className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface">
                 <option>{effectiveSelected.productName}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Batch</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
+              <label className="block text-xs font-medium text-ink-3 mb-1">Batch</label>
+              <select aria-label="Batch" className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface">
                 <option>1-to-Setup Type Batch</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
-              <input 
-                type="text" 
+              <label className="block text-xs font-medium text-ink-3 mb-1">Qty</label>
+              <input
+                type="text"
+                aria-label="Qty"
                 value={displayPlanQty}
                 onChange={(e) => setPlanQty(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 border border-border rounded-md text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Availability</label>
-              <span className="inline-flex items-center px-3 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-md border border-green-200">
+              <label className="block text-xs font-medium text-ink-3 mb-1">Availability</label>
+              <span className="inline-flex items-center px-3 py-2 text-sm font-medium text-ok bg-ok-soft rounded-md border border-ok">
                 In Stock
               </span>
             </div>
@@ -318,24 +327,25 @@ const UniversalSwapPage = () => {
         </div>
 
         {/* Items Table Card */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-          <div className="p-4 border-b border-gray-200">
+        <div className="bg-surface rounded-lg border border-border shadow-sm">
+          <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="PLAN Qty"
+                  aria-label="PLAN Qty"
                   value={displayPlanQty}
                   onChange={(e) => setPlanQty(e.target.value)}
-                  className="w-32 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="w-32 px-3 py-2 border border-border rounded-md text-sm"
                 />
-                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+                <button className="flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-md text-sm font-medium hover:bg-brand">
                   <Search size={16} />
                   Show Preview
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Shortfall Only</span>
+                <span className="text-sm text-ink-2">Shortfall Only</span>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
                     type="checkbox" 
@@ -343,8 +353,8 @@ const UniversalSwapPage = () => {
                     onChange={(e) => setShortfallOnly(e.target.checked)}
                     className="sr-only peer" 
                   />
-                  <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:bg-blue-600"></div>
-                  <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-all peer-checked:translate-x-full"></div>
+                  <div className="w-11 h-6 bg-surface-3 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:bg-brand"></div>
+                  <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-surface transition-all peer-checked:translate-x-full"></div>
                 </label>
               </div>
             </div>
@@ -356,8 +366,8 @@ const UniversalSwapPage = () => {
                   onClick={() => setActiveFilter(filter)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${
                     activeFilter === filter 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                    ? 'bg-brand text-white' 
+                    : 'bg-surface border border-border text-ink-2 hover:bg-surface-2'
                   }`}
                 >
                   {filter}
@@ -367,63 +377,63 @@ const UniversalSwapPage = () => {
 
             <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-gray-500">Possible Production:</span>
-                <span className="ml-2 font-bold text-gray-900">{possibleProduction.toLocaleString()}</span>
+                <span className="text-ink-3">Possible Production:</span>
+                <span className="ml-2 font-bold text-ink">{possibleProduction.toLocaleString()}</span>
               </div>
               <div>
-                <span className="text-gray-500">RM Limit:</span>
-                <span className="ml-2 font-bold text-gray-900">{rmLimit.toLocaleString()}</span>
+                <span className="text-ink-3">RM Limit:</span>
+                <span className="ml-2 font-bold text-ink">{rmLimit.toLocaleString()}</span>
               </div>
               <div>
-                <span className="text-gray-500">PM Limit:</span>
-                <span className="ml-2 font-bold text-gray-900">{pmLimit.toLocaleString()}</span>
+                <span className="text-ink-3">PM Limit:</span>
+                <span className="ml-2 font-bold text-ink">{pmLimit.toLocaleString()}</span>
               </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed min-w-200 divide-y divide-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="w-[22%] py-3 pl-4 pr-3 text-left text-xs font-semibold text-gray-900">Item</th>
-                  <th scope="col" className="w-[8%] px-3 py-3 text-center text-xs font-semibold text-gray-900">Category</th>
-                  <th scope="col" className="w-[10%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Req Qty</th>
-                  <th scope="col" className="w-[10%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Group Qty</th>
-                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Stock On Hand</th>
-                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Reserved Qty</th>
-                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-gray-900">Net Stock</th>
-                  <th scope="col" className="w-[10%] px-3 py-3 text-center text-xs font-semibold text-gray-900">Status</th>
+          <div className="overflow-auto max-h-[70vh]">
+            <table className="w-full table-fixed min-w-200 divide-y divide-hairline">
+              <thead className="sticky top-0 z-20 bg-surface-2">
+                <tr className="[&_th]:bg-surface-2">
+                  <th scope="col" className="w-[22%] py-3 pl-4 pr-3 text-left text-xs font-semibold text-ink">Item</th>
+                  <th scope="col" className="w-[8%] px-3 py-3 text-center text-xs font-semibold text-ink">Category</th>
+                  <th scope="col" className="w-[10%] px-3 py-3 text-right text-xs font-semibold text-ink">Req Qty</th>
+                  <th scope="col" className="w-[10%] px-3 py-3 text-right text-xs font-semibold text-ink">Group Qty</th>
+                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-ink">Stock On Hand</th>
+                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-ink">Reserved Qty</th>
+                  <th scope="col" className="w-[12%] px-3 py-3 text-right text-xs font-semibold text-ink">Net Stock</th>
+                  <th scope="col" className="w-[10%] px-3 py-3 text-center text-xs font-semibold text-ink">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-hairline bg-surface">
                 {itemsLoading ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">Loading items…</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-6"><TableSkeleton rows={6} cols={8} /></td></tr>
                 ) : filteredItems.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">No items for this product.</td></tr>
+                  <tr><td colSpan={8}><EmptyState compact title="No items for this product." /></td></tr>
                 ) : filteredItems.map(item => (
                   <tr 
                     key={item.id}
                     onClick={() => handleTableItemClick(item)}
                     className={`cursor-pointer transition ${
-                      selectedTableItem?.id === item.id ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      selectedTableItem?.id === item.id ? 'bg-brand-soft' : 'hover:bg-surface-2'
                     }`}
                   >
-                    <td className="py-3 pl-4 pr-3 text-sm font-medium text-gray-900 truncate">{item.item}</td>
+                    <td className="py-3 pl-4 pr-3 text-sm font-medium text-ink truncate">{item.item}</td>
                     <td className="px-3 py-3 text-center text-sm">
                       <span className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${
-                        item.category === 'RM' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                        item.category === 'RM' ? 'bg-brand-soft text-brand' : 'bg-purple-100 text-purple-700'
                       }`}>
                         {item.category}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.reqQty, item.unit === 'pcs' ? 'pcs' : 'kg')} {item.unit}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-500">{item.groupQty || '—'}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.stockOnHand, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums text-gray-700">{formatQtyExact(item.reservedQty, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
-                    <td className="px-3 py-3 text-right text-sm tabular-nums font-medium text-gray-900">{formatQtyExact(item.netStock, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-ink-2">{formatQtyExact(item.reqQty, item.unit === 'pcs' ? 'pcs' : 'kg')} {item.unit}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-ink-3">{item.groupQty || '—'}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-ink-2">{formatQtyExact(item.stockOnHand, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums text-ink-2">{formatQtyExact(item.reservedQty, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
+                    <td className="px-3 py-3 text-right text-sm tabular-nums font-medium text-ink">{formatQtyExact(item.netStock, item.unit === 'pcs' ? 'pcs' : 'kg')}</td>
                     <td className="px-3 py-3 text-center text-sm">
                       <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                        item.status === 'short' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20' : 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20'
+                        item.status === 'short' ? 'bg-warn-soft text-warn ring-1 ring-inset ring-amber-600/20' : 'bg-ok-soft text-ok ring-1 ring-inset ring-green-600/20'
                       }`}>
                         {item.status}
                       </span>
@@ -435,21 +445,22 @@ const UniversalSwapPage = () => {
           </div>
         </div>
 
-        <div className="mt-6 bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800 mb-2">Stage BOM Overrides</h3>
-            <p className="text-sm text-gray-500 mb-4">Swap/add items for this specific order line (stage-specific).</p>
+        <div className="mt-6 bg-surface p-4 rounded-lg border border-border">
+            <h3 className="text-base font-semibold text-ink mb-2">Stage BOM Overrides</h3>
+            <p className="text-sm text-ink-3 mb-4">Swap/add items for this specific order line (stage-specific).</p>
             
             {selectedTableItem && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-blue-800">
+              <div className="mb-4 p-3 bg-brand-soft border border-brand rounded-md">
+                <p className="text-sm text-brand">
                   <span className="font-medium">Selected:</span> {selectedTableItem.item} ({selectedTableItem.category})
                 </p>
               </div>
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-4">
-                <select 
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                <select
+                  aria-label="Item to swap from"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                   value={swapFromItem}
                   onChange={(e) => setSwapFromItem(e.target.value)}
                 >
@@ -458,8 +469,9 @@ const UniversalSwapPage = () => {
                       <option key={item.id} value={item.item}>{item.item}</option>
                     ))}
                 </select>
-                <select 
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                <select
+                  aria-label="Replacement item"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                   value={swapToItem}
                   onChange={(e) => setSwapToItem(e.target.value)}
                 >
@@ -471,17 +483,18 @@ const UniversalSwapPage = () => {
                 <button 
                   onClick={handleSwapItem}
                   disabled={!swapFromItem || !swapToItem}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-md text-sm font-medium hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                  className="px-4 py-2 bg-gray-700 text-white rounded-md text-sm font-medium hover:bg-ink disabled:bg-gray-300 disabled:cursor-not-allowed transition"
                 >
                     Swap Item
                 </button>
             </div>
 
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-sm font-medium text-gray-700 mb-3">Add New Item</p>
+            <div className="border-t border-border pt-4">
+              <p className="text-sm font-medium text-ink-2 mb-3">Add New Item</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mb-4">
-                  <select 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm col-span-2 bg-white"
+                  <select
+                    aria-label="Item to add"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm col-span-2 bg-surface"
                     value={addItemName}
                     onChange={(e) => setAddItemName(e.target.value)}
                   >
@@ -490,56 +503,59 @@ const UniversalSwapPage = () => {
                         <option key={item.id} value={item.name}>{item.name} ({item.category})</option>
                       ))}
                   </select>
-                  <select 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                  <select
+                    aria-label="Item category"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-surface"
                     value={addItemCategory}
                     onChange={(e) => setAddItemCategory(e.target.value)}
                   >
                       <option value="RM">RM</option>
                       <option value="PM">PM</option>
                   </select>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="e.g. 0.002 (kg) / 1 (pcs)"
+                    aria-label="Quantity to add"
                     value={addItemQty}
                     onChange={(e) => setAddItemQty(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-full px-3 py-2 border border-border rounded-md text-sm"
                   />
               </div>
               <button 
                 onClick={handleAddItem}
                 disabled={!addItemName || !addItemQty}
-                className="px-4 py-2 bg-gray-800 text-white rounded-md text-sm font-medium hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+                className="px-4 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-ink disabled:bg-gray-300 disabled:cursor-not-allowed transition"
               >
                   Add
               </button>
             </div>
         </div>
 
-        <div className="mt-6 bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800 mb-3">Global Replace (Across Order Overrides)</h3>
+        <div className="mt-6 bg-surface p-4 rounded-lg border border-border">
+            <h3 className="text-base font-semibold text-ink mb-3">Global Replace (Across Order Overrides)</h3>
             <div className="flex items-center mb-4">
                 <input 
                   id="apply-selected" 
                   type="checkbox" 
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-border text-brand focus:ring-blue-500"
                   checked={applyToSelectedOnly}
                   onChange={(e) => setApplyToSelectedOnly(e.target.checked)}
                 />
-                <label htmlFor="apply-selected" className="ml-2 block text-sm text-gray-900">
+                <label htmlFor="apply-selected" className="ml-2 block text-sm text-ink">
                   Apply to Selected Orders only {(selectedOrders.length > 0 || effectiveSelected) && `(${selectedOrders.length || (effectiveSelected ? 1 : 0)} selected)`}
                 </label>
             </div>
             <div className="flex items-center gap-4">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="#SKU"
+                  aria-label="Filter by SKU"
                   value={globalFilterSKU}
                   onChange={(e) => setGlobalFilterSKU(e.target.value)}
-                  className="grow px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="grow px-3 py-2 border border-border rounded-md text-sm"
                 />
                 <button 
-                  className="px-4 py-2 bg-yellow-500 text-white rounded-md text-sm font-medium hover:bg-yellow-600 transition"
+                  className="px-4 py-2 bg-warn text-white rounded-md text-sm font-medium hover:bg-warn transition"
                   onClick={() => alert(`Filtering by SKU: ${globalFilterSKU}`)}
                 >
                     Filter By Item
@@ -550,12 +566,12 @@ const UniversalSwapPage = () => {
         {/* Action Buttons */}
         <div className="mt-6 flex justify-end gap-3 pb-6">
           <Link to="/planning">
-            <button className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 transition">
+            <button className="px-6 py-2 border border-border text-ink-2 rounded-md text-sm font-medium hover:bg-surface-2 transition">
               Cancel
             </button>
           </Link>
           <button 
-            className="px-6 py-2 bg-yellow-500 text-white rounded-md text-sm font-medium hover:bg-yellow-600 transition"
+            className="px-6 py-2 bg-warn text-white rounded-md text-sm font-medium hover:bg-warn transition"
             onClick={() => alert('Saving Stage BOM Overrides...')}
           >
             Save Overrides

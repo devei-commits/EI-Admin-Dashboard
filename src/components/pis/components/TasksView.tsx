@@ -19,6 +19,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { PISDetailsDialog } from './PISDetailsDialog';
 import { cn } from './ui/utils';
+import { EmptyState } from '../../ui/EmptyState';
 
 type TaskAction = {
  label: string;
@@ -1095,21 +1096,21 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
   <div className="space-y-6">
    <div>
     <h2 className="text-2xl mb-2">{getTaskTitle()}</h2>
-    <p className="text-gray-600">{getTaskDescription()}</p>
+    <p className="text-ink-2">{getTaskDescription()}</p>
    </div>
 
    {(currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN') && (
     <div className="flex items-center gap-3">
-     <span className="text-sm text-gray-600">View mode:</span>
-     <div className="inline-flex rounded-full border bg-white p-0.5 text-xs">
+     <span className="text-sm text-ink-2">View mode:</span>
+     <div className="inline-flex rounded-full border bg-surface p-0.5 text-xs">
       <button
        type="button"
        onClick={() => setAdminViewMode('ALL')}
        className={cn(
         'px-3 py-1 rounded-full transition-colors',
         adminViewMode === 'ALL'
-         ? 'bg-blue-600 text-white'
-         : 'text-gray-600 hover:bg-gray-100'
+         ? 'bg-brand text-white'
+         : 'text-ink-2 hover:bg-surface-3'
        )}
       >
        All
@@ -1120,8 +1121,8 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
        className={cn(
         'px-3 py-1 rounded-full transition-colors',
         adminViewMode === 'ASSIGNED'
-         ? 'bg-blue-600 text-white'
-         : 'text-gray-600 hover:bg-gray-100'
+         ? 'bg-brand text-white'
+         : 'text-ink-2 hover:bg-surface-3'
        )}
       >
        Assigned
@@ -1134,36 +1135,36 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
     <Card className="p-6">
      <div className="flex items-center gap-3">
-      <div className="bg-yellow-500 p-3 rounded-lg">
+      <div className="bg-warn p-3 rounded-lg">
        <Clock className="h-6 w-6 text-white" />
       </div>
       <div>
-       <p className="text-sm text-gray-600">Pending</p>
-       <p className="text-2xl text-yellow-600">{pendingTasks.length}</p>
+       <p className="text-sm text-ink-2">Pending</p>
+       <p className="text-2xl text-warn">{pendingTasks.length}</p>
       </div>
      </div>
     </Card>
 
     <Card className="p-6">
      <div className="flex items-center gap-3">
-      <div className="bg-blue-500 p-3 rounded-lg">
+      <div className="bg-brand p-3 rounded-lg">
        <AlertCircle className="h-6 w-6 text-white" />
       </div>
       <div>
-       <p className="text-sm text-gray-600">In Progress</p>
-       <p className="text-2xl text-blue-600">{inProgressTasks.length}</p>
+       <p className="text-sm text-ink-2">In Progress</p>
+       <p className="text-2xl text-brand">{inProgressTasks.length}</p>
       </div>
      </div>
     </Card>
 
     <Card className="p-6">
      <div className="flex items-center gap-3">
-      <div className="bg-green-500 p-3 rounded-lg">
+      <div className="bg-ok p-3 rounded-lg">
        <CheckCircle2 className="h-6 w-6 text-white" />
       </div>
       <div>
-       <p className="text-sm text-gray-600">Total Tasks</p>
-       <p className="text-2xl text-green-600">{myTasks.length}</p>
+       <p className="text-sm text-ink-2">Total Tasks</p>
+       <p className="text-2xl text-ok">{myTasks.length}</p>
       </div>
      </div>
     </Card>
@@ -1173,7 +1174,7 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
    <Card className="p-6">
     <h3 className="text-lg font-medium mb-4">Pending Tasks</h3>
     {pendingTasks.length === 0 ? (
-     <p className="text-gray-500 text-center py-8">No pending tasks</p>
+     <p className="text-ink-3 text-center py-8">No pending tasks</p>
     ) : (
      <div className="space-y-3">
       {pendingTasks.map((pis) => {
@@ -1220,7 +1221,7 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
    <Card className="p-6">
     <h3 className="text-lg font-medium mb-4">In Progress</h3>
     {inProgressTasks.length === 0 ? (
-     <p className="text-gray-500 text-center py-8">No tasks in progress</p>
+     <p className="text-ink-3 text-center py-8">No tasks in progress</p>
     ) : (
      <div className="space-y-3">
       {inProgressTasks.map((pis) => {
@@ -1272,9 +1273,12 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
        <DialogTitle>Assign to BD Staff</DialogTitle>
       </DialogHeader>
       {bdStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active BD Staff users found. Please create or activate BD Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserIcon />}
+        title="No active BD Staff users"
+        description="Please create or activate BD Staff users first."
+       />
       ) : (
        <div className="space-y-3 mt-2">
         {bdStaffUsers.map((staff) => {
@@ -1286,22 +1290,22 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
            onClick={() => handleConfirmAssignToStaff(staff)}
            className="w-full text-left"
           >
-           <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+           <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-surface-2 transition-colors">
             <div className="flex items-center gap-3">
              <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center text-white">
               <UserIcon className="h-5 w-5" />
              </div>
              <div>
               <p className="font-medium">{staff.name}</p>
-              <p className="text-xs text-gray-500">{staff.email}</p>
+              <p className="text-xs text-ink-3">{staff.email}</p>
              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-             <ClipboardList className="h-4 w-4 text-blue-500" />
+            <div className="flex items-center gap-2 text-sm text-ink-2">
+             <ClipboardList className="h-4 w-4 text-brand" />
              <span>
               Ongoing tasks: <span className="font-semibold">{ongoing}</span>
              </span>
-             <Activity className="h-4 w-4 text-green-500" />
+             <Activity className="h-4 w-4 text-ok" />
             </div>
            </div>
           </button>
@@ -1329,9 +1333,12 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
        <DialogTitle>Assign to R&D Staff</DialogTitle>
       </DialogHeader>
       {rndStaffUsers.length === 0 ? (
-       <p className="text-gray-500 text-sm">
-        No active R&D Staff users found. Please create or activate R&D Staff users first.
-       </p>
+       <EmptyState
+        compact
+        icon={<UserIcon />}
+        title="No active R&D Staff users"
+        description="Please create or activate R&D Staff users first."
+       />
       ) : (
        <div className="space-y-3 mt-2">
         {rndStaffUsers.map((staff) => {
@@ -1343,22 +1350,22 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
            onClick={() => handleConfirmAssignToRndStaff(staff)}
            className="w-full text-left"
           >
-           <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 transition-colors">
+           <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-surface-2 transition-colors">
             <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white">
+             <div className="w-10 h-10 rounded-full bg-ok flex items-center justify-center text-white">
               <UserIcon className="h-5 w-5" />
              </div>
              <div>
               <p className="font-medium">{staff.name}</p>
-              <p className="text-xs text-gray-500">{staff.email}</p>
+              <p className="text-xs text-ink-3">{staff.email}</p>
              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-             <ClipboardList className="h-4 w-4 text-blue-500" />
+            <div className="flex items-center gap-2 text-sm text-ink-2">
+             <ClipboardList className="h-4 w-4 text-brand" />
              <span>
               Ongoing tasks: <span className="font-semibold">{ongoing}</span>
              </span>
-             <Activity className="h-4 w-4 text-green-500" />
+             <Activity className="h-4 w-4 text-ok" />
             </div>
            </div>
           </button>
@@ -1395,11 +1402,11 @@ export function TasksView({ currentRole, taskType, onOpenInPIS }: TasksViewProps
 
      <div className="space-y-4">
       <div className="space-y-2">
-       <p className="text-sm text-gray-600">Decision</p>
+       <p className="text-sm text-ink-2">Decision</p>
        <Input value={decisionValue} onChange={(e) => setDecisionValue(e.target.value)} />
       </div>
       <div className="space-y-2">
-       <p className="text-sm text-gray-600">
+       <p className="text-sm text-ink-2">
         Comments{decisionContext?.mandatoryComment ? ' (required)' : ''}
        </p>
        <Textarea
@@ -1459,19 +1466,19 @@ function TaskCard({
  actions?: TaskAction[];
 }) {
  return (
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-surface-2 rounded-lg hover:bg-surface-3 transition-colors">
    <div className="flex-1 min-w-0">
     <div className="flex items-center gap-3 mb-2">
      <button
       type="button"
       onClick={onViewDetails ? () => onViewDetails(pis) : undefined}
-      className="font-medium text-blue-600 hover:underline text-left"
+      className="font-medium text-brand hover:underline text-left"
      >
       {pis.pisCode}
      </button>
      <Badge variant="outline">{getStageLabel(pis.stage)}</Badge>
     </div>
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-2">
      <span className="truncate">{pis.customer}</span>
      <span className="hidden sm:inline">•</span>
      <span className="truncate">{pis.formulation}</span>
@@ -1479,7 +1486,7 @@ function TaskCard({
      <span className="whitespace-nowrap">Updated: {pis.updatedAt.toLocaleDateString()}</span>
     </div>
     {assignedLabel && (
-     <div className="mt-1 text-xs text-gray-500">
+     <div className="mt-1 text-xs text-ink-3">
       {assignedLabel}
      </div>
     )}

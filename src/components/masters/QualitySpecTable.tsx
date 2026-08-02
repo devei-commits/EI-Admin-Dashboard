@@ -24,7 +24,7 @@ export type QualitySpecTableProps = {
 };
 
 const inputCls =
-  'w-full min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white disabled:bg-gray-100 disabled:text-gray-500';
+  'w-full min-w-0 px-3 py-2 border border-border rounded-lg text-sm leading-normal focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] bg-surface disabled:bg-surface-3 disabled:text-ink-3';
 
 export function QualitySpecTable({
   title,
@@ -60,58 +60,58 @@ export function QualitySpecTable({
   };
 
   return (
-    <div className="border-t border-gray-200 pt-4">
+    <div className="border-t border-border pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-0.5">{title}</h3>
-          {subtitle ? <p className="text-sm font-semibold text-gray-800">{subtitle}</p> : null}
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-3 mb-0.5">{title}</h3>
+          {subtitle ? <p className="text-sm font-semibold text-ink">{subtitle}</p> : null}
         </div>
         {showAddButton ? (
           <button
             type="button"
             onClick={addRow}
             disabled={!enabled}
-            className="shrink-0 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {addButtonLabel}
           </button>
         ) : null}
       </div>
       {!enabled && disabledHint ? (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+        <p className="text-xs text-warn bg-warn-soft border border-[color:var(--st-amber-fg)]/30 rounded-lg px-3 py-2 mb-3">
           {disabledHint}
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
         <table className="min-w-[1100px] w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold uppercase tracking-wider text-gray-500">
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[12rem]">Parameter</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[8.5rem]">Spec / Limit</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[9rem]">Method</th>
-              <th className="px-2 py-2.5 text-center font-semibold w-12">Mand</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Tolerance</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Frequency</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[5.5rem]">Sample</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">Acceptance</th>
-              <th className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">GRN output</th>
-              <th className="px-2 py-2.5 text-center font-semibold min-w-[10rem]">Attachments</th>
+          <thead className="sticky top-0 z-20 [&_th]:bg-surface-3">
+            <tr className="bg-surface-3 border-b border-border text-xs font-bold uppercase tracking-wider text-ink-3">
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[12rem]">Parameter</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[8.5rem]">Spec / Limit</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[9rem]">Method</th>
+              <th scope="col" className="px-2 py-2.5 text-center font-semibold w-12">Mand</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Tolerance</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[6.5rem]">Frequency</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[5.5rem]">Sample</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">Acceptance</th>
+              <th scope="col" className="px-2 py-2.5 text-left font-semibold min-w-[7rem]">GRN output</th>
+              <th scope="col" className="px-2 py-2.5 text-center font-semibold min-w-[10rem]">Attachments</th>
               {onEditRow ? (
-                <th className="px-2 py-2.5 text-center font-semibold w-16">Edit</th>
+                <th scope="col" className="px-2 py-2.5 text-center font-semibold w-16">Edit</th>
               ) : null}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={onEditRow ? 11 : 10} className="px-3 py-6 text-center text-gray-500">
+                <td colSpan={onEditRow ? 11 : 10} className="px-3 py-6 text-center text-ink-3">
                   <p>{emptyMessage}</p>
                   {enabled && showAddButton ? (
                     <button
                       type="button"
                       onClick={addRow}
-                      className="mt-3 px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      className="mt-3 px-3 py-1.5 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                     >
                       {addButtonLabel}
                     </button>
@@ -120,7 +120,7 @@ export function QualitySpecTable({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-b border-gray-100 align-top hover:bg-gray-50/50">
+                <tr key={row.id} className="border-b border-hairline align-top hover:bg-surface-2">
                   <td className="px-2 py-2.5">
                     <label className="sr-only" htmlFor={`${row.id}-parameter`}>
                       Parameter
@@ -170,7 +170,7 @@ export function QualitySpecTable({
                       type="checkbox"
                       checked={row.mandatory}
                       onChange={(e) => updateRow(row.id, { mandatory: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-400 disabled:opacity-50"
+                      className="h-4 w-4 rounded border-border text-brand focus:ring-[color:var(--ring)] disabled:opacity-50"
                       disabled={!enabled}
                     />
                   </td>
@@ -233,13 +233,13 @@ export function QualitySpecTable({
                   <td className="px-2 py-2.5">
                     {row.outputType ? (
                       <span
-                        className="inline-block max-w-full rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                        className="inline-block max-w-full rounded bg-surface-3 px-2 py-1 text-xs font-medium text-ink-2"
                         title={grnOutputTypeLabel(row.outputType) ?? row.outputType}
                       >
                         {grnOutputTypeLabel(row.outputType) ?? row.outputType}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-ink-4">—</span>
                     )}
                   </td>
                   <td className="px-2 py-2.5">
@@ -256,7 +256,7 @@ export function QualitySpecTable({
                         type="button"
                         onClick={() => onEditRow(row)}
                         disabled={!enabled}
-                        className="px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="px-2.5 py-1.5 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
                         aria-label={`Edit quality spec ${row.parameter || 'row'}`}
                       >
                         Edit

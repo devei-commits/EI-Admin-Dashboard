@@ -170,18 +170,18 @@ export default function PlanningItemsInvolvedProductFilter({
           {selectedChips.map((opt) => (
             <span
               key={opt.id}
-              className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md text-xs font-medium bg-indigo-50 text-indigo-900 border border-indigo-200"
+              className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md text-xs font-medium bg-brand-soft text-brand border border-brand-soft"
               title={formatPlanningProductFilterDisplay(opt)}
             >
               <span className="truncate">
                 {opt.name}
                 {opt.sku ? (
-                  <span className="font-mono text-indigo-700/80"> · {opt.sku}</span>
+                  <span className="font-mono text-brand/80"> · {opt.sku}</span>
                 ) : null}
               </span>
               <button
                 type="button"
-                className="shrink-0 p-0.5 rounded hover:bg-indigo-100 text-indigo-700"
+                className="shrink-0 p-0.5 rounded hover:bg-brand-soft text-brand"
                 aria-label={`Remove ${opt.name}`}
                 onClick={() => onRemoveProduct(opt.id)}
               >
@@ -191,7 +191,7 @@ export default function PlanningItemsInvolvedProductFilter({
           ))}
           <button
             type="button"
-            className="text-xs font-semibold text-gray-500 hover:text-gray-800 underline"
+            className="text-xs font-semibold text-ink-3 hover:text-ink underline"
             onClick={onClearAll}
           >
             Clear all
@@ -221,7 +221,7 @@ export default function PlanningItemsInvolvedProductFilter({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full px-3 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-800 bg-white focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+          className="w-full px-3 py-1.5 rounded-lg text-sm border border-border text-ink bg-surface focus:ring-2 focus:ring-brand focus:border-brand-soft"
         />
         {showList && anchor && typeof document !== 'undefined'
           ? createPortal(
@@ -230,7 +230,7 @@ export default function PlanningItemsInvolvedProductFilter({
                 id={listId}
                 role="listbox"
                 style={portalStyle}
-                className="max-h-60 overflow-auto rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg"
+                className="max-h-60 overflow-auto rounded-lg border border-border bg-surface py-1 text-sm shadow-lg"
               >
                 {suggestions.map((row, idx) => {
                   if (row.kind === 'all') {
@@ -239,8 +239,8 @@ export default function PlanningItemsInvolvedProductFilter({
                         key="all-products"
                         role="option"
                         aria-selected={idx === activeIndex}
-                        className={`cursor-pointer px-3 py-2 border-b border-gray-100 ${
-                          idx === activeIndex ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800 hover:bg-gray-50'
+                        className={`cursor-pointer px-3 py-2 border-b border-hairline ${
+                          idx === activeIndex ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface-2'
                         }`}
                         onMouseDown={(e) => {
                           e.preventDefault();
@@ -249,7 +249,7 @@ export default function PlanningItemsInvolvedProductFilter({
                         onMouseEnter={() => setActiveIndex(idx)}
                       >
                         <div className="font-semibold text-sm">All products</div>
-                        <div className="text-xs text-gray-500 mt-0.5">Consolidated across SOs</div>
+                        <div className="text-xs text-ink-3 mt-0.5">Consolidated across SOs</div>
                       </li>
                     );
                   }
@@ -260,7 +260,7 @@ export default function PlanningItemsInvolvedProductFilter({
                       role="option"
                       aria-selected={idx === activeIndex}
                       className={`cursor-pointer px-3 py-2 ${
-                        idx === activeIndex ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800 hover:bg-gray-50'
+                        idx === activeIndex ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface-2'
                       }`}
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -268,8 +268,8 @@ export default function PlanningItemsInvolvedProductFilter({
                       }}
                       onMouseEnter={() => setActiveIndex(idx)}
                     >
-                      <div className="font-medium text-sm text-gray-900">{opt.name || '—'}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="font-medium text-sm text-ink">{opt.name || '—'}</div>
+                      <div className="text-xs text-ink-3 mt-0.5">
                         {opt.sku ? <span className="font-mono">{opt.sku}</span> : '—'}
                         {opt.soNumber ? (
                           <>
@@ -289,7 +289,7 @@ export default function PlanningItemsInvolvedProductFilter({
           ? createPortal(
               <p
                 style={portalStyle}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 shadow"
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink-3 shadow"
               >
                 No products match — try name, SKU, or SO number.
               </p>,

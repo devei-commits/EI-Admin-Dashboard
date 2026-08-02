@@ -41,31 +41,31 @@ function StatCard({
   tone?: 'slate' | 'cyan' | 'amber' | 'blue' | 'rose' | 'emerald' | 'indigo';
 }): React.ReactElement {
   const toneClasses: Record<typeof tone, string> = {
-    slate: 'border-slate-200 bg-slate-50/80',
-    cyan: 'border-cyan-200 bg-cyan-50/70',
-    amber: 'border-amber-200 bg-amber-50/70',
-    blue: 'border-blue-200 bg-blue-50/70',
-    rose: 'border-rose-200 bg-rose-50/70',
-    emerald: 'border-emerald-200 bg-emerald-50/70',
-    indigo: 'border-indigo-200 bg-indigo-50/70',
+    slate: 'border-border bg-surface-2/80',
+    cyan: 'border-brand-soft bg-brand-soft/70',
+    amber: 'border-warn-soft bg-warn-soft/70',
+    blue: 'border-brand-soft bg-brand-soft/70',
+    rose: 'border-err-soft bg-err-soft/70',
+    emerald: 'border-ok-soft bg-ok-soft/70',
+    indigo: 'border-brand-soft bg-brand-soft/70',
   };
   const valueClasses: Record<typeof tone, string> = {
-    slate: 'text-slate-900',
-    cyan: 'text-cyan-900',
-    amber: 'text-amber-900',
-    blue: 'text-blue-900',
-    rose: 'text-rose-900',
-    emerald: 'text-emerald-900',
-    indigo: 'text-indigo-900',
+    slate: 'text-ink',
+    cyan: 'text-brand',
+    amber: 'text-warn',
+    blue: 'text-brand',
+    rose: 'text-err',
+    emerald: 'text-ok',
+    indigo: 'text-brand',
   };
 
   return (
     <div className={`rounded-lg border p-2.5 sm:p-3 min-w-0 ${toneClasses[tone]}`}>
-      <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wide text-ink-3">{label}</p>
       <p className={`text-base sm:text-lg font-extrabold tabular-nums leading-tight mt-0.5 ${valueClasses[tone]}`}>
         {value}
       </p>
-      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{subtitle}</p>
+      <p className="text-[10px] text-ink-3 mt-0.5 leading-snug">{subtitle}</p>
     </div>
   );
 }
@@ -87,10 +87,10 @@ export function ItemsInvolvedReleaseInventoryPanel({
 
   return (
     <section
-      className="mb-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 sm:p-4 shadow-sm"
+      className="mb-4 rounded-xl border border-border bg-surface-2 p-3 sm:p-4 shadow-[var(--e1)]"
       aria-label="Inventory and demand summary"
     >
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2.5">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3 mb-2.5">
         Inventory context (same as Warehouse → Inventory)
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-2.5">
@@ -136,27 +136,27 @@ export function ItemsInvolvedReleaseInventoryPanel({
         />
         <div
           className={`col-span-2 sm:col-span-3 rounded-lg border p-2.5 sm:p-3 flex items-center justify-between gap-2 min-w-0 ${
-            coverageOk ? 'border-emerald-200 bg-emerald-50/80' : 'border-red-200 bg-red-50/80'
+            coverageOk ? 'border-ok-soft bg-ok-soft/80' : 'border-err-soft bg-err-soft/80'
           }`}
         >
           <div className="min-w-0">
-            <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wide text-slate-500">Coverage</p>
+            <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wide text-ink-3">Coverage</p>
             <p
               className={`text-sm sm:text-base font-extrabold mt-0.5 inline-flex items-center gap-1 ${
-                coverageOk ? 'text-emerald-800' : 'text-red-800'
+                coverageOk ? 'text-ok' : 'text-err'
               }`}
             >
               {coverageOk ? <Check size={16} className="shrink-0" aria-hidden /> : <AlertTriangle size={16} className="shrink-0" aria-hidden />}
               {coverageLabel}
             </p>
-            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+            <p className="text-[10px] text-ink-3 mt-0.5 leading-snug">
               Supply {fmt(item.supplyTowardGrossNum)} vs req {fmt(item.totalRequired)}
             </p>
           </div>
         </div>
       </div>
       {vendorHint ? (
-        <p className="text-[11px] text-slate-600 mt-2.5 pt-2.5 border-t border-slate-200/80 font-medium truncate" title={vendorHint}>
+        <p className="text-[11px] text-ink-2 mt-2.5 pt-2.5 border-t border-border/80 font-medium truncate" title={vendorHint}>
           {vendorHint}
         </p>
       ) : null}

@@ -53,7 +53,7 @@ export type MasterCustomFieldsBlockProps = {
 };
 
 const inputClass =
-  'w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+  'w-full p-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]';
 
 function selectOptionsForType(field: MasterCustomFieldDef): string[] {
   if (field.type === 'boolean') return ['Yes', 'No'];
@@ -74,15 +74,15 @@ const MasterCustomFieldInput: React.FC<{
     <>
       {field.label}
       {unitSuffix}
-      <span className="ml-1 text-[9px] font-bold uppercase text-violet-700">custom</span>
-      {field.required ? <span className="text-red-600 ml-0.5">*</span> : null}
+      <span className="ml-1 text-[9px] font-bold uppercase text-brand">custom</span>
+      {field.required ? <span className="text-err ml-0.5">*</span> : null}
     </>
   );
   const selectLabel = (
     <>
       {field.label}
       {unitSuffix}
-      <span className="ml-1 text-[9px] font-bold uppercase text-violet-700">custom</span>
+      <span className="ml-1 text-[9px] font-bold uppercase text-brand">custom</span>
     </>
   );
 
@@ -91,7 +91,7 @@ const MasterCustomFieldInput: React.FC<{
       type="button"
       onClick={onRemove}
       title="Remove custom field"
-      className="shrink-0 px-2 py-1 text-xs text-red-700 border border-red-200 rounded hover:bg-red-50"
+      className="shrink-0 px-2 py-1 text-xs text-err border border-[color:var(--st-red-fg)]/30 rounded hover:bg-err-soft"
       aria-label={`Remove custom field ${field.label}`}
     >
       ✕
@@ -102,7 +102,7 @@ const MasterCustomFieldInput: React.FC<{
     return (
       <div className="sm:col-span-2">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <label htmlFor={formKey} className="block text-sm font-medium text-gray-700">
+          <label htmlFor={formKey} className="block text-sm font-medium text-ink-2">
             {label}
           </label>
           {removeBtn}
@@ -115,7 +115,7 @@ const MasterCustomFieldInput: React.FC<{
           className={inputClass}
         />
         {error ? (
-          <p className="mt-1 text-xs text-red-600" role="alert">
+          <p className="mt-1 text-xs text-err" role="alert">
             {error}
           </p>
         ) : null}
@@ -148,7 +148,7 @@ const MasterCustomFieldInput: React.FC<{
   return (
     <div>
       <div className="flex items-start justify-between gap-2 mb-1">
-        <label htmlFor={formKey} className="block text-sm font-medium text-gray-700">
+        <label htmlFor={formKey} className="block text-sm font-medium text-ink-2">
           {label}
         </label>
         {removeBtn}
@@ -162,7 +162,7 @@ const MasterCustomFieldInput: React.FC<{
         placeholder={field.type === 'attachment' ? 'File name or URL' : undefined}
       />
       {error ? (
-        <p className="mt-1 text-xs text-red-600" role="alert">
+        <p className="mt-1 text-xs text-err" role="alert">
           {error}
         </p>
       ) : null}
@@ -292,19 +292,19 @@ export function MasterCustomFieldsBlock({
   };
 
   return (
-    <div className="space-y-3 border-t border-dashed border-gray-200 pt-4 mt-2">
+    <div className="space-y-3 border-t border-dashed border-border pt-4 mt-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Custom fields</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">Custom fields</p>
         <button
           type="button"
           onClick={openAddModal}
-          className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+          className="px-2.5 py-1 text-xs font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft"
         >
           + Custom field
         </button>
       </div>
       {addError ? (
-        <p className="text-xs text-red-600" role="alert">
+        <p className="text-xs text-err" role="alert">
           {addError}
         </p>
       ) : null}
@@ -325,7 +325,7 @@ export function MasterCustomFieldsBlock({
           })}
         </div>
       ) : (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-ink-3">
           No custom fields yet for this category path. Use “+ Custom field” to add parameters like in the HTML master.
         </p>
       )}

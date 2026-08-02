@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WarehouseLocationDTO, WarehouseRackDTO, StoredItemSummary } from '../../services/warehouseLocations.service';
+import { ModalOverlay } from '../../components/ui/ModalOverlay';
 
 interface Bay {
   id: string;
@@ -544,29 +545,29 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
 
   return (
     <>
-      <div className="fixed right-0 top-0 bottom-0 w-130 bg-white border-l border-gray-200 shadow-lg overflow-y-auto z-40">
+      <div className="fixed right-0 top-0 bottom-0 w-130 bg-surface border-l border-border shadow-lg overflow-y-auto z-40">
         {!selectedItem && (
           <>
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10">
+            <div className="sticky top-0 bg-surface border-b border-border p-4 z-10">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{zone.name}</h2>
+                  <h2 className="text-2xl font-bold text-ink">{zone.name}</h2>
                 </div>
                 <button
                   onClick={onClose}
-                  className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-500 hover:text-gray-700"
+                  className="p-1 hover:bg-surface-3 rounded-full transition-colors text-ink-3 hover:text-ink-2"
                 >
                   <span className="text-2xl">X</span>
                 </button>
               </div>
 
-              <div className="flex gap-4 border-b border-gray-200">
+              <div className="flex gap-4 border-b border-border">
                 <button
                   onClick={() => setActiveTab('overview')}
                   className={`pb-2 px-2 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === 'overview'
-                      ? 'border-emerald-600 text-emerald-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      ? 'border-ok text-ok'
+                      : 'border-transparent text-ink-3 hover:text-ink-2'
                   }`}
                 >
                   Racks
@@ -575,8 +576,8 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                   onClick={() => setActiveTab('inventory')}
                   className={`pb-2 px-2 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === 'inventory'
-                      ? 'border-emerald-600 text-emerald-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      ? 'border-ok text-ok'
+                      : 'border-transparent text-ink-3 hover:text-ink-2'
                   }`}
                 >
                   Items in this zone
@@ -584,30 +585,30 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               </div>
             </div>
 
-            <div className="border-b border-gray-200 p-4 space-y-4">
+            <div className="border-b border-border p-4 space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Zone Code</p>
-                  <p className="text-sm font-bold text-emerald-600">{zone.name}</p>
+                <div className="border border-border rounded-lg p-3 bg-surface-2">
+                  <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Zone Code</p>
+                  <p className="text-sm font-bold text-ok">{zone.name}</p>
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Area</p>
-                  <p className="text-sm font-bold text-gray-900">120 sqm</p>
+                <div className="border border-border rounded-lg p-3 bg-surface-2">
+                  <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Area</p>
+                  <p className="text-sm font-bold text-ink">120 sqm</p>
                 </div>
-                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Utilisation</p>
-                  <p className="text-sm font-bold text-emerald-600">{zone.utilization}%</p>
+                <div className="border border-border rounded-lg p-3 bg-surface-2">
+                  <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Utilisation</p>
+                  <p className="text-sm font-bold text-ok">{zone.utilization}%</p>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Temperature / Conditions</p>
-                <p className="text-sm text-gray-900 font-medium">Cool &lt;25°C / Climate controlled</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Temperature / Conditions</p>
+                <p className="text-sm text-ink font-medium">Cool &lt;25°C / Climate controlled</p>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Storage Requirements</p>
-                <p className="text-sm text-gray-900 font-medium">Cool climate-controlled &lt;25°C · Double-lock access · CCTV monitored</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-2">Storage Requirements</p>
+                <p className="text-sm text-ink font-medium">Cool climate-controlled &lt;25°C · Double-lock access · CCTV monitored</p>
               </div>
             </div>
 
@@ -615,10 +616,10 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               {activeTab === 'overview' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900 text-xs uppercase tracking-widest">Racks</h3>
+                    <h3 className="font-bold text-ink text-xs uppercase tracking-widest">Racks</h3>
                     <button
                       onClick={() => setIsAddRackModalOpen(true)}
-                      className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+                      className="px-3 py-1.5 rounded-md bg-ok text-white text-xs font-bold hover:bg-ok-press transition-colors"
                     >
                       Add Rack
                     </button>
@@ -638,13 +639,13 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                     }));
 
                     return (
-                      <div key={bay.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                      <div key={bay.id} className="border border-border rounded-xl p-4 bg-surface-2">
                         <div className="flex items-start justify-between mb-2">
-                          <h3 className="font-bold text-gray-900 text-sm">{bay.name}</h3>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-bold border border-red-300 text-red-600 bg-red-50">{bay.utilization}%</span>
+                          <h3 className="font-bold text-ink text-sm">{bay.name}</h3>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-bold border border-err/40 text-err bg-err-soft">{bay.utilization}%</span>
                         </div>
 
-                        <p className="text-xs text-gray-500 mb-3">
+                        <p className="text-xs text-ink-3 mb-3">
                           {bay.levels} levels · {bay.levels * bay.slotsPerLevel} slots · {bay.condition}
                         </p>
 
@@ -654,12 +655,12 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                               key={`${bay.id}-${slot.label}`}
                               className={`h-14 rounded-md border flex items-center justify-center text-center px-1 ${
                                 !slot.item
-                                  ? 'bg-white border-gray-300 text-gray-400'
+                                  ? 'bg-surface border-border text-ink-4'
                                   : slot.item.status === 'available'
-                                  ? 'bg-cyan-500 border-cyan-400 text-white'
+                                  ? 'bg-brand border-brand text-white'
                                   : slot.item.status === 'alert'
-                                  ? 'bg-red-500 border-red-400 text-white'
-                                  : 'bg-yellow-500 border-yellow-400 text-white'
+                                  ? 'bg-err border-err text-white'
+                                  : 'bg-warn border-warn text-white'
                               }`}
                               title={slot.item ? slot.item.code : `Empty ${slot.label}`}
                             >
@@ -671,7 +672,7 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                           ))}
                         </div>
 
-                        <p className="text-xs text-gray-500 mt-3">150ml Clear PET Pump Bottle</p>
+                        <p className="text-xs text-ink-3 mt-3">150ml Clear PET Pump Bottle</p>
                       </div>
                     );
                   })}
@@ -681,24 +682,24 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               {activeTab === 'inventory' && (
                 <div>
                   <div className="mb-4">
-                    <h3 className="font-bold text-gray-900 text-xs uppercase tracking-widest">Items in this zone ({zoneItems.length})</h3>
+                    <h3 className="font-bold text-ink text-xs uppercase tracking-widest">Items in this zone ({zoneItems.length})</h3>
                   </div>
                   <div className="space-y-2">
                     {zoneItems.map((item) => (
                       <div
                         key={item.id}
                         onClick={() => onSelectItem?.(item.id)}
-                        className="flex items-center justify-between gap-3 py-2.5 px-3 rounded border border-gray-200 cursor-pointer bg-white"
+                        className="flex items-center justify-between gap-3 py-2.5 px-3 rounded border border-border cursor-pointer bg-surface"
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <p className="text-sm font-bold text-emerald-600 font-mono whitespace-nowrap">{item.code}</p>
-                          <p className="text-sm text-gray-900 font-medium">{item.name}</p>
+                          <p className="text-sm font-bold text-ok font-mono whitespace-nowrap">{item.code}</p>
+                          <p className="text-sm text-ink font-medium">{item.name}</p>
                         </div>
                         <div className="flex items-center gap-2 whitespace-nowrap">
-                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">
+                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-ok-soft text-ok border border-ok/40">
                             {item.quantity} {item.unit}
                           </span>
-                          <span className="px-3 py-1 rounded-full text-xs font-bold border-2 border-emerald-600 text-emerald-600 bg-transparent">
+                          <span className="px-3 py-1 rounded-full text-xs font-bold border-2 border-ok text-ok bg-transparent">
                             In Stock
                           </span>
                         </div>
@@ -712,15 +713,15 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
         )}
 
         {selectedItem && (
-          <div className="bg-white text-gray-900 min-h-full">
-            <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4">
+          <div className="bg-surface text-ink min-h-full">
+            <div className="sticky top-0 z-10 bg-surface border-b border-border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-lg font-bold">Inventory — {selectedItem.name}</p>
                 </div>
                 <button
                   onClick={onClose}
-                  className="h-8 w-8 rounded-md bg-gray-100 text-gray-500 hover:text-gray-800"
+                  className="h-8 w-8 rounded-md bg-surface-3 text-ink-3 hover:text-ink"
                 >
                   X
                 </button>
@@ -729,129 +730,129 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
 
             <div className="p-4 space-y-4">
               <div className="flex flex-wrap gap-2">
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-cyan-50 border border-cyan-300 text-cyan-700">SIH: {selectedItem.stockBreakdown.sih.toLocaleString()} pcs</span>
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-blue-50 border border-blue-300 text-blue-700">WH: {selectedItem.stockBreakdown.wh.toLocaleString()}</span>
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-indigo-50 border border-indigo-300 text-indigo-700">ML1: {selectedItem.stockBreakdown.ml1.toLocaleString()}</span>
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-violet-50 border border-violet-300 text-violet-700">ML2: {selectedItem.stockBreakdown.ml2.toLocaleString()}</span>
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-amber-50 border border-amber-300 text-amber-700">Reserved: {selectedItem.stockBreakdown.reserved.toLocaleString()}</span>
-                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-50 border border-emerald-300 text-emerald-700">{selectedItem.stockBreakdown.inStock}</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-brand-soft border border-brand/40 text-brand">SIH: {selectedItem.stockBreakdown.sih.toLocaleString()} pcs</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-brand-soft border border-brand/40 text-brand">WH: {selectedItem.stockBreakdown.wh.toLocaleString()}</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-brand-soft border border-brand/40 text-brand">ML1: {selectedItem.stockBreakdown.ml1.toLocaleString()}</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-brand-soft border border-brand/40 text-brand">ML2: {selectedItem.stockBreakdown.ml2.toLocaleString()}</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-warn-soft border border-warn/40 text-warn">Reserved: {selectedItem.stockBreakdown.reserved.toLocaleString()}</span>
+                <span className="px-2.5 py-1 text-xs font-bold rounded-md bg-ok-soft border border-ok/40 text-ok">{selectedItem.stockBreakdown.inStock}</span>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs uppercase tracking-wider text-emerald-700 font-bold mb-2">Item Details</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs uppercase tracking-wider text-ok font-bold mb-2">Item Details</p>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Item Code</p>
-                    <p className="text-xs font-bold text-emerald-700">{selectedItem.code}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Item Code</p>
+                    <p className="text-xs font-bold text-ok">{selectedItem.code}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">INC / Category</p>
-                    <p className="text-xs font-semibold text-gray-900">{selectedItem.category}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">INC / Category</p>
+                    <p className="text-xs font-semibold text-ink">{selectedItem.category}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">UOM</p>
-                    <p className="text-xs font-semibold text-emerald-700">{selectedItem.uom}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">UOM</p>
+                    <p className="text-xs font-semibold text-ok">{selectedItem.uom}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs uppercase tracking-wider text-emerald-700 font-bold mb-2">Storage Location</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs uppercase tracking-wider text-ok font-bold mb-2">Storage Location</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Zone</p>
-                    <p className="text-xs font-semibold text-gray-900">{selectedItem.zone}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Zone</p>
+                    <p className="text-xs font-semibold text-ink">{selectedItem.zone}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Rack / Slot</p>
-                    <p className="text-xs font-semibold text-emerald-700">{selectedItem.rackSlot}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Rack / Slot</p>
+                    <p className="text-xs font-semibold text-ok">{selectedItem.rackSlot}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Batch No.</p>
-                    <p className="text-xs font-semibold text-emerald-700">{selectedItem.batchNo}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Batch No.</p>
+                    <p className="text-xs font-semibold text-ok">{selectedItem.batchNo}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">MFG / EXP Date</p>
-                    <p className="text-xs font-semibold text-gray-900">{selectedItem.mfgExp}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">MFG / EXP Date</p>
+                    <p className="text-xs font-semibold text-ink">{selectedItem.mfgExp}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs uppercase tracking-wider text-emerald-700 font-bold mb-2">Stock Breakdown</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs uppercase tracking-wider text-ok font-bold mb-2">Stock Breakdown</p>
                 <div className="grid grid-cols-3 gap-2 mb-2">
-                  <div className="rounded-md border border-cyan-200 bg-cyan-50 p-2">
-                    <p className="text-[10px] text-cyan-700">Stock in Warehouse</p>
-                    <p className="text-2xl font-bold text-cyan-700">{selectedItem.stockBreakdown.wh.toLocaleString()}</p>
+                  <div className="rounded-md border border-brand/30 bg-brand-soft p-2">
+                    <p className="text-[10px] text-brand">Stock in Warehouse</p>
+                    <p className="text-2xl font-bold text-brand">{selectedItem.stockBreakdown.wh.toLocaleString()}</p>
                   </div>
-                  <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
-                    <p className="text-[10px] text-blue-700">In Manufacturing</p>
-                    <p className="text-2xl font-bold text-blue-700">{(selectedItem.stockBreakdown.ml1 + selectedItem.stockBreakdown.ml2).toLocaleString()}</p>
+                  <div className="rounded-md border border-brand/30 bg-brand-soft p-2">
+                    <p className="text-[10px] text-brand">In Manufacturing</p>
+                    <p className="text-2xl font-bold text-brand">{(selectedItem.stockBreakdown.ml1 + selectedItem.stockBreakdown.ml2).toLocaleString()}</p>
                   </div>
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2">
-                    <p className="text-[10px] text-emerald-700">Stock in Hand</p>
-                    <p className="text-2xl font-bold text-emerald-700">{selectedItem.stockBreakdown.sih.toLocaleString()}</p>
+                  <div className="rounded-md border border-ok/30 bg-ok-soft p-2">
+                    <p className="text-[10px] text-ok">Stock in Hand</p>
+                    <p className="text-2xl font-bold text-ok">{selectedItem.stockBreakdown.sih.toLocaleString()}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs uppercase tracking-wider text-emerald-700 font-bold mb-2">Avg Consumption (Monthly)</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs uppercase tracking-wider text-ok font-bold mb-2">Avg Consumption (Monthly)</p>
                 <div className="grid grid-cols-3 gap-2 mb-2">
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Aug 2025</p>
-                    <p className="text-sm font-bold text-gray-900">{selectedItemAvg.aug.toLocaleString()} pcs</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Aug 2025</p>
+                    <p className="text-sm font-bold text-ink">{selectedItemAvg.aug.toLocaleString()} pcs</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Sep 2025</p>
-                    <p className="text-sm font-bold text-gray-900">{selectedItemAvg.sep.toLocaleString()} pcs</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Sep 2025</p>
+                    <p className="text-sm font-bold text-ink">{selectedItemAvg.sep.toLocaleString()} pcs</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Oct 2025</p>
-                    <p className="text-sm font-bold text-gray-900">{selectedItemAvg.oct.toLocaleString()} pcs</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Oct 2025</p>
+                    <p className="text-sm font-bold text-ink">{selectedItemAvg.oct.toLocaleString()} pcs</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">3-Month Avg / Mo</p>
-                    <p className="text-sm font-bold text-gray-900">{selectedItemAvg.threeMonthAvg.toLocaleString()} pcs/month</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">3-Month Avg / Mo</p>
+                    <p className="text-sm font-bold text-ink">{selectedItemAvg.threeMonthAvg.toLocaleString()} pcs/month</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Days of Stock (SIH)</p>
-                    <p className="text-sm font-bold text-emerald-700">{selectedItemAvg.daysOfStock} days</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Days of Stock (SIH)</p>
+                    <p className="text-sm font-bold text-ok">{selectedItemAvg.daysOfStock} days</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs uppercase tracking-wider text-emerald-700 font-bold mb-2">Item Specifications</p>
+              <div className="border border-border rounded-lg p-3 bg-surface-2">
+                <p className="text-xs uppercase tracking-wider text-ok font-bold mb-2">Item Specifications</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Material</p>
-                    <p className="text-xs font-semibold text-gray-900">{selectedItemSpecs.material}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Material</p>
+                    <p className="text-xs font-semibold text-ink">{selectedItemSpecs.material}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white">
-                    <p className="text-[10px] text-gray-500">Size</p>
-                    <p className="text-xs font-semibold text-gray-900">{selectedItemSpecs.size}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface">
+                    <p className="text-[10px] text-ink-3">Size</p>
+                    <p className="text-xs font-semibold text-ink">{selectedItemSpecs.size}</p>
                   </div>
-                  <div className="border border-gray-200 rounded-md p-2 bg-white col-span-2">
-                    <p className="text-[10px] text-gray-500">Print Status</p>
-                    <p className="text-xs font-semibold text-emerald-700">{selectedItemSpecs.printStatus}</p>
+                  <div className="border border-border rounded-md p-2 bg-surface col-span-2">
+                    <p className="text-[10px] text-ink-3">Print Status</p>
+                    <p className="text-xs font-semibold text-ok">{selectedItemSpecs.printStatus}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex justify-end gap-2">
+            <div className="sticky bottom-0 bg-surface border-t border-border p-4 flex justify-end gap-2">
               <button
                 onClick={() => setIsAdjustStockOpen(true)}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700"
+                className="px-4 py-2 rounded-lg bg-ok text-white font-bold hover:bg-ok-press"
               >
                 Adjust Stock
               </button>
               <button
                 onClick={() => onClearSelectedItem?.()}
-                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300"
+                className="px-4 py-2 rounded-lg bg-surface-3 text-ink-2 font-semibold hover:bg-surface-3"
               >
                 Close
               </button>
@@ -861,13 +862,19 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
       </div>
 
       {isAddRackModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-190 rounded-2xl border border-slate-700 bg-slate-900 text-white shadow-2xl">
-            <div className="flex items-center justify-between px-7 py-5 border-b border-slate-700">
-              <h3 className="text-3xl font-bold tracking-tight">Add New Rack / Bay</h3>
+        <ModalOverlay onClose={() => setIsAddRackModalOpen(false)} z="z-50" dismissable={false} backdrop="default">
+          <div
+            className="w-full max-w-190 rounded-2xl border border-border bg-surface text-ink shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-rack-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-7 py-5 border-b border-border">
+              <h3 id="add-rack-title" className="text-3xl font-bold tracking-tight">Add New Rack / Bay</h3>
               <button
                 onClick={() => setIsAddRackModalOpen(false)}
-                className="h-9 w-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
+                className="h-9 w-9 rounded-lg bg-surface-3 border border-border text-ink-4 hover:text-ink hover:border-border"
                 aria-label="Close add rack popup"
               >
                 X
@@ -877,11 +884,12 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
             <div className="px-7 py-6 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Zone / Location *</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Zone / Location *</label>
                   <select
                     value={rackForm.zoneLocation}
                     onChange={(e) => handleRackFormChange('zoneLocation', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Zone / Location"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   >
                     <option>RM Store</option>
                     <option>Actives Store</option>
@@ -893,55 +901,60 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Bay Code *</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Bay Code *</label>
                   <input
                     value={rackForm.bayCode}
                     onChange={(e) => handleRackFormChange('bayCode', e.target.value)}
                     placeholder="e.g. F1"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                    aria-label="Bay Code"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink placeholder:text-ink-4 outline-none focus:border-brand"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Rack Name</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Rack Name</label>
                 <input
                   value={rackForm.rackName}
                   onChange={(e) => handleRackFormChange('rackName', e.target.value)}
                   placeholder="e.g. Bay F1 — Ambient Shelf"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                  aria-label="Rack Name"
+                  className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink placeholder:text-ink-4 outline-none focus:border-brand"
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">No. of Levels</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">No. of Levels</label>
                   <input
                     type="number"
                     min={1}
                     value={rackForm.levels}
                     onChange={(e) => handleRackFormChange('levels', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="No. of Levels"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Slots Per Level</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Slots Per Level</label>
                   <input
                     type="number"
                     min={1}
                     value={rackForm.slotsPerLevel}
                     onChange={(e) => handleRackFormChange('slotsPerLevel', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Slots Per Level"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Condition</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Condition</label>
                   <select
                     value={rackForm.condition}
                     onChange={(e) => handleRackFormChange('condition', e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Condition"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   >
                     <option>Ambient</option>
                     <option>Cool &lt;25°C</option>
@@ -953,34 +966,40 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 px-7 py-4 border-t border-slate-700">
+            <div className="flex justify-end gap-3 px-7 py-4 border-t border-border">
               <button
                 onClick={handleAddRack}
-                className="px-6 py-2.5 rounded-xl bg-cyan-400 text-slate-900 font-bold hover:bg-cyan-300"
+                className="px-6 py-2.5 rounded-xl bg-brand text-white font-bold hover:bg-brand-press"
               >
                 Add Rack
               </button>
               <button
                 onClick={() => setIsAddRackModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl bg-slate-700 text-slate-100 font-bold hover:bg-slate-600"
+                className="px-6 py-2.5 rounded-xl bg-surface-3 text-ink-2 font-bold hover:bg-surface-3"
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {isAdjustStockOpen && selectedItem && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-190 rounded-2xl border border-slate-700 bg-slate-900 text-white shadow-2xl">
-            <div className="flex items-center justify-between px-7 py-5 border-b border-slate-700">
+        <ModalOverlay onClose={() => setIsAdjustStockOpen(false)} z="z-60" dismissable={false} backdrop="strong">
+          <div
+            className="w-full max-w-190 rounded-2xl border border-border bg-surface text-ink shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="adjust-stock-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-7 py-5 border-b border-border">
               <div>
-                <h3 className="text-4xl font-bold tracking-tight leading-tight">Adjust Stock — {selectedItem.name}</h3>
+                <h3 id="adjust-stock-title" className="text-4xl font-bold tracking-tight leading-tight">Adjust Stock — {selectedItem.name}</h3>
               </div>
               <button
                 onClick={() => setIsAdjustStockOpen(false)}
-                className="h-9 w-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500"
+                className="h-9 w-9 rounded-lg bg-surface-3 border border-border text-ink-4 hover:text-ink hover:border-border"
                 aria-label="Close adjust stock popup"
               >
                 X
@@ -989,23 +1008,24 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
 
             <div className="px-7 py-6 space-y-5">
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Current Stock</p>
-                <div className="h-px bg-cyan-700/40 mb-3" />
+                <p className="text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Current Stock</p>
+                <div className="h-px bg-brand/40 mb-3" />
                 <div className="flex flex-wrap gap-2">
-                  <span className="px-3 py-1 rounded-md border border-cyan-700 bg-cyan-900/30 text-cyan-300 font-bold">WH: {selectedItem.stockBreakdown.wh.toLocaleString()} pcs</span>
-                  <span className="px-3 py-1 rounded-md border border-blue-700 bg-blue-900/30 text-blue-300 font-bold">ML1: {selectedItem.stockBreakdown.ml1.toLocaleString()}</span>
-                  <span className="px-3 py-1 rounded-md border border-violet-700 bg-violet-900/30 text-violet-300 font-bold">ML2: {selectedItem.stockBreakdown.ml2.toLocaleString()}</span>
-                  <span className="px-3 py-1 rounded-md border border-emerald-700 bg-emerald-900/30 text-emerald-300 font-bold">SIH: {selectedItem.stockBreakdown.sih.toLocaleString()}</span>
+                  <span className="px-3 py-1 rounded-md border border-brand/40 bg-brand-soft text-brand font-bold">WH: {selectedItem.stockBreakdown.wh.toLocaleString()} pcs</span>
+                  <span className="px-3 py-1 rounded-md border border-brand/40 bg-brand-soft text-brand font-bold">ML1: {selectedItem.stockBreakdown.ml1.toLocaleString()}</span>
+                  <span className="px-3 py-1 rounded-md border border-brand/40 bg-brand-soft text-brand font-bold">ML2: {selectedItem.stockBreakdown.ml2.toLocaleString()}</span>
+                  <span className="px-3 py-1 rounded-md border border-ok/40 bg-ok-soft text-ok font-bold">SIH: {selectedItem.stockBreakdown.sih.toLocaleString()}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Adjust Type</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Adjust Type</label>
                   <select
                     value={adjustForm.adjustType}
                     onChange={(e) => setAdjustForm((prev) => ({ ...prev, adjustType: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Adjust Type"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   >
                     <option>Add (Receipt)</option>
                     <option>Deduct (Consumption)</option>
@@ -1014,11 +1034,12 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Location</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Location</label>
                   <select
                     value={adjustForm.location}
                     onChange={(e) => setAdjustForm((prev) => ({ ...prev, location: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Location"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   >
                     <option>WH Stock</option>
                     <option>ML1 Stock</option>
@@ -1029,32 +1050,35 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Quantity</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Quantity</label>
                   <input
                     type="number"
                     min={0}
                     value={adjustForm.quantity}
                     onChange={(e) => setAdjustForm((prev) => ({ ...prev, quantity: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                    aria-label="Quantity"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Reason</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Reason</label>
                   <input
                     value={adjustForm.reason}
                     onChange={(e) => setAdjustForm((prev) => ({ ...prev, reason: e.target.value }))}
                     placeholder="Reason for adjustment"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                    aria-label="Reason"
+                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink placeholder:text-ink-4 outline-none focus:border-brand"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Adjusted By</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-ink-4 mb-2">Adjusted By</label>
                 <select
                   value={adjustForm.adjustedBy}
                   onChange={(e) => setAdjustForm((prev) => ({ ...prev, adjustedBy: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-white outline-none focus:border-cyan-500"
+                  aria-label="Adjusted By"
+                  className="w-full rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-ink outline-none focus:border-brand"
                 >
                   <option>Karan Nair</option>
                   <option>Ravi Kumar</option>
@@ -1063,22 +1087,22 @@ const ZoneDetailsSidebar: React.FC<ZoneDetailsSidebarProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 px-7 py-4 border-t border-slate-700">
+            <div className="flex justify-end gap-3 px-7 py-4 border-t border-border">
               <button
                 onClick={applyAdjustStock}
-                className="px-6 py-2.5 rounded-xl bg-cyan-400 text-slate-900 font-bold hover:bg-cyan-300"
+                className="px-6 py-2.5 rounded-xl bg-brand text-white font-bold hover:bg-brand-press"
               >
                 Save Adjustment
               </button>
               <button
                 onClick={() => setIsAdjustStockOpen(false)}
-                className="px-6 py-2.5 rounded-xl bg-slate-700 text-slate-100 font-bold hover:bg-slate-600"
+                className="px-6 py-2.5 rounded-xl bg-surface-3 text-ink-2 font-bold hover:bg-surface-3"
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   );

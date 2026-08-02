@@ -182,11 +182,11 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
  const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
    PENDING: 'bg-gray-400',
-   IN_PROGRESS: 'bg-blue-500',
-   APPROVED: 'bg-emerald-500',
-   COMPLETED: 'bg-green-500',
-   REJECTED: 'bg-red-500',
-   ON_HOLD: 'bg-slate-800',
+   IN_PROGRESS: 'bg-brand',
+   APPROVED: 'bg-ok',
+   COMPLETED: 'bg-ok',
+   REJECTED: 'bg-err',
+   ON_HOLD: 'bg-ink',
    TERMINATED: 'bg-slate-500',
   };
   return colors[status.replace(/ /g, '_')] || 'bg-gray-400';
@@ -197,8 +197,8 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
    {/* Header */}
    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     <div>
-     <h2 className="text-3xl font-bold text-gray-900">Analytics & Reports</h2>
-     <p className="text-gray-600">View detailed analytics and generate reports</p>
+     <h2 className="text-3xl font-bold text-ink">Analytics & Reports</h2>
+     <p className="text-ink-2">View detailed analytics and generate reports</p>
     </div>
     <div className="flex gap-3">
      <Select value={timeRange} onValueChange={setTimeRange}>
@@ -229,33 +229,33 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
     <Card className="p-4">
      <div className="flex items-center justify-between">
       <div>
-       <p className="text-sm text-gray-500">Total PIS Records</p>
+       <p className="text-sm text-ink-3">Total PIS Records</p>
        <p className="text-3xl font-bold mt-1">{stats.total}</p>
       </div>
-      <div className="p-3 bg-blue-100 rounded-full">
-       <FileText className="h-6 w-6 text-blue-600" />
+      <div className="p-3 bg-brand-soft rounded-full">
+       <FileText className="h-6 w-6 text-brand" />
       </div>
      </div>
      <div className="flex items-center gap-1 mt-2 text-sm">
-      <TrendingUp className="h-4 w-4 text-green-500" />
-      <span className="text-green-600">+{stats.recentCount}</span>
-      <span className="text-gray-500">this month</span>
+      <TrendingUp className="h-4 w-4 text-ok" />
+      <span className="text-ok">+{stats.recentCount}</span>
+      <span className="text-ink-3">this month</span>
      </div>
     </Card>
 
     <Card className="p-4">
      <div className="flex items-center justify-between">
       <div>
-       <p className="text-sm text-gray-500">Completion Rate</p>
+       <p className="text-sm text-ink-3">Completion Rate</p>
        <p className="text-3xl font-bold mt-1">{stats.completionRate}%</p>
       </div>
-      <div className="p-3 bg-green-100 rounded-full">
-       <PieChart className="h-6 w-6 text-green-600" />
+      <div className="p-3 bg-ok-soft rounded-full">
+       <PieChart className="h-6 w-6 text-ok" />
       </div>
      </div>
-     <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
+     <div className="w-full bg-surface-3 rounded-full h-2 mt-3">
       <div 
-       className="bg-green-500 h-2 rounded-full transition-all duration-500"
+       className="bg-ok h-2 rounded-full transition-all duration-500"
        style={{ width: `${stats.completionRate}%` }}
       />
      </div>
@@ -264,11 +264,11 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
     <Card className="p-4">
      <div className="flex items-center justify-between">
       <div>
-       <p className="text-sm text-gray-500">In Progress</p>
+       <p className="text-sm text-ink-3">In Progress</p>
        <p className="text-3xl font-bold mt-1">{stats.inProgress}</p>
       </div>
-      <div className="p-3 bg-gray-100 rounded-full">
-       <Activity className="h-6 w-6 text-slate-800" />
+      <div className="p-3 bg-surface-3 rounded-full">
+       <Activity className="h-6 w-6 text-ink" />
       </div>
      </div>
      <div className="flex items-center gap-1 mt-2 text-sm">
@@ -279,7 +279,7 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
     <Card className="p-4">
      <div className="flex items-center justify-between">
       <div>
-       <p className="text-sm text-gray-500">Avg. Processing Time</p>
+       <p className="text-sm text-ink-3">Avg. Processing Time</p>
        <p className="text-3xl font-bold mt-1">{stats.avgProcessingDays}d</p>
       </div>
       <div className="p-3 bg-purple-100 rounded-full">
@@ -287,9 +287,9 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
       </div>
      </div>
      <div className="flex items-center gap-1 mt-2 text-sm">
-      <TrendingDown className="h-4 w-4 text-green-500" />
-      <span className="text-green-600">-2d</span>
-      <span className="text-gray-500">vs last month</span>
+      <TrendingDown className="h-4 w-4 text-ok" />
+      <span className="text-ok">-2d</span>
+      <span className="text-ink-3">vs last month</span>
      </div>
     </Card>
    </div>
@@ -302,12 +302,12 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
       {stats.mostLooped.map((pis) => (
        <div
         key={pis.id}
-        className="flex items-center justify-between p-3 rounded-lg border bg-gray-50"
+        className="flex items-center justify-between p-3 rounded-lg border bg-surface-2"
        >
         <div>
-         <p className="font-medium text-blue-700">{pis.pisCode}</p>
-         <p className="text-xs text-gray-500">{pis.customer}</p>
-         <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+         <p className="font-medium text-brand">{pis.pisCode}</p>
+         <p className="text-xs text-ink-3">{pis.customer}</p>
+         <div className="flex items-center gap-2 mt-1 text-xs text-ink-3">
           <Badge variant="outline">{getStageLabel(pis.stage)}</Badge>
           <span>
            Loops: <span className="font-semibold">{pis.loopCount ?? 0}</span>
@@ -345,10 +345,10 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
        {statusData.map((item, idx) => (
         <div key={idx} className="space-y-2">
          <div className="flex justify-between text-sm">
-          <span className="text-gray-600">{item.label}</span>
+          <span className="text-ink-2">{item.label}</span>
           <span className="font-medium">{item.count}</span>
          </div>
-         <div className="w-full bg-gray-100 rounded-full h-8 overflow-hidden">
+         <div className="w-full bg-surface-3 rounded-full h-8 overflow-hidden">
           <div 
            className={`h-8 rounded-full ${getStatusColor(item.label)} transition-all duration-500 flex items-center justify-end pr-3`}
            style={{ width: `${Math.max(item.percentage, 5)}%` }}
@@ -378,9 +378,9 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
         const count = stats.stageCounts[stage] || 0;
         const percentage = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
         const palette = [
-         { bg: 'bg-blue-100', text: 'text-blue-600', bar: 'bg-blue-500' },
-         { bg: 'bg-gray-100', text: 'text-slate-800', bar: 'bg-slate-800' },
-         { bg: 'bg-green-100', text: 'text-green-600', bar: 'bg-green-500' },
+         { bg: 'bg-brand-soft', text: 'text-brand', bar: 'bg-brand' },
+         { bg: 'bg-surface-3', text: 'text-ink', bar: 'bg-ink' },
+         { bg: 'bg-ok-soft', text: 'text-ok', bar: 'bg-ok' },
         ];
         const color = palette[index % palette.length];
         const label = getStageLabel(stage);
@@ -390,8 +390,8 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
           <div className="text-center">
            <p className={`text-sm font-medium ${color.text}`}>{label}</p>
            <p className="text-4xl font-bold mt-2">{count}</p>
-           <p className="text-sm text-gray-500 mt-1">{percentage}% of total</p>
-           <div className="w-full bg-white/50 rounded-full h-2 mt-4">
+           <p className="text-sm text-ink-3 mt-1">{percentage}% of total</p>
+           <div className="w-full bg-surface/50 rounded-full h-2 mt-4">
             <div 
              className={`${color.bar} h-2 rounded-full`}
              style={{ width: `${percentage}%` }}
@@ -417,19 +417,19 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
         return (
          <div key={idx} className="flex-1 flex flex-col items-center gap-2">
           <div 
-           className="w-full bg-blue-600 rounded-t-lg transition-all duration-500 relative group"
+           className="w-full bg-brand rounded-t-lg transition-all duration-500 relative group"
            style={{ height: `${Math.max(height, 5)}%` }}
           >
-           <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+           <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-ink text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
             {count}
            </div>
           </div>
-          <span className="text-xs text-gray-500">{month}</span>
+          <span className="text-xs text-ink-3">{month}</span>
          </div>
         );
        })}
        {Object.keys(stats.monthlyData).length === 0 && (
-        <div className="flex-1 flex items-center justify-center text-gray-400">
+        <div className="flex-1 flex items-center justify-center text-ink-4">
          No data available
         </div>
        )}
@@ -451,9 +451,9 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
           <span>{dept}</span>
           <span className="font-medium">{progress}%</span>
          </div>
-         <div className="w-full bg-gray-100 rounded-full h-3">
+         <div className="w-full bg-surface-3 rounded-full h-3">
           <div 
-           className="bg-blue-500 h-3 rounded-full"
+           className="bg-brand h-3 rounded-full"
            style={{ width: `${progress}%` }}
           />
          </div>
@@ -466,21 +466,21 @@ export function AnalyticsView({ currentRole }: AnalyticsViewProps) {
     <Card className="p-6">
      <h3 className="text-lg font-semibold mb-4">Quick Stats</h3>
      <div className="grid grid-cols-2 gap-4">
-      <div className="p-4 bg-gray-50 rounded-lg">
-       <p className="text-2xl font-bold text-green-600">{stats.statusCounts['COMPLETED'] || 0}</p>
-       <p className="text-sm text-gray-500">Completed</p>
+      <div className="p-4 bg-surface-2 rounded-lg">
+       <p className="text-2xl font-bold text-ok">{stats.statusCounts['COMPLETED'] || 0}</p>
+       <p className="text-sm text-ink-3">Completed</p>
       </div>
-      <div className="p-4 bg-gray-50 rounded-lg">
-       <p className="text-2xl font-bold text-slate-800">{stats.pending}</p>
-       <p className="text-sm text-gray-500">Pending</p>
+      <div className="p-4 bg-surface-2 rounded-lg">
+       <p className="text-2xl font-bold text-ink">{stats.pending}</p>
+       <p className="text-sm text-ink-3">Pending</p>
       </div>
-      <div className="p-4 bg-gray-50 rounded-lg">
-       <p className="text-2xl font-bold text-red-600">{stats.statusCounts['REJECTED'] || 0}</p>
-       <p className="text-sm text-gray-500">Rejected</p>
+      <div className="p-4 bg-surface-2 rounded-lg">
+       <p className="text-2xl font-bold text-err">{stats.statusCounts['REJECTED'] || 0}</p>
+       <p className="text-sm text-ink-3">Rejected</p>
       </div>
-      <div className="p-4 bg-gray-50 rounded-lg">
-       <p className="text-2xl font-bold text-blue-600">{stats.recentCount}</p>
-       <p className="text-sm text-gray-500">This Month</p>
+      <div className="p-4 bg-surface-2 rounded-lg">
+       <p className="text-2xl font-bold text-brand">{stats.recentCount}</p>
+       <p className="text-sm text-ink-3">This Month</p>
       </div>
      </div>
     </Card>
