@@ -3,8 +3,11 @@
  * Backend: GET /api/v1/universal-swap/history, POST /api/v1/universal-swap/apply
  */
 
-import type { ServiceResult } from '../types/api.types';
+import type { ServiceResult, ApiError } from '../types/api.types';
 import { api } from '../lib/apiClient';
+
+/** Wrap an error message into the ApiError shape ServiceResult.error expects. */
+const apiErr = (message: string): ApiError => ({ code: 'ERROR', message, timestamp: new Date().toISOString() });
 
 export interface SwapHistoryRecord {
   id: string;
@@ -15,6 +18,8 @@ export interface SwapHistoryRecord {
   swapRatio: number;
   reason: string;
   approvedBy: string;
+  /** 'draft' = saved but not applied; 'applied' = executed against BOMs/item-groups. */
+  status?: string;
   date: string;
   affectedGroupIds?: number[];
   affectedBomIds?: number[];
@@ -68,7 +73,7 @@ export async function fetchSwapHistory(): Promise<ServiceResult<SwapHistoryRecor
     return { data: list ?? [], error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load swap history';
-    return { data: [], error: message, success: false };
+    return { data: [], error: apiErr(message), success: false };
   }
 }
 
@@ -89,7 +94,7 @@ export async function fetchAffected(
     const message = e instanceof Error ? e.message : 'Failed to load affected item groups and PR BOMs';
     return {
       data: { itemGroups: [], boms: [] },
-      error: message,
+      error: apiErr(message),
       success: false,
     };
   }
@@ -111,7 +116,46 @@ export async function applySwap(payload: ApplySwapPayload): Promise<ServiceResul
     return { data: row ?? null, error: null, success: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to apply swap';
-    return { data: null, error: message, success: false };
+    return { data: null, error: apiErr(message), success: false };
+  }
+}
+
+/** Save the swap as a DRAFT (no BOM/group changes applied). Finalize later to execute. */
+export async function saveSwapDraft(payload: ApplySwapPayload): Promise<ServiceResult<ApplySwapResponse>> {
+  try {
+    const body = {
+      fromRawMaterialId: payload.fromRawMaterialId,
+      toRawMaterialId: payload.toRawMaterialId,
+      swapRatio: payload.swapRatio ?? 1,
+      reason: payload.reason,
+      approvedBy: payload.approvedBy,
+      approvedByUserId: payload.approvedByUserId ?? null,
+      selectedGroupIds: (payload.selectedGroupIds ?? []).map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)),
+      selectedBomIds: (payload.selectedBomIds ?? []).map((id) => (typeof id === 'string' ? parseInt(id, 10) : id)),
+    };
+    const row = await api.post<ApplySwapResponse>('/api/v1/universal-swap/draft', body);
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to save draft';
+    return { data: null, error: apiErr(message), success: false };
+  }
+}
+
+/** Finalize (execute) a saved draft swap. Optionally override the selected groups/BOMs. */
+export async function finalizeSwap(
+  id: string | number,
+  overrides?: { swapRatio?: number; selectedGroupIds?: (string | number)[]; selectedBomIds?: (string | number)[] }
+): Promise<ServiceResult<ApplySwapResponse>> {
+  try {
+    const body: Record<string, unknown> = {};
+    if (overrides?.swapRatio != null) body.swapRatio = overrides.swapRatio;
+    if (overrides?.selectedGroupIds) body.selectedGroupIds = overrides.selectedGroupIds.map((x) => (typeof x === 'string' ? parseInt(x, 10) : x));
+    if (overrides?.selectedBomIds) body.selectedBomIds = overrides.selectedBomIds.map((x) => (typeof x === 'string' ? parseInt(x, 10) : x));
+    const row = await api.post<ApplySwapResponse>(`/api/v1/universal-swap/${encodeURIComponent(String(id))}/finalize`, body);
+    return { data: row ?? null, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to finalize swap';
+    return { data: null, error: apiErr(message), success: false };
   }
 }
 
@@ -132,7 +176,7 @@ export async function fetchHistoryAffected(
     const message = e instanceof Error ? e.message : 'Failed to load affected PR BOMs';
     return {
       data: { boms: [] },
-      error: message,
+      error: apiErr(message),
       success: false,
     };
   }

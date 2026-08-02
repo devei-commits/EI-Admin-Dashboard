@@ -4,7 +4,7 @@ import { fetchRawMaterialsList } from '../services/rawMaterials.service';
 import type { RawMaterialRecord } from '../services/rawMaterials.service';
 import RmMasterTypeahead from '../components/RmMasterTypeahead';
 import { buildRmTypeaheadOptions, rmTypeaheadLabelForId } from '../lib/rmTypeahead';
-import { fetchSwapHistory, fetchAffected, applySwap, fetchHistoryAffected } from '../services/universalSwap.service';
+import { fetchSwapHistory, fetchAffected, saveSwapDraft, finalizeSwap, fetchHistoryAffected } from '../services/universalSwap.service';
 import type { SwapHistoryRecord, AffectedItemGroup, AffectedBom, HistoryAffectedResponse } from '../services/universalSwap.service';
 import { searchUsers } from '../services/user.service';
 import type { UserSearchHit } from '../services/user.service';
@@ -39,7 +39,9 @@ const UniversalSwap: React.FC = () => {
   const approverBlurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const approverContainerRef = useRef<HTMLDivElement>(null);
 
-  const [showPreview, setShowPreview] = useState(false);
+  // Draft-first flow: save as draft (no changes applied), then Finalize to execute the swap.
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
   // Filter for the "Apply To / Exempt" PR list — it can run to hundreds of rows for a common RM.
   const [bomQuery, setBomQuery] = useState('');
 
@@ -131,6 +133,10 @@ const UniversalSwap: React.FC = () => {
   const fromRawMaterialId = formData.fromRawMaterialId ? String(formData.fromRawMaterialId) : '';
   const toRawMaterialId = formData.toRawMaterialId ? String(formData.toRawMaterialId) : '';
 
+  // Can't swap an item to itself — exclude the other side's selection from each picker's suggestions.
+  const fromRmOptions = useMemo(() => rmOptions.filter((o) => o.id !== toRawMaterialId), [rmOptions, toRawMaterialId]);
+  const toRmOptions = useMemo(() => rmOptions.filter((o) => o.id !== fromRawMaterialId), [rmOptions, fromRawMaterialId]);
+
   useEffect(() => {
     setBomQuery('');
     if (!fromRawMaterialId) {
@@ -171,12 +177,24 @@ const UniversalSwap: React.FC = () => {
     setBoms((prev) => prev.map((b) => (b.id === id ? { ...b, selected: !b.selected } : b)));
   };
 
-  const handlePreview = () => {
+  const validateSwapForm = (): boolean => {
     if (!fromRawMaterialId || !toRawMaterialId) {
       addToast('error', 'Please select both FROM and TO raw materials');
-      return;
+      return false;
     }
-    setShowPreview(true);
+    if (fromRawMaterialId === toRawMaterialId) {
+      addToast('error', 'FROM and TO raw materials must be different');
+      return false;
+    }
+    if (!formData.reason.trim()) {
+      addToast('error', 'Reason is required');
+      return false;
+    }
+    if (!formData.approvedBy.trim()) {
+      addToast('error', 'Please select an approver from the list');
+      return false;
+    }
+    return true;
   };
 
   const selectedGroups = itemGroups.filter((g) => g.selected);
@@ -214,27 +232,25 @@ const UniversalSwap: React.FC = () => {
     }
   };
 
-  const handleApplySwap = async () => {
-    if (!formData.reason.trim()) {
-      addToast('error', 'Reason is required');
-      return;
-    }
-    if (!formData.approvedBy.trim()) {
-      addToast('error', 'Please select an approver from the list');
-      return;
-    }
-    if (!fromRawMaterialId || !toRawMaterialId) {
-      addToast('error', 'Please select both FROM and TO raw materials');
-      return;
-    }
-    if (affectedCount === 0) {
-      addToast('error', 'Select at least one item group or PR formula to apply the swap');
-      return;
-    }
+  const resetSwapForm = () => {
+    setFormData({ fromRawMaterialId: '', toRawMaterialId: '', swapRatio: 1.0, reason: '', approvedBy: '', approvedByUserId: null });
+    setApproverQuery('');
+    setApproverResults([]);
+    setFromQuery('');
+    setToQuery('');
+    setDraftId(null);
+  };
 
-    setApplying(true);
+  // Step 1 — save the swap as a draft (nothing applied yet).
+  const handleSaveDraft = async () => {
+    if (!validateSwapForm()) return;
+    if (affectedCount === 0) {
+      addToast('error', 'Select at least one item group or PR formula for the swap');
+      return;
+    }
+    setSavingDraft(true);
     try {
-      const res = await applySwap({
+      const res = await saveSwapDraft({
         fromRawMaterialId: parseInt(fromRawMaterialId, 10),
         toRawMaterialId: parseInt(toRawMaterialId, 10),
         swapRatio: formData.swapRatio,
@@ -244,41 +260,73 @@ const UniversalSwap: React.FC = () => {
         selectedGroupIds: selectedGroups.map((g) => g.id),
         selectedBomIds: selectedBoms.map((b) => b.id),
       });
+      if (res.success && res.data) {
+        setDraftId(res.data.id);
+        addToast('success', 'Saved as draft. Review the affected list, then Finalize to apply.');
+        await loadSwapHistory();
+      } else {
+        const errMsg = typeof res.error === 'string' ? res.error : (res.error as { message?: string })?.message;
+        addToast('error', errMsg || 'Failed to save draft');
+      }
+    } catch (_e) {
+      addToast('error', 'Failed to save draft');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Step 2 — finalize the saved draft: execute the swap against the currently-selected groups/BOMs.
+  const handleFinalize = async () => {
+    if (!draftId) { addToast('error', 'Save the swap as a draft first.'); return; }
+    if (affectedCount === 0) {
+      addToast('error', 'Select at least one item group or PR formula to finalize.');
+      return;
+    }
+    setApplying(true);
+    try {
+      const res = await finalizeSwap(draftId, {
+        swapRatio: formData.swapRatio,
+        selectedGroupIds: selectedGroups.map((g) => g.id),
+        selectedBomIds: selectedBoms.map((b) => b.id),
+      });
       if (res.success) {
         const d = res.data;
         const parts = [];
         if ((d?.updatedGroupsCount ?? 0) > 0) parts.push(`${d!.updatedGroupsCount} group(s)`);
         if ((d?.updatedBomsCount ?? 0) > 0) parts.push(`${d!.updatedBomsCount} BOM(s)`);
-        addToast('success', `Swap applied globally. ${parts.length ? parts.join(', ') + ' updated.' : 'Done.'}`);
+        addToast('success', `Swap finalized. ${parts.length ? parts.join(', ') + ' updated.' : 'Done.'}`);
         await loadSwapHistory();
-        setFormData({
-          fromRawMaterialId: '',
-          toRawMaterialId: '',
-          swapRatio: 1.0,
-          reason: '',
-          approvedBy: '',
-          approvedByUserId: null,
-        });
-        setApproverQuery('');
-        setApproverResults([]);
-        setFromQuery('');
-        setToQuery('');
-        setShowPreview(false);
-        if (fromRawMaterialId) {
-          const affRes = await fetchAffected(fromRawMaterialId);
-          if (affRes.success && affRes.data) {
-            setItemGroups((affRes.data.itemGroups ?? []).map((g) => ({ ...g, selected: true })));
-            setBoms((affRes.data.boms ?? []).map((b) => ({ ...b, selected: true })));
-          }
-        }
+        resetSwapForm();
+        setItemGroups([]);
+        setBoms([]);
       } else {
         const errMsg = typeof res.error === 'string' ? res.error : (res.error as { message?: string })?.message;
-        addToast('error', errMsg || 'Failed to apply swap');
+        addToast('error', errMsg || 'Failed to finalize swap');
       }
     } catch (_e) {
-      addToast('error', 'Failed to apply swap');
+      addToast('error', 'Failed to finalize swap');
     } finally {
       setApplying(false);
+    }
+  };
+
+  // Finalize a draft directly from the history table (uses the draft's stored selections).
+  const [finalizingHistoryId, setFinalizingHistoryId] = useState<string | null>(null);
+  const handleFinalizeFromHistory = async (id: string) => {
+    setFinalizingHistoryId(id);
+    try {
+      const res = await finalizeSwap(id);
+      if (res.success) {
+        addToast('success', 'Draft finalized — swap applied.');
+        await loadSwapHistory();
+      } else {
+        const errMsg = typeof res.error === 'string' ? res.error : (res.error as { message?: string })?.message;
+        addToast('error', errMsg || 'Failed to finalize swap');
+      }
+    } catch (_e) {
+      addToast('error', 'Failed to finalize swap');
+    } finally {
+      setFinalizingHistoryId(null);
     }
   };
 
@@ -338,15 +386,15 @@ const UniversalSwap: React.FC = () => {
                   SWAP FROM — RAW MATERIAL TO REPLACE
                 </label>
                 <RmMasterTypeahead
-                  options={rmOptions}
+                  options={fromRmOptions}
                   loading={loadingRms}
                   requirePickFromList
                   placeholder="Search raw material by name, INCI, or code…"
                   value={fromQuery || rmTypeaheadLabelForId(rawMaterials, fromRawMaterialId)}
                   selectedId={fromRawMaterialId}
                   onValueChange={setFromQuery}
-                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, fromRawMaterialId: opt.id })); setFromQuery(opt.label); }}
-                  onClearSelection={() => { setFormData((prev) => ({ ...prev, fromRawMaterialId: '' })); setFromQuery(''); }}
+                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, fromRawMaterialId: opt.id })); setFromQuery(opt.label); setDraftId(null); }}
+                  onClearSelection={() => { setFormData((prev) => ({ ...prev, fromRawMaterialId: '' })); setFromQuery(''); setDraftId(null); }}
                 />
               </div>
 
@@ -355,15 +403,15 @@ const UniversalSwap: React.FC = () => {
                   SWAP TO — REPLACEMENT RAW MATERIAL
                 </label>
                 <RmMasterTypeahead
-                  options={rmOptions}
+                  options={toRmOptions}
                   loading={loadingRms}
                   requirePickFromList
                   placeholder="Search raw material by name, INCI, or code…"
                   value={toQuery || rmTypeaheadLabelForId(rawMaterials, toRawMaterialId)}
                   selectedId={toRawMaterialId}
                   onValueChange={setToQuery}
-                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, toRawMaterialId: opt.id })); setToQuery(opt.label); }}
-                  onClearSelection={() => { setFormData((prev) => ({ ...prev, toRawMaterialId: '' })); setToQuery(''); }}
+                  onSelect={(opt) => { setFormData((prev) => ({ ...prev, toRawMaterialId: opt.id })); setToQuery(opt.label); setDraftId(null); }}
+                  onClearSelection={() => { setFormData((prev) => ({ ...prev, toRawMaterialId: '' })); setToQuery(''); setDraftId(null); }}
                 />
               </div>
 
@@ -618,23 +666,26 @@ const UniversalSwap: React.FC = () => {
 
             <div className="flex items-center gap-3 mt-5 pt-5 border-t border-gray-100">
               <button
-                onClick={handlePreview}
-                disabled={!fromRawMaterialId || !toRawMaterialId}
-                className="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={handleSaveDraft}
+                disabled={!fromRawMaterialId || !toRawMaterialId || affectedCount === 0 || savingDraft}
+                className="px-5 py-2 rounded-lg border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Preview
+                {savingDraft ? 'Saving…' : draftId ? 'Update Draft' : 'Save as Draft'}
               </button>
               <button
-                onClick={handleApplySwap}
-                disabled={!showPreview || affectedCount === 0 || applying}
+                onClick={handleFinalize}
+                disabled={!draftId || affectedCount === 0 || applying}
+                title={!draftId ? 'Save the swap as a draft first' : undefined}
                 className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                {applying ? 'Applying…' : 'Apply Swap'}
+                {applying ? 'Finalizing…' : 'Finalize Swap'}
               </button>
-              {showPreview && (
-                <span className="text-xs text-emerald-600 font-medium ml-2">
-                  Preview ready — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) (ratio applied in formulas)
+              {draftId ? (
+                <span className="text-xs text-amber-600 font-medium ml-2">
+                  Draft saved — {selectedGroups.length} group(s), {selectedBoms.length} PR(s) selected. Finalize to apply.
                 </span>
+              ) : (
+                <span className="text-xs text-gray-400 ml-2">Save as a draft first, then Finalize to apply the swap.</span>
               )}
             </div>
           </div>
@@ -672,6 +723,9 @@ const UniversalSwap: React.FC = () => {
                           <span className="font-semibold text-red-600 group-hover:text-red-700">{swap.fromIngredient}</span>
                           <span className="text-gray-400">/</span>
                           <span className="font-semibold text-emerald-600 group-hover:text-emerald-700">{swap.toIngredient}</span>
+                          {swap.status === 'draft'
+                            ? <span className="ml-1 rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-semibold">DRAFT</span>
+                            : <span className="ml-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-semibold">APPLIED</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-700 font-mono">{Number(swap.swapRatio).toFixed(2)}</td>
@@ -683,13 +737,25 @@ const UniversalSwap: React.FC = () => {
                           : '—'}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        <button
-                          type="button"
-                          onClick={() => openHistoryModal(swap)}
-                          className="inline-flex items-center px-2.5 py-1 rounded-full border border-emerald-200 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
-                        >
-                          View PRs
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openHistoryModal(swap)}
+                            className="inline-flex items-center px-2.5 py-1 rounded-full border border-emerald-200 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                          >
+                            View PRs
+                          </button>
+                          {swap.status === 'draft' && (
+                            <button
+                              type="button"
+                              onClick={() => handleFinalizeFromHistory(swap.id)}
+                              disabled={finalizingHistoryId === swap.id}
+                              className="inline-flex items-center px-2.5 py-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold disabled:opacity-50 transition-colors"
+                            >
+                              {finalizingHistoryId === swap.id ? '…' : 'Finalize'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

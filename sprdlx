@@ -1,0 +1,106 @@
+# Sprdlx full stack — RDS only (no local Postgres container).
+#
+# Requires DATABASE_URL in ./ei-website-backend/.env pointing at AWS RDS.
+#
+# First run:
+#   docker compose up --build -d
+#
+# Rebuild API after backend changes:
+#   docker compose build backend --no-cache && docker compose up -d backend
+#
+# Rebuild frontends after UI changes:
+#   docker compose build admin website --no-cache && docker compose up -d admin website
+#
+# Remove old local Postgres images/volumes (one-time after switching to RDS):
+#   docker compose down --remove-orphans
+#   docker rm -f sprdlx_postgres_temp 2>/dev/null || true
+#   docker image rm postgres:18 2>/dev/null || true
+#   docker volume prune -f
+#   docker system prune -a -f
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: sprdlx_redis_temp
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sprdlx_temp_network
+
+  backend:
+    build:
+      context: ./ei-website-backend
+      dockerfile: Dockerfile
+    image: sprdlx-backend:local
+    container_name: sprdlx_backend_temp
+    init: true
+    working_dir: /usr/src/app
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./ei-website-backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      REDIS_URL: redis://redis:6379
+      DOCKER_DEFAULT_PM2: "1"
+      PM2_EXEC_MODE: fork
+      NODE_OPTIONS: --max-old-space-size=1024
+      DB_POOL_MAX: "10"
+      HUSKY: "0"
+      # DATABASE_URL must be set in .env (RDS). Do not set PM2_POSTGRES_HOST=db.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    command: sh -c "exec npm run pm2:runtime"
+    ports:
+      - "3001:3001"
+    networks:
+      - sprdlx_temp_network
+
+  admin:
+    build:
+      context: ./EI-Admin-Dashboard
+      dockerfile: Dockerfile
+    image: sprdlx-admin:local
+    container_name: sprdlx_admin_temp
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5174:80"
+    networks:
+      - sprdlx_temp_network
+
+  website:
+    build:
+      context: ./Esthetic-Insights-Website
+      dockerfile: Dockerfile
+    image: sprdlx-website:local
+    container_name: sprdlx_website_temp
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    networks:
+      - sprdlx_temp_network
+
+networks:
+  sprdlx_temp_network:
+    driver: bridge
+
