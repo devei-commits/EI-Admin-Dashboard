@@ -200,7 +200,7 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
   const canPm = summary.pm.total > 0 || ['pm_connected', 'pm_dispensing', 'filling'].includes(batch.bprStatus);
 
   return (
-    <article className="rounded-xl border border-brand-soft bg-surface shadow-sm overflow-hidden">
+    <article onClick={() => onAction('detail', batch)} className="cursor-pointer rounded-xl border border-brand-soft bg-surface shadow-sm overflow-hidden">
       <header className="px-4 py-2.5 border-b border-brand-soft bg-brand-soft/40">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-ink">
           <Sun size={14} className="text-warn shrink-0" aria-hidden />
@@ -256,7 +256,7 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
       <footer className="px-4 pb-3 flex flex-wrap gap-2 border-t border-hairline pt-2">
         <button
           type="button"
-          onClick={() => onAction('detail', batch)}
+          onClick={(e) => { e.stopPropagation(); onAction('detail', batch); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-ink-2 bg-surface-2 border border-border rounded-lg hover:bg-surface-3 transition-colors"
         >
           <Eye size={11} /> Batch detail
@@ -264,7 +264,7 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
         {canRm && (
           <button
             type="button"
-            onClick={() => onAction('dispenseRM', batch)}
+            onClick={(e) => { e.stopPropagation(); onAction('dispenseRM', batch); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors"
           >
             <Scale size={11} />
@@ -274,7 +274,7 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
         {canPm && (
           <button
             type="button"
-            onClick={() => onAction('dispensePM', batch)}
+            onClick={(e) => { e.stopPropagation(); onAction('dispensePM', batch); }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-brand bg-brand-soft border border-brand-soft rounded-lg hover:bg-brand-soft transition-colors"
           >
             <Scale size={11} />

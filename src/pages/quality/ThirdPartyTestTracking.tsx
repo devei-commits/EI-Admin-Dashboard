@@ -227,7 +227,15 @@ const ThirdPartyTestTracking: React.FC = () => {
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
-                    <tr key={row.id} className="border-b border-hairline align-top hover:bg-surface-2/80">
+                    <tr
+                      key={row.id}
+                      onClick={() => {
+                        if (resolveThirdPartyTrackingAction(row) === 'view') setViewRow(row);
+                      }}
+                      className={`border-b border-hairline align-top hover:bg-surface-2/80 ${
+                        resolveThirdPartyTrackingAction(row) === 'view' ? 'cursor-pointer' : ''
+                      }`}
+                    >
                       <td className="px-3 py-3 text-ink-2 whitespace-nowrap">{row.poDateDisplay}</td>
                       <td className="px-3 py-3 font-mono font-semibold text-violet-800 whitespace-nowrap">
                         {row.poNo}
@@ -249,7 +257,10 @@ const ThirdPartyTestTracking: React.FC = () => {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setSampleRow(row)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSampleRow(row);
+                            }}
                             className="text-violet-800 font-bold hover:underline"
                             title="Upload sample photo"
                           >
@@ -265,7 +276,10 @@ const ThirdPartyTestTracking: React.FC = () => {
                         ) : row.samplePhotoOk ? (
                           <button
                             type="button"
-                            onClick={() => setUploadRow(row)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUploadRow(row);
+                            }}
                             className="text-violet-800 font-bold hover:underline"
                             title="Upload lab report"
                           >
@@ -318,7 +332,10 @@ const ThirdPartyTestTracking: React.FC = () => {
                             return (
                               <button
                                 type="button"
-                                onClick={() => setViewRow(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewRow(row);
+                                }}
                                 className="text-[11px] font-semibold text-violet-800 hover:underline"
                               >
                                 View
@@ -329,7 +346,10 @@ const ThirdPartyTestTracking: React.FC = () => {
                             return (
                               <button
                                 type="button"
-                                onClick={() => setSampleRow(row)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSampleRow(row);
+                                }}
                                 className="text-[11px] font-semibold text-violet-800 hover:underline"
                               >
                                 📷 Upload Sample
@@ -339,7 +359,10 @@ const ThirdPartyTestTracking: React.FC = () => {
                           return (
                             <button
                               type="button"
-                              onClick={() => setUploadRow(row)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUploadRow(row);
+                              }}
                               className="text-[11px] font-semibold text-violet-800 hover:underline"
                             >
                               📎 Upload Report

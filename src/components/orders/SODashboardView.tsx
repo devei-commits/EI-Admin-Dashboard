@@ -595,11 +595,11 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                     </tr>
                     {/* SO rows */}
                     {!collapsed && group.rows.map((row) => (
-                      <tr key={row.id} className="hover:bg-brand-soft/30 transition-colors align-top">
+                      <tr key={row.id} onClick={() => runAction(row.soNo, 'detail')} className="hover:bg-brand-soft/30 transition-colors align-top cursor-pointer">
                         <td className="px-3 py-2" />
                         <td className="px-3 py-2 whitespace-nowrap">
                           <button
-                            onClick={() => runAction(row.soNo, 'detail')}
+                            onClick={(e) => { e.stopPropagation(); runAction(row.soNo, 'detail'); }}
                             className="text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted"
                             title="Open SO detail"
                           >
@@ -647,7 +647,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-center gap-0.5">
                             <button
-                              onClick={() => setCommentTarget({ id: row.id, label: row.soNo })}
+                              onClick={(e) => { e.stopPropagation(); setCommentTarget({ id: row.id, label: row.soNo }); }}
                               className="relative p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors"
                               title="Comments & history"
                               aria-label="Comments & history"

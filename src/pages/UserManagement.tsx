@@ -662,7 +662,7 @@ const UserManagement = () => {
          <EmptyState icon={<Users />} title="No users found" />
         </td></tr>
        ) : paginatedUsers.map(user => (
-        <tr key={user.id} className="hover:bg-surface-2/50 transition-colors">
+        <tr key={user.id} onClick={() => handleOpenModal('view', user)} className="hover:bg-surface-2/50 transition-colors cursor-pointer">
          <td className="px-4 py-3">
           <div className="min-w-0">
            <p className="font-medium text-ink truncate">{user.firstName} {user.lastName}</p>
@@ -683,7 +683,7 @@ const UserManagement = () => {
          </td>
          <td className="px-4 py-3">
           {user.vendorClientCode ? (
-           <Link to="/vendor-client" className="text-xs font-mono text-brand hover:underline" title="Open Masters → Vendor / Client">
+           <Link to="/vendor-client" onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-brand hover:underline" title="Open Masters → Vendor / Client">
             {user.vendorClientCode}
            </Link>
           ) : (
@@ -702,12 +702,12 @@ const UserManagement = () => {
          </td>
          <td className="px-4 py-3">
           <div className="flex items-center justify-center gap-1">
-           <button onClick={() => handleOpenModal('view', user)} className="p-1.5 text-ink-3 hover:text-brand hover:bg-brand-soft rounded-lg" title="View"><Eye className="w-4 h-4" /></button>
-           <button onClick={() => handleOpenModal('edit', user)} className="p-1.5 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-lg" title="Edit"><Edit3 className="w-4 h-4" /></button>
-           <button onClick={() => handleToggleStatus(user)} className={`p-1.5 rounded-lg ${user.status === 'active' ? 'text-ink-3 hover:text-ink hover:bg-warn-soft' : 'text-ink-3 hover:text-ok hover:bg-ok-soft'}`} title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
+           <button onClick={(e) => { e.stopPropagation(); handleOpenModal('view', user); }} className="p-1.5 text-ink-3 hover:text-brand hover:bg-brand-soft rounded-lg" title="View"><Eye className="w-4 h-4" /></button>
+           <button onClick={(e) => { e.stopPropagation(); handleOpenModal('edit', user); }} className="p-1.5 text-ink-3 hover:text-ink hover:bg-surface-2 rounded-lg" title="Edit"><Edit3 className="w-4 h-4" /></button>
+           <button onClick={(e) => { e.stopPropagation(); handleToggleStatus(user); }} className={`p-1.5 rounded-lg ${user.status === 'active' ? 'text-ink-3 hover:text-ink hover:bg-warn-soft' : 'text-ink-3 hover:text-ok hover:bg-ok-soft'}`} title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
             {user.status === 'active' ? <UserMinus className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
            </button>
-           <button onClick={() => handleOpenModal('delete', user)} className="p-1.5 text-ink-3 hover:text-err hover:bg-err-soft rounded-lg" title="Delete"><Trash2 className="w-4 h-4" /></button>
+           <button onClick={(e) => { e.stopPropagation(); handleOpenModal('delete', user); }} className="p-1.5 text-ink-3 hover:text-err hover:bg-err-soft rounded-lg" title="Delete"><Trash2 className="w-4 h-4" /></button>
           </div>
          </td>
         </tr>

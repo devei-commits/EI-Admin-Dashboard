@@ -11,6 +11,7 @@ import { ProcSectionHeader, ProcFilterBar, ProcThead } from '../procurement/Proc
 import { TableSkeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorState } from '../ui/ErrorState';
+import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 
 /* ── Formatting helpers ───────────────────────────────────────────────────── */
 function fmtDate(d: string | null | undefined): string {
@@ -192,6 +193,7 @@ export const BatchesDashboardView: React.FC = () => {
 
   // Comments panel (per batch)
   const [commentTarget, setCommentTarget] = useState<{ id: number; label: string } | null>(null);
+  const [detailRow, setDetailRow] = useState<BatchDashboardRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -322,7 +324,8 @@ export const BatchesDashboardView: React.FC = () => {
                   return (
                     <tr
                       key={row.id}
-                      className={`transition-colors ${group.worstSla.overdue ? 'bg-err-soft/40 hover:bg-err-soft/60' : 'hover:bg-brand-soft/30'} ${
+                      onClick={() => setDetailRow(row)}
+                      className={`cursor-pointer transition-colors ${group.worstSla.overdue ? 'bg-err-soft/40 hover:bg-err-soft/60' : 'hover:bg-brand-soft/30'} ${
                         batchIdx < rowSpan - 1 ? 'border-b border-dashed border-hairline' : 'border-b border-hairline'
                       }`}
                     >
@@ -415,7 +418,7 @@ export const BatchesDashboardView: React.FC = () => {
                       {/* History & Comments */}
                       <td className="px-3 py-2.5 align-top">
                         <button
-                          onClick={() => setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` })}
+                          onClick={(e) => { e.stopPropagation(); setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` }); }}
                           className="relative p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors"
                           title="History & comments"
                           aria-label="History & comments"
@@ -449,6 +452,94 @@ export const BatchesDashboardView: React.FC = () => {
           />
         </>
       )}
+
+      {/* Record detail — click any batch row to see the full record */}
+      {detailRow && (() => {
+        const row = detailRow;
+        const b = row.batch;
+        const num = (n: number | null | undefined) => (n != null ? Number(n).toLocaleString('en-IN') : '—');
+        const sections: DetailSection[] = [
+          {
+            title: 'Batch',
+            fields: [
+              { label: 'Batch No', value: b.batchNo, mono: true },
+              { label: 'BMR No', value: b.bmrNo, mono: true },
+              { label: 'BPR No', value: b.bprNo, mono: true },
+              { label: 'Stage', value: b.stageLabel },
+              { label: 'Planned Qty', value: num(b.plannedQty) },
+              { label: 'Coverage', value: b.coveragePct != null ? `${b.coveragePct}%` : undefined },
+              { label: 'FG Location', value: b.fgLocation },
+            ],
+          },
+          {
+            title: 'Order',
+            fields: [
+              { label: 'SO No', value: row.soNo, mono: true },
+              { label: 'SO Date', value: fmtDate(row.soDate) },
+              { label: 'Due Date', value: fmtDate(row.dueDate) },
+              { label: 'Priority', value: row.priority },
+              { label: 'Client', value: row.client.name },
+              { label: 'Client Code', value: row.client.code, mono: true },
+              { label: 'Product', value: row.product.name },
+              { label: 'Product Code', value: row.product.code, mono: true },
+              { label: 'Ordered Qty', value: num(row.product.orderedQty) },
+            ],
+          },
+          {
+            title: 'Fulfillment quantities',
+            fields: [
+              { label: 'FG Qty', value: num(row.fgQty) },
+              { label: 'Picked Qty', value: num(row.pickedQty) },
+              { label: 'Packed Qty', value: num(row.packedQty) },
+              { label: 'Invoiced Qty', value: num(row.invoicedQty) },
+              { label: 'Shipped Qty', value: num(row.shippedQty) },
+            ],
+          },
+          {
+            title: 'Shipping',
+            fields: [
+              { label: 'Invoice No', value: row.invoiceNo, mono: true },
+              { label: 'AWB No', value: row.awbNo, mono: true },
+              { label: 'Courier', value: row.courier },
+              { label: 'Dispatch Date', value: fmtDate(row.dispatchDate) },
+              { label: 'ETA Date', value: fmtDate(row.etaDate) },
+              { label: 'Delivery Date', value: fmtDate(row.deliveryDate) },
+            ],
+          },
+          ...(row.stageLogs.length ? [{
+            title: 'Stage log',
+            content: (
+              <ol className="space-y-2">
+                {row.stageLogs.map((log, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${log.slipped ? 'bg-err' : log.completedAt != null ? 'bg-ok' : 'bg-warn'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-ink">{log.stageLabel}</p>
+                      <p className="text-[10px] text-ink-4">
+                        {fmtDate(log.startedAt)}{log.completedAt ? ` → ${fmtDate(log.completedAt)}` : ' → in progress'}
+                        {log.actorName ? ` · ${log.actorName}` : ''}
+                        {(log.actualDays != null || log.committedDays != null) ? ` · ${log.actualDays ?? '—'}d / ${log.committedDays ?? '—'}d` : ''}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ),
+          } as DetailSection] : []),
+        ];
+        return (
+          <RecordDetailModal
+            open
+            onClose={() => setDetailRow(null)}
+            eyebrow="Production Batch"
+            title={b.batchNo || b.bprNo || 'Batch'}
+            subtitle={row.product.name}
+            status={<StageBadge stage={b.stage} label={b.stageLabel} />}
+            sections={sections}
+            size="lg"
+          />
+        );
+      })()}
     </>
   );
 };

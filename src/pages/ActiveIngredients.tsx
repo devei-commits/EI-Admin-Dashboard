@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { SearchInput, Pagination, inputClassName, selectClassName } from '../components/ui';
 import { ProcThead, procBtnPrimary, procBtnSecondary } from '../components/procurement/ProcSection';
+import RecordDetailModal from '../components/ui/RecordDetailModal';
 
 type TabType = 'create' | 'list';
 
@@ -55,6 +56,7 @@ const ActiveIngredients = () => {
  });
  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
  const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
+ const [detailRec, setDetailRec] = useState<Ingredient | null>(null);
 
  const handleViewClick = (ingredient: Ingredient) => {
   setSelectedIngredient(ingredient);
@@ -210,7 +212,7 @@ const ActiveIngredients = () => {
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">
        {paginatedItems.map((item) => (
-        <div key={item.id} className="bg-surface-3 border border-border rounded-xl p-4">
+        <div key={item.id} onClick={() => setDetailRec(item)} className="bg-surface-3 border border-border rounded-xl p-4 cursor-pointer">
          <div className="flex justify-between items-start mb-3">
           <div className="flex-1 min-w-0">
            <h3 className="font-semibold text-ink text-sm truncate">{item.name}</h3>
@@ -223,8 +225,8 @@ const ActiveIngredients = () => {
           <span className="px-2 py-1 text-xs bg-surface-3 text-ink-3 rounded-full">{item.percentage}%</span>
          </div>
          <div className="flex gap-2">
-          <button onClick={() => handleViewClick(item)} className="flex-1 px-3 py-2 bg-surface-3 text-ink rounded-lg text-sm font-medium hover:bg-surface-3">Edit</button>
-          <button onClick={() => handleDeleteIngredient(item.id)} aria-label="Delete" className="px-3 py-2 bg-err-soft text-err rounded-lg text-sm font-medium hover:bg-err-soft">
+          <button onClick={(e) => { e.stopPropagation(); handleViewClick(item); }} className="flex-1 px-3 py-2 bg-surface-3 text-ink rounded-lg text-sm font-medium hover:bg-surface-3">Edit</button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteIngredient(item.id); }} aria-label="Delete" className="px-3 py-2 bg-err-soft text-err rounded-lg text-sm font-medium hover:bg-err-soft">
            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
          </div>
@@ -240,7 +242,7 @@ const ActiveIngredients = () => {
         />
         <tbody className="divide-y divide-hairline">
          {paginatedItems.map((item) => (
-          <tr key={item.id} className="hover:bg-surface-2 transition-colors">
+          <tr key={item.id} onClick={() => setDetailRec(item)} className="hover:bg-surface-2 transition-colors cursor-pointer">
            <td className="px-4 py-4"><p className="font-medium text-ink text-sm">{item.name}</p></td>
            <td className="px-4 py-4"><p className="text-sm text-ink-3 max-w-xs truncate">{item.description}</p></td>
            <td className="px-4 py-4"><span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getCategoryBadgeColor(item.category)}`}>{item.category}</span></td>
@@ -248,10 +250,10 @@ const ActiveIngredients = () => {
            <td className="px-4 py-4"><span className={`px-2.5 py-1 text-xs font-medium rounded-full ${item.status === 'Active' ? 'bg-ok-soft text-ok' : 'bg-err-soft text-err'}`}>{item.status}</span></td>
            <td className="px-4 py-4">
             <div className="flex items-center justify-center gap-2">
-             <button onClick={() => handleViewClick(item)} className="p-2 text-ink hover:bg-surface-3 rounded-lg transition-colors" title="Edit">
+             <button onClick={(e) => { e.stopPropagation(); handleViewClick(item); }} className="p-2 text-ink hover:bg-surface-3 rounded-lg transition-colors" title="Edit">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
              </button>
-             <button onClick={() => handleDeleteIngredient(item.id)} className="p-2 text-err hover:bg-err-soft rounded-lg transition-colors" title="Delete">
+             <button onClick={(e) => { e.stopPropagation(); handleDeleteIngredient(item.id); }} className="p-2 text-err hover:bg-err-soft rounded-lg transition-colors" title="Delete">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
              </button>
             </div>
@@ -317,6 +319,32 @@ const ActiveIngredients = () => {
      </div>
     )}
    </div>
+
+   <RecordDetailModal
+    open={!!detailRec}
+    onClose={() => setDetailRec(null)}
+    eyebrow="Active Ingredient"
+    title={detailRec?.name}
+    status={detailRec?.status}
+    size="lg"
+    sections={detailRec ? [
+     {
+      title: 'Ingredient',
+      fields: [
+       { label: 'Name', value: detailRec.name },
+       { label: 'Category', value: detailRec.category },
+       { label: 'Percentage', value: detailRec.percentage ? `${detailRec.percentage}%` : '' },
+       { label: 'Status', value: detailRec.status },
+      ],
+     },
+     {
+      title: 'Function / Description',
+      fields: [
+       { label: 'Description', value: detailRec.description, span: 'full' },
+      ],
+     },
+    ] : []}
+   />
   </div>
  );
 };

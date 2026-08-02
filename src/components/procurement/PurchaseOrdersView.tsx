@@ -109,7 +109,7 @@ function QtyLink({ value, ordered, onClick }: { value: number; ordered: number; 
   if (!value) return <span className="text-ink-4 text-xs">0</span>;
   const pct = ordered > 0 ? Math.round((value / ordered) * 100) : 0;
   return (
-    <button onClick={onClick} disabled={!onClick} className={`text-xs tabular-nums ${onClick ? 'text-brand hover:underline decoration-dotted' : 'text-ink-2'}`} title={ordered > 0 ? `${pct}% of ${ordered.toLocaleString('en-IN')}` : undefined}>
+    <button onClick={(e) => { e.stopPropagation(); onClick?.(); }} disabled={!onClick} className={`text-xs tabular-nums ${onClick ? 'text-brand hover:underline decoration-dotted' : 'text-ink-2'}`} title={ordered > 0 ? `${pct}% of ${ordered.toLocaleString('en-IN')}` : undefined}>
       {value.toLocaleString('en-IN')}
     </button>
   );
@@ -585,10 +585,10 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         const slaText = fullyReceived ? <><Check className="inline w-3 h-3 align-[-1px]" /> received</> : slaLevel === 'bad' ? <><Flag weight="fill" className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d lead`}</> : slaLevel === 'warn' ? <><Warning className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d`}</> : <><Check className="inline w-3 h-3 align-[-1px]" /> within lead</>;
                         const slaCls = slaLevel === 'bad' ? 'text-err font-bold' : slaLevel === 'warn' ? 'text-warn font-semibold' : 'text-ok';
                         return (
-                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} className="hover:bg-brand-soft transition-colors align-top border-b border-hairline">
+                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} onClick={() => onOpenDetail(lr.record)} className="hover:bg-brand-soft transition-colors align-top border-b border-hairline cursor-pointer">
                             <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(lr.record.createdDate)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={() => onOpenDetail(lr.record)} className="font-mono text-xs font-semibold text-brand hover:underline decoration-dotted">{lr.record.poNumber}</button>
+                              <button onClick={(e) => { e.stopPropagation(); onOpenDetail(lr.record); }} className="font-mono text-xs font-semibold text-brand hover:underline decoration-dotted">{lr.record.poNumber}</button>
                             </td>
                             <td className="px-3 py-2.5 max-w-[150px]">
                               <p className="text-xs font-semibold text-ink truncate" title={lr.item}>{lr.item}</p>
@@ -622,16 +622,16 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
                               {lr.otherPos > 0 ? (
-                                <button onClick={() => setItemFilter(lr.itemKey)} className="inline-flex items-center gap-0.5 text-[10.5px] text-brand font-semibold hover:underline">
+                                <button onClick={(e) => { e.stopPropagation(); setItemFilter(lr.itemKey); }} className="inline-flex items-center gap-0.5 text-[10.5px] text-brand font-semibold hover:underline">
                                   <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
                                 </button>
                               ) : <span className="text-ink-4 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(lr.record)} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(lr.record); }} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
                                 <button
-                                  onClick={() => canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty })}
+                                  onClick={(e) => { e.stopPropagation(); canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty }); }}
                                   disabled={!canTransit}
                                   title={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
                                   aria-label={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
@@ -698,10 +698,10 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         const st = PO_STATUS_CONFIG[wf];
                         const shippable = isShippable(r);
                         return (
-                          <tr key={r.poNumber} className="hover:bg-brand-soft transition-colors border-b border-hairline">
+                          <tr key={r.poNumber} onClick={() => onOpenDetail(r)} className="hover:bg-brand-soft transition-colors border-b border-hairline cursor-pointer">
                             <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.createdDate)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={() => onOpenDetail(r)} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.poNumber}</button>
+                              <button onClick={(e) => { e.stopPropagation(); onOpenDetail(r); }} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.poNumber}</button>
                             </td>
                             <td className="px-3 py-2.5 max-w-[180px]">
                               {r.lineItems.length === 0 ? (
@@ -726,9 +726,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-err tabular-nums">{rollup.returned}</span> : <span className="text-ink-4 text-xs">0</span>}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={() => onEdit(r)} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
                                 <button
-                                  onClick={() => shippable && openConsolidated(r)}
+                                  onClick={(e) => { e.stopPropagation(); shippable && openConsolidated(r); }}
                                   disabled={!shippable}
                                   title={shippable ? 'Initiate Shipment' : 'Available once PO is Issued/Accepted'}
                                   className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}>

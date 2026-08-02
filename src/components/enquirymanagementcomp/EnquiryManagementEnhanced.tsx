@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { 
- Ticket, 
- TicketStatus, 
- TicketPriority, 
+import type {
+ Ticket,
+ TicketStatus,
+ TicketPriority,
  TicketFilters,
  StaffMember,
  TicketDashboardStats,
+ StaffPerformanceMetrics,
 } from '../../types/ticket.types';
 import TicketDashboard from './TicketDashboard';
 import TicketDetailPopup from './TicketDetailPopup';
@@ -22,6 +23,7 @@ import { ApiResponse } from '../../types/api.types';
 import { TableSkeleton } from '../ui/Skeleton';
 import { ModalOverlay } from '../ui/ModalOverlay';
 import { EmptyState } from '../ui/EmptyState';
+import { RecordDetailModal } from '../ui/RecordDetailModal';
 import { Package } from 'lucide-react';
 
 
@@ -99,6 +101,7 @@ const EnquiryManagementEnhanced: React.FC = () => {
  const recordsPerPage = 10;
  const [crossTeamModalOpen, setCrossTeamModalOpen] = useState(false);
  const [createCustomerModalOpen, setCreateCustomerModalOpen] = useState(false);
+ const [selectedStaff, setSelectedStaff] = useState<StaffPerformanceMetrics | null>(null);
 
  useEffect(() => {
   setCurrentPage(1);
@@ -480,8 +483,9 @@ useEffect(() => {
 
    {/* Dashboard View — stats from API tickets (full page dynamic) */}
    {activeView === 'dashboard' && (
-    <TicketDashboard 
+    <TicketDashboard
      onNavigateToTickets={handleNavigateToTickets}
+     onStaffClick={setSelectedStaff}
      overrideStats={dashboardStatsFromTickets}
     />
    )}
@@ -918,6 +922,34 @@ useEffect(() => {
     open={createCustomerModalOpen}
     onClose={() => setCreateCustomerModalOpen(false)}
     onCreated={handleCustomerTicketCreated}
+   />
+
+   {/* Staff performance detail */}
+   <RecordDetailModal
+    open={selectedStaff !== null}
+    onClose={() => setSelectedStaff(null)}
+    eyebrow="Staff Performance"
+    title={selectedStaff?.staffName ?? ''}
+    subtitle={selectedStaff?.department}
+    sections={selectedStaff ? [
+     {
+      title: 'Workload',
+      fields: [
+       { label: 'Active Tickets', value: selectedStaff.activeTickets },
+       { label: 'Resolved Today', value: selectedStaff.resolvedToday },
+       { label: 'Resolved This Week', value: selectedStaff.resolvedThisWeek },
+       { label: 'Overdue Tickets', value: selectedStaff.overdueTickets },
+      ],
+     },
+     {
+      title: 'Performance',
+      fields: [
+       { label: 'Avg Resolution Time', value: `${selectedStaff.avgResolutionTime}h` },
+       { label: 'Avg Response Time', value: `${selectedStaff.avgResponseTime}h` },
+       { label: 'Satisfaction Score', value: selectedStaff.satisfactionScore },
+      ],
+     },
+    ] : []}
    />
   </div>
  );

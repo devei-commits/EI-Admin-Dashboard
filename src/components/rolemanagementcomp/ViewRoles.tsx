@@ -413,7 +413,7 @@ const ViewRoles: React.FC = () => {
      </thead>
      <tbody className="divide-y divide-hairline">
       {sortedRoles.map((role) => (
-       <tr key={role.id} className="hover:bg-surface-2/50 transition-colors">
+       <tr key={role.id} onClick={() => handleViewRole(role)} className="hover:bg-surface-2/50 transition-colors cursor-pointer">
         <td className="px-5 py-4 font-medium text-ink leading-relaxed">
          {role.roleName}
         </td>
@@ -440,13 +440,13 @@ const ViewRoles: React.FC = () => {
         </td>
         <td className="px-5 py-4 leading-relaxed">
          <div className="flex space-x-3">
-          <UnifiedButton variant="primary" size="sm" onClick={() => handleViewRole(role)}>
+          <UnifiedButton variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); handleViewRole(role); }}>
            View
           </UnifiedButton>
-          <UnifiedButton variant="secondary" size="sm" onClick={() => handleEditRole(role)}>
+          <UnifiedButton variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); handleEditRole(role); }}>
            Edit
           </UnifiedButton>
-          <UnifiedButton variant="danger" size="sm" onClick={() => handleDeleteRole(role.id)}>
+          <UnifiedButton variant="danger" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteRole(role.id); }}>
            Delete
           </UnifiedButton>
          </div>

@@ -3,6 +3,7 @@ import { Package } from '@phosphor-icons/react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import RecordDetailModal from '../components/ui/RecordDetailModal';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useItems } from '../context/ItemsContext';
@@ -1931,6 +1932,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
  const [statusTab, setStatusTab] = useState<MasterApprovalStatusTab>('all');
  const [statCardSort, setStatCardSort] = useState<MasterStatCardSort>('count-desc');
  const [linkedSkusModalRm, setLinkedSkusModalRm] = useState<RawMaterialRecord | null>(null);
+ const [detailRec, setDetailRec] = useState<RawMaterialRecord | null>(null);
  const queryClient = useQueryClient();
  const { addToast } = useToast();
  const itemRefFileInputRef = useRef<HTMLInputElement>(null);
@@ -2437,7 +2439,7 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
          const subCategoryLabel = rmListSubCategoryLabel(rm);
          const catStyle = getCategoryStyle(categoryLabel);
          return (
-          <tr key={rm.code} className="hover:bg-linear-to-r hover:from-brand-soft hover:to-transparent transition-colors group border-b border-hairline last:border-0">
+          <tr key={rm.code} onClick={() => setDetailRec(rm)} className="hover:bg-linear-to-r hover:from-brand-soft hover:to-transparent transition-colors group border-b border-hairline last:border-0 cursor-pointer">
            {/* sr no */}
            <td className="px-4 py-3.5 text-[11px] text-ink-3 whitespace-nowrap">{startIndex + idx + 1}</td>
            {/* code */}
@@ -2630,6 +2632,77 @@ const RawMaterialDashboard: React.FC<RawMaterialDashboardProps> = ({ refreshKey 
       </div>
      </div>
     )}
+
+    <RecordDetailModal
+     open={!!detailRec}
+     onClose={() => setDetailRec(null)}
+     eyebrow="Raw Material"
+     title={detailRec?.name}
+     subtitle={detailRec?.code}
+     status={detailRec?.status}
+     size="lg"
+     sections={detailRec ? [
+      {
+       title: 'Identity',
+       fields: [
+        { label: 'Code', value: detailRec.code, mono: true },
+        { label: 'Name', value: detailRec.name },
+        { label: 'INCI', value: detailRec.inci },
+        { label: 'Category', value: detailRec.category },
+        { label: 'Group', value: detailRec.group },
+        { label: 'Status', value: detailRec.status },
+       ],
+      },
+      {
+       title: 'Units & Tax',
+       fields: [
+        { label: 'UoM', value: detailRec.uom },
+        { label: 'GST', value: detailRec.gst != null ? `${detailRec.gst}%` : '' },
+        { label: 'HSN Code', value: detailRec.hsnCode },
+        { label: 'Tax Preference', value: detailRec.taxPref },
+       ],
+      },
+      {
+       title: 'Technical',
+       fields: [
+        { label: 'Specific Gravity', value: detailRec.specificGravity },
+        { label: 'Shelf Life', value: detailRec.shelf },
+        { label: 'Lead Time (days)', value: detailRec.leadTimeDays },
+       ],
+      },
+      {
+       title: 'Commercial',
+       fields: [
+        { label: 'Price / Kg', value: detailRec.pricePerKg },
+       ],
+      },
+      {
+       title: 'Ownership & Lifecycle',
+       fields: [
+        { label: 'RM Owner', value: detailRec.rmOwner },
+        { label: 'Universal Swap Eligibility', value: detailRec.universalSwapEligibility },
+        { label: 'Lifecycle Status', value: detailRec.masterLifecycleStatus },
+       ],
+      },
+      {
+       title: 'Linked Products',
+       content: detailRec.products.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5">
+         {detailRec.products.map((p, i) => (
+          <li key={i} className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-[11px] text-ink-2">{p}</li>
+         ))}
+        </ul>
+       ) : <p className="text-sm text-ink-4">—</p>,
+      },
+      {
+       title: 'Zoho',
+       fields: [
+        { label: 'Zoho SKU Code', value: detailRec.zohoSkuCode, mono: true },
+        { label: 'Zoho ID', value: detailRec.zohoId, mono: true },
+       ],
+      },
+     ] : []}
+    />
 
      </>
     )}

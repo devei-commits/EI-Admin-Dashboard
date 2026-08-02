@@ -454,24 +454,24 @@ const CatalogueManagement = () => {
         </thead>
         <tbody className="divide-y divide-hairline">
          {paginatedItems.map((item) => (
-          <tr key={item.id} className="hover:bg-surface-2/50 transition-colors">
+          <tr key={item.id} onClick={() => handleViewItem(item)} className="hover:bg-surface-2/50 transition-colors cursor-pointer">
            <td className="px-4 py-4"><span className="font-mono text-sm text-ink-2">{item.productCode}</span></td>
            <td className="px-4 py-4"><div><p className="font-medium text-ink">{item.brandName}</p><p className="text-sm text-ink-3">{item.genericName}</p></div></td>
            <td className="px-4 py-4"><span className={`px-2.5 py-1 text-xs font-medium rounded-full ${getCategoryBadgeColor(item.productCategory)}`}>{item.productCategory}</span></td>
            <td className="px-4 py-4 text-sm text-ink-2">{item.productSKU}</td>
            <td className="px-4 py-4 text-sm font-medium text-ink">₹{item.productPrice}</td>
            <td className="px-4 py-4">
-            <button onClick={() => handleToggleStatus(item.id)} className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${item.status === 'active' ? 'bg-ok-soft text-ok hover:bg-emerald-200' : 'bg-err-soft text-err hover:bg-red-200'}`}>{item.status}</button>
+            <button onClick={(e) => { e.stopPropagation(); handleToggleStatus(item.id); }} className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${item.status === 'active' ? 'bg-ok-soft text-ok hover:bg-emerald-200' : 'bg-err-soft text-err hover:bg-red-200'}`}>{item.status}</button>
            </td>
            <td className="px-4 py-4">
             <div className="flex items-center justify-center gap-2">
-             <button onClick={() => handleViewItem(item)} className="p-2 text-ink hover:bg-surface-2 rounded-lg transition-colors" title="View">
+             <button onClick={(e) => { e.stopPropagation(); handleViewItem(item); }} className="p-2 text-ink hover:bg-surface-2 rounded-lg transition-colors" title="View">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
              </button>
-             <button onClick={() => handleEditItem(item)} className="p-2 text-brand hover:bg-brand-soft rounded-lg transition-colors" title="Edit">
+             <button onClick={(e) => { e.stopPropagation(); handleEditItem(item); }} className="p-2 text-brand hover:bg-brand-soft rounded-lg transition-colors" title="Edit">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
              </button>
-             <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-err hover:bg-err-soft rounded-lg transition-colors" title="Delete">
+             <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className="p-2 text-err hover:bg-err-soft rounded-lg transition-colors" title="Delete">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
              </button>
             </div>

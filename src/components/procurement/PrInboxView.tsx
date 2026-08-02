@@ -15,6 +15,7 @@ import {
 } from '../../constants/procurement';
 import { slaLevelFromDaysOpen, expectedVsNeedByLevel } from '../../lib/procurementSla';
 import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty, procChipClass } from './ProcSection';
+import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 function parseDate(d: string | null | undefined): Date | null {
@@ -128,7 +129,7 @@ function ActionBtn({ icon: Icon, label, onClick, tone = 'default' }: {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={label}
       className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold transition-colors ${
         tone === 'primary'
@@ -172,6 +173,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
   const [slaFilter, setSlaFilter] = useState<SlaFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [vendorFilter, setVendorFilter] = useState<string>('all');
+  const [detailRow, setDetailRow] = useState<InboxRow | null>(null);
 
   const allRows = useMemo(() => requests.map(buildRow), [requests]);
   const activeCount = useMemo(() => allRows.filter((r) => prIsActive(r.req.status)).length, [allRows]);
@@ -245,7 +247,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
           { key: 'history', label: 'History', count: historyCount },
         ]}
         value={tab}
-        onChange={setTab}
+        onChange={(t) => setTab(t as PrTab)}
         trailing={tab === 'history' ? <span className="text-[11px] text-ink-4">Released to Draft PO or later — read reference.</span> : undefined}
       />
 
@@ -300,13 +302,13 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
               {rows.map((r) => {
                 const expLevel = expectedVsNeedByLevel(r.expectedConnecting, r.needBy);
                 return (
-                  <tr key={r.req.id} className={`hover:bg-brand-soft transition-colors ${r.slaLevel === 'bad' ? 'bg-err-soft' : ''}`}>
+                  <tr key={r.req.id} onClick={() => setDetailRow(r)} className={`hover:bg-brand-soft transition-colors cursor-pointer ${r.slaLevel === 'bad' ? 'bg-err-soft' : ''}`}>
                     {/* Req Date */}
                     <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-ink-2">{fmtDate(r.requestedDate)}</td>
 
                     {/* PR # + source */}
                     <td className="px-3 py-2.5 whitespace-nowrap align-top">
-                      <button onClick={() => onEdit(r.req)} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.prNumber}</button>
+                      <button onClick={(e) => { e.stopPropagation(); onEdit(r.req); }} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.prNumber}</button>
                       <div className="mt-1"><SourcePill source={r.source} /></div>
                     </td>
 
@@ -380,6 +382,98 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
             </tbody>
         </ProcTableCard>
       )}
+
+      {/* Record detail — click any PR row to see the full request */}
+      {detailRow && (() => {
+        const req = detailRow.req;
+        const ss = req.stockSummary;
+        const items = req.itemDetails ?? [];
+        const itemRows = items.length
+          ? items.map((it) => ({ name: it.itemName, code: it.itemCode, type: it.type ?? req.type, qty: it.reqQty, unit: it.unit, price: it.plannedPrice }))
+          : (req.items ?? []).map((name, i) => ({ name, code: '', type: req.type, qty: req.quantities?.[i], unit: req.units?.[i] ?? '', price: req.plannedPrices?.[i] }));
+        const hasPlanning = !!(req.planningSoNumber || req.planningCustomerName || req.planningProductName || req.planningProductCode);
+        const num = (n: number | null | undefined) => (n != null ? Number(n).toLocaleString('en-IN') : '—');
+        const sections: DetailSection[] = [
+          {
+            title: 'Request',
+            fields: [
+              { label: 'Code', value: req.code, mono: true },
+              { label: 'Source', value: PR_SOURCE_CONFIG[detailRow.source]?.label },
+              { label: 'Type', value: detailRow.primary?.type ?? req.type },
+              { label: 'Priority', value: req.priority },
+              { label: 'Status', value: req.status },
+              { label: 'Requested By', value: req.requestedBy },
+              { label: 'Due Date', value: fmtDate(req.dueDate) },
+              { label: 'Created', value: fmtDate(req.createdDate) },
+              { label: 'Preferred Vendor', value: req.preferredVendor },
+              { label: 'Description', value: req.description, span: 'full' },
+            ],
+          },
+          {
+            title: 'Items',
+            content: itemRows.length === 0 ? (
+              <p className="text-xs text-ink-4">No item lines.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-ink-3 border-b border-border">
+                      <th className="py-1.5 pr-3 font-semibold">Item</th>
+                      <th className="py-1.5 px-3 font-semibold">Code</th>
+                      <th className="py-1.5 px-3 font-semibold">Type</th>
+                      <th className="py-1.5 px-3 font-semibold text-right">Qty</th>
+                      <th className="py-1.5 px-3 font-semibold">Unit</th>
+                      <th className="py-1.5 pl-3 font-semibold text-right">Planned Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-hairline">
+                    {itemRows.map((it, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5 pr-3 text-ink font-medium">{it.name || '—'}</td>
+                        <td className="py-1.5 px-3 font-mono text-[11px] text-ink-3">{it.code || '—'}</td>
+                        <td className="py-1.5 px-3 text-ink-2">{it.type || '—'}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-ink-2">{num(it.qty)}</td>
+                        <td className="py-1.5 px-3 text-ink-2">{it.unit || '—'}</td>
+                        <td className="py-1.5 pl-3 text-right tabular-nums text-ink-2">{it.price != null ? `₹${num(it.price)}` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ),
+          },
+          ...(ss ? [{
+            title: 'Stock position',
+            fields: [
+              { label: 'Stock In Hand', value: num(ss.stockInHand) },
+              { label: 'Open PO Qty', value: num(ss.openPOQty) },
+              { label: 'In Transit', value: num(ss.inTransit) },
+              { label: 'Open Orders', value: num(ss.openOrders) },
+            ],
+          } as DetailSection] : []),
+          ...(hasPlanning ? [{
+            title: 'Planning linkage',
+            fields: [
+              { label: 'SO Number', value: req.planningSoNumber, mono: true },
+              { label: 'Customer', value: req.planningCustomerName },
+              { label: 'Product', value: req.planningProductName },
+              { label: 'Product Code', value: req.planningProductCode, mono: true },
+            ],
+          } as DetailSection] : []),
+        ];
+        return (
+          <RecordDetailModal
+            open
+            onClose={() => setDetailRow(null)}
+            eyebrow="Procurement Request"
+            title={req.code}
+            subtitle={detailRow.primary?.itemName}
+            status={<SourcePill source={detailRow.source} />}
+            sections={sections}
+            size="lg"
+          />
+        );
+      })()}
     </div>
   );
 };
