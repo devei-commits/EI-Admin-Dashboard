@@ -20,6 +20,7 @@ import { useToast } from '../context/ToastContext';
 import AdminMainMenuButton from '../components/AdminMainMenuButton';
 import { ModalOverlay } from '../components/ui/ModalOverlay';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { RecordDetailModal } from '../components/ui/RecordDetailModal';
 import {
   fetchEquipment, fetchTeam, fetchBatches, fetchBatchMtrReserved, syncBatchesFromPlanning,
   fetchProductionReservedItems, reserveProductionBatchLines, unreserveProductionBatchLines,
@@ -9966,6 +9967,7 @@ function MaterialReservationView({
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reserveTarget, setReserveTarget] = useState<{ batch: Batch; type: 'rm' | 'pm' } | null>(null);
+  const [resDetail, setResDetail] = useState<ProductionReservedItemRow | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -10134,7 +10136,7 @@ function MaterialReservationView({
                   const batch = batchByPk.get(row.productionBatchId);
                   const removable = canRemoveRow(row);
                   return (
-                    <tr key={row.id} className="hover:bg-surface-2/50">
+                    <tr key={row.id} onClick={() => setResDetail(row)} className="cursor-pointer hover:bg-surface-2/50">
                       <td className="px-3 py-2.5">
                         <Badge className={row.itemType === 'RM' ? 'bg-brand-soft text-brand border border-brand-soft' : 'bg-brand-soft text-brand border border-brand-soft'}>
                           {row.itemType}
@@ -10157,7 +10159,7 @@ function MaterialReservationView({
                           {batch && (
                             <button
                               type="button"
-                              onClick={() => handleReserveMore(row)}
+                              onClick={(e) => { e.stopPropagation(); handleReserveMore(row); }}
                               className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors"
                             >
                               <Package size={10} /> Reserve more
@@ -10167,7 +10169,7 @@ function MaterialReservationView({
                             type="button"
                             disabled={!removable || removingId === row.id}
                             title={removable ? 'Remove this reservation line' : 'Blocked by connect, MTR, or dispensing'}
-                            onClick={() => void handleRemove(row)}
+                            onClick={(e) => { e.stopPropagation(); void handleRemove(row); }}
                             className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-err bg-err-soft border border-err-soft rounded-lg hover:bg-err-soft transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {removingId === row.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
@@ -10210,6 +10212,35 @@ function MaterialReservationView({
           }}
         />
       )}
+      <RecordDetailModal
+        open={!!resDetail}
+        onClose={() => setResDetail(null)}
+        eyebrow="Material Reservation"
+        title={resDetail?.name}
+        subtitle={resDetail?.code}
+        sections={resDetail ? [
+          {
+            title: 'Reservation',
+            fields: [
+              { label: 'Item Type', value: resDetail.itemType },
+              { label: 'Code', value: resDetail.code, mono: true },
+              { label: 'Name', value: resDetail.name },
+              { label: 'Quantity Reserved', value: `${formatQtyExact(resDetail.quantityReserved, resDetail.itemType === 'RM' ? 'kg' : 'pcs')} ${resDetail.unit}` },
+              { label: 'Unit', value: resDetail.unit },
+              { label: 'Updated At', value: resDetail.updatedAt ? new Date(resDetail.updatedAt).toLocaleString('en-IN') : '—' },
+            ],
+          },
+          {
+            title: 'Batch context',
+            fields: [
+              { label: 'BMR No', value: resDetail.bmrNo, mono: true },
+              { label: 'BPR No', value: resDetail.bprNo, mono: true },
+              { label: 'SO No', value: resDetail.soNo, mono: true },
+              { label: 'Product Name', value: resDetail.productName },
+            ],
+          },
+        ] : []}
+      />
     </div>
   );
 }

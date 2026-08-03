@@ -8,6 +8,7 @@ import { TableSkeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SearchInput } from '../components/ui/SearchInput';
 import { StatCard } from '../components/ui/StatCard';
+import { RecordDetailModal } from '../components/ui/RecordDetailModal';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { ProcFilterBar } from '../components/procurement/ProcSection';
 import { PlanningModalShell } from '../components/planning/PlanningModalShell';
@@ -2713,6 +2714,7 @@ const Planning = () => {
   /** Re-render PIs Extracted SLA column every minute while tab is open. */
   const [slaClockTick, setSlaClockTick] = useState(0);
   const [usedInModalItem, setUsedInModalItem] = useState<ItemsInvolvedDisplayRow | null>(null);
+  const [itemDetail, setItemDetail] = useState<ItemsInvolvedDisplayRow | null>(null);
   const [refPopup, setRefPopup] = useState<{ title: string; sub: string; refLabel: string; rows: ItemsInvolvedRefBreakdown[] } | null>(null);
   const [requestQuotationContext, setRequestQuotationContext] = useState<RequestQuotationContext | null>(null);
   const [releaseToPlanningItem, setReleaseToPlanningItem] = useState<ItemsInvolvedDisplayRow | null>(null);
@@ -8095,7 +8097,8 @@ const Planning = () => {
                           <tr
                             key={item.id}
                             id={`planning-items-involved-${item.id}`}
-                            className={`${quotationRowHighlight} ${
+                            onClick={() => setItemDetail(item)}
+                            className={`cursor-pointer ${quotationRowHighlight} ${
                               quotationRowHighlight
                                 ? ''
                                 : idx % 2 === 0
@@ -8106,7 +8109,7 @@ const Planning = () => {
                             <td className="px-2 py-2 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => setUsedInModalItem(item)}
+                                onClick={(e) => { e.stopPropagation(); setUsedInModalItem(item); }}
                                 className="text-brand hover:text-brand hover:underline font-medium font-mono text-xs"
                                 title={`View batches using this ${item.itemType}`}
                               >
@@ -8125,7 +8128,8 @@ const Planning = () => {
                                 <div>
                                   <button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       const code = String(item.code ?? '').trim();
                                       if (item.itemType === 'PM') {
                                         // `?pm=<code>` deep-links straight to the PM's detail (PackagingForm), not just the list.
@@ -8154,7 +8158,7 @@ const Planning = () => {
                             <td className="px-2 py-2 text-center min-w-[72px]">
                               <button
                                 type="button"
-                                onClick={() => setUsedInModalItem(item)}
+                                onClick={(e) => { e.stopPropagation(); setUsedInModalItem(item); }}
                                 className="w-5 h-5 bg-brand-soft hover:bg-brand-soft rounded-full flex items-center justify-center mx-auto transition-colors"
                                 title="Click to view batches using this item"
                               >
@@ -8176,7 +8180,7 @@ const Planning = () => {
                             >
                               <button
                                 type="button"
-                                onClick={() => navigate(`/warehouse?q=${encodeURIComponent(String(item.code ?? '').trim())}`)}
+                                onClick={(e) => { e.stopPropagation(); navigate(`/warehouse?q=${encodeURIComponent(String(item.code ?? '').trim())}`); }}
                                 className="text-ink hover:text-brand hover:underline"
                                 title="Open Warehouse stock for this item"
                               >
@@ -8192,7 +8196,7 @@ const Planning = () => {
                               {item.poBreakdown.length > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => setRefPopup({ title: 'Purchase Orders', sub: `${item.name} · PO Qty ${item.poQtyStr}`, refLabel: 'PO #', rows: item.poBreakdown })}
+                                  onClick={(e) => { e.stopPropagation(); setRefPopup({ title: 'Purchase Orders', sub: `${item.name} · PO Qty ${item.poQtyStr}`, refLabel: 'PO #', rows: item.poBreakdown }); }}
                                   className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the POs behind this quantity"
                                 >
@@ -8206,7 +8210,7 @@ const Planning = () => {
                               {item.inTransitBreakdown.length > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => setRefPopup({ title: 'In-Transit GRNs', sub: `${item.name} · In-Transit ${item.inTransitQtyStr}`, refLabel: 'GRN #', rows: item.inTransitBreakdown })}
+                                  onClick={(e) => { e.stopPropagation(); setRefPopup({ title: 'In-Transit GRNs', sub: `${item.name} · In-Transit ${item.inTransitQtyStr}`, refLabel: 'GRN #', rows: item.inTransitBreakdown }); }}
                                   className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the GRNs in transit"
                                 >
@@ -8220,7 +8224,7 @@ const Planning = () => {
                               {item.underGrnBreakdown.length > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => setRefPopup({ title: 'Under-GRN', sub: `${item.name} · Under-GRN ${item.underGrnStr}`, refLabel: 'GRN #', rows: item.underGrnBreakdown })}
+                                  onClick={(e) => { e.stopPropagation(); setRefPopup({ title: 'Under-GRN', sub: `${item.name} · Under-GRN ${item.underGrnStr}`, refLabel: 'GRN #', rows: item.underGrnBreakdown }); }}
                                   className="text-brand font-semibold hover:text-brand hover:underline"
                                   title="View the GRNs under review"
                                 >
@@ -8302,7 +8306,7 @@ const Planning = () => {
                                     <button
                                       type="button"
                                       className="px-2 py-1 rounded bg-brand hover:bg-brand text-white text-[11px] font-semibold w-full"
-                                      onClick={() => openReleaseToPlanningModal(item)}
+                                      onClick={(e) => { e.stopPropagation(); openReleaseToPlanningModal(item); }}
                                     >
                                       Release to Planning
                                     </button>
@@ -8334,7 +8338,7 @@ const Planning = () => {
                                   type="button"
                                   className={`relative px-2 py-1 rounded border text-[11px] font-semibold w-full ${quotationBtnClass}`}
                                   title={quotationBtnTitle}
-                                  onClick={() => openRequestQuotationModalForItem(item)}
+                                  onClick={(e) => { e.stopPropagation(); openRequestQuotationModalForItem(item); }}
                                 >
                                   {quotationAskUi.status === 'fulfilled_unread' ? (
                                     <span
@@ -8476,6 +8480,78 @@ const Planning = () => {
           </div>
         </PlanningModalShell>
       )}
+
+      <RecordDetailModal
+        open={!!itemDetail}
+        onClose={() => setItemDetail(null)}
+        eyebrow="Planned Item"
+        title={itemDetail?.name}
+        subtitle={itemDetail?.code}
+        sections={itemDetail ? [
+          {
+            title: 'Item',
+            fields: [
+              { label: 'Name', value: itemDetail.name },
+              { label: 'Code', value: itemDetail.code, mono: true },
+              { label: 'Category', value: itemDetail.category },
+              { label: 'Status', value: itemDetail.status },
+            ],
+          },
+          {
+            title: 'Requirement vs Supply',
+            fields: [
+              { label: 'Total Required', value: itemDetail.totalRequired },
+              { label: 'SIH', value: itemDetail.sih },
+              { label: 'Surplus / Shortage', value: itemDetail.surplusShortage },
+              { label: 'Coverage', value: itemDetail.coverage },
+              { label: 'Reserved', value: itemDetail.reserved },
+              { label: 'Planned Qty', value: itemDetail.plannedQty },
+              { label: 'Ordered Qty', value: itemDetail.orderedQty },
+              { label: 'Net', value: itemDetail.net },
+              { label: 'In Transit', value: itemDetail.inTransit },
+              { label: 'Reorder Pt', value: itemDetail.reorderPt },
+            ],
+          },
+          {
+            title: 'Used in products',
+            content: (itemDetail.usedInProducts && itemDetail.usedInProducts.length > 0) ? (
+              <ul className="list-disc pl-5 space-y-0.5 text-sm text-ink">
+                {itemDetail.usedInProducts.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            ) : <p className="text-sm text-ink-4">—</p>,
+          },
+          {
+            title: 'Pipeline',
+            content: (
+              <div className="space-y-4">
+                {([
+                  { label: 'Purchase Orders', rows: itemDetail.poBreakdown },
+                  { label: 'In-Transit GRNs', rows: itemDetail.inTransitBreakdown },
+                  { label: 'Under-GRN', rows: itemDetail.underGrnBreakdown },
+                ] as { label: string; rows: ItemsInvolvedRefBreakdown[] }[])
+                  .filter((g) => g.rows && g.rows.length > 0)
+                  .map((g) => (
+                    <div key={g.label}>
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-3 mb-1">{g.label}</h4>
+                      <ul className="space-y-0.5 text-sm text-ink">
+                        {g.rows.map((r, i) => (
+                          <li key={`${r.ref}-${i}`} className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-xs">{r.ref}</span>
+                            <span className="tabular-nums text-ink-2">{(Number(r.qty) || 0).toLocaleString('en-IN')} {r.unit}</span>
+                            <span className="text-xs text-ink-3">{r.status}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                {itemDetail.poBreakdown.length === 0 && itemDetail.inTransitBreakdown.length === 0 && itemDetail.underGrnBreakdown.length === 0 && (
+                  <p className="text-sm text-ink-4">—</p>
+                )}
+              </div>
+            ),
+          },
+        ] : []}
+      />
 
       {usedInModalItem && (() => {
         const rows = getUsedInBatchesForItem(usedInModalItem);

@@ -2470,7 +2470,8 @@ const WarehouseInbound = () => {
                     return (
                     <tr
                       key={rowId}
-                      className="hover:bg-brand-soft/50 transition-colors align-top"
+                      onClick={() => handleOpenGrnDetail(grn)}
+                      className="hover:bg-brand-soft/50 transition-colors align-top cursor-pointer"
                     >
                       <td className="px-4 py-3.5 text-sm text-ink tabular-nums whitespace-nowrap">
                         {view.shipmentDate}
@@ -2548,7 +2549,8 @@ const WarehouseInbound = () => {
                         ) : (
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation();
                               openInboundRowAction(
                                 grn,
                                 lineItem,
@@ -2562,8 +2564,8 @@ const WarehouseInbound = () => {
                                   void handleSendToQc(row);
                                 },
                                 handleOpenQcCheck,
-                              )
-                            }
+                              );
+                            }}
                             className="text-xs font-semibold text-ink hover:text-ink hover:underline"
                           >
                             {view.actionPrefix ? `${view.actionPrefix} ` : ''}

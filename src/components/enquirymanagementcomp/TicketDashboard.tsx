@@ -169,7 +169,7 @@ const StatusProgress: React.FC<StatusProgressProps> = ({ stats, total }) => {
 // ==================== Staff Performance Table ====================
 interface StaffPerformanceTableProps {
  metrics: StaffPerformanceMetrics[];
- onStaffClick?: (staffId: string) => void;
+ onStaffClick?: (staff: StaffPerformanceMetrics) => void;
 }
 
 const StaffPerformanceTable: React.FC<StaffPerformanceTableProps> = ({ metrics, onStaffClick }) => {
@@ -191,7 +191,7 @@ const StaffPerformanceTable: React.FC<StaffPerformanceTableProps> = ({ metrics, 
       <tr 
        key={staff.staffId} 
        className="hover:bg-surface-2 transition-colors cursor-pointer"
-       onClick={() => onStaffClick?.(staff.staffId)}
+       onClick={() => onStaffClick?.(staff)}
       >
        <td className="py-3 px-4">
         <div className="flex items-center gap-3">
@@ -345,7 +345,7 @@ const SLAMetrics: React.FC<SLAMetricsProps> = ({ metrics }) => {
 // ==================== Main Dashboard Component ====================
 interface TicketDashboardProps {
  onNavigateToTickets?: (filter?: { status?: TicketStatus; priority?: TicketPriority }) => void;
- onStaffClick?: (staffId: string) => void;
+ onStaffClick?: (staff: StaffPerformanceMetrics) => void;
  /** When provided, use these stats instead of fetching (dynamic from enquiries API). */
  overrideStats?: TicketDashboardStats | null;
 }

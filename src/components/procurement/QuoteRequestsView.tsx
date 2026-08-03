@@ -16,6 +16,7 @@ import { type RfqTemplateData } from './RfqTemplatePopup';
 import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcLoading, ProcError, ProcEmpty, procChipClass } from './ProcSection';
 import { QuotationEditPopup } from './QuotationEditPopup';
 import { RequestQuotationModal, type RequestQuotationContext } from './RequestQuotationModal';
+import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 import { recordQuotationToPriceList } from '../../utils/recordQuotationToPriceList';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
 
@@ -93,6 +94,7 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const [requestOpen, setRequestOpen] = useState(false);
   // Edit an existing RFQ (planning_quotation_ask) in the RequestQuotationModal.
   const [editingAsk, setEditingAsk] = useState<PlanningQuotationAsk | null>(null);
+  const [detailRow, setDetailRow] = useState<QuoteRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -260,7 +262,7 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                 const slaLevel = quoteSlaLevel(r.daysOpen);
                 const linkedQuote = r.id.startsWith('proc-') ? vendorQuotes.find((q) => `proc-${q.id}` === r.id) : undefined;
                 return (
-                  <tr key={r.id} className="hover:bg-brand-soft transition-colors">
+                  <tr key={r.id} onClick={() => setDetailRow(r)} className="hover:bg-brand-soft transition-colors cursor-pointer">
                     <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.requestDate)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] font-semibold text-brand">{r.qtId}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
@@ -288,17 +290,17 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                           return (
                             <>
                               {canEditRfq && (
-                                <button onClick={() => setEditingAsk(r.ask!)} title="Edit quote request" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
+                                <button onClick={(e) => { e.stopPropagation(); setEditingAsk(r.ask!); }} title="Edit quote request" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
                                   <Pencil size={12} /> Edit
                                 </button>
                               )}
                               {showEdit && (
-                                <button onClick={() => onEditQuote(linkedQuote)} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
+                                <button onClick={(e) => { e.stopPropagation(); onEditQuote(linkedQuote); }} title="Edit" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">
                                   <Pencil size={12} /> Edit
                                 </button>
                               )}
                               {canRecord && (
-                                <button onClick={() => setRecordingFor(r.templateData)} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2 text-[10.5px] font-semibold">
+                                <button onClick={(e) => { e.stopPropagation(); setRecordingFor(r.templateData); }} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2 text-[10.5px] font-semibold">
                                   <FileText size={12} /> Record Quote
                                 </button>
                               )}
@@ -367,6 +369,91 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
           onSubmitted={() => { setEditingAsk(null); void load(); }}
         />
       )}
+
+      {/* Record detail — click any quote-request row to see the full request */}
+      {detailRow && (() => {
+        const r = detailRow;
+        const sc = QUOTE_STATUS_CONFIG[r.status];
+        const linkedQuote = r.id.startsWith('proc-') ? vendorQuotes.find((q) => `proc-${q.id}` === r.id) : undefined;
+        const sections: DetailSection[] = [
+          {
+            title: 'Request',
+            fields: [
+              { label: 'QT Req ID', value: r.qtId, mono: true },
+              { label: 'Source', value: PR_SOURCE_CONFIG[r.source]?.label },
+              { label: 'Item', value: r.itemName },
+              { label: 'Item Code', value: r.itemCode, mono: true },
+              { label: 'Status', value: sc?.label },
+              { label: 'Request Date', value: fmtDate(r.requestDate) },
+              { label: 'Days Open', value: `${r.daysOpen}d` },
+              { label: 'Target Price', value: r.targetPrice != null ? `₹${r.targetPrice.toLocaleString('en-IN')}` : undefined },
+              { label: 'Vendor(s)', value: r.vendors, span: 'full' },
+            ],
+          },
+          {
+            title: 'MOQ tiers',
+            content: r.qtyTiers.length === 0 ? (
+              <p className="text-xs text-ink-4">—</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {r.qtyTiers.map((t, i) => (
+                  <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full border border-border bg-surface-3 text-[11px] font-mono text-ink-2">{t}</span>
+                ))}
+              </div>
+            ),
+          },
+          ...(linkedQuote && linkedQuote.lines.length ? [{
+            title: 'Quote lines',
+            content: (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-[10px] uppercase tracking-wide text-ink-3 border-b border-border">
+                      <th className="py-1.5 pr-3 font-semibold">Item</th>
+                      <th className="py-1.5 px-3 font-semibold text-right">Qty</th>
+                      <th className="py-1.5 px-3 font-semibold text-right">Price/Unit</th>
+                      <th className="py-1.5 px-3 font-semibold text-right">Total Value</th>
+                      <th className="py-1.5 pl-3 font-semibold">vs Planned</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-hairline">
+                    {linkedQuote.lines.map((l, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5 pr-3 text-ink font-medium">{l.item || '—'}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-ink-2">{l.qty || '—'}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-ink-2">{l.pricePerUnit != null ? `₹${l.pricePerUnit.toLocaleString('en-IN')}` : '—'}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-ink-2">{l.totalValue != null ? `₹${l.totalValue.toLocaleString('en-IN')}` : '—'}</td>
+                        <td className="py-1.5 pl-3 text-ink-2">{l.vsPlanned || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ),
+          } as DetailSection] : []),
+          ...(linkedQuote ? [{
+            title: 'Terms',
+            fields: [
+              { label: 'Lead Time', value: linkedQuote.leadTimeDays != null ? `${linkedQuote.leadTimeDays}d` : undefined },
+              { label: 'Terms', value: linkedQuote.terms },
+              { label: 'Valid Till', value: fmtDate(linkedQuote.validTill) },
+              { label: 'Rating', value: linkedQuote.rating ? `${linkedQuote.rating} ★` : undefined },
+            ],
+          } as DetailSection] : []),
+        ];
+        return (
+          <RecordDetailModal
+            open
+            onClose={() => setDetailRow(null)}
+            eyebrow="Quote Request"
+            title={r.qtId}
+            subtitle={r.itemName}
+            status={sc ? <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${sc.text} ${sc.bg} ${sc.border}`}>{sc.label}</span> : undefined}
+            sections={sections}
+            size="lg"
+          />
+        );
+      })()}
     </div>
   );
 };

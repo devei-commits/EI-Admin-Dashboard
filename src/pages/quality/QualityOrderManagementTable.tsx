@@ -285,7 +285,11 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
             </thead>
             <tbody>
               {tableRows.map((row) => (
-                <tr key={row.id} className="border-b border-hairline hover:bg-surface-2/80">
+                <tr
+                  key={row.id}
+                  onClick={() => onOpenQc(row)}
+                  className="border-b border-hairline hover:bg-surface-2/80 cursor-pointer"
+                >
                   <td className="px-4 py-3 align-top whitespace-nowrap text-ink font-medium">
                     {row.section}
                   </td>
@@ -295,13 +299,14 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   <td className="px-4 py-3 align-top whitespace-nowrap">
                     <Link
                       to={row.sourceDetailHref}
+                      onClick={(e) => e.stopPropagation()}
                       className="font-mono text-[11px] font-semibold text-teal-800 hover:text-teal-950 hover:underline"
                     >
                       {row.grnSourceNo}
                     </Link>
                   </td>
                   <td className="px-4 py-3 align-top min-w-[9rem]">
-                    <Link to={row.itemMasterHref} className="group block hover:underline">
+                    <Link to={row.itemMasterHref} onClick={(e) => e.stopPropagation()} className="group block hover:underline">
                       <p className="font-semibold text-ink leading-snug group-hover:text-teal-900">
                         {row.itemName}
                       </p>
@@ -320,6 +325,7 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                       <select
                         value={row.assignedTo}
                         disabled={assignSavingId === row.id}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => onAssign(row, e.target.value)}
                         className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-ink cursor-pointer focus:outline-none focus:ring-2 focus:ring-border rounded disabled:opacity-60 max-w-[6.5rem] truncate"
                       >
@@ -356,7 +362,10 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   <td className="px-4 py-3 align-top whitespace-nowrap">
                     <button
                       type="button"
-                      onClick={() => onOpenQc(row)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenQc(row);
+                      }}
                       className="text-[11px] font-semibold text-ink hover:text-slate-950 hover:underline"
                     >
                       {row.actionPrefix ? `${row.actionPrefix} ` : ''}

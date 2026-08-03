@@ -28,7 +28,7 @@ import {
   type BprStatus,
 } from '../../lib/batchLifecycle';
 import type { MRNRecordFromApi } from '../../services/mrn.service';
-import type { ProductionReservedItemRow } from '../../services/production.service';
+import type { ProductionReservedItemRow } from '../../lib/productionBatchReserve';
 
 export interface BatchesViewBatch {
   bmrNo: string;

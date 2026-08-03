@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/apiClient';
 import { EmptyState } from '../components/ui/EmptyState';
+import { RecordDetailModal } from '../components/ui/RecordDetailModal';
 
 interface Appointment {
  id: number | string;
@@ -20,6 +21,7 @@ const DoctorAppointments = () => {
 
  const [sortField, setSortField] = useState<keyof Appointment | null>(null);
  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+ const [apptDetail, setApptDetail] = useState<Appointment | null>(null);
  const [currentPage, setCurrentPage] = useState(1);
  const recordsPerPage = 3;
 
@@ -234,7 +236,11 @@ const DoctorAppointments = () => {
        </thead>
        <tbody className="bg-surface divide-y divide-hairline">
         {currentAppointments.map((appointment) => (
-         <tr key={appointment.id} className="hover:bg-surface-2">
+         <tr
+          key={appointment.id}
+          onClick={() => setApptDetail(appointment)}
+          className="hover:bg-surface-2 cursor-pointer"
+         >
           <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-ink font-medium">
            {appointment.id}
           </td>
@@ -283,6 +289,38 @@ const DoctorAppointments = () => {
      </div>
     </div>
    </div>
+
+   <RecordDetailModal
+    open={apptDetail !== null}
+    onClose={() => setApptDetail(null)}
+    eyebrow="Doctor Appointment"
+    title={apptDetail?.doctorName ?? ''}
+    subtitle={apptDetail?.clinicName}
+    sections={apptDetail ? [
+     {
+      title: 'Doctor',
+      fields: [
+       { label: 'Doctor Name', value: apptDetail.doctorName },
+       { label: 'Mobile No', value: apptDetail.mobileNo },
+      ],
+     },
+     {
+      title: 'Clinic',
+      fields: [
+       { label: 'Clinic Name', value: apptDetail.clinicName, span: 'full' },
+      ],
+     },
+     {
+      title: 'Appointment',
+      fields: [
+       { label: 'Date', value: apptDetail.date },
+       { label: 'Status', value: apptDetail.status },
+       { label: 'Confirmation', value: apptDetail.confirmationStatus },
+       { label: 'Assign To', value: apptDetail.assignTo },
+      ],
+     },
+    ] : []}
+   />
   </div>
  )
 }

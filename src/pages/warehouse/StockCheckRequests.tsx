@@ -254,7 +254,11 @@ const StockCheckRequests: React.FC = () => {
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
-                    <tr key={row.lineKey} className="border-b border-hairline hover:bg-surface-2/80">
+                    <tr
+                      key={row.lineKey}
+                      onClick={() => openTableRow(row)}
+                      className="border-b border-hairline hover:bg-surface-2/80 cursor-pointer"
+                    >
                       <td className="px-4 py-3 align-top whitespace-nowrap text-ink-2 tabular-nums">
                         {row.reqDateDisplay}
                       </td>
@@ -281,6 +285,7 @@ const StockCheckRequests: React.FC = () => {
                             <select
                               value={row.assignedTo}
                               disabled={assignSavingId === row.requestId}
+                              onClick={(e) => e.stopPropagation()}
                               onChange={(e) => void handleQuickAssign(row, e.target.value)}
                               className="appearance-none bg-transparent border-0 p-0 text-xs font-medium text-ink-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-border rounded disabled:opacity-60 max-w-[6.5rem] truncate"
                             >
@@ -315,7 +320,10 @@ const StockCheckRequests: React.FC = () => {
                       <td className="px-4 py-3 align-top whitespace-nowrap">
                         <button
                           type="button"
-                          onClick={() => openTableRow(row)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openTableRow(row);
+                          }}
                           className="text-[11px] font-semibold text-ink-2 hover:text-ink hover:underline"
                         >
                           {row.isCompleted

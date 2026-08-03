@@ -648,7 +648,7 @@ const VendorClient: React.FC = () => {
           </tr>
          ) : (
           sortedPagedVendors.map((v, idx) => (
-           <tr key={v.id} className="border-t border-border hover:bg-surface-2">
+           <tr key={v.id} onClick={() => openView(v)} className="border-t border-border hover:bg-surface-2 cursor-pointer">
             <td className="px-4 py-3 text-sm text-ink-3 whitespace-nowrap">{vendorOffset + idx + 1}</td>
             <td className="px-4 py-3 text-sm font-mono text-ink-2 whitespace-nowrap">{renderCellValue(String(v.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-ink whitespace-nowrap">{renderCellValue(v.name || '-')}</td>
@@ -665,14 +665,14 @@ const VendorClient: React.FC = () => {
              <div className="flex gap-2">
               <button
                type="button"
-               onClick={() => openView(v)}
+               onClick={(e) => { e.stopPropagation(); openView(v); }}
                className="px-3 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium"
               >
                View
               </button>
               <button
                type="button"
-               onClick={() => openVendorEdit(v.id)}
+               onClick={(e) => { e.stopPropagation(); openVendorEdit(v.id); }}
                className="px-3 py-1.5 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
               >
                Edit
@@ -894,7 +894,7 @@ const VendorClient: React.FC = () => {
           </tr>
          ) : (
           sortedPagedClients.map((c, idx) => (
-           <tr key={c.id} className="border-t border-border hover:bg-surface-2">
+           <tr key={c.id} onClick={() => openView(c)} className="border-t border-border hover:bg-surface-2 cursor-pointer">
             <td className="px-4 py-3 text-sm text-ink-3 whitespace-nowrap">{clientOffset + idx + 1}</td>
             <td className="px-4 py-3 text-sm font-mono text-ink-2 whitespace-nowrap">{renderCellValue(String(c.data?.entityCode || '-'))}</td>
             <td className="px-4 py-3 text-sm font-medium text-ink whitespace-nowrap">{renderCellValue(c.name || '-')}</td>
@@ -911,14 +911,14 @@ const VendorClient: React.FC = () => {
              <div className="flex gap-2">
               <button
                type="button"
-               onClick={() => openView(c)}
+               onClick={(e) => { e.stopPropagation(); openView(c); }}
                className="px-3 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface-3 font-medium"
               >
                View
               </button>
               <button
                type="button"
-               onClick={() => openClientEdit(c.id)}
+               onClick={(e) => { e.stopPropagation(); openClientEdit(c.id); }}
                className="px-3 py-1.5 rounded-lg border border-border text-warn hover:bg-surface-2 font-medium"
               >
                Edit

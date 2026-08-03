@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import { FlaskConical } from 'lucide-react';
 import { SearchInput } from '../../components/ui/SearchInput';
+import RecordDetailModal from '../../components/ui/RecordDetailModal';
 import type {
   QualityDevelopmentRow,
   QualityDevelopmentSectionConfig,
@@ -44,6 +46,7 @@ function matchesSearch(row: QualityDevelopmentRow, query: string): boolean {
 const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({ config }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QualityDevelopmentStatus>('all');
+  const [detail, setDetail] = useState<QualityDevelopmentRow | null>(null);
 
   const statusCounts = useMemo(() => {
     const counts: Record<QualityDevelopmentStatus, number> = {
@@ -137,7 +140,11 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
                   </tr>
                 ) : (
                   filteredRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-surface-2/80">
+                    <tr
+                      key={row.id}
+                      onClick={() => setDetail(row)}
+                      className="hover:bg-surface-2/80 cursor-pointer"
+                    >
                       <td className="px-4 py-3 font-mono text-xs text-ink-2 whitespace-nowrap">
                         {row.reference}
                       </td>
@@ -169,6 +176,52 @@ const QualityDevelopmentsSection: React.FC<QualityDevelopmentsSectionProps> = ({
           </div>
         </div>
       </div>
+
+      <RecordDetailModal
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        eyebrow="Quality Development"
+        icon={<FlaskConical className="w-5 h-5" />}
+        title={detail?.title ?? ''}
+        subtitle={detail?.reference}
+        status={
+          detail ? (
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${STATUS_STYLES[detail.status]}`}
+            >
+              {detail.status}
+            </span>
+          ) : undefined
+        }
+        sections={
+          detail
+            ? [
+                {
+                  title: 'Development',
+                  fields: [
+                    { label: 'Reference', value: detail.reference, mono: true },
+                    { label: 'Item / PIS', value: detail.itemCode },
+                    { label: 'Title', value: detail.title, span: 'full' },
+                    { label: 'Category', value: detail.category },
+                    { label: 'Status', value: detail.status },
+                    { label: 'Assignee', value: detail.assignee },
+                  ],
+                },
+                {
+                  title: 'Timeline',
+                  fields: [
+                    { label: 'Requested', value: formatDisplayDate(detail.requestedOn) },
+                    { label: 'Target', value: formatDisplayDate(detail.targetDate) },
+                  ],
+                },
+                {
+                  title: 'Notes',
+                  fields: [{ label: 'Notes', value: detail.notes, span: 'full' }],
+                },
+              ]
+            : []
+        }
+      />
     </div>
   );
 };

@@ -10,6 +10,7 @@ import { GRN_STAGE_CONFIG, GRN_STAGE_ORDER, SLA_LEVEL_CLASSES, type GrnStage } f
 import { grnInTransitSlaLevel } from '../../lib/procurementSla';
 import { GrnStageTimelineModal } from './GrnStageTimelineModal';
 import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcLoading, ProcError, ProcEmpty } from './ProcSection';
+import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -31,7 +32,7 @@ function StagePill({ stage, onClick }: { stage: string; onClick?: () => void }) 
   );
   if (!onClick) return inner;
   return (
-    <button type="button" onClick={onClick} className="hover:opacity-80 transition-opacity" title="Open stage timeline">
+    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="hover:opacity-80 transition-opacity" title="Open stage timeline">
       {inner}
     </button>
   );
@@ -49,6 +50,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
   const [vendorFilter, setVendorFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [timelineRow, setTimelineRow] = useState<GrnTrackerRow | null>(null);
+  const [detailRow, setDetailRow] = useState<GrnTrackerRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -128,7 +130,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
                 const sibling = r.sbCode && (sbCounts.get(r.sbCode) ?? 0) > 1;
                 const slaLevel = grnInTransitSlaLevel(r.shippedDate, 7);
                 return (
-                  <tr key={r.id} className={`transition-colors ${sibling ? 'bg-brand-soft' : 'hover:bg-brand-soft'}`}>
+                  <tr key={r.id} onClick={() => setDetailRow(r)} className={`transition-colors cursor-pointer ${sibling ? 'bg-brand-soft' : 'hover:bg-brand-soft'}`}>
                     <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.shippedDate)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {r.sbCode ? (
@@ -138,7 +140,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
                       ) : <span className="text-ink-4 text-xs">—</span>}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <button type="button" onClick={() => setTimelineRow(r)} className="font-mono text-[11px] font-semibold text-brand hover:underline">{r.grnNo}</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setTimelineRow(r); }} className="font-mono text-[11px] font-semibold text-brand hover:underline">{r.grnNo}</button>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap font-mono text-[11px] text-brand">{r.poNo ?? '—'}</td>
                     <td className="px-3 py-2.5 max-w-[120px]"><p className="text-xs text-ink-2 truncate" title={r.vendor ?? ''}>{r.vendor ?? '—'}</p></td>
@@ -173,6 +175,73 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
           onAdvanced={() => void load()}
         />
       ) : null}
+
+      {/* Record detail — click any GRN row to see the full record */}
+      {detailRow && (() => {
+        const r = detailRow;
+        const stageCfg = isGrnStage(r.stage) ? GRN_STAGE_CONFIG[r.stage] : GRN_STAGE_CONFIG.in_transit;
+        const steps = r.workflowSteps ?? [];
+        const sections: DetailSection[] = [
+          {
+            title: 'GRN',
+            fields: [
+              { label: 'GRN #', value: r.grnNo, mono: true },
+              { label: 'PO #', value: r.poNo, mono: true },
+              { label: 'Vendor', value: r.vendor },
+              { label: 'Type', value: r.type },
+              { label: 'Stage', value: stageCfg.label },
+              { label: 'Status', value: r.status },
+            ],
+          },
+          {
+            title: 'Shipment',
+            fields: [
+              { label: 'Item', value: r.item.name, span: 'full' },
+              { label: 'Item Code', value: r.item.code, mono: true },
+              { label: 'PO Qty', value: r.poQty.toLocaleString('en-IN') },
+              { label: 'Shipped Qty', value: r.shippedQty.toLocaleString('en-IN') },
+              { label: 'Shipped Date', value: fmtDate(r.shippedDate) },
+              { label: 'Expected Date', value: fmtDate(r.expectedDate) },
+              { label: 'Vehicle No', value: r.vehicleNo },
+            ],
+          },
+          ...(steps.length ? [{
+            title: 'Stage progress',
+            content: (
+              <ol className="space-y-2">
+                {steps.map((s, i) => {
+                  const isStr = typeof s === 'string';
+                  const stageKey = isStr ? s : s.stage;
+                  const label = isGrnStage(stageKey) ? GRN_STAGE_CONFIG[stageKey].label : stageKey;
+                  return (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-ink">{label}</p>
+                        {!isStr && (s.at || s.actor) && (
+                          <p className="text-[10px] text-ink-4">{fmtDate(s.at)}{s.actor ? ` · ${s.actor}` : ''}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            ),
+          } as DetailSection] : []),
+        ];
+        return (
+          <RecordDetailModal
+            open
+            onClose={() => setDetailRow(null)}
+            eyebrow="GRN"
+            title={r.grnNo}
+            subtitle={r.item.name}
+            status={<StagePill stage={r.stage} />}
+            sections={sections}
+            size="lg"
+          />
+        );
+      })()}
     </div>
   );
 };

@@ -44,6 +44,7 @@ import {
 import { hydrateRmQualitySpecRows } from '../lib/rmQualitySpecVisibility';
 import { hydratePmQualitySpecRows } from '../lib/pmQualitySpecVisibility';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import RecordDetailModal from '../components/ui/RecordDetailModal';
 import { EmptyState } from '../components/ui/EmptyState';
 import { procBtnPrimary, procBtnSecondary, procInputClass, procChipClass } from '../components/procurement/ProcSection';
 
@@ -78,6 +79,7 @@ type UnifiedRow =
 export default function QualitySpecRulesAdmin() {
   const { addToast } = useToast();
   const [entityType, setEntityType] = useState<QualitySpecRuleEntityType>('RM');
+  const [detailRec, setDetailRec] = useState<UnifiedRow | null>(null);
   const [qualityRules, setQualityRules] = useState<QualitySpecRule[]>([]);
   const [technicalRules, setTechnicalRules] = useState<TechnicalSpecRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -603,7 +605,7 @@ export default function QualitySpecRulesAdmin() {
                 </thead>
                 <tbody className="divide-y divide-hairline">
                   {unifiedRows.map((row) => (
-                    <tr key={`${row.specType}-${row.rule.id}`} className="transition-colors hover:bg-surface-2/80">
+                    <tr key={`${row.specType}-${row.rule.id}`} onClick={() => setDetailRec(row)} className="transition-colors hover:bg-surface-2/80 cursor-pointer">
                       <td className="px-4 py-3">
                         {row.specType === 'quality' ? (
                           <span className="inline-flex items-center rounded-full bg-ok-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ok ring-1 ring-inset ring-emerald-100">
@@ -633,16 +635,17 @@ export default function QualitySpecRulesAdmin() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() =>
-                              row.specType === 'quality' ? openEditQuality(row.rule) : openEditTechnical(row.rule)
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              row.specType === 'quality' ? openEditQuality(row.rule) : openEditTechnical(row.rule);
+                            }}
                             className="rounded-md px-2 py-1 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-3"
                           >
                             Edit
                           </button>
                           <button
                             type="button"
-                            onClick={() => void removeRow(row)}
+                            onClick={(e) => { e.stopPropagation(); void removeRow(row); }}
                             className="rounded-md px-2 py-1 text-xs font-medium text-err transition-colors hover:bg-err-soft"
                           >
                             Delete
@@ -657,6 +660,76 @@ export default function QualitySpecRulesAdmin() {
           )}
         </section>
       </div>
+
+      <RecordDetailModal
+        open={!!detailRec}
+        onClose={() => setDetailRec(null)}
+        eyebrow={detailRec?.specType === 'quality' ? 'Quality Spec Rule' : 'Technical Spec Rule'}
+        title={detailRec?.rule.category}
+        subtitle={detailRec?.rule.subCategory || 'all sub-categories'}
+        size="lg"
+        sections={detailRec ? [
+          {
+            title: 'Rule Scope',
+            fields: [
+              { label: 'Spec Type', value: detailRec.specType === 'quality' ? 'Quality' : 'Technical' },
+              { label: 'Entity Type', value: detailRec.rule.entityType },
+              { label: 'Category', value: detailRec.rule.category },
+              { label: 'Sub-category', value: detailRec.rule.subCategory },
+              { label: 'Sub-sub category', value: detailRec.rule.subSubCategory },
+              { label: 'Updated', value: detailRec.rule.updatedAt ? new Date(detailRec.rule.updatedAt).toLocaleDateString() : '' },
+            ],
+          },
+          {
+            title: 'Parameters',
+            content: detailRec.rule.rows.length > 0 ? (
+              detailRec.specType === 'quality' ? (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="[&_th]:bg-surface-2 border-b border-hairline text-ink-4">
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Parameter</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Spec Limit</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Method</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Mandatory</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRec.rule.rows.map((r) => (
+                      <tr key={r.id} className="border-b border-hairline last:border-0">
+                        <td className="py-1.5 px-2 font-medium text-ink">{r.parameter || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.specLimit || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.method || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.mandatory ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="[&_th]:bg-surface-2 border-b border-hairline text-ink-4">
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Label</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Type</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Unit</th>
+                      <th scope="col" className="text-left py-1.5 px-2 text-[10px] font-bold uppercase">Required</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRec.rule.rows.map((r) => (
+                      <tr key={r.id} className="border-b border-hairline last:border-0">
+                        <td className="py-1.5 px-2 font-medium text-ink">{r.label || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.type || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.unit || '—'}</td>
+                        <td className="py-1.5 px-2 text-ink-2">{r.required ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            ) : <p className="text-sm text-ink-4">No parameters.</p>,
+          },
+        ] : []}
+      />
 
       {/* Quality rule editor */}
       {modalOpen && (

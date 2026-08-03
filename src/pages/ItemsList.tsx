@@ -35,6 +35,7 @@ import { fetchVendorClients, fetchVendorClientById } from '../services/vendorCli
 import type { VendorClientRecord } from '../services/vendorClient.service';
 import { Pagination } from '../components/ui/Pagination';
 import { TableSkeleton } from '../components/ui/Skeleton';
+import RecordDetailModal from '../components/ui/RecordDetailModal';
 import { EmptyState } from '../components/ui/EmptyState';
 import VendorClientNameTypeahead from '../components/VendorClientNameTypeahead';
 import {
@@ -101,6 +102,7 @@ const ItemsList: React.FC = () => {
   type RateForEdit = PriceListItemPage['vendorRates'][number];
   const [editingRate, setEditingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
   const [viewingRate, setViewingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
+  const [detailRec, setDetailRec] = useState<PriceListItemPage | null>(null);
   const [editRateCurrency, setEditRateCurrency] = useState('INR');
   const [editAdvancePct, setEditAdvancePct] = useState('');
   const [editPreShipmentPct, setEditPreShipmentPct] = useState('');
@@ -292,7 +294,7 @@ const ItemsList: React.FC = () => {
           <button
             type="button"
             disabled={busy}
-            onClick={() => handleApprovalTransition(item, 'reject')}
+            onClick={(e) => { e.stopPropagation(); handleApprovalTransition(item, 'reject'); }}
             className="px-2 py-0.5 rounded border border-border bg-surface text-[10px] font-semibold text-ink-3 hover:bg-surface-2 disabled:opacity-50"
           >
             ← {prev}
@@ -302,7 +304,7 @@ const ItemsList: React.FC = () => {
           <button
             type="button"
             disabled={busy}
-            onClick={() => handleApprovalTransition(item, 'advance')}
+            onClick={(e) => { e.stopPropagation(); handleApprovalTransition(item, 'advance'); }}
             className="px-2 py-0.5 rounded bg-brand text-white text-[10px] font-semibold hover:bg-brand-press disabled:opacity-50"
           >
             {next === 'Active' ? 'Approve → Active' : `→ ${next}`}
@@ -1022,7 +1024,7 @@ const ItemsList: React.FC = () => {
               const listOnlyLabel = isPr ? 'no client pricing tiers' : 'no vendor tiers';
               if (!hasTiers) {
                 return (
-                  <div key={item.code} className="bg-surface border border-border rounded-lg overflow-hidden">
+                  <div key={item.code} onClick={() => setDetailRec(item)} className="bg-surface border border-border rounded-lg overflow-hidden cursor-pointer">
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
@@ -1040,7 +1042,7 @@ const ItemsList: React.FC = () => {
                       <div className="flex items-center gap-2">
                         {renderApprovalStrip(item)}
                         <button
-                          onClick={() => openAddTier(item)}
+                          onClick={(e) => { e.stopPropagation(); openAddTier(item); }}
                           className="px-2.5 py-1 rounded-md border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2"
                         >
                           + Add Tiers
@@ -1053,7 +1055,8 @@ const ItemsList: React.FC = () => {
               return (
                 <div
                   key={item.code}
-                  className={`bg-surface border rounded-lg overflow-hidden ${
+                  onClick={() => setDetailRec(item)}
+                  className={`bg-surface border rounded-lg overflow-hidden cursor-pointer ${
                     isRm ? 'border-brand-soft' : isPm ? 'border-brand-soft' : 'border-[color:var(--st-amber-fg)]/30'
                   }`}
                 >
@@ -1084,7 +1087,7 @@ const ItemsList: React.FC = () => {
                     <div className="flex items-center gap-2">
                       {renderApprovalStrip(item)}
                       <button
-                        onClick={() => openAddTier(item)}
+                        onClick={(e) => { e.stopPropagation(); openAddTier(item); }}
                         className="px-2.5 py-1 rounded-md border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2"
                       >
                         + Tier
@@ -1117,7 +1120,7 @@ const ItemsList: React.FC = () => {
                             {item.itemsListId != null && (
                               <button
                                 type="button"
-                                onClick={() => openViewRate(item, rate)}
+                                onClick={(e) => { e.stopPropagation(); openViewRate(item, rate); }}
                                 className="px-2 py-1 rounded border border-border bg-surface text-[10.5px] font-semibold text-ink-3 hover:bg-surface-2"
                               >
                                 👁 View / Edit
@@ -1165,14 +1168,14 @@ const ItemsList: React.FC = () => {
                                   <td className="py-1.5 px-2 text-right">
                                     <button
                                       type="button"
-                                      onClick={() => openEditTier(item, rate.id, t)}
+                                      onClick={(e) => { e.stopPropagation(); openEditTier(item, rate.id, t); }}
                                       className="text-[10.5px] text-brand hover:underline mr-2"
                                     >
                                       Edit
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => deleteTierFromRow(item, rate.id, t)}
+                                      onClick={(e) => { e.stopPropagation(); deleteTierFromRow(item, rate.id, t); }}
                                       className="text-[10.5px] text-err hover:underline"
                                     >
                                       Delete
@@ -1206,6 +1209,76 @@ const ItemsList: React.FC = () => {
             )}
           </div>
         )}
+
+        <RecordDetailModal
+          open={!!detailRec}
+          onClose={() => setDetailRec(null)}
+          eyebrow="Price List"
+          title={detailRec?.name}
+          subtitle={detailRec?.code}
+          status={detailRec?.status}
+          size="lg"
+          sections={detailRec ? [
+            {
+              title: 'Item',
+              fields: [
+                { label: 'Code', value: detailRec.code, mono: true },
+                { label: 'Name', value: detailRec.name },
+                { label: 'Type', value: detailRec.type },
+                { label: 'UoM', value: detailRec.uom },
+                { label: 'GST', value: detailRec.gst != null ? `${detailRec.gst}%` : '' },
+                { label: 'Price / Unit', value: detailRec.pricePerUnit },
+                { label: 'MOQ', value: detailRec.moq },
+                { label: 'Status', value: detailRec.status },
+              ],
+            },
+            {
+              title: 'Vendor / Client Rates',
+              content: detailRec.vendorRates.length > 0 ? (
+                <div className="space-y-3">
+                  {detailRec.vendorRates.map((rate) => (
+                    <div key={rate.id} className="rounded-lg border border-border bg-surface p-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                        <span className="text-[10px] font-bold uppercase text-ink-4">
+                          {rate.party_type === 'client' ? 'Client' : 'Vendor'}
+                        </span>
+                        <span className="text-sm font-semibold text-ink">
+                          {rate.vendor_name ?? '—'}
+                          {rate.vendor_code ? <span className="text-ink-4 font-normal ml-1.5 text-xs">({rate.vendor_code})</span> : null}
+                        </span>
+                        <span className="text-[11px] text-ink-4">{rate.currency}</span>
+                        {rate.payment_terms ? <span className="text-[11px] text-ink-3">· {rate.payment_terms}</span> : null}
+                        {rate.lead_time_days != null ? <span className="text-[11px] text-ink-3">· Lead {rate.lead_time_days}d</span> : null}
+                      </div>
+                      {rate.tiers?.length ? (
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="[&_th]:bg-surface-2 border-b border-hairline text-ink-4">
+                              <th scope="col" className="text-left py-1 px-2 text-[10px] font-bold uppercase">MOQ</th>
+                              <th scope="col" className="text-left py-1 px-2 text-[10px] font-bold uppercase">Price / Unit</th>
+                              <th scope="col" className="text-left py-1 px-2 text-[10px] font-bold uppercase">Valid Till</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rate.tiers.map((t) => (
+                              <tr key={t.id} className="border-b border-hairline last:border-0">
+                                <td className="py-1 px-2 font-mono text-ink-2">
+                                  {t.moq_min}{t.moq_max != null ? `–${t.moq_max}` : '+'}
+                                </td>
+                                <td className="py-1 px-2 font-mono font-semibold text-ink">{t.price_per_unit}</td>
+                                <td className="py-1 px-2 text-ink-3">{t.valid_till ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : <p className="text-xs text-ink-4">No tiers.</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-sm text-ink-4">—</p>,
+            },
+          ] : []}
+        />
 
         {!loading && totalListItems > 0 ? (
           <Pagination

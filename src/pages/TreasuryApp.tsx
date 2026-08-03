@@ -138,7 +138,7 @@ const TreasuryApp = () => {
             </tr>
           ) : (
             rows.map((po) => (
-              <tr key={po.purchaseOrderId} className="border-b border-hairline hover:bg-surface-2 align-top">
+              <tr key={po.purchaseOrderId} onClick={() => onView(po)} className="border-b border-hairline hover:bg-surface-2 align-top cursor-pointer">
                 <td className="px-3 py-2 font-mono font-semibold text-ink">{po.poNumber}</td>
                 <td className="px-3 py-2 text-ink">{po.vendorName || '—'}</td>
                 <td className="px-3 py-2">
@@ -154,7 +154,7 @@ const TreasuryApp = () => {
                 <td className="px-3 py-2 text-center">
                   <button
                     type="button"
-                    onClick={() => onView(po)}
+                    onClick={(e) => { e.stopPropagation(); onView(po); }}
                     className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border text-ink-2 hover:bg-brand-soft hover:text-brand hover:border-brand transition"
                     title="View PO & payment details"
                     aria-label={`View details for ${po.poNumber}`}

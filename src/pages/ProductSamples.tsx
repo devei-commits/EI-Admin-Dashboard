@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../lib/apiClient';
+import { RecordDetailModal, type DetailSection } from '../components/ui/RecordDetailModal';
 
 interface ProcessSampleRequest {
  id: number;
@@ -151,6 +152,36 @@ const ProductSamples = () => {
  const [selectedRequest] = useState<ProcessSampleRequest | null>(null);
  const [selectedProductSample, setSelectedProductSample] = useState<ProductSampleRequest | null>(null);
  const [responseText, setResponseText] = useState('');
+ // Shared row-detail modal for Process / Quotation / Technical / Other tabs.
+ const [reqDetail, setReqDetail] = useState<{ kind: TabType; label: string; row: Record<string, unknown> } | null>(null);
+
+ const buildReqSections = (row: Record<string, unknown>): DetailSection[] => {
+  const has = (k: string) => row[k] !== undefined && row[k] !== null && row[k] !== '';
+  const requester: DetailSection = {
+   title: 'Requester',
+   fields: [
+    ...(has('customer') ? [{ label: 'Customer', value: String(row.customer) }] : []),
+    ...(has('customerDetails') ? [{ label: 'Customer Details', value: String(row.customerDetails), span: 'full' as const }] : []),
+   ],
+  };
+  const request: DetailSection = {
+   title: 'Request',
+   fields: [
+    ...(has('productId') ? [{ label: 'Product Id', value: String(row.productId) }] : []),
+    ...(has('reqNos') ? [{ label: 'Req Nos', value: String(row.reqNos) }] : []),
+    ...(has('requestedNumbers') ? [{ label: 'Requested Numbers', value: String(row.requestedNumbers) }] : []),
+    ...(has('comments') ? [{ label: 'Comments', value: String(row.comments), span: 'full' as const }] : []),
+   ],
+  };
+  const statusDates: DetailSection = {
+   title: 'Status & Dates',
+   fields: [
+    ...(has('status') ? [{ label: 'Status', value: String(row.status) }] : []),
+    ...(has('date') ? [{ label: 'Date', value: String(row.date) }] : []),
+   ],
+  };
+  return [requester, request, statusDates];
+ };
 
  useEffect(() => {
   let cancelled = false;
@@ -561,7 +592,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentEntries.map((request) => (
-          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+          <tr
+           key={request.id}
+           onClick={() => setReqDetail({ kind: 'process', label: 'Process Sample Request', row: request as unknown as Record<string, unknown> })}
+           className="border-b border-hairline hover:bg-surface-2 cursor-pointer"
+          >
            <td className="py-3 px-4 text-sm text-ink">{request.id}</td>
            <td className="py-3 px-4 text-sm text-ink">{request.productId}</td>
            <td className="py-3 px-4 text-sm text-ink">{request.reqNos}</td>
@@ -577,7 +612,11 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentEntries.map((request) => (
-        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
+        <div
+         key={request.id}
+         onClick={() => setReqDetail({ kind: 'process', label: 'Process Sample Request', row: request as unknown as Record<string, unknown> })}
+         className="border border-border rounded-lg p-4 bg-surface-2 cursor-pointer"
+        >
          <div className="flex justify-between items-start mb-3">
           <span className="font-semibold text-ink">#{request.id}</span>
          </div>
@@ -893,7 +932,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentQuotationEntries.map((request) => (
-          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+          <tr
+           key={request.id}
+           onClick={() => setReqDetail({ kind: 'quotation', label: 'Quotation Request', row: request as unknown as Record<string, unknown> })}
+           className="border-b border-hairline hover:bg-surface-2 cursor-pointer"
+          >
            <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.requestedNumbers}</td>
@@ -908,7 +951,11 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentQuotationEntries.map((request) => (
-        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
+        <div
+         key={request.id}
+         onClick={() => setReqDetail({ kind: 'quotation', label: 'Quotation Request', row: request as unknown as Record<string, unknown> })}
+         className="border border-border rounded-lg p-4 bg-surface-2 cursor-pointer"
+        >
          <div className="flex justify-between items-start mb-3">
           <span className="font-semibold text-ink">#{request.id}</span>
          </div>
@@ -1035,7 +1082,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentTechnicalEntries.map((request) => (
-          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+          <tr
+           key={request.id}
+           onClick={() => setReqDetail({ kind: 'technical', label: 'Technical Doc Request', row: request as unknown as Record<string, unknown> })}
+           className="border-b border-hairline hover:bg-surface-2 cursor-pointer"
+          >
            <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.comments || '-'}</td>
@@ -1049,7 +1100,11 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentTechnicalEntries.map((request) => (
-        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
+        <div
+         key={request.id}
+         onClick={() => setReqDetail({ kind: 'technical', label: 'Technical Doc Request', row: request as unknown as Record<string, unknown> })}
+         className="border border-border rounded-lg p-4 bg-surface-2 cursor-pointer"
+        >
          <div className="flex justify-between items-start mb-3">
           <span className="font-semibold text-ink">#{request.id}</span>
          </div>
@@ -1175,7 +1230,11 @@ const ProductSamples = () => {
         </thead>
         <tbody>
          {currentOtherEntries.map((request) => (
-          <tr key={request.id} className="border-b border-hairline hover:bg-surface-2">
+          <tr
+           key={request.id}
+           onClick={() => setReqDetail({ kind: 'other', label: 'Other Request', row: request as unknown as Record<string, unknown> })}
+           className="border-b border-hairline hover:bg-surface-2 cursor-pointer"
+          >
            <td className="py-3 px-4 text-sm text-ink-2">{request.id}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.productId}</td>
            <td className="py-3 px-4 text-sm text-ink-2">{request.comments || '-'}</td>
@@ -1189,7 +1248,11 @@ const ProductSamples = () => {
       {/* Mobile Cards */}
       <div className="md:hidden space-y-4">
        {currentOtherEntries.map((request) => (
-        <div key={request.id} className="border border-border rounded-lg p-4 bg-surface-2">
+        <div
+         key={request.id}
+         onClick={() => setReqDetail({ kind: 'other', label: 'Other Request', row: request as unknown as Record<string, unknown> })}
+         className="border border-border rounded-lg p-4 bg-surface-2 cursor-pointer"
+        >
          <div className="flex justify-between items-start mb-3">
           <span className="font-semibold text-ink">#{request.id}</span>
          </div>
@@ -1244,6 +1307,16 @@ const ProductSamples = () => {
      </div>
     )}
    </div>
+
+   {/* Shared row-detail modal (Process / Quotation / Technical / Other) */}
+   <RecordDetailModal
+    open={reqDetail !== null}
+    onClose={() => setReqDetail(null)}
+    eyebrow={reqDetail?.label}
+    title={reqDetail ? String(reqDetail.row.productId ?? '') : ''}
+    subtitle={reqDetail && reqDetail.row.customer ? String(reqDetail.row.customer) : undefined}
+    sections={reqDetail ? buildReqSections(reqDetail.row) : []}
+   />
 
    {/* Details Modal */}
    {showDetailsModal && selectedRequest && (

@@ -46,6 +46,7 @@ import { useMasterApprovalPermission } from '../hooks/useMasterApprovalPermissio
 import { fetchPackMaterialsList, fetchPackMaterialById, createPackMaterial, updatePackMaterial, deletePackMaterial, postPackMaterialsMasterExcel, resetAllPackMaterialsMaster, importPackMaterialFromZohoSku, type PackMaterialRecord, type CreatePackMaterialPayload } from '../services/packMaterials.service';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { TableSkeleton, CardSkeleton } from '../components/ui/Skeleton';
+import RecordDetailModal from '../components/ui/RecordDetailModal';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Package as PackageIcon } from '@phosphor-icons/react';
@@ -2293,6 +2294,7 @@ const BprDashboard: React.FC<{
   const pmFromQuery = searchParams.get('pm') ?? '';
   const [search, setSearch] = useState(pmFromQuery);
   const [linkedSkusModalPm, setLinkedSkusModalPm] = useState<PackMaterialRecord | null>(null);
+  const [detailRec, setDetailRec] = useState<PackMaterialRecord | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<PmListSortColumn | null>('code');
@@ -2815,7 +2817,7 @@ const BprDashboard: React.FC<{
                       const uom = (pm.unit || 'PCS').trim() || 'PCS';
                       const statusLabel = pmApprovalStatusLabel(pm);
                       return (
-                        <tr key={pm.code} className="hover:bg-linear-to-r hover:from-brand-soft hover:to-transparent transition-colors group border-b border-hairline last:border-0">
+                        <tr key={pm.code} onClick={() => setDetailRec(pm)} className="hover:bg-linear-to-r hover:from-brand-soft hover:to-transparent transition-colors group border-b border-hairline last:border-0 cursor-pointer">
                           <td className="px-4 py-3.5 text-[11px] text-ink-3 whitespace-nowrap">{startIndex + idx + 1}</td>
                           <td className="px-4 py-3.5 font-mono text-[11px] font-bold text-brand whitespace-nowrap group-hover:text-brand">{pm.code}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
@@ -2989,6 +2991,62 @@ const BprDashboard: React.FC<{
                 </div>
               </div>
             )}
+
+            <RecordDetailModal
+              open={!!detailRec}
+              onClose={() => setDetailRec(null)}
+              eyebrow="Pack Material"
+              title={detailRec?.description}
+              subtitle={detailRec?.code}
+              status={detailRec?.status}
+              size="lg"
+              sections={detailRec ? [
+                {
+                  title: 'Identity',
+                  fields: [
+                    { label: 'Code', value: detailRec.code, mono: true },
+                    { label: 'Description', value: detailRec.description },
+                    { label: 'Level', value: detailRec.level },
+                    { label: 'Group', value: detailRec.group },
+                    { label: 'Material', value: detailRec.material },
+                    { label: 'Status', value: detailRec.status },
+                  ],
+                },
+                {
+                  title: 'Spec',
+                  fields: [
+                    { label: 'Size Spec', value: detailRec.sizeSpec, span: 'full' },
+                  ],
+                },
+                {
+                  title: 'Units & Tax',
+                  fields: [
+                    { label: 'Unit', value: detailRec.unit },
+                    { label: 'HSN Code', value: detailRec.hsnCode },
+                    { label: 'Tax Preference', value: detailRec.taxPref },
+                  ],
+                },
+                {
+                  title: 'Sourcing',
+                  fields: [
+                    { label: 'Price / Pc', value: detailRec.pricePerPc },
+                    { label: 'MOQ', value: detailRec.moq },
+                    { label: 'Lead Time (days)', value: detailRec.leadTimeDays },
+                    { label: 'Print Status', value: detailRec.printStatus },
+                  ],
+                },
+                {
+                  title: 'Linked Products',
+                  content: detailRec.products.length > 0 ? (
+                    <ul className="flex flex-wrap gap-1.5">
+                      {detailRec.products.map((p, i) => (
+                        <li key={i} className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-[11px] text-ink-2">{p}</li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-sm text-ink-4">—</p>,
+                },
+              ] : []}
+            />
 
           </>
         )}
