@@ -401,6 +401,18 @@ export async function fetchSalesOrdersDashboard(params: SODashboardParams = {}):
   return { total: data.total ?? 0, page: data.page ?? 1, pageSize: data.pageSize ?? 100, rows: Array.isArray(data.rows) ? data.rows : [] };
 }
 
+/**
+ * Resolve a fulfillment order id from its SO number without loading the whole order book.
+ * Used for `?so=` deep links, where the target SO may not be on the currently loaded page.
+ */
+export async function resolveSoIdByNo(soNo: string): Promise<number | null> {
+  const trimmed = soNo.trim();
+  if (!trimmed) return null;
+  const res = await fetchSalesOrdersDashboard({ search: trimmed, page_size: 25 });
+  const exact = res.rows.find((r) => r.soNo.toLowerCase() === trimmed.toLowerCase());
+  return exact?.id ?? null;
+}
+
 export interface BatchDashboardParams {
   stage?: string[];
   due_before?: string;

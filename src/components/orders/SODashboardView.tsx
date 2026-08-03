@@ -10,6 +10,7 @@ import type {
 } from '../../types/orderFulfillment';
 import {
   fetchSalesOrdersDashboard,
+  resolveSoIdByNo,
   cancelFulfillmentOrder,
   manualFulfillFulfillmentOrder,
 } from '../../services/fulfillment.service';
@@ -47,6 +48,14 @@ const ORDER_STATUS_FROM_COMMERCIAL: Record<CommercialStatus, SalesOrderStatus> =
   approved: 'Approved', partial_closed: 'Approved', closed: 'Closed', on_hold: 'Confirmed', cancelled: 'Cancelled',
 };
 function resolveOrderStatus(row: SODashboardRow): SalesOrderStatus {
+  // Cancellation is terminal on the fulfillment side (so_status/commercial_status = 'cancelled',
+  // frozen by manual_status_override). It ALWAYS wins over sales_orders.status — otherwise a row
+  // whose authoritative status wasn't synced on cancel (legacy rows) would render "Approved" while
+  // the backend treats it as cancelled. That divergence is exactly what must never reach the batch
+  // flow, so we short-circuit it here regardless of orderStatus.
+  if (row.commercialStatus === 'cancelled' || String(row.soStatus).trim().toLowerCase() === 'cancelled') {
+    return 'Cancelled';
+  }
   const raw = String(row.orderStatus ?? '').trim().toLowerCase();
   const known = (Object.keys(SALES_ORDER_STATUS_CONFIG) as SalesOrderStatus[]).find((k) => k.toLowerCase() === raw);
   return known ?? ORDER_STATUS_FROM_COMMERCIAL[row.commercialStatus] ?? 'Draft';
@@ -301,22 +310,23 @@ function ConfirmDialog({
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 export interface SODashboardViewProps {
-  saleOrders: SaleOrder[];
   onAddSO: (data: AddSOData) => void;
-  onUpdateSO: (soNo: string, data: SoUpdatePayload) => Promise<void> | void;
-  onPickConfirm: (soNo: string, data: PickData) => void | Promise<SaleOrder | void>;
-  onGenerateInvoice: (soNo: string, data: InvoiceData) => void | Promise<void>;
-  onDispatch: (soNo: string, data: ShipData) => void;
-  onConfirmDelivery: (soNo: string, data: DeliveryData) => void;
+  onUpdateSO: (soId: number, data: SoUpdatePayload) => Promise<void> | void;
+  onPickConfirm: (soId: number, data: PickData) => void | Promise<SaleOrder | void>;
+  onGenerateInvoice: (soId: number, data: InvoiceData) => void | Promise<void>;
+  onDispatch: (soId: number, data: ShipData) => void;
+  onConfirmDelivery: (soId: number, data: DeliveryData) => void;
   initialOpenSoNo?: string | null;
   onDeepLinkSoConsumed?: () => void;
+  /** Reports the server-side total row count so the host can badge it without loading rows. */
+  onTotalChange?: (total: number) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const SODashboardView: React.FC<SODashboardViewProps> = ({
-  saleOrders, onAddSO, onUpdateSO, onPickConfirm, onGenerateInvoice, onDispatch, onConfirmDelivery,
-  initialOpenSoNo = null, onDeepLinkSoConsumed,
+  onAddSO, onUpdateSO, onPickConfirm, onGenerateInvoice, onDispatch, onConfirmDelivery,
+  initialOpenSoNo = null, onDeepLinkSoConsumed, onTotalChange,
 }) => {
   const [rows, setRows] = useState<SODashboardRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -362,13 +372,14 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       const res = await fetchSalesOrdersDashboard(params as any);
       setRows(res.rows);
       setTotal(res.total);
+      onTotalChange?.(res.total);
     } catch (e) {
       setError('Failed to load SO dashboard');
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, flaggedOnly, dateFrom, dateTo, page, pageSize]);
+  }, [search, statusFilter, flaggedOnly, dateFrom, dateTo, page, pageSize, onTotalChange]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 400 : 0);
@@ -388,11 +399,18 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
   useEffect(() => {
     if (!initialOpenSoNo) return;
-    const exists = saleOrders.some((o) => o.soNo === initialOpenSoNo);
-    if (!exists) return;
-    actionsRef.current?.openDetail(initialOpenSoNo);
-    onDeepLinkSoConsumed?.();
-  }, [initialOpenSoNo, saleOrders, onDeepLinkSoConsumed]);
+    let cancelled = false;
+    // The deep-linked SO may not be on the current page, so resolve its id server-side
+    // rather than searching a client-side copy of every order.
+    (async () => {
+      const onPage = rows.find((r) => r.soNo === initialOpenSoNo);
+      const soId = onPage?.id ?? (await resolveSoIdByNo(initialOpenSoNo));
+      if (cancelled || !soId) return;
+      actionsRef.current?.openDetail(soId);
+      onDeepLinkSoConsumed?.();
+    })();
+    return () => { cancelled = true; };
+  }, [initialOpenSoNo, rows, onDeepLinkSoConsumed]);
 
   // Group rows by client name
   type ClientGroup = { clientKey: string; clientName: string; clientCode: string | null; rows: SODashboardRow[]; totalValue: number };
@@ -418,17 +436,17 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     });
   };
 
-  const runAction = (soNo: string, action: 'detail' | 'edit' | 'pick' | 'invoice' | 'ship' | 'track') => {
+  const runAction = (soId: number, action: 'detail' | 'edit' | 'pick' | 'invoice' | 'ship' | 'track') => {
     setMenuOpenId(null);
     const r = actionsRef.current;
     if (!r) return;
     switch (action) {
-      case 'detail':  r.openDetail(soNo); break;
-      case 'edit':    r.openEdit(soNo); break;
-      case 'pick':    r.openPick(soNo); break;
-      case 'invoice': r.openInvoice(soNo); break;
-      case 'ship':    r.openShip(soNo); break;
-      case 'track':   r.openTrack(soNo); break;
+      case 'detail':  r.openDetail(soId); break;
+      case 'edit':    r.openEdit(soId); break;
+      case 'pick':    r.openPick(soId); break;
+      case 'invoice': r.openInvoice(soId); break;
+      case 'ship':    r.openShip(soId); break;
+      case 'track':   r.openTrack(soId); break;
     }
   };
 
@@ -595,11 +613,11 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                     </tr>
                     {/* SO rows */}
                     {!collapsed && group.rows.map((row) => (
-                      <tr key={row.id} onClick={() => runAction(row.soNo, 'detail')} className="hover:bg-brand-soft/30 transition-colors align-top cursor-pointer">
+                      <tr key={row.id} onClick={() => runAction(row.id, 'detail')} className="hover:bg-brand-soft/30 transition-colors align-top cursor-pointer">
                         <td className="px-3 py-2" />
                         <td className="px-3 py-2 whitespace-nowrap">
                           <button
-                            onClick={(e) => { e.stopPropagation(); runAction(row.soNo, 'detail'); }}
+                            onClick={(e) => { e.stopPropagation(); runAction(row.id, 'detail'); }}
                             className="text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted"
                             title="Open SO detail"
                           >
@@ -667,7 +685,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                                 if (action === 'cancel' || action === 'manual_fulfill') {
                                   setConfirmState({ id: row.id, soNo: row.soNo, type: action });
                                 } else {
-                                  runAction(row.soNo, action);
+                                  runAction(row.id, action);
                                 }
                               }}
                             />
@@ -700,7 +718,6 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       {/* Operational modals */}
       <SoActionModals
         ref={actionsRef}
-        saleOrders={saleOrders}
         onAddSO={onAddSO}
         onUpdateSO={onUpdateSO}
         onPickConfirm={onPickConfirm}

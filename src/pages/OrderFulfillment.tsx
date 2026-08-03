@@ -3,7 +3,7 @@
  * Main container for order fulfillment management
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ShoppingCart, Package, LayoutDashboard, ArrowDownToLine } from 'lucide-react';
 import { SODashboardView } from '../components/orders/SODashboardView';
@@ -13,7 +13,7 @@ import type { SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryDat
 import { normalizePackSize } from '../utils/orderFulfillmentUtils';
 import { recalculateSOStatus } from '../utils/orderFulfillmentUtils';
 import {
-  fetchFulfillmentOrders,
+  fetchFulfillmentOrderById,
   createFulfillmentOrder,
   updateFulfillmentOrder,
   pickFulfillmentSplits,
@@ -25,29 +25,18 @@ import { createRworkBatch, fetchBatches } from '../services/production.service';
 import { Modal } from '../components/orders/Modal';
 import { useToast } from '../context/ToastContext';
 import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
-import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
 import { queryClient } from '../lib/queryClient';
-import { TableSkeleton } from '../components/ui/Skeleton';
-import { ErrorState } from '../components/ui/ErrorState';
 
 type ViewMode = 'so-dashboard' | 'products-batches';
-type SortKey = 'dueDate' | 'orderDate' | 'customer' | 'soNo' | 'soValue';
-type SortOrder = 'asc' | 'desc';
 
 export const OrderFulfillment: React.FC = () => {
   const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('so-dashboard');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | SaleOrder['soStatus']>('all');
-  const [priorityFilter, setPriorityFilter] = useState<'all' | 'normal' | 'high'>('all');
-  const [cityFilter, setCityFilter] = useState<string>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('dueDate');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
-  const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
-  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Search / status / priority / city / sort / date filters used to live here, feeding a client-side
+  // filter over the full order book. SODashboardView now filters and paginates server-side.
+  // Total SO count for the sidebar badge, reported by the dashboard's paginated fetch.
+  const [soTotal, setSoTotal] = useState(0);
   const [selectedYield, setSelectedYield] = useState<{
     bmrNo: string;
     bprNo: string;
@@ -102,21 +91,10 @@ export const OrderFulfillment: React.FC = () => {
     }, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const loadOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const orders = await fetchFulfillmentOrders();
-      setSaleOrders(orders);
-    } catch (err) {
-      console.error('Failed to load fulfillment orders:', err);
-      setError('Failed to load fulfillment orders');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadOrders(); }, [loadOrders]);
+  // SODashboardView owns the SO table: it fetches its own slim, server-paginated rows.
+  // Bumping this key remounts it so it refetches after a mutation made here.
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+  const refreshDashboard = useCallback(() => setDashboardRefreshKey((k) => k + 1), []);
 
   const handleAddSO = async (data: AddSOData) => {
     try {
@@ -151,7 +129,7 @@ export const OrderFulfillment: React.FC = () => {
       };
 
       await createFulfillmentOrder(payload);
-      await loadOrders();
+      refreshDashboard();
     } catch (err) {
       console.error('Failed to create sale order:', err);
     }
@@ -184,7 +162,7 @@ export const OrderFulfillment: React.FC = () => {
           .join('; ');
         if (sampleErrors) addToast('warning', `Import issues: ${sampleErrors}`);
       }
-      await loadOrders();
+      refreshDashboard();
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'Sales order import failed');
     } finally {
@@ -223,7 +201,7 @@ export const OrderFulfillment: React.FC = () => {
         );
       }
       setZohoSoNo('');
-      await loadOrders();
+      refreshDashboard();
       // The import also writes planning_extracted rows.
       void queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
     } catch (err) {
@@ -239,19 +217,13 @@ export const OrderFulfillment: React.FC = () => {
     }
   };
 
-  const findOrderId = (soNo: string): number | null => {
-    const order = saleOrders.find(so => so.soNo === soNo);
-    return (order as any)?.id ?? null;
-  };
-
-  const handlePickConfirm = async (soNo: string, data: PickData): Promise<SaleOrder | void> => {
-    const id = findOrderId(soNo);
+  const handlePickConfirm = async (id: number, data: PickData): Promise<SaleOrder | void> => {
     if (!id) return;
     try {
       await pickFulfillmentSplits(id, data);
-      const orders = await fetchFulfillmentOrders();
-      setSaleOrders(orders);
-      return orders.find((o) => o.soNo === soNo) ?? undefined;
+      refreshDashboard();
+      // Re-read just this order so the chained Invoice modal opens with fresh splits.
+      return (await fetchFulfillmentOrderById(id)) ?? undefined;
     } catch (err) {
       console.error('Failed to pick:', err);
       throw err;
@@ -259,7 +231,7 @@ export const OrderFulfillment: React.FC = () => {
   };
 
   const handleUpdateSO = async (
-    soNo: string,
+    id: number,
     data: {
       customer: string;
       customerCity: string;
@@ -273,10 +245,9 @@ export const OrderFulfillment: React.FC = () => {
       items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
     }
   ): Promise<void> => {
-    const id = findOrderId(soNo);
     if (!id) return;
     const result = await updateFulfillmentOrder(id, data);
-    await loadOrders();
+    refreshDashboard();
     // An SO-status change (Draft↔Approved…) flips its visibility in Planning → PIS Extracted.
     // Invalidate the Planning list so it refetches fresh instead of showing a stale cached copy.
     if (data.salesOrderStatus) {
@@ -288,16 +259,15 @@ export const OrderFulfillment: React.FC = () => {
     }
   };
 
-  const handleGenerateInvoice = async (_soNo: string, _data: InvoiceData) => {
+  const handleGenerateInvoice = async (_soId: number, _data: InvoiceData) => {
     try {
-      await loadOrders();
+      refreshDashboard();
     } catch (err) {
       console.error('Failed to invoice:', err);
     }
   };
 
-  const handleDispatch = async (soNo: string, data: ShipData) => {
-    const id = findOrderId(soNo);
+  const handleDispatch = async (id: number, data: ShipData) => {
     if (!id) return;
     try {
       await shipFulfillmentSplits(id, {
@@ -307,14 +277,13 @@ export const OrderFulfillment: React.FC = () => {
         eta: data.eta,
         ...(data.bprNos?.length ? { bprNos: data.bprNos } : {}),
       });
-      await loadOrders();
+      refreshDashboard();
     } catch (err) {
       console.error('Failed to ship:', err);
     }
   };
 
-  const handleConfirmDelivery = async (soNo: string, data: DeliveryData) => {
-    const id = findOrderId(soNo);
+  const handleConfirmDelivery = async (id: number, data: DeliveryData) => {
     if (!id) return;
     try {
       await deliverFulfillmentSplits(id, {
@@ -323,7 +292,7 @@ export const OrderFulfillment: React.FC = () => {
         remarks: data.remarks,
         ...(data.bprNos && data.bprNos.length > 0 ? { bprNos: data.bprNos } : {}),
       });
-      await loadOrders();
+      refreshDashboard();
     } catch (err) {
       console.error('Failed to confirm delivery:', err);
     }
@@ -394,7 +363,7 @@ export const OrderFulfillment: React.FC = () => {
         ...(suggestedBatchSizeKg != null ? { targetBatchSizeKg: suggestedBatchSizeKg } : {}),
       });
       addToast('success', `Rework batch created for ${selectedYield.soNo}.`);
-      await loadOrders();
+      refreshDashboard();
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: string }).message) : 'Failed to create rework batch';
       addToast('error', msg);
@@ -403,88 +372,9 @@ export const OrderFulfillment: React.FC = () => {
     }
   };
 
-  const cityOptions = useMemo(() => {
-    const unique = new Set<string>();
-    for (const so of saleOrders) {
-      const city = String(so.customerCity || '').trim();
-      if (city) unique.add(city);
-    }
-    return ['all', ...Array.from(unique).sort((a, b) => a.localeCompare(b))];
-  }, [saleOrders]);
-
-  const statusOptions = useMemo(() => {
-    const unique = new Set<SaleOrder['soStatus']>();
-    for (const so of saleOrders) unique.add(so.soStatus);
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [saleOrders]);
-
-  const filteredSaleOrders = useMemo(() => {
-    const normalizeForSearch = (value: unknown): string =>
-      String(value || '')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-    const q = normalizeForSearch(searchTerm);
-    const filtered = saleOrders.filter((so) => {
-      if (!matchesDateRangeFilter(so.orderDate, dateFilter.from, dateFilter.to)) return false;
-      if (statusFilter !== 'all' && so.soStatus !== statusFilter) return false;
-      if (priorityFilter !== 'all' && so.priority !== priorityFilter) return false;
-      if (cityFilter !== 'all' && String(so.customerCity || '').trim() !== cityFilter) return false;
-      if (!q) return true;
-      const clientSearchText = [
-        so.customer,
-        (so as SaleOrder & { clientName?: string; customerName?: string }).clientName,
-        (so as SaleOrder & { clientName?: string; customerName?: string }).customerName,
-        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client,
-        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).client_name,
-        (so as SaleOrder & { client?: string; client_name?: string; customer_name?: string }).customer_name,
-      ]
-        .map((v) => normalizeForSearch(v))
-        .join(' ');
-      return (
-        normalizeForSearch(so.soNo).includes(q) ||
-        clientSearchText.includes(q) ||
-        normalizeForSearch(so.customerCity).includes(q) ||
-        so.items.some(
-          (item) =>
-            normalizeForSearch(item.productName).includes(q) || normalizeForSearch(item.sku).includes(q)
-        )
-      );
-    });
-
-    const sortValue = (so: SaleOrder): string | number => {
-      switch (sortKey) {
-        case 'orderDate':
-          return new Date(so.orderDate).getTime() || 0;
-        case 'dueDate':
-          return new Date(so.dueDate).getTime() || 0;
-        case 'customer':
-          return so.customer.toLowerCase();
-        case 'soNo':
-          return so.soNo.toLowerCase();
-        case 'soValue':
-          return Number(so.soValue) || 0;
-        default:
-          return 0;
-      }
-    };
-
-    filtered.sort((a, b) => {
-      const av = sortValue(a);
-      const bv = sortValue(b);
-      if (typeof av === 'string' && typeof bv === 'string') {
-        return sortOrder === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      const an = Number(av) || 0;
-      const bn = Number(bv) || 0;
-      return sortOrder === 'asc' ? an - bn : bn - an;
-    });
-    return filtered;
-  }, [saleOrders, searchTerm, statusFilter, priorityFilter, cityFilter, sortKey, sortOrder, dateFilter]);
-
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
-      <FulfillmentSidebar activeView={viewMode} onNavigate={setViewMode} counts={{ 'so-dashboard': saleOrders.length }} />
+      <FulfillmentSidebar activeView={viewMode} onNavigate={setViewMode} counts={{ 'so-dashboard': soTotal }} />
       <div className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
         <div className="sticky top-0 z-20 bg-surface border-b border-hairline px-4 sm:px-6 py-3 shrink-0">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -565,13 +455,11 @@ export const OrderFulfillment: React.FC = () => {
           <div className="bg-surface rounded-[var(--r-lg)] border border-hairline p-4 sm:p-5 shadow-[var(--e1)]">
           {viewMode === 'products-batches' ? (
             <BatchesDashboardView />
-          ) : loading ? (
-            <TableSkeleton rows={8} cols={6} />
-          ) : error ? (
-            <ErrorState message={error} onRetry={loadOrders} />
           ) : (
+            /* SODashboardView owns its own loading/error/empty states for the paginated row fetch. */
             <SODashboardView
-              saleOrders={saleOrders}
+              key={dashboardRefreshKey}
+              onTotalChange={setSoTotal}
               onAddSO={handleAddSO}
               onUpdateSO={handleUpdateSO}
               onPickConfirm={handlePickConfirm}
