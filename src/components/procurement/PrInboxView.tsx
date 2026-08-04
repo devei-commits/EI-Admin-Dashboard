@@ -6,7 +6,7 @@
  * (requested date + avg-actual-lead already resolved server-side).
  */
 import React, { useMemo, useState } from 'react';
-import { Pencil, MessageSquare, PackageSearch, Truck, Plus, Download } from 'lucide-react';
+import { Pencil, MessageSquare, PackageSearch, Truck, Plus, Download, Trash2 } from 'lucide-react';
 import { ClipboardText, Flag } from '@phosphor-icons/react';
 import type { ProcurementRequest, ItemDetail } from '../../types/procurement.types';
 import {
@@ -124,18 +124,20 @@ function SourcePill({ source }: { source: PrSource }) {
 }
 
 function ActionBtn({ icon: Icon, label, onClick, tone = 'default' }: {
-  icon: typeof Pencil; label: string; onClick: () => void; tone?: 'default' | 'primary';
+  icon: typeof Pencil; label: string; onClick: () => void; tone?: 'default' | 'primary' | 'danger';
 }) {
+  const toneClass =
+    tone === 'primary'
+      ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2'
+      : tone === 'danger'
+        ? 'border-[color:var(--st-red-fg)]/30 text-err bg-surface hover:bg-err-soft'
+        : 'border-border text-ink-3 bg-surface-3 hover:bg-surface-2';
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={label}
-      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold transition-colors ${
-        tone === 'primary'
-          ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2'
-          : 'border-border text-ink-3 bg-surface-3 hover:bg-surface-2'
-      }`}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold transition-colors ${toneClass}`}
     >
       <Icon size={12} />{label}
     </button>
@@ -149,6 +151,7 @@ export interface PrInboxViewProps {
   onRequestQuote: (req: ProcurementRequest) => void;
   onStockAudit: (req: ProcurementRequest) => void;
   onDraftPO: (req: ProcurementRequest) => void;
+  onDelete?: (req: ProcurementRequest) => void;
   onNewPr?: () => void;
   onExport?: () => void;
 }
@@ -165,7 +168,7 @@ function prIsActive(status: string | null | undefined): boolean {
 }
 
 export const PrInboxView: React.FC<PrInboxViewProps> = ({
-  requests, onEdit, onRequestQuote, onStockAudit, onDraftPO, onNewPr, onExport,
+  requests, onEdit, onRequestQuote, onStockAudit, onDraftPO, onDelete, onNewPr, onExport,
 }) => {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<PrTab>('active');
@@ -374,6 +377,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                         <ActionBtn icon={MessageSquare} label="Quote" onClick={() => onRequestQuote(r.req)} />
                         <ActionBtn icon={PackageSearch} label="Audit" onClick={() => onStockAudit(r.req)} />
                         <ActionBtn icon={Truck} label="Draft PO" tone="primary" onClick={() => onDraftPO(r.req)} />
+                        {onDelete && <ActionBtn icon={Trash2} label="Delete" tone="danger" onClick={() => onDelete(r.req)} />}
                       </div>
                     </td>
                   </tr>

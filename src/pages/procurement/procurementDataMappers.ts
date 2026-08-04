@@ -281,6 +281,45 @@ function normItemKeyForLead(s: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/** Key used for `form_data.connectingDateByItem` — must match the ETA util's per-line lookup. */
+export function normConnectingDateKey(itemCode: string): string {
+  return normItemKeyForLead(itemCode);
+}
+
+/** Local (not UTC) YYYY-MM-DD — safe for <input type="date"> values without TZ drift. */
+function toIsoDateOnly(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** One line's connecting-date breakdown for the issued-PO detail editor. */
+export interface IssuedPoLineConnectingDate {
+  itemCode: string;
+  item: string;
+  /** Lead-time-derived date (null when no lead is known). */
+  autoIso: string | null;
+  /** Manual override date, if the user set one. */
+  overrideIso: string | null;
+  /** override ?? auto — what the PO ETA actually uses for this line. */
+  effectiveIso: string | null;
+}
+
+/** Pull the manual per-item connecting-date override map out of a PO's form_data (null-safe). */
+export function connectingOverridesFromFormData(
+  formData: unknown,
+): Record<string, string> | undefined {
+  if (!formData || typeof formData !== 'object') return undefined;
+  const raw = (formData as { connectingDateByItem?: unknown }).connectingDateByItem;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string' && v.trim()) out[normItemKeyForLead(k)] = v.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /**
  * Issued PO ETA: PO release date + max(per-line lead days from raw PO lines, draft, quote, PR item details).
  * When no lead exists anywhere, falls back to PR due date / PO expected shipment date.
@@ -293,8 +332,18 @@ export function computeIssuedPoEtaFromLeadTimes(opts: {
   linkedPO?: PurchaseOrder;
   draftOverlay?: DraftPO;
   lineItems: { item: string; itemCode: string }[];
-}): { etaDays: number; etaDateDisplay: string; maxLeadDays: number } {
+  /** Manual per-item connecting-date overrides (keyed by item code, YYYY-MM-DD). When set for
+   *  a line, that date wins over the lead-time-derived date. PO ETA = latest effective line date. */
+  overrideDatesByCode?: Record<string, string>;
+}): {
+  etaDays: number;
+  etaDateDisplay: string;
+  maxLeadDays: number;
+  /** Per-line connecting dates (same order as `lineItems`) for the issued-PO detail editor. */
+  lineDates: IssuedPoLineConnectingDate[];
+} {
   const { today, poReleaseDateStr, request, linkedQuote, linkedPO, draftOverlay, lineItems } = opts;
+  const overrideByCode = opts.overrideDatesByCode ?? {};
 
   const rawArr = Array.isArray(linkedPO?.rawItems) ? (linkedPO!.rawItems as Record<string, unknown>[]) : [];
   const details = request.itemDetails ?? [];
@@ -337,27 +386,47 @@ export function computeIssuedPoEtaFromLeadTimes(opts: {
     return normalizeLeadTimeDays(det?.leadTimeDays);
   };
 
-  let maxLead = 0;
-  let anyLead = false;
-  for (let i = 0; i < lineItems.length; i++) {
-    const ld = leadForLineIndex(i);
-    if (ld !== undefined) {
-      anyLead = true;
-      if (ld > maxLead) maxLead = ld;
-    }
-  }
-
   const anchor =
     parseDateStringToLocalDate(poReleaseDateStr) ??
     parseDateStringToLocalDate(request.createdDate) ??
     parseDateStringToLocalDate(linkedPO?.date) ??
     today;
 
+  // Per-line effective connecting date = manual override (if set) else anchor + lead time.
+  // PO ETA = the LATEST effective line date (the PO isn't fully connected until all items are).
+  let maxLead = 0;
   let etaDate: Date | null = null;
-  if (anyLead && lineItems.length > 0) {
-    etaDate = new Date(anchor.getTime());
-    etaDate.setDate(etaDate.getDate() + maxLead);
-  } else {
+  let anyLine = false;
+  const lineDates: IssuedPoLineConnectingDate[] = [];
+  for (let i = 0; i < lineItems.length; i++) {
+    const line = lineItems[i];
+    const ovStr = line ? overrideByCode[normItemKeyForLead(line.itemCode)] : undefined;
+    const overrideDate = ovStr ? parseDateStringToLocalDate(ovStr) : null;
+
+    // Auto (lead-time-derived) date — computed regardless of override so the editor can show it.
+    let autoDate: Date | null = null;
+    const ld = leadForLineIndex(i);
+    if (ld !== undefined) {
+      if (ld > maxLead) maxLead = ld;
+      autoDate = new Date(anchor.getTime());
+      autoDate.setDate(autoDate.getDate() + ld);
+    }
+
+    const lineDate = overrideDate ?? autoDate;
+    lineDates.push({
+      itemCode: String(line?.itemCode ?? ''),
+      item: String(line?.item ?? ''),
+      autoIso: autoDate ? toIsoDateOnly(autoDate) : null,
+      overrideIso: overrideDate ? toIsoDateOnly(overrideDate) : null,
+      effectiveIso: lineDate ? toIsoDateOnly(lineDate) : null,
+    });
+
+    if (lineDate) {
+      anyLine = true;
+      if (!etaDate || lineDate.getTime() > etaDate.getTime()) etaDate = lineDate;
+    }
+  }
+  if (!anyLine || lineItems.length === 0) {
     etaDate =
       parseDateStringToLocalDate(request.dueDate) ??
       parseDateStringToLocalDate(linkedPO?.expectedShipmentDate) ??
@@ -365,7 +434,7 @@ export function computeIssuedPoEtaFromLeadTimes(opts: {
   }
 
   if (!etaDate) {
-    return { etaDays: 0, etaDateDisplay: '—', maxLeadDays: maxLead };
+    return { etaDays: 0, etaDateDisplay: '—', maxLeadDays: maxLead, lineDates };
   }
 
   const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
@@ -376,6 +445,7 @@ export function computeIssuedPoEtaFromLeadTimes(opts: {
     etaDays,
     etaDateDisplay: formatDateEnInSafe(etaDate),
     maxLeadDays: maxLead,
+    lineDates,
   };
 }
 

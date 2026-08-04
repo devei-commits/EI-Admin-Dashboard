@@ -114,6 +114,8 @@ import {
   resolveDraftLineLeadTimeDays,
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
+  connectingOverridesFromFormData,
+  normConnectingDateKey,
   computeRequestDaysUntilDue,
   sortVendorQuotesLatestFirst,
   sortProcurementRequestsLatestFirst,
@@ -128,7 +130,7 @@ import {
   requestHasOtherDraftPurchaseOrder,
 } from './procurementDataMappers';
 import { applyDraftPoLinePrices, applyEditRequestSideEffects } from './syncEditRequestSideEffects';
-import type { ReleaseLineEditRow } from './procurementDataMappers';
+import type { ReleaseLineEditRow, IssuedPoLineConnectingDate } from './procurementDataMappers';
 import { formatMoqDisplay, moqValuesEqual, parseMoqInput } from '../../utils/moqQuantity';
 import { formatQtyWithPrimaryUnit, normRmPrimaryUom } from '../../lib/rmUnitConversion';
 import type {
@@ -666,7 +668,21 @@ function buildIssuedPoTimelineSteps(
   poDateFallback: string,
 ): POTimelineStep[] {
   const has = (v: unknown) => v != null && String(v).trim() !== '';
-  const completedIdx = issuedPoCardTimelineCompletedIndex(recordStatus, tracking, ov, grnCompleteForPo);
+  // C9: a step is "done" only when its OWN evidence exists — never back-filled off a later
+  // step's timestamp. Prevents the card asserting progress (advance paid / vendor confirmed)
+  // the DB has no record of when a later step (e.g. delivered) is stamped out of order.
+  const stepDone = (i: number): boolean => {
+    switch (i) {
+      case 0: return has(tracking?.poReleasedAt) || has(poDateFallback); // issued PO ⇒ released
+      case 1: return has(tracking?.advancePaidAt);
+      case 2: return has(tracking?.vendorConfirmedAt);
+      case 3: return has(tracking?.shippedAt) || Boolean(ov?.shipped);
+      case 4: return has(tracking?.deliveredAt) || Boolean(ov?.delivered);
+      case 5: return has(tracking?.underGrnAt) || Boolean(ov?.underGrn);
+      case 6: return has(tracking?.grnCompleteAt) || Boolean(grnCompleteForPo);
+      default: return false;
+    }
+  };
   const meta: { label: string; at: keyof PoTrackingRecord; note: keyof PoTrackingRecord }[] = [
     { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
     { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },
@@ -677,7 +693,7 @@ function buildIssuedPoTimelineSteps(
     { label: 'GRN Complete', at: 'grnCompleteAt', note: 'grnCompleteNote' },
   ];
   return meta.map((m, index) => {
-    const done = index <= completedIdx;
+    const done = stepDone(index);
     let timestamp: string | null = null;
     if (tracking) {
       const raw = tracking[m.at];
@@ -979,6 +995,9 @@ const Procurement: React.FC = () => {
   const [approvingGapLineKey, setApprovingGapLineKey] = useState<string | null>(null);
   const [releasingWeekVendorBucketKey, setReleasingWeekVendorBucketKey] = useState<string | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  // Issued-PO detail: editable per-item connecting dates (norm itemCode -> YYYY-MM-DD, '' = cleared to auto).
+  const [connectingDateDraft, setConnectingDateDraft] = useState<Record<string, string>>({});
+  const [connectingDateSaving, setConnectingDateSaving] = useState(false);
   // Guards the released-PO detail modal's mutation buttons against double-submit while in flight.
   const [poActionBusy, setPoActionBusy] = useState<string | null>(null);
   const runPoAction = async (name: string, fn: () => void | Promise<unknown>) => {
@@ -1073,6 +1092,14 @@ const Procurement: React.FC = () => {
   useEffect(() => {
     setPoLock({ onHold: false, cancelled: false });
   }, [selectedDraftPO?.backendPoId, selectedPO?.backendPoId]);
+  // Seed the connecting-date editor from the open PO's saved overrides (keyed by norm itemCode).
+  useEffect(() => {
+    const lines = (selectedPO as { lineConnectingDates?: IssuedPoLineConnectingDate[] } | null)?.lineConnectingDates;
+    if (!lines) { setConnectingDateDraft({}); return; }
+    const seed: Record<string, string> = {};
+    for (const l of lines) seed[normConnectingDateKey(l.itemCode)] = l.overrideIso ?? '';
+    setConnectingDateDraft(seed);
+  }, [selectedPO?.backendPoId, selectedPO?.poNumber]);
   const poLocked = poLock.onHold || poLock.cancelled;
   const [editingQuoteLine, setEditingQuoteLine] = useState<{
     quoteId: string;
@@ -3511,6 +3538,7 @@ const Procurement: React.FC = () => {
               linkedPO,
               draftOverlay,
               lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+              overrideDatesByCode: connectingOverridesFromFormData(linkedPO.formData),
             });
             const etaDays = etaPayload.etaDays;
             const etaDateDisplay = etaPayload.etaDateDisplay;
@@ -3661,6 +3689,7 @@ const Procurement: React.FC = () => {
         linkedQuote: undefined,
         linkedPO: po,
         lineItems: lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+        overrideDatesByCode: connectingOverridesFromFormData(po.formData),
       });
 
       const hasTs2 = (v: string | null | undefined) => v != null && String(v).trim() !== '';
@@ -3862,6 +3891,16 @@ const Procurement: React.FC = () => {
     const ov = backendPoId ? unlinkedPoTimelineOverrides[String(backendPoId)] : undefined;
     const tracking = backendPoId ? releasedPoTrackingByBackendId?.[String(backendPoId)] : undefined;
     const grnDone = grnCompletePoNormSet.has(normPoNumberKeyForTimeline(record.poNumber));
+    // Per-line connecting dates (auto lead-time date + any manual override) for the modal editor.
+    const connectingLineDates = computeIssuedPoEtaFromLeadTimes({
+      today: new Date(),
+      poReleaseDateStr: backendPo?.date ?? record.createdDate,
+      request: record.request,
+      linkedQuote: undefined,
+      linkedPO: backendPo,
+      lineItems: record.lineItems.map((l) => ({ item: l.item, itemCode: String(l.itemCode ?? '') })),
+      overrideDatesByCode: connectingOverridesFromFormData(backendPo?.formData),
+    }).lineDates;
     setSelectedPO({
       id: record.poNumber,
       vendorId: record.vendor,
@@ -3884,6 +3923,9 @@ const Procurement: React.FC = () => {
       requestId: record.request.id,
       contactPerson: 'Procurement Desk',
       backendPoId: backendPoId ?? undefined,
+      // Carry form_data through so the detail modal can read + PATCH manual per-item connecting dates.
+      formData: backendPo?.formData,
+      lineConnectingDates: connectingLineDates,
       timeline: buildIssuedPoTimelineSteps(
         record.status,
         tracking as PoTrackingRecord | undefined,
@@ -6156,6 +6198,7 @@ const Procurement: React.FC = () => {
                 <PrInboxView
                   requests={procurementRequestsList}
                   onEdit={(req) => setPrEditReq(req)}
+                  onDelete={(req) => openDeleteRequestConfirm(req)}
                   onRequestQuote={(req) => {
                     const first = (req.itemDetails ?? [])[0];
                     const itemType: 'RM' | 'PM' =
@@ -6680,6 +6723,42 @@ const Procurement: React.FC = () => {
           addToast('success', 'Request link saved. Mark Delivered at WH and timeline will use this PO.');
         };
 
+        const connectingLines =
+          (po as { lineConnectingDates?: IssuedPoLineConnectingDate[] }).lineConnectingDates ?? [];
+
+        const handleSaveConnectingDates = async () => {
+          if (!po.backendPoId) return;
+          setConnectingDateSaving(true);
+          try {
+            // Only persist real overrides; a cleared field falls back to the auto lead-time date.
+            const map: Record<string, string> = {};
+            for (const [k, v] of Object.entries(connectingDateDraft)) {
+              if (v && v.trim()) map[normConnectingDateKey(k)] = v.trim();
+            }
+            // Shallow-merged server-side, so this keeps requestId / quoteId / poType intact.
+            const res = await updatePurchaseOrder(po.backendPoId, { formData: { connectingDateByItem: map } });
+            if (!res.success) {
+              addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save connecting dates'));
+              return;
+            }
+            const prevFd = (po.formData && typeof po.formData === 'object' ? po.formData : {}) as Record<string, unknown>;
+            const nextFd = { ...prevFd, connectingDateByItem: map };
+            setSelectedPO((prev) => {
+              if (!prev) return prev;
+              const prevLines = (prev as { lineConnectingDates?: IssuedPoLineConnectingDate[] }).lineConnectingDates ?? [];
+              const nextLines = prevLines.map((l) => {
+                const ov = map[normConnectingDateKey(l.itemCode)] ?? null;
+                return { ...l, overrideIso: ov, effectiveIso: ov ?? l.autoIso };
+              });
+              return { ...(prev as object), formData: nextFd, lineConnectingDates: nextLines } as unknown as PurchaseOrder;
+            });
+            void invalidatePurchaseOrdersQueries();
+            addToast('success', 'Connecting dates updated');
+          } finally {
+            setConnectingDateSaving(false);
+          }
+        };
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedPO(null)}>
             <div
@@ -6727,18 +6806,69 @@ const Procurement: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Items */}
+                {/* Items — with editable per-item connecting date for issued POs */}
                 {po.items && po.items.length > 0 && (
                   <div>
-                    <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Items ({po.itemCount})</p>
-                    <div className="rounded-lg border border-border bg-surface divide-y divide-hairline">
-                      {po.items.map((item, idx) => (
-                        <div key={idx} className="px-4 py-2 text-sm text-ink flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-warn-soft text-warn text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
-                          {item}
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase">Items ({po.itemCount})</p>
+                      {po.backendPoId && connectingLines.length > 0 && (
+                        <p className="text-[10px] tracking-[0.14em] text-ink-3 uppercase">Connecting date</p>
+                      )}
                     </div>
+                    <div className="rounded-lg border border-border bg-surface divide-y divide-hairline">
+                      {po.items.map((item, idx) => {
+                        const lineMeta = connectingLines[idx];
+                        const key = lineMeta ? normConnectingDateKey(lineMeta.itemCode) : '';
+                        const draftVal = key ? (connectingDateDraft[key] ?? '') : '';
+                        const editable = Boolean(po.backendPoId && lineMeta);
+                        return (
+                          <div key={idx} className="px-4 py-2 text-sm text-ink flex items-center gap-3">
+                            <span className="w-5 h-5 rounded-full bg-warn-soft text-warn text-[10px] font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
+                            <span className="flex-1 min-w-0 truncate">{item}</span>
+                            {editable && (
+                              <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="date"
+                                    value={draftVal}
+                                    onChange={(e) => setConnectingDateDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                                    className="rounded border border-border bg-surface-3 px-2 py-1 text-xs text-ink focus:outline-none focus:border-brand"
+                                  />
+                                  {draftVal && (
+                                    <button
+                                      type="button"
+                                      title="Clear override (use auto lead-time date)"
+                                      onClick={() => setConnectingDateDraft((prev) => ({ ...prev, [key]: '' }))}
+                                      className="text-ink-4 hover:text-err text-sm leading-none px-1"
+                                      aria-label="Clear connecting date override"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-ink-4">
+                                  {draftVal
+                                    ? 'Manual override'
+                                    : lineMeta?.autoIso
+                                      ? `Auto: ${new Date(`${lineMeta.autoIso}T12:00:00`).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: '2-digit' })}`
+                                      : 'No lead time'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {po.backendPoId && connectingLines.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={connectingDateSaving}
+                        onClick={handleSaveConnectingDates}
+                        className="mt-2 w-full px-3 py-2 rounded border border-brand-soft bg-brand-soft text-brand text-xs font-semibold hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {connectingDateSaving ? 'Saving…' : 'Save connecting dates'}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -8166,7 +8296,7 @@ const Procurement: React.FC = () => {
                         if (!stockCheckCompleted) {
                           return [
                             { label: 'Stock In Hand', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
-                            { label: 'Open PO Qty', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
+                            { label: 'Item Open PO (warehouse)', tooltip: 'Open PO quantity for this item across the warehouse — not just this PR', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
                             { label: 'In Transit', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
                             { label: 'Open Orders', value: 'Pending stock check completion', color: 'text-ink-3', isPending: true },
                           ];
@@ -8176,13 +8306,13 @@ const Procurement: React.FC = () => {
                           ?? { stockInHand: 0, openPOQty: 0, inTransit: 0, openOrders: 0 };
                         return [
                           { label: 'Stock In Hand', value: summary.stockInHand, color: summary.stockInHand > 100 ? 'text-ok' : 'text-warn', isPending: false },
-                          { label: 'Open PO Qty', value: summary.openPOQty, color: 'text-ink', isPending: false },
+                          { label: 'Item Open PO (warehouse)', tooltip: 'Open PO quantity for this item across the warehouse — not just this PR', value: summary.openPOQty, color: 'text-ink', isPending: false },
                           { label: 'In Transit', value: summary.inTransit, color: summary.inTransit > 0 ? 'text-brand' : 'text-ink', isPending: false },
                           { label: 'Open Orders', value: summary.openOrders, color: summary.openOrders > 0 ? 'text-brand' : 'text-ink', isPending: false },
                         ];
                       })().map((row, idx) => (
                         <div key={row.label} className={`flex items-center justify-between px-4 py-3 ${idx < 3 ? 'border-b border-border' : ''}`}>
-                          <span className="text-ink-3 text-sm">{row.label}</span>
+                          <span className="text-ink-3 text-sm" title={(row as { tooltip?: string }).tooltip}>{row.label}</span>
                           <span className={`font-bold ${row.isPending ? 'text-sm' : 'text-lg'} ${row.color}`}>{row.value}</span>
                         </div>
                       ))}
