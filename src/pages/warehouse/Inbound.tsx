@@ -2467,11 +2467,13 @@ const WarehouseInbound = () => {
                     const poKey = String(grn.poNo ?? '').trim().toLowerCase();
                     const siblingGrnCount = poKey ? Math.max(0, (siblingGrnCountByPo.get(poKey) ?? 1) - 1) : 0;
                     const view = buildInboundGrnTableRowView(rowInput, siblingGrnCount);
+                    // No row-level click handler: the GRN detail drawer is reached through the
+                    // row's action button (GRN Copy / Assign Rack). A row click used to open a
+                    // second, competing modal on top of the action's own popup.
                     return (
                     <tr
                       key={rowId}
-                      onClick={() => handleOpenGrnDetail(grn)}
-                      className="hover:bg-brand-soft/50 transition-colors align-top cursor-pointer"
+                      className="hover:bg-surface-2 transition-colors align-top"
                     >
                       <td className="px-4 py-3.5 text-sm text-ink tabular-nums whitespace-nowrap">
                         {view.shipmentDate}

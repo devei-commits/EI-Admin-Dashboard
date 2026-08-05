@@ -411,12 +411,45 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     return { label: 'Send to QC', prefix: '🚦' };
   }
   if (statusView.label === 'LANDED') {
-    if (isInboundGrnReceiptConfirmed(grn)) {
-      return { label: 'GRN Copy', prefix: '📋' };
+    // Distinct, situation-specific action so LANDED never shows the same label as GRN COMPLETED.
+    if (!isInboundGrnReceiptConfirmed(grn)) {
+      return { label: 'Confirm Receipt', prefix: '✓' };
     }
-    return { label: 'Confirm Receipt', prefix: '✓' };
+    const pfx = String(grn.locationPrefix ?? '').trim();
+    const racked = pfx !== '' && pfx.toUpperCase() !== 'DEFAULT'; // 'DEFAULT' = auto placeholder, not a real rack
+    if (racked) {
+      return { label: 'GRN Copy', prefix: '📋' }; // landed + racked → nothing left but pull the copy
+    }
+    if (isInboundGrnVerified(grn)) {
+      return { label: 'Assign Rack', prefix: '📍' }; // docs/labels done → put it on a rack
+    }
+    // Receipt confirmed but docs/labels still incomplete and not racked → open the GRN to finish it.
+    // 'Complete GRN' is not matched by openInboundRowAction, so it falls through to openDetail(grn).
+    return { label: 'Complete GRN', prefix: '📦' };
   }
   if (statusView.label === 'IN TRANSIT') {
+    return { label: 'Confirm', prefix: '✓' };
+  }
+
+  // Statuses that resolve to a raw label (buildInboundGrnStatusView fallback) — most importantly
+  // "Under GRN" (received / being processed but with no landed-at stamp, so it matched neither the
+  // LANDED nor IN TRANSIT flag). Without this these rows all showed a constant generic 'Open'. Mirror
+  // the LANDED → receipt → QC → rack progression so the action reflects the actual current stage.
+  const rawStatus = String(grn.status ?? '').trim();
+  if (rawStatus === 'Under GRN' || statusView.label === 'UNDER GRN') {
+    if (isInboundGrnSentToQc(grn)) {
+      if (isInboundGrnQcTested(grn)) return assignRackOrGrnCopy();
+      if (isInboundGrnQcComplete(grn) || isInboundGrnQcReportSent(grn)) return { label: 'QC Check', prefix: '🧪' };
+      return { label: 'Awaiting QC', prefix: '⏳' };
+    }
+    return isInboundGrnReceiptConfirmed(grn)
+      ? { label: 'Send to QC', prefix: '🚦' }
+      : { label: 'Confirm Receipt', prefix: '✓' };
+  }
+  if (rawStatus === 'On Hold' || statusView.label === 'ON HOLD') {
+    return { label: 'Send to QC', prefix: '🚦' };
+  }
+  if (rawStatus === 'Pending' || rawStatus === 'Delayed' || statusView.label === 'PENDING' || statusView.label === 'DELAYED') {
     return { label: 'Confirm', prefix: '✓' };
   }
   return { label: 'Open', prefix: null };

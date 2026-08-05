@@ -770,3 +770,48 @@ export function importMl2SihExcel(
 ): Promise<WarehouseSihExcelImportResponse> {
   return importSihBucketExcel('ml2', file, options);
 }
+
+/* ── Reserved items (where each material is reserved: planning / production / fulfillment) ── */
+
+export type ReservedSource = 'planning' | 'production' | 'fulfillment' | 'unlinked';
+
+export interface ReservedItemReservation {
+  reservationId: number;
+  source: ReservedSource;
+  qty: number;
+  soNo: string | null;
+  soStatus: string | null;
+  customer: string | null;
+  planningExtractedId: number | null;
+  productionBatchId: number | null;
+  productionBatchNo: string | null;
+  productionBmrStatus: string | null;
+  fulfillmentOrderItemId: number | null;
+  createdAt: string | null;
+}
+
+export interface ReservedItem {
+  itemType: 'RM' | 'PM';
+  itemId: number;
+  code: string;
+  name: string;
+  unit: string;
+  /** Physical stock = wh + ml1 + ml2 */
+  stockInHand: number;
+  /** Sum of all reservations across every source */
+  reservedTotal: number;
+  /** max(0, stockInHand − reservedTotal) */
+  available: number;
+  reservations: ReservedItemReservation[];
+}
+
+export async function fetchReservedItems(): Promise<ServiceResult<ReservedItem[]>> {
+  try {
+    const res = await api.get<{ items: ReservedItem[] }>('/api/v1/warehouse-inventory/reserved-items');
+    const items = res && Array.isArray(res.items) ? res.items : [];
+    return { data: items, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to load reserved items';
+    return { data: [], error: message as unknown as ServiceResult<ReservedItem[]>['error'], success: false };
+  }
+}

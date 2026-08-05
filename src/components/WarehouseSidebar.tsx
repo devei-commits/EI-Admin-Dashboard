@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  SquaresFour, MapPin, Package, TrayArrowDown, ArrowsLeftRight, ClipboardText,
+  SquaresFour, MapPin, Package, TrayArrowDown, ArrowsLeftRight, ClipboardText, LockKey,
   type Icon,
 } from '@phosphor-icons/react';
 import { NavSidebar } from './ui/NavSidebar';
@@ -15,6 +15,7 @@ const SECTIONS: { id: string; label: string; icon: Icon }[] = [
   { id: 'overview', label: 'Overview', icon: SquaresFour },
   { id: 'locations', label: 'Locations', icon: MapPin },
   { id: 'inventory', label: 'Inventory', icon: Package },
+  { id: 'reserved', label: 'Reserved Items', icon: LockKey },
   { id: 'inbound', label: 'Inbound', icon: TrayArrowDown },
   { id: 'outbound', label: 'Transfer orders', icon: ArrowsLeftRight },
   { id: 'stock-check-requests', label: 'Stock Check Requests', icon: ClipboardText },

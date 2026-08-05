@@ -171,6 +171,26 @@ export async function updatePurchaseOrder(id: string, payload: Partial<{
   }
 }
 
+/**
+ * Set per-line "connecting date" (expected arrival) on a PO. `updates` is keyed by line —
+ * "rm-<id>" / "pm-<id>" or the item code — mapping to a "YYYY-MM-DD" string (or null to clear).
+ */
+export async function updatePoConnectingDates(
+  id: string,
+  updates: Record<string, string | null>,
+): Promise<ServiceResult<{ updated: number; items: unknown[] }>> {
+  try {
+    const row = await api.patch<{ updated: number; items: unknown[] }>(
+      `/api/v1/purchase-orders/${id}/connecting-dates`,
+      { updates },
+    );
+    return { data: row ?? { updated: 0, items: [] }, error: null, success: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update connecting dates';
+    return { data: null, error: message, success: false };
+  }
+}
+
 export async function deleteSalesOrder(id: string): Promise<ServiceResult<null>> {
   try {
     await api.delete(`/api/v1/sales-orders/${id}`);

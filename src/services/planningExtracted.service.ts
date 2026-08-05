@@ -423,6 +423,8 @@ export interface ItemsInvolvedRefBreakdown {
   unit: string;
   status: string;
   expectedDate?: string | null;
+  /** Per-line editable "connecting date" (expected arrival). PO breakdown only; null until set. */
+  connectingDate?: string | null;
 }
 
 export async function fetchItemsInvolved(opts?: { includeZeroRequired?: boolean }): Promise<ItemsInvolvedRow[]> {

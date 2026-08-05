@@ -8463,6 +8463,7 @@ const Planning = () => {
                     <th scope="col" className="px-2 py-1.5 text-right">Qty</th>
                     <th scope="col" className="px-2 py-1.5">Status</th>
                     <th scope="col" className="px-2 py-1.5">Expected</th>
+                    <th scope="col" className="px-2 py-1.5">Connecting</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8472,6 +8473,7 @@ const Planning = () => {
                       <td className="px-2 py-1.5 text-right tabular-nums text-ink whitespace-nowrap">{(Number(r.qty) || 0).toLocaleString('en-IN')} {r.unit}</td>
                       <td className="px-2 py-1.5"><span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-soft text-brand border border-brand-soft">{r.status}</span></td>
                       <td className="px-2 py-1.5 text-xs text-ink-2 whitespace-nowrap">{r.expectedDate ? new Date(r.expectedDate).toLocaleDateString('en-IN') : '—'}</td>
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap">{r.connectingDate ? <span className="text-brand font-medium">{new Date(r.connectingDate).toLocaleDateString('en-IN')}</span> : <span className="text-ink-4">—</span>}</td>
                     </tr>
                   ))}
                 </tbody>

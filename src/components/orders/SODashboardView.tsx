@@ -493,7 +493,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-4" size={15} />
             <input
               type="text"
-              placeholder="Search SO no, customer…"
+              placeholder="Search SO no, customer, PR name or code…"
               aria-label="Search SO no, customer…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
