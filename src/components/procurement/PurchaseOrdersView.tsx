@@ -34,12 +34,14 @@ function mapGrnStatusToStage(status: string | null | undefined): GrnStage {
 
 /**
  * Per-line Purchase Status across the purchase lifecycle: Ordered → Received → Billed → Paid.
- * Received/Billed come from matched-GRN qty; Paid is inferred from the PO reaching the 'completed'
- * workflow state (3-way match → payment → close). Draft POs aren't ordered yet → null.
+ * Received/Billed come from matched-GRN qty. 'paid' is intentionally NOT emitted here: no payment
+ * signal (finalPaidAt / paymentTransaction) reaches this component — a 'completed' PO only means the
+ * GRN workflow closed (grnCompleteAt), which is not the same as the vendor being paid. The highest
+ * truthful status derivable from GRN data alone is 'billed' (invoice present). Draft POs aren't
+ * ordered yet → null.
  */
 function derivePurchaseStatus(received: number, billed: number, wf: PoStatus): PurchaseStatus | null {
   if (wf === 'draft') return null;
-  if (wf === 'completed') return 'paid';
   if (billed > 0 && billed >= received) return 'billed';
   if (received > 0) return 'received';
   return 'ordered'; // issued to vendor, awaiting receipt
@@ -89,9 +91,22 @@ function poInDateRange(createdDate: string | null | undefined, from: string, to:
 
 interface Rollup { inTransit: number; received: number; billed: number; returned: number; ordered: number; }
 
-function computeRollup(record: IssuedPOViewRecord, grnByPo: Map<string, GRNRecordFromApi[]>): Rollup {
+/** Normalized numeric backend PO id ("PO-42" / "42" → "42"); "" when not resolvable. */
+function poIdKey(id: string | null | undefined): string {
+  const s = String(id ?? '').replace(/^PO-/, '').trim();
+  return /^\d+$/.test(s) ? s : '';
+}
+
+function computeRollup(
+  record: IssuedPOViewRecord,
+  grnByPo: Map<string, GRNRecordFromApi[]>,
+  grnByPoId: Map<string, GRNRecordFromApi[]>,
+): Rollup {
   const ordered = record.lineItems.reduce((s, l) => s + (Number(l.qty) || 0), 0);
-  const grns = grnByPo.get(normPo(record.poNumber)) ?? [];
+  // Prefer an exact match on purchaseOrderId (both sides carry it); fall back to the PO-number
+  // string only when this PO has no resolvable backend id.
+  const idKey = poIdKey(record.backendPoId);
+  const grns = (idKey && grnByPoId.has(idKey)) ? grnByPoId.get(idKey)! : (grnByPo.get(normPo(record.poNumber)) ?? []);
   let inTransit = 0, received = 0, billed = 0;
   for (const g of grns) {
     const lines = g.lineItems ?? [];
@@ -102,6 +117,8 @@ function computeRollup(record: IssuedPOViewRecord, grnByPo: Map<string, GRNRecor
     if (complete) { received += rcvd; billed += inv; }
     else { inTransit += rcvd || poQ; } // shipped-but-not-received
   }
+  // TODO(RTV): returned is hard-coded 0 — GRN rows expose no per-line return/RTV qty field today,
+  // so the return-to-vendor rollup isn't wired. Sum a real field here once the GRN API carries one.
   return { inTransit, received, billed, returned: 0, ordered };
 }
 
@@ -246,6 +263,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     return m;
   }, [grnList]);
 
+  // Same GRNs keyed by purchaseOrderId — the reliable join when both PO row and GRN carry the id.
+  const grnByPoId = useMemo(() => {
+    const m = new Map<string, GRNRecordFromApi[]>();
+    for (const g of grnList) {
+      const k = poIdKey(g.purchaseOrderId != null ? String(g.purchaseOrderId) : '');
+      if (!k) continue;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(g);
+    }
+    return m;
+  }, [grnList]);
+
   // Already-shipped for a PO line (sum of matched GRN qtys) — drives Pending in the transit popups.
   const shippedForPoItem = (poNo: string, itemCode: string, itemName: string): number => {
     const grns = grnByPo.get(normPo(poNo)) ?? [];
@@ -296,8 +325,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       if (d === 0) d = dateMs(a.createdDate) - dateMs(b.createdDate);
       return d * dirMul;
     });
-    return filtered.map((r) => ({ record: r, rollup: computeRollup(r, grnByPo) }));
-  }, [records, grnByPo, search, statusFilter, vendorFilter, dateFrom, dateTo, sortBy, sortDir]);
+    return filtered.map((r) => ({ record: r, rollup: computeRollup(r, grnByPo, grnByPoId) }));
+  }, [records, grnByPo, grnByPoId, search, statusFilter, vendorFilter, dateFrom, dateTo, sortBy, sortDir]);
 
   // ── Items tab: one row per PO line, with matched GRNs + "other POs" count ──
   const lineRows = useMemo(() => {

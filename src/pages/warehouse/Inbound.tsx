@@ -861,6 +861,12 @@ const GRNDetailModal = ({
       };
       setSourceDocuments(mergedSourceDocuments);
       onSaveChanges(updated);
+      // Any GRN status/stage change (Landed → Under GRN → Complete) must refresh Procurement's
+      // GRN Monitor (['grn-list']) and the issued-PO timeline (po-tracking caches), which live in
+      // a different module and are otherwise never invalidated from Warehouse.
+      queryClient.invalidateQueries({ queryKey: ['grn-list'] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+      queryClient.invalidateQueries({ queryKey: ['po-tracking'] });
       if (payload.status === 'GRN Complete') {
         // Planning batch availability depends on warehouse inventory (SIH) and planning-extracted derived data.
         // Invalidate so the Planning screen refreshes without a full page reload.
@@ -1933,6 +1939,15 @@ function mapApiToGRNRecord(r: {
 const WarehouseInbound = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  // Procurement's GRN Monitor + issued-PO timeline read caches that live outside this module and
+  // are never invalidated from Warehouse. Refresh them after any GRN status change here so a
+  // Landed/Under-GRN/Complete transition propagates without a manual navigation.
+  const invalidateProcurementGrnCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['grn-list'] });
+    queryClient.invalidateQueries({ queryKey: ['po-tracking-released-map'] });
+    queryClient.invalidateQueries({ queryKey: ['po-tracking'] });
+  }, [queryClient]);
   const inboundGrnDeepLinkAppliedRef = useRef(false);
   const grnDeepLinkId = searchParams.get('grn')?.trim() ?? '';
   const [activeSourceTab, setActiveSourceTab] = useState<InboundGrnSourceTab>('po');
@@ -2055,6 +2070,7 @@ const WarehouseInbound = () => {
       const res = await updateGRN(grn.id, inboundGrnArrivalConfirmPayload(grn.workflowSteps));
       const updated = mapApiToGRNRecord(res);
       setGrnData((prev) => prev.map((row) => (row.id === grn.id ? updated : row)));
+      invalidateProcurementGrnCaches();
       showToast(`Arrival confirmed · ${displayInboundGrnNo(grn.grnNo)} is now LANDED`);
     } catch {
       showToast('Could not confirm arrival', 'error');
@@ -2066,6 +2082,7 @@ const WarehouseInbound = () => {
       const res = await updateGRN(grn.id, inboundGrnSendToQcPayload(grn.workflowSteps));
       const updated = mapApiToGRNRecord(res);
       setGrnData((prev) => prev.map((row) => (row.id === grn.id ? updated : row)));
+      invalidateProcurementGrnCaches();
       showToast(`Sent to QC · ${displayInboundGrnNo(grn.grnNo)} is now in the Quality module`);
     } catch {
       showToast('Could not send to QC', 'error');
