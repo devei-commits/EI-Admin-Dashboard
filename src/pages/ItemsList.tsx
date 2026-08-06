@@ -47,7 +47,10 @@ import {
 } from '../lib/stagedPaymentTerms';
 
 interface PriceTierRow {
+  /** React key for the row — not the backend id. */
   id?: string;
+  /** item_list_tiers.id when this row is an existing saved tier being edited; absent for new rows. */
+  tierId?: number;
   moq: string;
   price: string;
   validTill: string;
@@ -98,26 +101,11 @@ const ItemsList: React.FC = () => {
   const vendorPricingFileRef = useRef<HTMLInputElement>(null);
   const masterCategoriesFileRef = useRef<HTMLInputElement>(null);
 
-  // Edit rate (vendor block) — item + rate for PUT/DELETE
+  // Rate/detail view state — item + rate for the read-only card and delete
   type RateForEdit = PriceListItemPage['vendorRates'][number];
-  const [editingRate, setEditingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
   const [viewingRate, setViewingRate] = useState<{ item: PriceListItemPage; rate: RateForEdit } | null>(null);
   const [detailRec, setDetailRec] = useState<PriceListItemPage | null>(null);
-  const [editRateCurrency, setEditRateCurrency] = useState('INR');
-  const [editAdvancePct, setEditAdvancePct] = useState('');
-  const [editPreShipmentPct, setEditPreShipmentPct] = useState('');
-  const [editPostShipmentPct, setEditPostShipmentPct] = useState('');
-  const [editCreditDays, setEditCreditDays] = useState('');
-  const [submittingEditRate, setSubmittingEditRate] = useState(false);
 
-  // Edit tier (single price row) — item + rateId + tier for PUT/DELETE
-  const [editingTier, setEditingTier] = useState<{ item: PriceListItemPage; rateId: number; tier: ItemListTierRow } | null>(null);
-  const [editTierMoqMin, setEditTierMoqMin] = useState('');
-  const [editTierMoqMax, setEditTierMoqMax] = useState('');
-  const [editTierPrice, setEditTierPrice] = useState('');
-  const [editTierValidTill, setEditTierValidTill] = useState('');
-  const [editTierNote, setEditTierNote] = useState('');
-  const [submittingEditTier, setSubmittingEditTier] = useState(false);
 
   const activeListType: 'RM' | 'PM' | 'PR' =
     activeTab === 'rm' ? 'RM' : activeTab === 'pm' ? 'PM' : 'PR';
@@ -472,31 +460,86 @@ const ItemsList: React.FC = () => {
         post_shipment_pct: post,
         credit_days: creditDaysStr ? Math.max(0, parseInt(creditDaysStr, 10) || 0) : 0,
       });
-      const rateRes = await createItemListRate(String(itemsListId), {
-        vendor_id: parseInt(selectedParty.id, 10),
-        currency,
-        payment_terms: staged,
-        lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
-      });
-      if (!rateRes.success || !rateRes.data) {
-        addToast(
-          'error',
-          rateRes.error?.message ??
-            (tierTarget.type === 'PR' ? 'Failed to create client rate' : 'Failed to create vendor rate')
-        );
-        setSubmittingTiers(false);
-        return;
+      // One vendor can hold several price bands for the same item — the bands live in
+      // item_list_tiers under a single rate. So reuse the vendor's existing rate when it has one:
+      // createItemListRate 409s on a duplicate (itemsList/controller.js:507-517), and treating that
+      // as a hard failure is what made it impossible to add a second price for a vendor.
+      const partyId = parseInt(selectedParty.id, 10);
+      let rateId: number | null =
+        tierTarget.vendorRates?.find((r) => Number(r.vendor_id) === partyId)?.id ?? null;
+
+      // This modal is now the only price-list editor, so a rate that already exists must have its
+      // header fields written too — otherwise currency / payment terms / lead time edits would be
+      // silently dropped whenever the vendor was already on the item.
+      if (rateId != null) {
+        const rateRes = await updateItemListRate(String(itemsListId), rateId, {
+          currency,
+          payment_terms: staged,
+          lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
+        });
+        if (!rateRes.success) {
+          addToast('error', rateRes.error?.message ?? 'Failed to update rate');
+          setSubmittingTiers(false);
+          return;
+        }
       }
-      const rateId = rateRes.data.id;
+
+      if (rateId == null) {
+        const rateRes = await createItemListRate(String(itemsListId), {
+          vendor_id: partyId,
+          currency,
+          payment_terms: staged,
+          lead_time_days: leadTimeDays ? Number(leadTimeDays) : null,
+        });
+        if (rateRes.success && rateRes.data) {
+          rateId = rateRes.data.id;
+        } else {
+          // Same recovery as the items_list conflict above: another tab (or the Vendor Master sync)
+          // may have created the rate between render and submit — adopt it rather than failing.
+          const msg = String(rateRes.error?.message ?? '');
+          const lowered = msg.toLowerCase();
+          if (lowered.includes('already') || lowered.includes('conflict') || lowered.includes('409')) {
+            const pageType = tierTarget.type === 'RM' ? 'RM' : tierTarget.type === 'PM' ? 'PM' : 'PR';
+            const pageRes = await fetchPriceListPage(pageType);
+            if (pageRes.success && pageRes.data) {
+              const match = pageRes.data.find(
+                (p) => Number(p.itemsListId) === Number(itemsListId)
+              );
+              rateId = match?.vendorRates?.find((r) => Number(r.vendor_id) === partyId)?.id ?? null;
+            }
+          }
+          if (rateId == null) {
+            addToast(
+              'error',
+              msg || (tierTarget.type === 'PR' ? 'Failed to create client rate' : 'Failed to create vendor rate')
+            );
+            setSubmittingTiers(false);
+            return;
+          }
+        }
+      }
+      // Rows prefilled from a saved band carry tierId and are updated in place; the rest are new
+      // bands. Without this split, editing a prefilled row would add a duplicate MOQ instead of
+      // correcting it.
+      let updated = 0;
+      let created = 0;
       for (const t of valid) {
-        await createItemListTier(String(itemsListId!), rateId, {
+        const body = {
           moq_min: parseMoqInput(t.moq) ?? 1,
           price_per_unit: parseFloat(t.price),
           valid_till: t.validTill || null,
           note: t.note || null,
-        });
+        };
+        if (t.tierId != null) {
+          await updateItemListTier(String(itemsListId!), rateId, t.tierId, body);
+          updated += 1;
+        } else {
+          await createItemListTier(String(itemsListId!), rateId, body);
+          created += 1;
+        }
       }
-      addToast('success', `${valid.length} tier(s) added for ${tierTarget.name}`);
+      const parts = [created ? `${created} added` : '', updated ? `${updated} updated` : ''].filter(Boolean);
+      addToast('success', `Price tiers for ${tierTarget.name}: ${parts.join(', ')}`);
       setShowAddTierModal(false);
       setTierTarget(null);
       setAddPriceListMode(false);
@@ -524,131 +567,59 @@ const ItemsList: React.FC = () => {
     });
   };
 
-  const openEditRate = (item: PriceListItemPage, rate: RateForEdit) => {
-    setEditingRate({ item, rate });
-    setEditRateCurrency(rate.currency);
-    const p = parseStagedPaymentTerms(rate.payment_terms ?? '') ?? {
-      advance_pct: 0,
-      pre_shipment_pct: 100,
-      post_shipment_pct: 0,
-      credit_days: 0,
-    };
-    setEditAdvancePct(String(p.advance_pct));
-    setEditPreShipmentPct(String(p.pre_shipment_pct));
-    setEditPostShipmentPct(String(p.post_shipment_pct));
-    setEditCreditDays(String(p.credit_days ?? 0));
-  };
+  /**
+   * Editing a tier reuses the Add Price Tier modal rather than a second dialog: it opens on the
+   * item with this vendor already selected, so every saved band is prefilled and editable in one
+   * place, and new bands can be appended in the same pass.
+   */
+  const openEditTier = (item: PriceListItemPage, rateId: number) => {
+    setTierTarget(item);
+    setResolvedItemsListId(item.itemsListId != null ? String(item.itemsListId) : null);
+    const rate = item.vendorRates?.find((r) => r.id === rateId);
+    setCurrency(rate?.currency || 'INR');
+    setAddPriceListMode(false);
+    setItemSearchQuery('');
+    setShowAddTierModal(true);
 
-  const openEditTier = (item: PriceListItemPage, rateId: number, tier: ItemListTierRow) => {
-    setEditingTier({ item, rateId, tier });
-    setEditTierMoqMin(String(tier.moq_min));
-    setEditTierMoqMax(tier.moq_max != null ? String(tier.moq_max) : '');
-    setEditTierPrice(String(tier.price_per_unit));
-    setEditTierValidTill(tier.valid_till ?? '');
-    setEditTierNote(tier.note ?? '');
-  };
-
-  const handleUpdateRate = async () => {
-    if (!editingRate || editingRate.item.itemsListId == null) return;
-    setSubmittingEditRate(true);
-    const adv = Number(editAdvancePct);
-    const pre = Number(editPreShipmentPct);
-    const post = Number(editPostShipmentPct);
-    const pctErr = validateStagedPercents(adv, pre, post);
-    if (pctErr) {
-      addToast('error', pctErr);
-      setSubmittingEditRate(false);
-      return;
-    }
-    const staged = serializeStagedPaymentTerms({
-      advance_pct: adv,
-      pre_shipment_pct: pre,
-      post_shipment_pct: post,
-      credit_days: editCreditDays ? Math.max(0, parseInt(editCreditDays, 10) || 0) : 0,
-    });
-    const res = await updateItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id, {
-      currency: editRateCurrency,
-      payment_terms: staged,
-    });
-    setSubmittingEditRate(false);
-    if (res.success) {
-      addToast('success', editingRate.item.type === 'PR' ? 'Client rate updated' : 'Vendor rate updated');
-      setEditingRate(null);
-      refetchPage();
+    const pool = item.type === 'PR' ? clients : vendors;
+    const party = pool.find((p) => Number(p.id) === Number(rate?.vendor_id));
+    if (party) {
+      applySelectedParty(party, item);
     } else {
-      addToast('error', res.error?.message ?? 'Failed to update rate');
+      // Vendor master list not loaded yet — open blank rather than silently showing the wrong rate.
+      setSelectedParty(null);
+      setPriceTiers(EMPTY_TIERS);
     }
   };
 
-  const handleDeleteRate = async () => {
-    if (!editingRate || editingRate.item.itemsListId == null) return;
+  /** The rate the unified modal is currently editing, or null when adding a brand-new one. */
+  const editingRateId = useMemo(() => {
+    if (!tierTarget || !selectedParty) return null;
+    const partyId = parseInt(selectedParty.id, 10);
+    return tierTarget.vendorRates?.find((r) => Number(r.vendor_id) === partyId)?.id ?? null;
+  }, [tierTarget, selectedParty]);
+
+  const handleDeleteCurrentRate = async () => {
+    if (!tierTarget || tierTarget.itemsListId == null || editingRateId == null) return;
     if (
       !window.confirm(
-        editingRate.item.type === 'PR'
-          ? `Remove this client's rate and all its tiers for ${editingRate.item.name}?`
-          : `Remove this vendor's rate and all its tiers for ${editingRate.item.name}?`
+        tierTarget.type === 'PR'
+          ? `Remove this client's rate and all its tiers for ${tierTarget.name}?`
+          : `Remove this vendor's rate and all its tiers for ${tierTarget.name}?`
       )
     )
       return;
-    setSubmittingEditRate(true);
-    const res = await deleteItemListRate(String(editingRate.item.itemsListId), editingRate.rate.id);
-    setSubmittingEditRate(false);
+    setSubmittingTiers(true);
+    const res = await deleteItemListRate(String(tierTarget.itemsListId), editingRateId);
+    setSubmittingTiers(false);
     if (res.success) {
-      addToast('success', editingRate.item.type === 'PR' ? 'Client rate removed' : 'Vendor rate removed');
-      setEditingRate(null);
+      addToast('success', tierTarget.type === 'PR' ? 'Client rate removed' : 'Vendor rate removed');
+      setShowAddTierModal(false);
+      setAddPriceListMode(false);
+      setTierTarget(null);
       refetchPage();
     } else {
       addToast('error', res.error?.message ?? 'Failed to delete rate');
-    }
-  };
-
-  const handleUpdateTier = async () => {
-    if (!editingTier || editingTier.item.itemsListId == null) return;
-    const moqMin = parseMoqInput(editTierMoqMin);
-    const price = parseFloat(editTierPrice);
-    if (moqMin == null || Number.isNaN(price)) {
-      addToast('error', 'MOQ and price are required');
-      return;
-    }
-    setSubmittingEditTier(true);
-    const res = await updateItemListTier(
-      String(editingTier.item.itemsListId),
-      editingTier.rateId,
-      editingTier.tier.id,
-      {
-        moq_min: moqMin,
-        moq_max: editTierMoqMax.trim() ? parseMoqInput(editTierMoqMax) : null,
-        price_per_unit: price,
-        valid_till: editTierValidTill || null,
-        note: editTierNote || null,
-      }
-    );
-    setSubmittingEditTier(false);
-    if (res.success) {
-      addToast('success', 'Tier updated');
-      setEditingTier(null);
-      refetchPage();
-    } else {
-      addToast('error', res.error?.message ?? 'Failed to update tier');
-    }
-  };
-
-  const handleDeleteTier = async () => {
-    if (!editingTier || editingTier.item.itemsListId == null) return;
-    if (!window.confirm('Remove this price tier?')) return;
-    setSubmittingEditTier(true);
-    const res = await deleteItemListTier(
-      String(editingTier.item.itemsListId),
-      editingTier.rateId,
-      editingTier.tier.id
-    );
-    setSubmittingEditTier(false);
-    if (res.success) {
-      addToast('success', 'Tier removed');
-      setEditingTier(null);
-      refetchPage();
-    } else {
-      addToast('error', res.error?.message ?? 'Failed to delete tier');
     }
   };
 
@@ -664,16 +635,24 @@ const ItemsList: React.FC = () => {
     }
   };
 
-  const partyIdsUsed = useMemo(() => {
-    if (!tierTarget) return new Set<number>();
-    return new Set(tierTarget.vendorRates?.map((r) => r.vendor_id) ?? []);
-  }, [tierTarget]);
+  // Every vendor/client stays selectable, including ones that already price this item: picking one
+  // again adds another MOQ price band to its existing rate. They are still flagged in the typeahead
+  // so the choice is informed, but they are no longer filtered out — excluding them was what made a
+  // vendor's price look like a one-off.
   const availableParties = useMemo(() => {
-    const pool = tierTarget?.type === 'PR' ? clients : vendors;
-    return pool.filter((p) => !partyIdsUsed.has(parseInt(p.id, 10)));
-  }, [tierTarget?.type, clients, vendors, partyIdsUsed]);
+    return tierTarget?.type === 'PR' ? clients : vendors;
+  }, [tierTarget?.type, clients, vendors]);
 
-  const applySelectedParty = (v: VendorClientRecord | null) => {
+  /**
+   * @param targetOverride the item to read existing rates from. Needed when the caller has just
+   *   set tierTarget in the same tick (opening the modal straight onto a vendor), because this
+   *   function would otherwise read the previous render's tierTarget and prefill nothing.
+   */
+  const applySelectedParty = (
+    v: VendorClientRecord | null,
+    targetOverride?: PriceListItemPage | null
+  ) => {
+    const target = targetOverride ?? tierTarget;
     setSelectedParty(v);
     if (!v) {
       setAdvancePctStr('');
@@ -681,8 +660,36 @@ const ItemsList: React.FC = () => {
       setPostShipmentPctStr('');
       setCreditDaysStr('');
       setLeadTimeDays('');
+      setPriceTiers(EMPTY_TIERS);
       return;
     }
+
+    // If this party already prices the item, show its saved bands instead of a blank grid: the
+    // modal then reads as "edit this vendor's price list", and existing rows can be corrected in
+    // place rather than silently duplicated by a second band with the same MOQ.
+    const existingRate = target?.vendorRates?.find(
+      (r) => Number(r.vendor_id) === parseInt(v.id, 10)
+    );
+    const existingTiers = existingRate?.tiers ?? [];
+    if (existingTiers.length > 0) {
+      const rows: PriceTierRow[] = existingTiers.map((t, i) => ({
+        id: `saved-${t.id ?? i}`,
+        tierId: t.id,
+        moq: t.moq_min != null ? String(t.moq_min) : '',
+        price: t.price_per_unit != null ? String(t.price_per_unit) : '',
+        validTill: t.valid_till ? String(t.valid_till).slice(0, 10) : '',
+        note: t.note ?? '',
+      }));
+      // Keep a couple of blank rows so more bands can be appended in the same pass.
+      rows.push(
+        { id: `new-${rows.length}`, moq: '', price: '', validTill: '', note: '' },
+        { id: `new-${rows.length + 1}`, moq: '', price: '', validTill: '', note: '' }
+      );
+      setPriceTiers(rows);
+    } else {
+      setPriceTiers(EMPTY_TIERS);
+    }
+
     void (async () => {
       try {
         let paymentTerms = v.paymentTerms;
@@ -699,7 +706,15 @@ const ItemsList: React.FC = () => {
         setPreShipmentPctStr(String(staged.pre_shipment_pct));
         setPostShipmentPctStr(String(staged.post_shipment_pct));
         setCreditDaysStr(staged.credit_days ? String(staged.credit_days) : '');
-        setLeadTimeDays(lead ? String(lead) : '');
+        // The rate's own lead time wins over the vendor-master default — it is what this
+        // item/vendor pair was actually saved with.
+        setLeadTimeDays(
+          existingRate?.lead_time_days != null
+            ? String(existingRate.lead_time_days)
+            : lead
+              ? String(lead)
+              : ''
+        );
       } catch {
         addToast('error', 'Could not apply client payment terms. Try again or refresh.');
       }
@@ -1168,7 +1183,7 @@ const ItemsList: React.FC = () => {
                                   <td className="py-1.5 px-2 text-right">
                                     <button
                                       type="button"
-                                      onClick={(e) => { e.stopPropagation(); openEditTier(item, rate.id, t); }}
+                                      onClick={(e) => { e.stopPropagation(); openEditTier(item, rate.id); }}
                                       className="text-[10.5px] text-brand hover:underline mr-2"
                                     >
                                       Edit
@@ -1297,7 +1312,9 @@ const ItemsList: React.FC = () => {
           <div className="bg-surface rounded-xl shadow-xl w-full max-w-2xl my-4" role="dialog" aria-modal="true" aria-labelledby="add-tier-modal-title" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
               <span id="add-tier-modal-title" className="text-sm font-bold text-ink">
-                {addPriceListMode && !tierTarget ? 'Add Price List — Select Item' : `Add Price Tier — ${tierTarget?.name ?? ''}`}
+                {addPriceListMode && !tierTarget
+                  ? 'Add Price List — Select Item'
+                  : `${priceTiers.some((t) => t.tierId != null) ? 'Edit Price Tiers' : 'Add Price Tier'} — ${tierTarget?.name ?? ''}`}
               </span>
               <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">
                 X
@@ -1381,7 +1398,7 @@ const ItemsList: React.FC = () => {
                       selectedId={selectedParty?.id ?? ''}
                       loading={clientsQuery.isLoading}
                       disabled={availableParties.length === 0 && !!tierTarget.vendorRates?.length}
-                      disabledIds={partyIdsUsedForTypeahead}
+                      noticeIds={partyIdsUsedForTypeahead}
                       placeholder="Search client by name, city…"
                       onSelect={applySelectedParty}
                     />
@@ -1391,7 +1408,7 @@ const ItemsList: React.FC = () => {
                       selectedId={selectedParty?.id ?? ''}
                       loading={vendorsQuery.isLoading}
                       disabled={availableParties.length === 0 && !!tierTarget.vendorRates?.length}
-                      disabledIds={partyIdsUsedForTypeahead}
+                      noticeIds={partyIdsUsedForTypeahead}
                       placeholder="Search vendor by name, city…"
                       onSelect={applySelectedParty}
                     />
@@ -1513,69 +1530,34 @@ const ItemsList: React.FC = () => {
               </div>
               </>)}
             </div>
-            <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-end">
-              <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">
-                Cancel
-              </button>
-              {tierTarget && (
-                <button
-                  onClick={handleSaveTiers}
-                  disabled={submittingTiers || !selectedParty}
-                  className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50"
-                >
-                  {submittingTiers ? 'Saving…' : 'Save Tiers'}
-                </button>
-              )}
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
-
-      {/* Edit vendor rate modal */}
-      {editingRate && (
-        <ModalOverlay onClose={() => setEditingRate(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-rate-modal-title" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
-              <span id="edit-rate-modal-title" className="text-sm font-bold text-ink">
-                Edit rate —{' '}
-                {editingRate.rate.party_type === 'client' ? 'Client' : 'Vendor'}:{' '}
-                {editingRate.rate.vendor_name ?? '—'} · {editingRate.item.name}
-              </span>
-              <button onClick={() => setEditingRate(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">×</button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Currency</label>
-                <select value={editRateCurrency} onChange={(e) => setEditRateCurrency(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm">
-                  <option value="INR">INR</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Payment terms (%)</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="number" min={0} max={100} value={editAdvancePct} onChange={(e) => setEditAdvancePct(e.target.value)} aria-label="Advance" className="px-2 py-1.5 border rounded text-sm" placeholder="Advance" />
-                  <input type="number" min={0} max={100} value={editPreShipmentPct} onChange={(e) => setEditPreShipmentPct(e.target.value)} aria-label="Pre-shipment" className="px-2 py-1.5 border rounded text-sm" placeholder="Pre-shipment" />
-                  <input type="number" min={0} max={100} value={editPostShipmentPct} onChange={(e) => setEditPostShipmentPct(e.target.value)} aria-label="Post-shipment" className="px-2 py-1.5 border rounded text-sm" placeholder="Post-shipment" />
-                  <input type="number" min={0} value={editCreditDays} onChange={(e) => setEditCreditDays(e.target.value)} aria-label="Credit days" className="px-2 py-1.5 border rounded text-sm" placeholder="Credit days" />
-                </div>
-              </div>
-            </div>
             <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-between">
-              <button
-                type="button"
-                onClick={handleDeleteRate}
-                disabled={submittingEditRate}
-                className="px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-bold hover:bg-err-soft disabled:opacity-50"
-              >
-                Delete rate & tiers
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => setEditingRate(null)} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">Cancel</button>
-                <button onClick={handleUpdateRate} disabled={submittingEditRate} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50">
-                  {submittingEditRate ? 'Saving…' : 'Save'}
+              {/* Removing the whole rate used to live in the separate rate popup; it stays reachable
+                  here so folding that dialog in did not drop the capability. */}
+              {editingRateId != null ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteCurrentRate}
+                  disabled={submittingTiers}
+                  className="px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-bold hover:bg-err-soft disabled:opacity-50"
+                >
+                  {tierTarget?.type === 'PR' ? 'Remove client pricing' : 'Remove vendor pricing'}
                 </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => { setShowAddTierModal(false); setAddPriceListMode(false); setTierTarget(null); }} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">
+                  Cancel
+                </button>
+                {tierTarget && (
+                  <button
+                    onClick={handleSaveTiers}
+                    disabled={submittingTiers || !selectedParty}
+                    className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50"
+                  >
+                    {submittingTiers ? 'Saving…' : 'Save Tiers'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1653,7 +1635,7 @@ const ItemsList: React.FC = () => {
                 <button
                   onClick={() => {
                     setViewingRate(null);
-                    openEditRate(item, rate);
+                    openEditTier(item, rate.id);
                   }}
                   className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold"
                 >
@@ -1665,57 +1647,6 @@ const ItemsList: React.FC = () => {
         );
       })()}
 
-      {/* Edit tier modal */}
-      {editingTier && (
-        <ModalOverlay onClose={() => setEditingTier(null)} z="z-50" dismissable={false} backdrop="default" align="start" scroll={true} className="p-6">
-          <div className="bg-surface rounded-xl shadow-xl w-full max-w-md my-4" role="dialog" aria-modal="true" aria-labelledby="edit-tier-modal-title" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-hairline bg-surface-3 flex items-center justify-between">
-              <span id="edit-tier-modal-title" className="text-sm font-bold text-ink">Edit tier — {editingTier.item.name}</span>
-              <button onClick={() => setEditingTier(null)} className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center text-ink-3 hover:bg-surface-3">×</button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">MOQ min</label>
-                  <input type="number" min={1} value={editTierMoqMin} onChange={(e) => setEditTierMoqMin(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
-                </div>
-                <div>
-                  <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">MOQ max (optional)</label>
-                  <input type="number" min={1} value={editTierMoqMax} onChange={(e) => setEditTierMoqMax(e.target.value)} placeholder="—" className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Price per unit</label>
-                <input type="number" step="0.01" value={editTierPrice} onChange={(e) => setEditTierPrice(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Valid till</label>
-                <input type="date" value={editTierValidTill} onChange={(e) => setEditTierValidTill(e.target.value)} className="w-full px-2.5 py-2 border border-border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-[10.5px] font-bold text-ink-3 uppercase mb-1">Note</label>
-                <input type="text" value={editTierNote} onChange={(e) => setEditTierNote(e.target.value)} placeholder="Optional" className="w-full px-2.5 py-2 border border-border rounded-lg text-sm" />
-              </div>
-            </div>
-            <div className="px-5 py-3 border-t border-hairline bg-surface-3 flex gap-2 justify-between">
-              <button
-                type="button"
-                onClick={handleDeleteTier}
-                disabled={submittingEditTier}
-                className="px-3 py-2 rounded-lg border border-[color:var(--st-red-fg)]/30 bg-surface text-err text-xs font-bold hover:bg-err-soft disabled:opacity-50"
-              >
-                Delete tier
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => setEditingTier(null)} className="px-3 py-2 rounded-lg border border-border bg-surface text-xs font-bold text-ink-2 hover:bg-surface-2">Cancel</button>
-                <button onClick={handleUpdateTier} disabled={submittingEditTier} className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-press text-white text-xs font-bold disabled:opacity-50">
-                  {submittingEditTier ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
     </div>
   );
 };

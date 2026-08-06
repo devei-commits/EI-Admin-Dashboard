@@ -76,7 +76,8 @@ export type VendorClientNameTypeaheadProps = {
   placeholder?: string;
   className?: string;
   inputId?: string;
-  disabledIds?: Set<string>;
+  /** Parties that already price this item — annotated in the list, still selectable. */
+  noticeIds?: Set<string>;
   allowClear?: boolean;
   /** Combobox mode: keep typed text (e.g. new vendor name) while still showing master suggestions. */
   allowFreeText?: boolean;
@@ -94,7 +95,7 @@ export default function VendorClientNameTypeahead({
   placeholder = 'Search by client name, code, city…',
   className = '',
   inputId,
-  disabledIds,
+  noticeIds,
   allowClear = true,
   allowFreeText = false,
   freeTextValue,
@@ -128,9 +129,11 @@ export default function VendorClientNameTypeahead({
     const filtered = filterVendorClientsForTypeahead(parties, inputValue, MAX_SUGGESTIONS);
     return filtered.map((p) => ({
       party: p,
-      disabled: disabledIds?.has(String(p.id)) ?? false,
+      // Informational only. A party that already prices this item stays selectable so another
+      // MOQ price band can be added to its existing rate.
+      hasPricing: noticeIds?.has(String(p.id)) ?? false,
     }));
-  }, [parties, inputValue, disabledIds]);
+  }, [parties, inputValue, noticeIds]);
 
   useEffect(() => {
     setActiveIndex(suggestions.length > 0 ? 0 : -1);
@@ -145,7 +148,6 @@ export default function VendorClientNameTypeahead({
   }, []);
 
   const pick = (party: VendorClientRecord) => {
-    if (disabledIds?.has(String(party.id))) return;
     const label = party.name ?? party.id;
     onSelect(party);
     setInputValue(label);
@@ -192,8 +194,7 @@ export default function VendorClientNameTypeahead({
     }
     if (e.key === 'Enter' && open && activeIndex >= 0 && suggestions[activeIndex]) {
       e.preventDefault();
-      const row = suggestions[activeIndex];
-      if (!row.disabled) pick(row.party);
+      pick(suggestions[activeIndex].party);
     }
   };
 
@@ -256,24 +257,21 @@ export default function VendorClientNameTypeahead({
                 key={String(row.party.id)}
                 role="option"
                 aria-selected={idx === activeIndex}
-                aria-disabled={row.disabled}
                 className={`px-3 py-2 ${
-                  row.disabled
-                    ? 'cursor-not-allowed text-ink-4'
-                    : idx === activeIndex
-                      ? 'cursor-pointer bg-brand-soft text-brand'
-                      : 'cursor-pointer text-ink hover:bg-surface-3'
+                  idx === activeIndex
+                    ? 'cursor-pointer bg-brand-soft text-brand'
+                    : 'cursor-pointer text-ink hover:bg-surface-3'
                 }`}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  if (!row.disabled) pick(row.party);
+                  pick(row.party);
                 }}
                 onMouseEnter={() => setActiveIndex(idx)}
               >
                 <div className="font-medium">{row.party.name ?? row.party.id}</div>
                 {meta ? <div className="text-xs text-ink-3">{meta}</div> : null}
-                {row.disabled ? (
-                  <span className="text-[10px] text-ink-4">(already has pricing)</span>
+                {row.hasPricing ? (
+                  <span className="text-[10px] text-ink-4">(already priced — adds another band)</span>
                 ) : null}
               </li>
             );

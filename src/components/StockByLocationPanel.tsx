@@ -322,11 +322,12 @@ const StockByLocationPanel: React.FC<Props> = ({
                   (s, r) => s + qtyForRack(rackDraft, r.rackId, r.qtyWh),
                   0
                 );
-                const racksToShow =
-                  viewMode === 'distribution' && !editable
-                    ? loc.racks.filter((r) => qtyForRack(rackDraft, r.rackId, r.qtyWh) > 0)
-                    : loc.racks;
-                if (viewMode === 'distribution' && !editable && racksToShow.length === 0) {
+                // Show only racks that actually hold stock when viewing; while editing keep every rack
+                // visible so stock can be assigned to an empty one. Zones with no stocked rack are hidden.
+                const racksToShow = editable
+                  ? loc.racks
+                  : loc.racks.filter((r) => qtyForRack(rackDraft, r.rackId, r.qtyWh) > 0);
+                if (!editable && racksToShow.length === 0) {
                   return null;
                 }
                 return (
@@ -393,7 +394,7 @@ const StockByLocationPanel: React.FC<Props> = ({
               Unallocated WH: {data.unallocatedWh} {unit} (not assigned to a rack)
             </p>
           )}
-          {editable && viewMode !== 'distribution' && (
+          {editable && (
             <p className="text-[10px] text-ink-2 mt-1.5">
               WH total from racks: <span className="font-semibold text-brand">{whTotalFromDraft}</span>{' '}
               {unit} — saved with Stock &amp; pipeline.
@@ -413,33 +414,36 @@ const StockByLocationPanel: React.FC<Props> = ({
           )}
           {showDetail && (data.manufacturingZones?.length ?? 0) > 0 && (
             <ul className="space-y-1.5 mt-2">
-              {data.manufacturingZones!.map((loc) => (
-                <li
-                  key={loc.locationId}
-                  className={`text-[11px] border border-brand-soft rounded-lg ${pad} bg-surface`}
-                >
-                  <div className="flex items-center gap-1.5 font-medium text-ink">
-                    <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
-                    <span>{loc.locationName}</span>
-                    <span className="text-ink-4 font-mono text-[10px]">({loc.locationCode})</span>
-                    {loc.isDefault && (
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-warn-soft text-warn">
-                        Default MU
+              {data.manufacturingZones!.map((loc) => {
+                // Viewing: only racks holding stock (skip a zone entirely if none). Editing keeps all.
+                const racksToShow = editable ? loc.racks : loc.racks.filter((r) => r.qtyWh > 0);
+                if (!editable && racksToShow.length === 0) return null;
+                return (
+                  <li
+                    key={loc.locationId}
+                    className={`text-[11px] border border-brand-soft rounded-lg ${pad} bg-surface`}
+                  >
+                    <div className="flex items-center gap-1.5 font-medium text-ink">
+                      <MapPin className="w-3.5 h-3.5 text-brand shrink-0" />
+                      <span>{loc.locationName}</span>
+                      <span className="text-ink-4 font-mono text-[10px]">({loc.locationCode})</span>
+                      {loc.isDefault && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-warn-soft text-warn">
+                          Default MU
+                        </span>
+                      )}
+                      <span className="ml-auto text-brand font-semibold">
+                        {loc.totalQtyWh} {unit}
                       </span>
-                    )}
-                    <span className="ml-auto text-brand font-semibold">
-                      {loc.totalQtyWh} {unit}
-                    </span>
-                  </div>
-                  {loc.racks
-                    .filter((r) => r.qtyWh > 0 || viewMode === 'detail')
-                    .map((r) => (
+                    </div>
+                    {racksToShow.map((r) => (
                       <div key={r.rackId} className="mt-1 pl-5 text-[10px] text-ink-2 font-mono">
                         {r.rackCode}: {r.qtyWh} {unit}
                       </div>
                     ))}
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
           {!manufacturingOnly && viewMode !== 'distribution' && (
