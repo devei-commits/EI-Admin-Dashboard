@@ -65,6 +65,10 @@ import {
   fetchAllBatches,
   fetchItemsInvolved,
   fetchItemsInvolvedByPlanningId,
+  reservePlanningBatchLines,
+  unreservePlanningBatchLines,
+  fetchPlanningBatchReservationCoverage,
+  fetchPlanningBatchesReservedCounts,
   type ItemsInvolvedRow,
   type ItemsInvolvedRefBreakdown,
   type PlanningExtractedRow,
@@ -195,7 +199,36 @@ function lineSgFromPrBom(line: BOMRmLine, specBulk?: string | null): number {
   return 1;
 }
 import type { WarehouseInventoryRow } from '../services/warehouseInventory.service';
-import { fetchPackMaterialsList } from '../services/packMaterials.service';
+import { fetchPackMaterialsList, type PackMaterialRecord } from '../services/packMaterials.service';
+
+/** Per-item status tally shown in the RM/PM Status cells (replaces the single aggregate pill). */
+interface PlanBatchStatusCounts {
+  available: number;
+  underProc: number;
+  shortage: number;
+  reserved: number;
+}
+
+/** RM/PM Status cell: per-item counts — Shortage (red) / Available (green) / Under Procurement (blue) / Reserved. */
+function MaterialStatusCountsCell({ counts }: { counts: PlanBatchStatusCounts }) {
+  const chip = (label: string, n: number, activeCls: string) => (
+    <span className={`inline-flex items-center gap-0.5 ${n > 0 ? activeCls : 'text-ink-4'}`}>
+      {label} {n}
+    </span>
+  );
+  return (
+    <span className="flex flex-col items-end gap-0.5 text-[10px] font-semibold leading-tight">
+      <span className="flex gap-1.5">
+        {chip('Shortage', counts.shortage, 'text-red-700')}
+        {chip('Available', counts.available, 'text-emerald-700')}
+      </span>
+      <span className="flex gap-1.5">
+        {chip('Under Proc', counts.underProc, 'text-blue-700')}
+        {chip('Reserved', counts.reserved, 'text-slate-600')}
+      </span>
+    </span>
+  );
+}
 import { fetchPRProductDetail, fetchPRProducts } from '../services/productsMaster.service';
 import {
   createItemGroup,
@@ -1909,6 +1942,8 @@ function PlanningBatchTableRow({
   plannedQty,
   rmStatus,
   pmStatus,
+  rmCounts,
+  pmCounts,
   production,
   fulfillment,
 }: {
@@ -1927,6 +1962,8 @@ function PlanningBatchTableRow({
   plannedQty: number;
   rmStatus: ReturnType<typeof buildPlanningBatchRmStatusView>;
   pmStatus: ReturnType<typeof buildPlanningBatchPmStatusView>;
+  rmCounts: PlanBatchStatusCounts;
+  pmCounts: PlanBatchStatusCounts;
   production: ReturnType<typeof buildPlanningBatchProductionView>;
   fulfillment: ReturnType<typeof buildPlanningBatchFulfillmentView>;
 }) {
@@ -2143,8 +2180,7 @@ function PlanningBatchTableRow({
           className="w-full text-right text-[11px]"
           title="Open RM items panel"
         >
-          <span className={planningBatchMaterialStatusClass(rmStatus.tone)}>{rmShort ? '🚩 ' : ''}{rmStatus.label}</span>
-          {rmStatus.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{rmStatus.sub}</span> : null}
+          <MaterialStatusCountsCell counts={rmCounts} />
         </BatchTableLinkButton>
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -2156,8 +2192,7 @@ function PlanningBatchTableRow({
           className="w-full text-right text-[11px]"
           title="Open PM items panel"
         >
-          <span className={planningBatchMaterialStatusClass(pmStatus.tone)}>{pmShort ? '🚩 ' : ''}{pmStatus.label}</span>
-          {pmStatus.sub ? <span className="block text-[10px] text-ink-3 mt-0.5 font-normal">{pmStatus.sub}</span> : null}
+          <MaterialStatusCountsCell counts={pmCounts} />
         </BatchTableLinkButton>
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -2245,6 +2280,8 @@ function PlanningBatchesTab({
   rawMaterialsList,
   packMaterialsList,
   pisClientRecords,
+  warehouseRows,
+  reservedCountsByBatchId,
 }: {
   onBatchClick: (row: PlanningBatchAllRow) => void;
   onEditBatch: (row: PlanningBatchAllRow) => void;
@@ -2258,6 +2295,8 @@ function PlanningBatchesTab({
   rawMaterialsList: RawMaterialRecord[];
   packMaterialsList: { id: string; code?: string; description?: string }[];
   pisClientRecords: VendorClientRecord[];
+  warehouseRows: WarehouseInventoryRow[];
+  reservedCountsByBatchId: Record<string, { rm: number; pm: number }>;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -2412,6 +2451,8 @@ function PlanningBatchesTab({
         pmStatus: ReturnType<typeof buildPlanningBatchPmStatusView>;
         production: ReturnType<typeof buildPlanningBatchProductionView>;
         fulfillment: ReturnType<typeof buildPlanningBatchFulfillmentView>;
+        rmCounts: PlanBatchStatusCounts;
+        pmCounts: PlanBatchStatusCounts;
       }
     >();
     for (const row of filteredRows) {
@@ -2428,7 +2469,25 @@ function PlanningBatchesTab({
         prod,
         prod?._pk != null ? ffStatusByProductionBatchId.get(Number(prod._pk)) : undefined,
       );
-      map.set(key, { plannedQty, prod, rmStatus, pmStatus, production, fulfillment });
+      // Per-item status tally (same logic as the popup's Item Status) for the RM/PM Status cells.
+      const panelRows = buildBatchItemsPanelRows({
+        batch: row,
+        warehouseRows,
+        rawMaterials: rawMaterialsList,
+        packMaterials: packMaterialsList as unknown as PackMaterialRecord[],
+        itemsInvolved: [],
+        materialFilter: 'ALL',
+      });
+      const reserved = reservedCountsByBatchId[String(row.id)] ?? { rm: 0, pm: 0 };
+      const rmCounts: PlanBatchStatusCounts = { available: 0, underProc: 0, shortage: 0, reserved: reserved.rm };
+      const pmCounts: PlanBatchStatusCounts = { available: 0, underProc: 0, shortage: 0, reserved: reserved.pm };
+      for (const r of panelRows) {
+        const bucket = r.itemType === 'RM' ? rmCounts : pmCounts;
+        if (r.status === 'AVAILABLE') bucket.available += 1;
+        else if (r.status === 'SHORTAGE') bucket.shortage += 1;
+        else if (r.status === 'UNDER PROCUREMENT') bucket.underProc += 1;
+      }
+      map.set(key, { plannedQty, prod, rmStatus, pmStatus, production, fulfillment, rmCounts, pmCounts });
     }
     return map;
   }, [
@@ -2437,6 +2496,10 @@ function PlanningBatchesTab({
     availabilityBySoNo,
     releaseSplitByBatchKey,
     ffStatusByProductionBatchId,
+    warehouseRows,
+    rawMaterialsList,
+    packMaterialsList,
+    reservedCountsByBatchId,
   ]);
 
   const sortedRows = !sortColumn
@@ -2573,6 +2636,8 @@ function PlanningBatchesTab({
                     plannedQty={display?.plannedQty ?? computePlanningBatchPlannedQty(row)}
                     rmStatus={display?.rmStatus ?? buildPlanningBatchRmStatusView(null)}
                     pmStatus={display?.pmStatus ?? buildPlanningBatchPmStatusView(null)}
+                    rmCounts={display?.rmCounts ?? { available: 0, underProc: 0, shortage: 0, reserved: 0 }}
+                    pmCounts={display?.pmCounts ?? { available: 0, underProc: 0, shortage: 0, reserved: 0 }}
                     production={display?.production ?? buildPlanningBatchProductionView(row, prod)}
                     fulfillment={display?.fulfillment ?? buildPlanningBatchFulfillmentView(prod, undefined)}
                   />
@@ -2792,7 +2857,9 @@ const Planning = () => {
   const { data: productionBatches = [] } = useQuery({
     queryKey: ['production-batches'],
     queryFn: fetchBatches,
-    enabled: activeMainTab === 'pis-extracted',
+    // Needed on both tabs that show the summary KPI row (PIs Extracted + Batches) — the
+    // "Prod. Released" card counts production batches.
+    enabled: activeMainTab === 'pis-extracted' || activeMainTab === 'batches',
   });
   const prodByPlanningBatchId = useMemo(
     () => buildProdByPlanningBatchId(productionBatches as BatchRow[]),
@@ -4488,10 +4555,85 @@ const Planning = () => {
     [batchDetailItemsRows]
   );
 
+  // ── Per-batch manual reserve/un-reserve (RM/PM Status popups) ──────────────────────────────
+  const batchDetailBatchId = batchForDetailModal?.id ?? null;
+  const [planningReserveBusy, setPlanningReserveBusy] = useState(false);
+  const { data: batchReserveCoverage, refetch: refetchBatchReserveCoverage } = useQuery({
+    queryKey: ['planning', 'batch-reserve-coverage', batchDetailBatchId],
+    queryFn: () => fetchPlanningBatchReservationCoverage(batchDetailBatchId!),
+    enabled: batchForDetailModal != null && batchDetailBatchId != null,
+    staleTime: 15_000,
+  });
+  const reservedForBatchByCode = useMemo(() => {
+    const m: Record<string, number> = {};
+    const add = (lines?: { code: string; reserved: number }[]) => {
+      for (const l of lines ?? []) if (l.code) m[l.code] = (m[l.code] ?? 0) + Number(l.reserved || 0);
+    };
+    add(batchReserveCoverage?.rm);
+    add(batchReserveCoverage?.pm);
+    return m;
+  }, [batchReserveCoverage]);
+
+  const runPlanningReserveMutation = useCallback(
+    async (fn: () => Promise<{ success: boolean; error?: string }>, okMsg: string) => {
+      if (!batchDetailBatchId) return;
+      setPlanningReserveBusy(true);
+      try {
+        const res = await fn();
+        if (!res.success) {
+          addToast('error', res.error || 'Reservation failed');
+          return;
+        }
+        addToast('success', okMsg);
+        await refetchBatchReserveCoverage();
+        invalidatePlanningBatchData(queryClient);
+        if (batchDetailModalPeId) {
+          queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved', 'by-pe', batchDetailModalPeId] });
+        }
+        queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
+        queryClient.invalidateQueries({ queryKey: ['planning', 'batches', 'reserved-counts'] });
+      } finally {
+        setPlanningReserveBusy(false);
+      }
+    },
+    [batchDetailBatchId, addToast, refetchBatchReserveCoverage, queryClient, batchDetailModalPeId],
+  );
+
+  const handlePlanningReserve = useCallback(
+    (kind: 'RM' | 'PM', codes: string[] | null) => {
+      if (!batchDetailBatchId) return;
+      const label = codes && codes.length === 1 ? codes[0] : `all ${kind}`;
+      void runPlanningReserveMutation(
+        () => reservePlanningBatchLines(batchDetailBatchId, { kind, codes }),
+        `Reserved ${label} for this batch`,
+      );
+    },
+    [batchDetailBatchId, runPlanningReserveMutation],
+  );
+
+  const handlePlanningUnreserve = useCallback(
+    (kind: 'RM' | 'PM', codes: string[]) => {
+      if (!batchDetailBatchId || codes.length === 0) return;
+      const label = codes.length === 1 ? codes[0] : `all ${kind}`;
+      void runPlanningReserveMutation(
+        () => unreservePlanningBatchLines(batchDetailBatchId, { kind, codes }),
+        `Released ${label} for this batch`,
+      );
+    },
+    [batchDetailBatchId, runPlanningReserveMutation],
+  );
+
   const { data: allPlanningBatches = [] } = useQuery({
     queryKey: ['planning', 'batches', 'all', 'items-involved'],
     queryFn: fetchAllBatches,
     enabled: activeMainTab === 'items-involved' || activeMainTab === 'pis-extracted',
+  });
+  // Per-planning-batch manual reservation counts → RM/PM Status cell "Reserved: N".
+  const { data: planningReservedCounts = {} } = useQuery({
+    queryKey: ['planning', 'batches', 'reserved-counts'],
+    queryFn: fetchPlanningBatchesReservedCounts,
+    enabled: activeMainTab === 'items-involved',
+    staleTime: 15_000,
   });
   // Items List (vendor rates) is the single source of truth for quotations and PO planned stage.
   const { data: itemsListRmPage = [] } = useQuery({
@@ -4569,7 +4711,9 @@ const Planning = () => {
     const isBomConfirmed = (r: unknown) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null;
     const distinctSOs = new Set(planningExtractedList.map(soKey).filter(Boolean)).size; // unique sales orders
     const totalPIs = planningExtractedList.length;                                       // product plans (PIs)
-    const prodReleased = planningExtractedList.filter((r) => (r as { bomStatus?: string }).bomStatus === 'Production Released').length;
+    // "Prod. Released" = number of batches that exist in the Production module (created once a
+    // planning batch is sent to production), not the count of PIs flagged 'Production Released'.
+    const prodReleased = (productionBatches as BatchRow[]).length;
     const batchesRequired = planningExtractedList.reduce((s, r) => s + (r.batchesRequired ?? 0), 0);
     const bomsConfirmed = planningExtractedList.filter(isBomConfirmed).length;           // PIs with a confirmed BOM
     // SOs still pending planning = distinct SOs that have at least one PI whose BOM isn't confirmed.
@@ -4608,7 +4752,7 @@ const Planning = () => {
         prsRaised: openPrs,
       },
     };
-  }, [planningExtractedList, itemsInvolvedRows, procurementRequests]);
+  }, [planningExtractedList, itemsInvolvedRows, procurementRequests, productionBatches]);
 
   /** PIs + Batches tabs share order-level KPIs; Items Involved uses its own breakdown. */
   const currentStats =
@@ -7305,7 +7449,7 @@ const Planning = () => {
               <StatCard
                 title="PROD. RELEASED"
                 value={(currentStats as PlanningTabStats).prodReleased ?? 0}
-                description="Released to production"
+                description="Batches in Production"
               />
 
               <StatCard
@@ -8427,6 +8571,8 @@ const Planning = () => {
             rawMaterialsList={rawMaterialsList}
             packMaterialsList={packMaterialsList}
             pisClientRecords={pisClientRecords}
+            warehouseRows={warehouseRows}
+            reservedCountsByBatchId={planningReservedCounts}
           />
         )}
 
@@ -9689,6 +9835,11 @@ const Planning = () => {
               )
             }
             onSendToProduction={() => setSendToProductionConfirm({ source: 'batch-detail', batch })}
+            onReserveItems={handlePlanningReserve}
+            onUnreserveItems={handlePlanningUnreserve}
+            reservedForBatchByCode={reservedForBatchByCode}
+            reserveBusy={planningReserveBusy}
+            batchSentToProduction={Boolean(batch.sent)}
           />
         );
       })()}

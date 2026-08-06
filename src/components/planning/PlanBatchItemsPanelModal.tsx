@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { X } from 'lucide-react';
+import { X, Lock, Plus, Minus } from 'lucide-react';
 import type { PlanningBatchAllRow } from '../../services/planningExtracted.service';
 import {
   type BatchItemsPanelMaterialFilter,
@@ -23,7 +23,19 @@ interface PlanBatchItemsPanelModalProps {
   onClose: () => void;
   onItemCodeClick: (row: BatchItemsPanelRow) => void;
   onSendToProduction?: () => void;
+  /** Reserve one kind's items (codes=null → all lines of that kind on this batch). */
+  onReserveItems?: (kind: 'RM' | 'PM', codes: string[] | null) => void;
+  /** Remove manual reservations for the given item codes of one kind. */
+  onUnreserveItems?: (kind: 'RM' | 'PM', codes: string[]) => void;
+  /** Reserved qty already held by THIS batch, keyed by item code (drives button state). */
+  reservedForBatchByCode?: Record<string, number>;
+  /** Disables the reserve controls while a request is in flight. */
+  reserveBusy?: boolean;
+  /** Once sent to production, reservations are managed in the Production module. */
+  batchSentToProduction?: boolean;
 }
+
+const RESERVE_EPS = 1e-6;
 
 function ItemsReleasedSplitBadges({ split }: { split: BatchReleaseSplit }): ReactElement {
   return (
@@ -52,9 +64,21 @@ export function PlanBatchItemsPanelModal({
   onClose,
   onItemCodeClick,
   onSendToProduction,
+  onReserveItems,
+  onUnreserveItems,
+  reservedForBatchByCode,
+  reserveBusy = false,
+  batchSentToProduction = false,
 }: PlanBatchItemsPanelModalProps): ReactElement {
   const sizeKg = Number(batch.sizeKg) || 0;
   const allShortfallResolved = rows.length > 0 && rows.every((r) => r.shortfall <= 0);
+
+  // Reserve controls: shown only in the single-kind (RM / PM) popups, per the spec.
+  const reserveKind: 'RM' | 'PM' | null =
+    materialFilter === 'RM' ? 'RM' : materialFilter === 'PM' ? 'PM' : null;
+  const showReserve = Boolean(onReserveItems && reserveKind);
+  const reservedFor = (code: string) => Number(reservedForBatchByCode?.[code] ?? 0);
+  const anyReservedOnBatch = rows.some((r) => reservedFor(r.itemCode) > RESERVE_EPS);
 
   return (
     <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -97,6 +121,32 @@ export function PlanBatchItemsPanelModal({
             </span>
           ) : null}
         </div>
+        {showReserve && reserveKind ? (
+          <div className="px-4 pt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-ink-2">Reserve stock for this batch</span>
+            <button
+              type="button"
+              disabled={reserveBusy || rows.length === 0}
+              onClick={() => onReserveItems?.(reserveKind, null)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-brand-soft bg-brand-soft text-brand text-xs font-semibold hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus size={13} /> Reserve all {reserveKind}
+            </button>
+            <button
+              type="button"
+              disabled={reserveBusy || !anyReservedOnBatch}
+              onClick={() => onUnreserveItems?.(reserveKind, rows.filter((r) => reservedFor(r.itemCode) > RESERVE_EPS).map((r) => r.itemCode))}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-border bg-surface text-ink-2 text-xs font-semibold hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Minus size={13} /> Un-reserve all {reserveKind}
+            </button>
+            {batchSentToProduction ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-ink-3">
+                <Lock size={12} /> Sent to production — reserving acts on its production batch
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <div className="p-4 overflow-x-auto max-h-[70vh]">
           <table className="w-full text-sm min-w-[1100px]">
             <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
@@ -114,12 +164,15 @@ export function PlanBatchItemsPanelModal({
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">In Transit</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">Under GRN</th>
                 <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">Item Status</th>
+                {showReserve ? (
+                  <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">Reserve</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-ink-3">
+                  <td colSpan={showReserve ? 12 : 11} className="px-4 py-8 text-center text-sm text-ink-3">
                     {itemsLoading
                       ? 'Loading items…'
                       : `No ${materialFilter === 'ALL' ? 'RM/PM' : materialFilter} lines on this batch BOM.`}
@@ -166,6 +219,37 @@ export function PlanBatchItemsPanelModal({
                   <td className="px-3 py-2 text-center">
                     <span className={`text-[11px] ${planBatchStatusClass(row.status)}`}>{row.status}</span>
                   </td>
+                  {showReserve ? (
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
+                      {(() => {
+                        const reserved = reservedFor(row.itemCode);
+                        const isReserved = reserved > RESERVE_EPS;
+                        if (isReserved) {
+                          return (
+                            <button
+                              type="button"
+                              disabled={reserveBusy}
+                              onClick={() => onUnreserveItems?.(row.itemType, [row.itemCode])}
+                              title={`Reserved ${formatBatchItemsPanelCount(reserved)} for this batch — click to release`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[color:var(--st-green-fg)]/30 bg-ok-soft text-ok text-[11px] font-semibold hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Minus size={12} /> Reserved
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            type="button"
+                            disabled={reserveBusy}
+                            onClick={() => onReserveItems?.(row.itemType, [row.itemCode])}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-brand-soft bg-surface text-brand text-[11px] font-semibold hover:bg-brand-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Plus size={12} /> Reserve
+                          </button>
+                        );
+                      })()}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

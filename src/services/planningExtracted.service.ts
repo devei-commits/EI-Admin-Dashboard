@@ -469,3 +469,86 @@ export async function fetchItemsInvolvedByPlanningId(planningExtractedId: string
     return [];
   }
 }
+
+// ── Per-planning-batch manual reserve / un-reserve (Batches RM/PM Status popups) ────────────
+
+export interface PlanningBatchCoverageLine {
+  code: string;
+  materialId: number;
+  required: number;
+  reserved: number;
+  unit: string;
+  fullyReserved: boolean;
+}
+
+/** Reserve item codes (or all lines when codes=null) of one kind for a single planning batch. */
+export async function reservePlanningBatchLines(
+  planningBatchId: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] | null },
+): Promise<{ success: boolean; error?: string; shortages?: unknown }> {
+  try {
+    await api.post(`/api/v1/planning-extracted/batches/${planningBatchId}/reserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string; shortages?: unknown } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Reserve failed'),
+      shortages: err?.body?.shortages,
+    };
+  }
+}
+
+/** Remove manual reservations for the given item codes of one kind on a single planning batch. */
+export async function unreservePlanningBatchLines(
+  planningBatchId: number,
+  payload: { kind: 'RM' | 'PM'; codes: string[] },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await api.post(`/api/v1/planning-extracted/batches/${planningBatchId}/unreserve-lines`, {
+      kind: payload.kind.toLowerCase(),
+      codes: payload.codes,
+    });
+    return { success: true };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Unreserve failed'),
+    };
+  }
+}
+
+/** Per-batch reservation coverage (required vs reserved per line) for the RM/PM popups. */
+export async function fetchPlanningBatchReservationCoverage(
+  planningBatchId: number,
+): Promise<{ rm: PlanningBatchCoverageLine[]; pm: PlanningBatchCoverageLine[] } | null> {
+  try {
+    const res = await api.get<{ rm?: PlanningBatchCoverageLine[]; pm?: PlanningBatchCoverageLine[] }>(
+      `/api/v1/planning-extracted/batches/${planningBatchId}/reservation-coverage`,
+    );
+    const body = (res as { data?: { rm?: PlanningBatchCoverageLine[]; pm?: PlanningBatchCoverageLine[] } })?.data ?? res;
+    if (body && typeof body === 'object') {
+      return { rm: Array.isArray(body.rm) ? body.rm : [], pm: Array.isArray(body.pm) ? body.pm : [] };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Distinct manually-reserved RM/PM item counts per planning batch (for the RM/PM Status cells). */
+export async function fetchPlanningBatchesReservedCounts(): Promise<Record<string, { rm: number; pm: number }>> {
+  try {
+    const res = await api.get<Record<string, { rm: number; pm: number }>>(
+      '/api/v1/planning-extracted/batches/reserved-counts',
+    );
+    const body = (res as { data?: Record<string, { rm: number; pm: number }> })?.data ?? res;
+    return body && typeof body === 'object' ? (body as Record<string, { rm: number; pm: number }>) : {};
+  } catch {
+    return {};
+  }
+}
