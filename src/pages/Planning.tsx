@@ -8739,6 +8739,13 @@ const Planning = () => {
 
       {usedInModalItem && (() => {
         const rows = getUsedInBatchesForItem(usedInModalItem);
+        // Totals across every batch that consumes this item — what to procure for all of them.
+        const usedInQtyKind = usedInModalItem.itemType === 'PM' ? 'pcs' : 'kg';
+        const usedInTotalRequired = rows.reduce(
+          (sum, row) => sum + (Number(getItemRequiredInBatch(usedInModalItem, row)) || 0),
+          0,
+        );
+        const usedInTotalBatchSize = rows.reduce((sum, row) => sum + (Number(row.sizeKg) || 0), 0);
         return (
           <PlanningModalShell onClose={() => setUsedInModalItem(null)} z="z-[100]">
             <div role="dialog" aria-modal="true" aria-label={`Batches using ${usedInModalItem.code}`} className="bg-surface w-full max-w-4xl rounded-xl shadow-xl border border-border max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -8746,6 +8753,15 @@ const Planning = () => {
                 <div>
                   <h3 className="text-base font-bold text-ink">Batches using {usedInModalItem.code}</h3>
                   <p className="text-xs text-ink-3 mt-1">{usedInModalItem.name} ({usedInModalItem.itemType})</p>
+                  {rows.length > 0 && (
+                    <p className="text-xs text-ink-2 mt-1.5">
+                      <span className="font-semibold">{rows.length}</span> batch{rows.length === 1 ? '' : 'es'} ·
+                      {' '}total required{' '}
+                      <span className="font-bold text-ink">
+                        {formatQtyExact(usedInTotalRequired, usedInQtyKind)} {usedInModalItem.unit}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -8780,14 +8796,24 @@ const Planning = () => {
                           <td className="px-3 py-2 text-right font-semibold text-ink">
                             {/* RM is decimal kg (0.195, 120.056) — Math.round wrongly floored sub-1 values to 0.
                                 Show full meaningful decimals for RM; keep whole pieces for PM. */}
-                            {formatQtyExact(
-                              getItemRequiredInBatch(usedInModalItem, row),
-                              usedInModalItem.itemType === 'PM' ? 'pcs' : 'kg',
-                            )}
+                            {formatQtyExact(getItemRequiredInBatch(usedInModalItem, row), usedInQtyKind)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-border bg-surface-2">
+                        <td colSpan={3} className="px-3 py-2 text-right font-semibold text-ink-2">
+                          Total — {rows.length} batch{rows.length === 1 ? '' : 'es'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-ink-2">
+                          {usedInTotalBatchSize.toLocaleString()} KG
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-ink">
+                          {formatQtyExact(usedInTotalRequired, usedInQtyKind)} {usedInModalItem.unit}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 )}
               </div>
