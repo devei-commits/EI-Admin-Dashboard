@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Eye,
+  FlaskConical,
   MapPin,
   Scale,
   Search,
@@ -71,6 +72,12 @@ export interface DispensingTrayBatch {
 export interface DispensingTrayViewProps<T extends DispensingTrayBatch> {
   batches: T[];
   onAction: (action: 'dispenseRM' | 'dispensePM' | 'detail', batch: T) => void;
+  /**
+   * TEMPORARY dev tooling. When provided, empty trays offer a one-click seed so the steps AFTER
+   * dispensing can be exercised. The tray it produces is a MOCK and consumes no stock.
+   */
+  onSeedTestTray?: (batch: T, fill: 'empty' | 'full') => void;
+  seedingBmrNo?: string | null;
 }
 
 const FILTER_OPTIONS: { id: DispensingTrayFilter; label: string }[] = [
@@ -185,11 +192,15 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
   customerName,
   muSiteLabel,
   onAction,
+  onSeedTestTray,
+  seeding = false,
 }: {
   batch: T;
   customerName: string;
   muSiteLabel: string;
   onAction: DispensingTrayViewProps<T>['onAction'];
+  onSeedTestTray?: DispensingTrayViewProps<T>['onSeedTestTray'];
+  seeding?: boolean;
 }): React.ReactElement {
   const summary = summarizeBatchDispensing(batch.dispensingRM, batch.dispensingPM);
   const ctx = batchTrayContext(batch);
@@ -287,6 +298,36 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
             Open RM or PM dispensing to load BOM lines onto the tray.
           </p>
         )}
+        {onSeedTestTray && summary.rm.total === 0 && summary.pm.total === 0 && (
+          <div className="w-full mt-2 rounded-lg border border-dashed border-warn-soft bg-warn-soft/30 px-3 py-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-warn">
+              <FlaskConical size={12} aria-hidden /> Temporary test tool
+            </div>
+            <p className="mt-1 text-[10px] text-ink-2 leading-snug">
+              Loads this batch&apos;s BOM onto the tray and moves it to <b>Dispensing</b> so the steps
+              after it can be checked. <b>Mock only — consumes no stock and needs no MTR.</b>
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={seeding}
+                onClick={(e) => { e.stopPropagation(); onSeedTestTray(batch, 'empty'); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FlaskConical size={11} /> {seeding ? 'Seeding…' : 'Seed tray (undispensed)'}
+              </button>
+              <button
+                type="button"
+                disabled={seeding}
+                onClick={(e) => { e.stopPropagation(); onSeedTestTray(batch, 'full'); }}
+                title="Every line marked fully dispensed — jumps straight to the steps after dispensing"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FlaskConical size={11} /> {seeding ? 'Seeding…' : 'Seed tray (fully dispensed)'}
+              </button>
+            </div>
+          </div>
+        )}
       </footer>
     </article>
   );
@@ -295,6 +336,8 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
 export function DispensingTrayView<T extends DispensingTrayBatch>({
   batches,
   onAction,
+  onSeedTestTray,
+  seedingBmrNo = null,
 }: DispensingTrayViewProps<T>): React.ReactElement {
   const [filter, setFilter] = useState<DispensingTrayFilter>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
@@ -361,6 +404,26 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
     };
   }, [trayBatches]);
 
+  /* ── TEMPORARY dev tooling: seed picker ───────────────────────────────────────────────────
+     The per-card buttons can only reach batches ALREADY on the tray, so there was no way to put a
+     further batch on it. This header control seeds any batch that is not on the tray yet, which is
+     what "seed another tray" actually needs. Remove with the rest of the dev seed block. */
+  const [seedPick, setSeedPick] = useState<string>('');
+
+  const seedCandidates = useMemo(() => {
+    if (!onSeedTestTray) return [];
+    return [...batches]
+      .filter((b) => !isBatchOnDispensingTray(b))
+      .sort((a, b) => a.bmrNo.localeCompare(b.bmrNo));
+  }, [batches, onSeedTestTray]);
+
+  const seedPicked = (fill: 'empty' | 'full') => {
+    const batch = seedCandidates.find((b) => b.bmrNo === seedPick);
+    if (!batch || !onSeedTestTray) return;
+    onSeedTestTray(batch, fill);
+    setSeedPick('');
+  };
+
   const resolveCustomer = (soNo: string): string => customerBySo[soNo] || '';
   const resolveMuLabel = (zoneCode?: string): string => zoneLabelInAreas(productionAreas, zoneCode || '');
 
@@ -373,10 +436,55 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
             Batch-wise RM &amp; PM tray — material, quantity, container slot, and dispense timestamp
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 text-[10px]">
-          <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.total} batches</span>
-          <span className="px-2 py-1 rounded-lg bg-warn-soft text-warn border border-warn-soft font-semibold">{kpis.rmActive} RM active</span>
-          <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.pmActive} PM active</span>
+        <div className="flex flex-col sm:items-end gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 text-[10px]">
+            <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.total} batches</span>
+            <span className="px-2 py-1 rounded-lg bg-warn-soft text-warn border border-warn-soft font-semibold">{kpis.rmActive} RM active</span>
+            <span className="px-2 py-1 rounded-lg bg-brand-soft text-brand border border-brand-soft font-semibold">{kpis.pmActive} PM active</span>
+          </div>
+
+          {onSeedTestTray && seedCandidates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed border-warn-soft bg-warn-soft/30 px-2 py-1.5">
+              <span
+                className="inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wide text-warn"
+                title="Temporary test tool — seeds a mock tray. Consumes no stock and needs no MTR."
+              >
+                <FlaskConical size={11} aria-hidden /> Seed tray
+              </span>
+              <select
+                aria-label="Batch to seed onto the dispensing tray"
+                className="text-[10.5px] px-2 py-1 rounded-lg border border-border bg-surface text-ink max-w-[13rem] focus:ring-1 focus:ring-brand outline-none"
+                value={seedPick}
+                onChange={(e) => setSeedPick(e.target.value)}
+                disabled={seedingBmrNo != null}
+              >
+                <option value="">Pick a batch… ({seedCandidates.length})</option>
+                {seedCandidates.map((b) => (
+                  <option key={b.bmrNo} value={b.bmrNo}>
+                    {formatUnifiedBatchLabel(b)} — {b.productName}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!seedPick || seedingBmrNo != null}
+                onClick={() => seedPicked('empty')}
+                title="Load the BOM onto the tray with nothing dispensed yet"
+                className="px-2 py-1 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {seedingBmrNo != null ? 'Seeding…' : 'Undispensed'}
+              </button>
+              <button
+                type="button"
+                disabled={!seedPick || seedingBmrNo != null}
+                onClick={() => seedPicked('full')}
+                title="Every line marked fully dispensed — jumps straight to the steps after dispensing"
+                className="px-2 py-1 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {seedingBmrNo != null ? 'Seeding…' : 'Fully dispensed'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -442,6 +550,8 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
               customerName={resolveCustomer(batch.soNo)}
               muSiteLabel={resolveMuLabel(batch.scheduledMuZone)}
               onAction={onAction}
+              onSeedTestTray={onSeedTestTray}
+              seeding={seedingBmrNo === batch.bmrNo}
             />
           ))
         )}

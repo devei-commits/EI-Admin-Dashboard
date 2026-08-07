@@ -8789,7 +8789,26 @@ const Planning = () => {
                     <tbody>
                       {rows.map((row, idx) => (
                         <tr key={`${row.id}-${idx}`} className={idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
-                          <td className="px-3 py-2 text-ink">{row.batchCode ?? `B-${idx + 1}`}</td>
+                          <td className="px-3 py-2">
+                            {/* Straight to THIS batch — we already hold its row, so the panel opens
+                                without a tab round-trip. The item filter follows the item clicked. */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUsedInModalItem(null);
+                                openBatchItemsPanel(
+                                  row,
+                                  usedInModalItem.itemType === 'RM' || usedInModalItem.itemType === 'PM'
+                                    ? usedInModalItem.itemType
+                                    : 'ALL',
+                                );
+                              }}
+                              title={`Open batch ${row.batchCode ?? ''} — ${usedInModalItem.code} and the rest of its ${usedInModalItem.itemType} lines`}
+                              className="text-brand font-semibold hover:underline focus:underline focus:outline-none"
+                            >
+                              {row.batchCode ?? `B-${idx + 1}`}
+                            </button>
+                          </td>
                           <td className="px-3 py-2 text-ink-2">{row.soNumber ?? '—'}</td>
                           <td className="px-3 py-2 text-ink-2">{row.productName ?? row.productCode ?? '—'}</td>
                           <td className="px-3 py-2 text-right text-ink-2">{(Number(row.sizeKg) || 0).toLocaleString()} KG</td>

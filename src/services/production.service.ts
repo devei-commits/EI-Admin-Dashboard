@@ -485,6 +485,46 @@ export async function reserveProductionBatchLines(
   }
 }
 
+/* ── TEMPORARY dev tooling: seed a dispensing tray ──────────────────────────────────────────
+   Lets a batch be pushed straight onto the Dispensing & Tray board so the steps that follow it
+   can be exercised. The backend writes MOCK tray lines and consumes no stock.
+   Remove with src/production/devDispensingSeed.js. */
+
+export interface DevDispensingSeedResult {
+  batchId: number;
+  bmrNo: string;
+  kind: string;
+  fill: string;
+  bomSource: string;
+  rmLines: number;
+  pmLines: number;
+  bmrStatus: string;
+  bprStatus: string;
+  warehouseStockTouched: boolean;
+  warning: string;
+}
+
+/** Push one batch onto the dispensing tray with BOM-derived lines. */
+export async function devSeedDispensingTray(
+  batchPk: number,
+  payload: { kind?: 'rm' | 'pm' | 'both'; fill?: 'empty' | 'full'; force?: boolean } = {},
+): Promise<{ success: boolean; error?: string; seed?: DevDispensingSeedResult }> {
+  try {
+    const res = await api.post<{ seed?: DevDispensingSeedResult }>(
+      `${BASE}/batches/${batchPk}/dev-seed-dispensing`,
+      { kind: payload.kind ?? 'both', fill: payload.fill ?? 'empty', force: payload.force === true },
+    );
+    const envelope = (res as { seed?: DevDispensingSeedResult }) ?? {};
+    return { success: true, seed: envelope.seed };
+  } catch (e) {
+    const err = e as Error & { body?: { error?: string } };
+    return {
+      success: false,
+      error: err?.body?.error || (e instanceof Error ? e.message : 'Seed failed'),
+    };
+  }
+}
+
 export async function unreserveProductionBatchLines(
   batchPk: number,
   payload: { kind: 'RM' | 'PM'; codes: string[] },
