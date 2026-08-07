@@ -74,6 +74,8 @@ import {
   type PlanningExtractedRow,
   type PlanningBatchRow,
   type PlanningBatchAllRow,
+  type PendingReservationLine,
+  type PlanningBatchCoverageLine,
 } from '../services/planningExtracted.service';
 import { RequestQuotationModal, type RequestQuotationContext } from '../components/procurement/RequestQuotationModal';
 import {
@@ -4573,15 +4575,49 @@ const Planning = () => {
     add(batchReserveCoverage?.pm);
     return m;
   }, [batchReserveCoverage]);
+  // Claimed but not yet in the facility — the warehouse allocates these on receipt, oldest first.
+  const pendingForBatchByCode = useMemo(() => {
+    const m: Record<string, number> = {};
+    const add = (lines?: PlanningBatchCoverageLine[]) => {
+      for (const l of lines ?? []) {
+        if (!l.code) continue;
+        const pending = Number.isFinite(Number(l.pending))
+          ? Number(l.pending)
+          : Math.max(0, Number(l.claimed ?? 0) - Number(l.reserved ?? 0));
+        m[l.code] = (m[l.code] ?? 0) + Math.max(0, pending);
+      }
+    };
+    add(batchReserveCoverage?.rm);
+    add(batchReserveCoverage?.pm);
+    return m;
+  }, [batchReserveCoverage]);
 
   const runPlanningReserveMutation = useCallback(
-    async (fn: () => Promise<{ success: boolean; error?: string }>, okMsg: string) => {
+    async (
+      fn: () => Promise<{ success: boolean; error?: string; pending?: PendingReservationLine[] }>,
+      okMsg: string,
+    ) => {
       if (!batchDetailBatchId) return;
       setPlanningReserveBusy(true);
       try {
         const res = await fn();
         if (!res.success) {
           addToast('error', res.error || 'Reservation failed');
+          return;
+        }
+        // Short stock no longer blocks the reserve — say what is held now and what is queued
+        // against incoming stock (allocated automatically, oldest claim first, on GRN).
+        const pending = res.pending ?? [];
+        if (pending.length > 0) {
+          const detail = pending
+            .slice(0, 3)
+            .map((p) => `${p.code} ${p.pending} ${p.unit}`)
+            .join(', ');
+          const more = pending.length > 3 ? ` +${pending.length - 3} more` : '';
+          addToast(
+            'info',
+            `${okMsg} — ${pending.length} item(s) awaiting stock (${detail}${more}). These allocate automatically when the material is received.`,
+          );
           return;
         }
         addToast('success', okMsg);
@@ -9838,6 +9874,7 @@ const Planning = () => {
             onReserveItems={handlePlanningReserve}
             onUnreserveItems={handlePlanningUnreserve}
             reservedForBatchByCode={reservedForBatchByCode}
+            pendingForBatchByCode={pendingForBatchByCode}
             reserveBusy={planningReserveBusy}
             batchSentToProduction={Boolean(batch.sent)}
           />

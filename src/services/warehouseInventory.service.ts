@@ -55,6 +55,8 @@ export interface WarehouseInventoryRow {
   inTransitBreakdown?: InTransitBreakdownItem[];
   /** Total quantity from purchase orders (vendor) */
   poQuantity?: number;
+  /** Earliest expected arrival (connecting date) across open POs for this material; drives scheduling availability. */
+  poConnectingDate?: string | null;
   reorderPt: number;
   avgMo: number;
   /** Display status (may include threshold-derived values or custom qc_status) */
@@ -183,6 +185,8 @@ interface ApiWarehouseRow {
   underGrn?: number;
   inTransitBreakdown?: InTransitBreakdownItem[];
   poQuantity?: number;
+  /** Earliest expected arrival (connecting date) across open POs for this material; drives scheduling availability. */
+  poConnectingDate?: string | null;
   reorderPt: number;
   avgMo: number;
   status: string;
@@ -238,6 +242,7 @@ export async function fetchWarehouseInventory(): Promise<ServiceResult<{
       underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
+      poConnectingDate: r.poConnectingDate ?? null,
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',
@@ -320,6 +325,7 @@ export async function fetchWarehouseInventoryPage(opts: {
       underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
+      poConnectingDate: r.poConnectingDate ?? null,
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',
@@ -585,6 +591,7 @@ export async function fetchLowThresholdAlerts(): Promise<ServiceResult<{ rows: W
       underGrn: Number(r.underGrn) || 0,
       inTransitBreakdown: Array.isArray(r.inTransitBreakdown) ? r.inTransitBreakdown : undefined,
       poQuantity: r.poQuantity != null ? Number(r.poQuantity) : undefined,
+      poConnectingDate: r.poConnectingDate ?? null,
       reorderPt: Number(r.reorderPt) || 0,
       avgMo: Number(r.avgMo) || 0,
       status: r.status || 'In Stock',

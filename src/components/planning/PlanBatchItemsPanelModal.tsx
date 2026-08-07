@@ -27,8 +27,13 @@ interface PlanBatchItemsPanelModalProps {
   onReserveItems?: (kind: 'RM' | 'PM', codes: string[] | null) => void;
   /** Remove manual reservations for the given item codes of one kind. */
   onUnreserveItems?: (kind: 'RM' | 'PM', codes: string[]) => void;
-  /** Reserved qty already held by THIS batch, keyed by item code (drives button state). */
+  /** Stock-backed qty already held by THIS batch, keyed by item code (drives button state). */
   reservedForBatchByCode?: Record<string, number>;
+  /**
+   * Qty this batch has claimed that the facility cannot back yet, keyed by item code. The claim is
+   * real — it is allocated automatically (oldest claim first) when the material is received.
+   */
+  pendingForBatchByCode?: Record<string, number>;
   /** Disables the reserve controls while a request is in flight. */
   reserveBusy?: boolean;
   /** Once sent to production, reservations are managed in the Production module. */
@@ -67,6 +72,7 @@ export function PlanBatchItemsPanelModal({
   onReserveItems,
   onUnreserveItems,
   reservedForBatchByCode,
+  pendingForBatchByCode,
   reserveBusy = false,
   batchSentToProduction = false,
 }: PlanBatchItemsPanelModalProps): ReactElement {
@@ -78,7 +84,11 @@ export function PlanBatchItemsPanelModal({
     materialFilter === 'RM' ? 'RM' : materialFilter === 'PM' ? 'PM' : null;
   const showReserve = Boolean(onReserveItems && reserveKind);
   const reservedFor = (code: string) => Number(reservedForBatchByCode?.[code] ?? 0);
-  const anyReservedOnBatch = rows.some((r) => reservedFor(r.itemCode) > RESERVE_EPS);
+  const pendingFor = (code: string) => Number(pendingForBatchByCode?.[code] ?? 0);
+  /** Claimed = held now OR queued against incoming stock — both are releasable. */
+  const claimedFor = (code: string) => reservedFor(code) + pendingFor(code);
+  const anyReservedOnBatch = rows.some((r) => claimedFor(r.itemCode) > RESERVE_EPS);
+  const awaitingCount = rows.filter((r) => pendingFor(r.itemCode) > RESERVE_EPS).length;
 
   return (
     <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -140,6 +150,11 @@ export function PlanBatchItemsPanelModal({
             >
               <Minus size={13} /> Un-reserve all {reserveKind}
             </button>
+            {awaitingCount > 0 ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-warn-soft text-warn text-[11px] font-semibold">
+                {awaitingCount} awaiting stock — allocated automatically on receipt
+              </span>
+            ) : null}
             {batchSentToProduction ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-ink-3">
                 <Lock size={12} /> Sent to production — reserving acts on its production batch
@@ -223,17 +238,28 @@ export function PlanBatchItemsPanelModal({
                     <td className="px-3 py-2 text-center whitespace-nowrap">
                       {(() => {
                         const reserved = reservedFor(row.itemCode);
-                        const isReserved = reserved > RESERVE_EPS;
-                        if (isReserved) {
+                        const pending = pendingFor(row.itemCode);
+                        if (reserved + pending > RESERVE_EPS) {
+                          // Partly or wholly awaiting arrival → amber "Awaiting" instead of green.
+                          const waiting = pending > RESERVE_EPS;
+                          const title = waiting
+                            ? `Claimed for this batch: ${formatBatchItemsPanelCount(reserved)} held, `
+                              + `${formatBatchItemsPanelCount(pending)} awaiting stock (allocated automatically `
+                              + 'when the material is received) — click to release'
+                            : `Reserved ${formatBatchItemsPanelCount(reserved)} for this batch — click to release`;
                           return (
                             <button
                               type="button"
                               disabled={reserveBusy}
                               onClick={() => onUnreserveItems?.(row.itemType, [row.itemCode])}
-                              title={`Reserved ${formatBatchItemsPanelCount(reserved)} for this batch — click to release`}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[color:var(--st-green-fg)]/30 bg-ok-soft text-ok text-[11px] font-semibold hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={title}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold hover:bg-surface-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                waiting
+                                  ? 'border-warn-soft bg-warn-soft text-warn'
+                                  : 'border-[color:var(--st-green-fg)]/30 bg-ok-soft text-ok'
+                              }`}
                             >
-                              <Minus size={12} /> Reserved
+                              <Minus size={12} /> {waiting ? 'Awaiting stock' : 'Reserved'}
                             </button>
                           );
                         }

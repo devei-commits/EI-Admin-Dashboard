@@ -188,6 +188,8 @@ export interface WarehouseInventoryForAvailabilityLike {
   reserved?: number;
   underGrn?: number;
   poQuantity?: number;
+  /** Earliest expected arrival for the open PO qty; dates the PO slice so availableBy can be computed. */
+  poConnectingDate?: string | null;
   inTransitBreakdown?: InTransitBreakdownLike[];
 }
 
@@ -293,7 +295,10 @@ export function computeLineAvailableByDate(
 
   const poOpen = Math.max(0, Number(inventory?.poQuantity) || 0);
   if (poOpen > AVAIL_EPS) {
-    slices.push({ date: null, qty: poOpen, unknown: true });
+    // Use the PO's connecting date (expected arrival) when set, so PO-covered materials contribute a
+    // dated slice and the batch gets a real available-by date instead of an unknown pipeline.
+    const poDate = normalizeIsoDateOnly(inventory?.poConnectingDate);
+    slices.push({ date: poDate, qty: poOpen, unknown: !poDate });
   }
 
   slices.sort((a, b) => {

@@ -476,22 +476,47 @@ export interface PlanningBatchCoverageLine {
   code: string;
   materialId: number;
   required: number;
+  /** Stock-backed: material physically in the facility and held for this batch. */
   reserved: number;
+  /** Everything the batch has claimed, including quantity that has not arrived yet. */
+  claimed?: number;
+  /** claimed − reserved: queued against incoming stock, auto-allocated on GRN (FIFO). */
+  pending?: number;
   unit: string;
   fullyReserved: boolean;
+  /** Whole requirement is claimed, even if part of it is still awaiting arrival. */
+  fullyClaimed?: boolean;
 }
 
-/** Reserve item codes (or all lines when codes=null) of one kind for a single planning batch. */
+/** One line the batch claimed but the facility could not back at reserve time. */
+export interface PendingReservationLine {
+  type: string;
+  code: string;
+  materialId: number;
+  requested: number;
+  reserved: number;
+  pending: number;
+  unit: string;
+}
+
+/**
+ * Reserve item codes (or all lines when codes=null) of one kind for a single planning batch.
+ *
+ * Short stock no longer fails the call: whatever the facility can back is reserved now and the
+ * remainder comes back in `pending`, queued against incoming stock (allocated automatically, FIFO,
+ * when the material is received).
+ */
 export async function reservePlanningBatchLines(
   planningBatchId: number,
   payload: { kind: 'RM' | 'PM'; codes: string[] | null },
-): Promise<{ success: boolean; error?: string; shortages?: unknown }> {
+): Promise<{ success: boolean; error?: string; shortages?: unknown; pending?: PendingReservationLine[] }> {
   try {
-    await api.post(`/api/v1/planning-extracted/batches/${planningBatchId}/reserve-lines`, {
-      kind: payload.kind.toLowerCase(),
-      codes: payload.codes,
-    });
-    return { success: true };
+    const res = await api.post<{ pending?: PendingReservationLine[] }>(
+      `/api/v1/planning-extracted/batches/${planningBatchId}/reserve-lines`,
+      { kind: payload.kind.toLowerCase(), codes: payload.codes },
+    );
+    // Handler responds { success, reserved, pending } — `pending` is on the envelope itself.
+    return { success: true, pending: Array.isArray(res?.pending) ? res.pending : [] };
   } catch (e) {
     const err = e as Error & { body?: { error?: string; shortages?: unknown } };
     return {

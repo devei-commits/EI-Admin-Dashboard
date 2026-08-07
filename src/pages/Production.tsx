@@ -917,6 +917,7 @@ function warehouseRowsForMaterialAvailability(
       reserved: r.reserved,
       underGrn: r.underGrn,
       poQuantity: r.poQuantity,
+      poConnectingDate: r.poConnectingDate,
       inTransitBreakdown: r.inTransitBreakdown,
     }));
 }
@@ -2946,11 +2947,9 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
       addToast('error', 'Select at least one RM/PM line that is not already fully reserved.');
       return;
     }
-    const selectedShort = linesToReserve.some((r) => itemHasWhShort(r));
-    if (selectedShort) {
-      addToast('error', 'Cannot reserve — free warehouse stock is below required for one or more selected lines.');
-      return;
-    }
+    // Short stock is no longer a blocker: the claim is recorded either way. Whatever the facility
+    // can back is reserved now; the rest is queued and allocated automatically (oldest claim first)
+    // as soon as the material is received.
     setSaving(true);
     try {
       const res = await reserveProductionBatchLines(batchPk, {
@@ -2962,12 +2961,19 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
         return;
       }
       await onReserved();
-      addToast(
-        'success',
-        type === 'rm'
-          ? `Reserved ${codesToReserve.length} RM line(s) for ${formatUnifiedBatchLabel(batch)}`
-          : `Reserved ${codesToReserve.length} PM line(s) for ${formatUnifiedBatchLabel(batch)}`,
-      );
+      const kindLabel = type === 'rm' ? 'RM' : 'PM';
+      const okMsg = `Reserved ${codesToReserve.length} ${kindLabel} line(s) for ${formatUnifiedBatchLabel(batch)}`;
+      const pending = res.pending ?? [];
+      if (pending.length > 0) {
+        const detail = pending.slice(0, 3).map((p) => `${p.code} ${p.pending} ${p.unit}`).join(', ');
+        const more = pending.length > 3 ? ` +${pending.length - 3} more` : '';
+        addToast(
+          'info',
+          `${okMsg} — ${pending.length} awaiting stock (${detail}${more}). These allocate automatically when the material is received.`,
+        );
+      } else {
+        addToast('success', okMsg);
+      }
       onClose();
     } finally {
       setSaving(false);
@@ -2998,8 +3004,11 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
     const available = qtyAvailable(sih, otherReserved);
     return isQtyShort(available, r.required, qtyKind);
   };
+  // Short lines are still highlighted, but they no longer disable Reserve: the shortfall becomes a
+  // pending claim that the warehouse fills automatically (FIFO) when the material is received.
   const selectedShort = linesToReserve.some(itemHasWhShort);
-  const reserveDisabled = linesToReserve.length === 0 || loadingBatchReserveMaps || saving || selectedShort;
+  const shortCount = linesToReserve.filter(itemHasWhShort).length;
+  const reserveDisabled = linesToReserve.length === 0 || loadingBatchReserveMaps || saving;
   const processOwnerText = (parts: { underGrn: number; inTransit: number; poOpen: number }) => {
     if (parts.underGrn > 0) return 'Contact Warehouse GRN/QC team';
     if (parts.inTransit > 0) return 'Contact Procurement logistics follow-up';
@@ -3012,6 +3021,13 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
       <div className="rounded-lg border border-warn-soft bg-warn-soft text-warn px-3 py-2.5 flex gap-2 items-start text-xs mb-4">
         <div>{alertMsg}</div>
       </div>
+      {selectedShort && (
+        <div className="rounded-lg border border-brand-soft bg-brand-soft text-brand px-3 py-2.5 text-xs mb-4">
+          <b>{shortCount} selected line(s) exceed free stock.</b> You can still reserve them — the
+          available quantity is held now and the shortfall is queued against incoming stock. It is
+          allocated to this batch automatically (oldest claim first) as soon as the material is received.
+        </div>
+      )}
       {(type === 'rm' && needLoadRm && loadingRm) || (type === 'pm' && needLoadPm && loadingPm) ? (
         <div className="py-6 text-center text-sm text-ink-3">Loading {type.toUpperCase()} requirements…</div>
       ) : null}

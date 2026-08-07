@@ -443,16 +443,38 @@ export async function fetchProductionReservedItems(): Promise<ProductionReserved
   }
 }
 
+/** One line the batch claimed but the facility could not back at reserve time. */
+export interface PendingReservationLine {
+  type: string;
+  code: string;
+  materialId: number;
+  requested: number;
+  reserved: number;
+  pending: number;
+  unit: string;
+}
+
+/**
+ * Reserve BOM lines for a production batch.
+ *
+ * Short stock no longer fails the call: whatever the facility can back is reserved now and the
+ * remainder comes back in `pending`, queued against incoming stock (allocated automatically, FIFO,
+ * when the material is received).
+ */
 export async function reserveProductionBatchLines(
   batchPk: number,
   payload: { kind: 'RM' | 'PM'; codes: string[] },
-): Promise<{ success: boolean; error?: string; shortages?: unknown }> {
+): Promise<{ success: boolean; error?: string; shortages?: unknown; pending?: PendingReservationLine[] }> {
   try {
-    await api.post(`${BASE}/batches/${batchPk}/reserve-lines`, {
-      kind: payload.kind.toLowerCase(),
-      codes: payload.codes,
-    });
-    return { success: true };
+    const res = await api.post<{ pendingReservations?: PendingReservationLine[] }>(
+      `${BASE}/batches/${batchPk}/reserve-lines`,
+      { kind: payload.kind.toLowerCase(), codes: payload.codes },
+    );
+    // `pendingReservations` sits alongside `data`/`coverage` on the envelope, so read it from the
+    // envelope itself — not from the unwrapped `data` payload.
+    const envelope = (res as { data?: unknown; pendingReservations?: PendingReservationLine[] }) ?? {};
+    const pending = envelope.pendingReservations;
+    return { success: true, pending: Array.isArray(pending) ? pending : [] };
   } catch (e) {
     const err = e as Error & { body?: { error?: string; shortages?: unknown } };
     return {
