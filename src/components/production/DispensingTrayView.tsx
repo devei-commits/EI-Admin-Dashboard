@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Eye,
@@ -409,6 +409,11 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
      further batch on it. This header control seeds any batch that is not on the tray yet, which is
      what "seed another tray" actually needs. Remove with the rest of the dev seed block. */
   const [seedPick, setSeedPick] = useState<string>('');
+  // Type-to-filter instead of scrolling a plain <select> — same idea as the tray's own search box.
+  const [seedQuery, setSeedQuery] = useState('');
+  const [seedOpen, setSeedOpen] = useState(false);
+  const [seedHighlight, setSeedHighlight] = useState(0);
+  const seedBoxRef = useRef<HTMLDivElement | null>(null);
 
   const seedCandidates = useMemo(() => {
     if (!onSeedTestTray) return [];
@@ -417,11 +422,67 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
       .sort((a, b) => a.bmrNo.localeCompare(b.bmrNo));
   }, [batches, onSeedTestTray]);
 
+  const seedSuggestions = useMemo(() => {
+    const q = seedQuery.trim().toLowerCase();
+    if (!q) return seedCandidates;
+    return seedCandidates.filter((b) => {
+      const hay = [b.bmrNo, b.bprNo, b.batchNo, b.productName, b.soNo, customerBySo[b.soNo] || '']
+        .join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [seedCandidates, seedQuery, customerBySo]);
+
+  const selectedSeedBatch = useMemo(
+    () => seedCandidates.find((b) => b.bmrNo === seedPick) ?? null,
+    [seedCandidates, seedPick],
+  );
+
+  // Close the suggestion list when focus moves elsewhere on the page.
+  useEffect(() => {
+    if (!seedOpen) return undefined;
+    const onDocDown = (e: MouseEvent) => {
+      if (seedBoxRef.current && !seedBoxRef.current.contains(e.target as Node)) setSeedOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [seedOpen]);
+
+  const chooseSeed = (b: DispensingTrayBatch) => {
+    setSeedPick(b.bmrNo);
+    setSeedQuery(`${formatUnifiedBatchLabel(b)} — ${b.productName}`);
+    setSeedOpen(false);
+  };
+
+  const clearSeed = () => {
+    setSeedPick('');
+    setSeedQuery('');
+    setSeedHighlight(0);
+  };
+
+  const onSeedKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!seedOpen) { setSeedOpen(true); return; }
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setSeedHighlight((i) => {
+        const n = seedSuggestions.length;
+        return n === 0 ? 0 : (i + step + n) % n;
+      });
+      return;
+    }
+    if (e.key === 'Enter') {
+      const pick = seedSuggestions[seedHighlight];
+      if (seedOpen && pick) { e.preventDefault(); chooseSeed(pick); }
+      return;
+    }
+    if (e.key === 'Escape') setSeedOpen(false);
+  };
+
   const seedPicked = (fill: 'empty' | 'full') => {
     const batch = seedCandidates.find((b) => b.bmrNo === seedPick);
     if (!batch || !onSeedTestTray) return;
     onSeedTestTray(batch, fill);
-    setSeedPick('');
+    clearSeed();
   };
 
   const resolveCustomer = (soNo: string): string => customerBySo[soNo] || '';
@@ -451,25 +512,78 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
               >
                 <FlaskConical size={11} aria-hidden /> Seed tray
               </span>
-              <select
-                aria-label="Batch to seed onto the dispensing tray"
-                className="text-[10.5px] px-2 py-1 rounded-lg border border-border bg-surface text-ink max-w-[13rem] focus:ring-1 focus:ring-brand outline-none"
-                value={seedPick}
-                onChange={(e) => setSeedPick(e.target.value)}
-                disabled={seedingBmrNo != null}
-              >
-                <option value="">Pick a batch… ({seedCandidates.length})</option>
-                {seedCandidates.map((b) => (
-                  <option key={b.bmrNo} value={b.bmrNo}>
-                    {formatUnifiedBatchLabel(b)} — {b.productName}
-                  </option>
-                ))}
-              </select>
+              <div ref={seedBoxRef} className="relative">
+                <div className="relative">
+                  <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-4" aria-hidden />
+                  <input
+                    type="text"
+                    role="combobox"
+                    aria-expanded={seedOpen}
+                    aria-controls="seed-batch-suggestions"
+                    aria-autocomplete="list"
+                    aria-label="Search a batch to seed onto the dispensing tray"
+                    placeholder={`Search batch, product, SO… (${seedCandidates.length})`}
+                    className="text-[10.5px] w-56 pl-6 pr-6 py-1 rounded-lg border border-border bg-surface text-ink placeholder-ink-4 focus:ring-1 focus:ring-brand outline-none"
+                    value={seedQuery}
+                    disabled={seedingBmrNo != null}
+                    onFocus={() => setSeedOpen(true)}
+                    onChange={(e) => {
+                      setSeedQuery(e.target.value);
+                      setSeedPick('');       // typing invalidates the previous choice
+                      setSeedHighlight(0);
+                      setSeedOpen(true);
+                    }}
+                    onKeyDown={onSeedKeyDown}
+                  />
+                  {seedQuery && (
+                    <button
+                      type="button"
+                      onClick={clearSeed}
+                      aria-label="Clear batch search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-ink-4 hover:text-ink-2 text-[11px]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {seedOpen && (
+                  <ul
+                    id="seed-batch-suggestions"
+                    role="listbox"
+                    className="absolute z-30 mt-1 max-h-56 w-72 overflow-auto rounded-lg border border-border bg-surface shadow-lg right-0"
+                  >
+                    {seedSuggestions.length === 0 ? (
+                      <li className="px-2.5 py-2 text-[10.5px] text-ink-4">No batch matches “{seedQuery}”.</li>
+                    ) : (
+                      seedSuggestions.map((b, i) => (
+                        <li key={b.bmrNo} role="option" aria-selected={b.bmrNo === seedPick}>
+                          <button
+                            type="button"
+                            onMouseEnter={() => setSeedHighlight(i)}
+                            onClick={() => chooseSeed(b)}
+                            className={`w-full text-left px-2.5 py-1.5 text-[10.5px] ${
+                              i === seedHighlight ? 'bg-brand-soft text-brand' : 'text-ink hover:bg-surface-2'
+                            }`}
+                          >
+                            <span className="font-semibold">{formatUnifiedBatchLabel(b)}</span>
+                            <span className="block truncate text-ink-3">{b.productName}</span>
+                            <span className="block text-[9.5px] text-ink-4">
+                              SO {b.soNo}{customerBySo[b.soNo] ? ` · ${customerBySo[b.soNo]}` : ''}
+                            </span>
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                )}
+              </div>
               <button
                 type="button"
                 disabled={!seedPick || seedingBmrNo != null}
                 onClick={() => seedPicked('empty')}
-                title="Load the BOM onto the tray with nothing dispensed yet"
+                title={selectedSeedBatch
+                  ? `Load ${formatUnifiedBatchLabel(selectedSeedBatch)} onto the tray with nothing dispensed yet`
+                  : 'Search and choose a batch first'}
                 className="px-2 py-1 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {seedingBmrNo != null ? 'Seeding…' : 'Undispensed'}
@@ -478,7 +592,9 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
                 type="button"
                 disabled={!seedPick || seedingBmrNo != null}
                 onClick={() => seedPicked('full')}
-                title="Every line marked fully dispensed — jumps straight to the steps after dispensing"
+                title={selectedSeedBatch
+                  ? `Seed ${formatUnifiedBatchLabel(selectedSeedBatch)} with every line marked dispensed — jumps straight to the steps after dispensing`
+                  : 'Search and choose a batch first'}
                 className="px-2 py-1 text-[10px] font-semibold text-warn bg-surface border border-warn-soft rounded-lg hover:bg-warn-soft transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {seedingBmrNo != null ? 'Seeding…' : 'Fully dispensed'}
