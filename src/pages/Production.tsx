@@ -11317,6 +11317,7 @@ const Production = () => {
             onAction={(action, batch) => handleAction(action, batch)}
             onSeedTestTray={(batch, fill) => { void handleSeedTestTray(batch, fill); }}
             seedingBmrNo={seedingBmrNo}
+            inventory={whInventory}
           />
         );
       case 'material-reservation':

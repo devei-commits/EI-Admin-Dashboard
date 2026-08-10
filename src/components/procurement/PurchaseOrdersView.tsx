@@ -122,6 +122,23 @@ function computeRollup(
   return { inTransit, received, billed, returned: 0, ordered };
 }
 
+/**
+ * The shipment button reflects how much of the PO is already on a shipment, not merely whether
+ * shipping is permitted — a PO with stock in transit kept reading "Initiate Shipment", which looks
+ * like the earlier shipment never registered. Partly-shipped POs stay actionable so the remaining
+ * quantity can still be sent.
+ */
+function shipmentAction(rollup: Rollup): { label: string; title: string } {
+  const shipped = rollup.inTransit + rollup.received;
+  if (shipped <= 0) return { label: 'Initiate Shipment', title: 'Initiate Shipment' };
+  const of = `${shipped.toLocaleString('en-IN')} of ${rollup.ordered.toLocaleString('en-IN')}`;
+  if (rollup.ordered > 0 && shipped >= rollup.ordered) {
+    return { label: 'View Shipments', title: `Fully shipped — ${of}` };
+  }
+  const remaining = Math.max(0, rollup.ordered - shipped);
+  return { label: 'Add Shipment', title: `${of} shipped · ${remaining.toLocaleString('en-IN')} remaining` };
+}
+
 function QtyLink({ value, ordered, onClick }: { value: number; ordered: number; onClick?: () => void }) {
   if (!value) return <span className="text-ink-4 text-xs">0</span>;
   const pct = ordered > 0 ? Math.round((value / ordered) * 100) : 0;
@@ -325,7 +342,23 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       if (d === 0) d = dateMs(a.createdDate) - dateMs(b.createdDate);
       return d * dirMul;
     });
-    return filtered.map((r) => ({ record: r, rollup: computeRollup(r, grnByPo, grnByPoId) }));
+    // poNumber alone is not unique: the same released PO can be emitted once per procurement request
+    // it matches (one via formData.requestId, another via formData.requestCode), and only the
+    // unlinked-vs-request pass upstream dedupes. Identity keeps genuinely distinct POs that happen to
+    // share a number, while collapsing the exact same row appearing twice — and doubles as a stable
+    // React key, which `key={r.poNumber}` was not.
+    const seen = new Set<string>();
+    return filtered
+      .map((r) => ({
+        record: r,
+        rollup: computeRollup(r, grnByPo, grnByPoId),
+        rowKey: `${r.backendPoId ?? ''}::${r.poNumber}::${r.requestCode ?? ''}`,
+      }))
+      .filter((row) => {
+        if (seen.has(row.rowKey)) return false;
+        seen.add(row.rowKey);
+        return true;
+      });
   }, [records, grnByPo, grnByPoId, search, statusFilter, vendorFilter, dateFrom, dateTo, sortBy, sortDir]);
 
   // ── Items tab: one row per PO line, with matched GRNs + "other POs" count ──
@@ -722,12 +755,12 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                           </div>
                         </td>
                       </tr>
-                      {!collapsedVendors.has(`po:${vendor}`) && vendorRows.map(({ record: r, rollup }) => {
+                      {!collapsedVendors.has(`po:${vendor}`) && vendorRows.map(({ record: r, rollup, rowKey }) => {
                         const wf = resolvePoWorkflowStatus(r);
                         const st = PO_STATUS_CONFIG[wf];
                         const shippable = isShippable(r);
                         return (
-                          <tr key={r.poNumber} onClick={() => onOpenDetail(r)} className="hover:bg-brand-soft transition-colors border-b border-hairline cursor-pointer">
+                          <tr key={rowKey} onClick={() => onOpenDetail(r)} className="hover:bg-brand-soft transition-colors border-b border-hairline cursor-pointer">
                             <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(r.createdDate)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <button onClick={(e) => { e.stopPropagation(); onOpenDetail(r); }} className="font-mono text-xs font-semibold text-brand hover:text-brand hover:underline decoration-dotted">{r.poNumber}</button>
@@ -756,13 +789,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); shippable && openConsolidated(r); }}
-                                  disabled={!shippable}
-                                  title={shippable ? 'Initiate Shipment' : 'Available once PO is Issued/Accepted'}
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}>
-                                  <Truck size={12} /> Initiate Shipment
-                                </button>
+                                {(() => {
+                                  const ship = shipmentAction(rollup);
+                                  return (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); if (shippable) openConsolidated(r); }}
+                                      disabled={!shippable}
+                                      title={shippable ? ship.title : 'Available once PO is Issued/Accepted'}
+                                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10.5px] font-semibold ${shippable ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}>
+                                      <Truck size={12} /> {ship.label}
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>

@@ -423,8 +423,8 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     if (isInboundGrnVerified(grn)) {
       return { label: 'Assign Rack', prefix: '📍' }; // docs/labels done → put it on a rack
     }
-    // Receipt confirmed but docs/labels still incomplete and not racked → open the GRN to finish it.
-    // 'Complete GRN' is not matched by openInboundRowAction, so it falls through to openDetail(grn).
+    // Receipt confirmed but docs/labels still incomplete and not racked → finish it in the staged
+    // receipt modal (openInboundRowAction routes every receiving label there, in grn-copy mode).
     return { label: 'Complete GRN', prefix: '📦' };
   }
   if (statusView.label === 'IN TRANSIT') {

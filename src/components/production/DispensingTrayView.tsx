@@ -78,6 +78,20 @@ export interface DispensingTrayViewProps<T extends DispensingTrayBatch> {
    */
   onSeedTestTray?: (batch: T, fill: 'empty' | 'full') => void;
   seedingBmrNo?: string | null;
+  /**
+   * Warehouse rows used to colour each tray line by whether the batch's manufacturing site can
+   * actually cover it, and to fill in material names for lines that carry only a code.
+   */
+  inventory?: TrayInventoryRow[];
+}
+
+/** Minimal shape needed from warehouse inventory — matches WarehouseInventoryRow. */
+export interface TrayInventoryRow {
+  code: string;
+  name?: string;
+  type: string;
+  ml1Stock?: number;
+  ml2Stock?: number;
 }
 
 const FILTER_OPTIONS: { id: DispensingTrayFilter; label: string }[] = [
@@ -103,31 +117,69 @@ function zoneLabelInAreas(areas: FacilityAreaDTO[], zoneCode: string): string {
   return zc;
 }
 
+/** Can the facility cover what this line still needs? Drives the card colour. */
+type LineStockState = 'done' | 'ready' | 'short' | 'none' | 'unknown';
+
+function lineStockState(line: DispensingLineTrayDetail, atSite: number | undefined): LineStockState {
+  if (line.status === 'done') return 'done';
+  if (atSite == null || !Number.isFinite(atSite)) return 'unknown';
+  const outstanding = Math.max(0, line.required - line.dispensed);
+  if (outstanding <= 1e-9) return 'done';
+  if (atSite <= 1e-9) return 'none';
+  return atSite + 1e-9 >= outstanding ? 'ready' : 'short';
+}
+
+const STOCK_STATE_STYLES: Record<LineStockState, { box: string; text: string }> = {
+  done: { box: 'border-ok-soft bg-ok-soft/50', text: 'text-ok font-semibold' },
+  ready: { box: 'border-brand-soft bg-brand-soft/30', text: 'text-brand font-semibold' },
+  short: { box: 'border-warn-soft bg-warn-soft/40', text: 'text-warn font-semibold' },
+  none: { box: 'border-err-soft bg-err-soft/40', text: 'text-err font-semibold' },
+  unknown: { box: 'border-border bg-surface', text: 'text-ink-4' },
+};
+
 function TrayLineCard({
   line,
   qtyKind,
+  atSite,
+  muLabel,
+  resolvedName,
 }: {
   line: DispensingLineTrayDetail;
   qtyKind: 'kg' | 'pcs';
+  /** Qty of this material at the batch's manufacturing site; undefined when stock isn't loaded. */
+  atSite?: number;
+  muLabel?: string;
+  /** Name from the material master, used when the dispensing line carries only a code. */
+  resolvedName?: string;
 }): React.ReactElement {
-  const isDone = line.status === 'done';
-  const isPartial = line.status === 'partial';
+  const state = lineStockState(line, atSite);
+  const style = STOCK_STATE_STYLES[state];
+  // `label` falls back to the code when the line has no inci/name — prefer the master name then.
+  const displayName = line.label && line.label !== line.code ? line.label : (resolvedName || line.label);
+  const outstanding = Math.max(0, line.required - line.dispensed);
+  const site = muLabel || 'site';
+  const stockNote = state === 'none'
+    ? `Nothing at ${site} — needs ${formatQtyExact(outstanding, qtyKind)} ${line.unit}`
+    : state === 'short'
+      ? `Only ${formatQtyExact(atSite ?? 0, qtyKind)} at ${site}, needs ${formatQtyExact(outstanding, qtyKind)} ${line.unit}`
+      : state === 'ready'
+        ? `${formatQtyExact(atSite ?? 0, qtyKind)} ${line.unit} at ${site} — enough to dispense`
+        : '';
+
   return (
     <div
-      className={`rounded-lg border px-2.5 py-2 min-w-0 h-full ${
-        isDone
-          ? 'border-ok-soft bg-ok-soft/50'
-          : isPartial
-            ? 'border-warn-soft bg-warn-soft/40'
-            : 'border-border bg-surface'
-      }`}
+      className={`rounded-lg border px-2.5 py-2 min-w-0 h-full ${style.box}`}
+      title={stockNote || undefined}
     >
-      <div className="text-xs font-semibold text-ink truncate leading-tight" title={line.label}>
-        {line.label}
+      <div className="text-xs font-semibold text-ink leading-tight line-clamp-2" title={displayName}>
+        {displayName}
       </div>
       <div className="mt-1 font-mono text-xs font-bold text-ink tabular-nums">
         {formatQtyExact(line.dispensed, qtyKind)} / {formatQtyExact(line.required, qtyKind)} {line.unit}
       </div>
+      {stockNote && state !== 'ready' && (
+        <div className={`mt-1 text-[10px] leading-snug ${style.text}`}>{stockNote}</div>
+      )}
       <div className="mt-1.5 space-y-0.5 text-[10px] text-ink-3 leading-snug border-t border-hairline pt-1.5">
         <div className="truncate" title={line.trayLabel}>
           {line.trayLabel}
@@ -136,13 +188,7 @@ function TrayLineCard({
           <span className="font-mono truncate" title={line.code}>
             {line.code}
           </span>
-          <span
-            className={`shrink-0 ${
-              isDone ? 'text-ok font-semibold' : isPartial ? 'text-warn font-semibold' : 'text-ink-4'
-            }`}
-          >
-            {line.statusText}
-          </span>
+          <span className={`shrink-0 ${style.text}`}>{line.statusText}</span>
         </div>
       </div>
     </div>
@@ -157,6 +203,9 @@ function TraySection({
   lines,
   qtyKind,
   emptyLabel,
+  atSiteByCode,
+  nameByCode,
+  muLabel,
 }: {
   title: string;
   icon: string;
@@ -165,21 +214,42 @@ function TraySection({
   lines: DispensingLineTrayDetail[];
   qtyKind: 'kg' | 'pcs';
   emptyLabel: string;
+  atSiteByCode?: Record<string, number>;
+  nameByCode?: Record<string, string>;
+  muLabel?: string;
 }): React.ReactElement {
+  // Count what the operator actually needs to act on before walking to the floor.
+  const blocked = lines.filter((l) => {
+    const s = lineStockState(l, atSiteByCode?.[l.code]);
+    return s === 'none' || s === 'short';
+  }).length;
+
   return (
     <div className="rounded-xl border border-hairline bg-surface-2/40 p-3">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="text-sm" aria-hidden>{icon}</span>
         <div className="text-xs font-bold text-ink">
           {title} · <span className="text-brand">{dispensedCount}/{totalCount} dispensed</span>
         </div>
+        {blocked > 0 && (
+          <span className="text-[10px] font-semibold rounded-full bg-err-soft text-err px-2 py-0.5">
+            {blocked} short of stock at {muLabel || 'site'}
+          </span>
+        )}
       </div>
       {lines.length === 0 ? (
         <p className="text-xs text-ink-4 italic">{emptyLabel}</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
           {lines.map((line) => (
-            <TrayLineCard key={line.code} line={line} qtyKind={qtyKind} />
+            <TrayLineCard
+              key={line.code}
+              line={line}
+              qtyKind={qtyKind}
+              atSite={atSiteByCode?.[line.code]}
+              resolvedName={nameByCode?.[line.code]}
+              muLabel={muLabel}
+            />
           ))}
         </div>
       )}
@@ -194,6 +264,9 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
   onAction,
   onSeedTestTray,
   seeding = false,
+  atSiteRm,
+  atSitePm,
+  nameByCode,
 }: {
   batch: T;
   customerName: string;
@@ -201,6 +274,10 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
   onAction: DispensingTrayViewProps<T>['onAction'];
   onSeedTestTray?: DispensingTrayViewProps<T>['onSeedTestTray'];
   seeding?: boolean;
+  /** RM/PM qty at THIS batch's manufacturing site, keyed by item code. */
+  atSiteRm?: Record<string, number>;
+  atSitePm?: Record<string, number>;
+  nameByCode?: Record<string, string>;
 }): React.ReactElement {
   const summary = summarizeBatchDispensing(batch.dispensingRM, batch.dispensingPM);
   const ctx = batchTrayContext(batch);
@@ -252,6 +329,9 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
           lines={rmDetails}
           qtyKind="kg"
           emptyLabel="No RM dispensing lines loaded for this batch."
+          atSiteByCode={atSiteRm}
+          nameByCode={nameByCode}
+          muLabel={muSiteLabel}
         />
         <TraySection
           title="PM Tray"
@@ -261,6 +341,9 @@ function BatchTrayCard<T extends DispensingTrayBatch>({
           lines={pmDetails}
           qtyKind="pcs"
           emptyLabel="No PM dispensing lines loaded for this batch."
+          atSiteByCode={atSitePm}
+          nameByCode={nameByCode}
+          muLabel={muSiteLabel}
         />
       </div>
 
@@ -338,6 +421,7 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
   onAction,
   onSeedTestTray,
   seedingBmrNo = null,
+  inventory,
 }: DispensingTrayViewProps<T>): React.ReactElement {
   const [filter, setFilter] = useState<DispensingTrayFilter>('all');
   const [batchFilter, setBatchFilter] = useState<string>('all');
@@ -487,6 +571,35 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
 
   const resolveCustomer = (soNo: string): string => customerBySo[soNo] || '';
   const resolveMuLabel = (zoneCode?: string): string => zoneLabelInAreas(productionAreas, zoneCode || '');
+
+  /* ── Stock at the manufacturing site, per batch ──────────────────────────────────────────
+     One warehouse fetch covers every batch: each row carries its ML1 and ML2 quantities, so the
+     right bucket is picked per batch from its own scheduled MU zone. */
+  const nameByCode = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const r of inventory ?? []) {
+      const c = String(r.code ?? '').trim();
+      if (c && r.name && !m[c]) m[c] = String(r.name);
+    }
+    return m;
+  }, [inventory]);
+
+  const atSiteFor = useMemo(() => {
+    if (!inventory || inventory.length === 0) return null;
+    return (kind: 'RM' | 'PM', zoneCode?: string): Record<string, number> => {
+      const z = String(zoneCode || '').trim().toUpperCase();
+      const useMl2 = z.includes('ML2') || z.includes('MU02');
+      const map: Record<string, number> = {};
+      for (const r of inventory) {
+        if (String(r.type) !== kind) continue;
+        const c = String(r.code ?? '').trim();
+        if (!c) continue;
+        const qty = Number(useMl2 ? r.ml2Stock : r.ml1Stock) || 0;
+        map[c] = (map[c] ?? 0) + qty;
+      }
+      return map;
+    };
+  }, [inventory]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden section" id="section-dispensing-tray">
@@ -668,6 +781,9 @@ export function DispensingTrayView<T extends DispensingTrayBatch>({
               onAction={onAction}
               onSeedTestTray={onSeedTestTray}
               seeding={seedingBmrNo === batch.bmrNo}
+              atSiteRm={atSiteFor ? atSiteFor('RM', batch.scheduledMuZone) : undefined}
+              atSitePm={atSiteFor ? atSiteFor('PM', batch.scheduledMuZone) : undefined}
+              nameByCode={nameByCode}
             />
           ))
         )}

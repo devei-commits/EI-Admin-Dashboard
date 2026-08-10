@@ -36,7 +36,7 @@ import {
   inboundGrnSendToQuarantineQcPayload,
   inboundGrnVerifiedAfterLabelsPayload,
 } from '../../lib/inboundGrnStatus';
-import { displayInboundGrnNo } from '../../lib/inboundGrnTableDisplay';
+import { displayInboundGrnNo, inboundGrnArrivalConfirmPayload } from '../../lib/inboundGrnTableDisplay';
 import {
   grnReceiptValidationErrors,
   readGrnReceiptMeta,
@@ -667,6 +667,16 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       const receivedDate = confirmedMeta.receiptDate || null;
       const payload: UpdateGRNPayload = { sourceDocuments: mergedDocs };
       if (receivedDate) payload.receivedDate = receivedDate;
+      // Confirming receipt IS the arrival. The old silent 'Confirm' action (status → LANDED with no
+      // vehicle or photo capture) no longer exists in the receiving flow, so stamp arrival here.
+      // Guarded on IN TRANSIT so a GRN already past landing is never dragged back a stage.
+      if (/in[\s_-]?transit/i.test(String(grn.status ?? ''))) {
+        const arrival = inboundGrnArrivalConfirmPayload(grn.workflowSteps);
+        payload.status = arrival.status;
+        payload.workflowSteps = arrival.workflowSteps;
+        payload.grnDate = arrival.grnDate;
+        if (!payload.receivedDate) payload.receivedDate = arrival.receivedDate;
+      }
       if (confirmedMeta.assignmentType === 'specific' && confirmedMeta.assignedTo) {
         payload.assignedTo = confirmedMeta.assignedTo;
       }

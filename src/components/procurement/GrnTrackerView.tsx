@@ -22,9 +22,28 @@ function isGrnStage(s: string): s is GrnStage {
   return (GRN_STAGE_ORDER as string[]).includes(s);
 }
 
+/**
+ * Procurement does not run QC, so verified / quarantined / qc_tested collapse into one "In QC"
+ * bucket here. Presentation only — GRN_STAGE_ORDER and the backend STAGE_ORDER keep all six stages,
+ * and the warehouse screens are unaffected.
+ */
+const QC_STAGES: string[] = ['verified', 'quarantined', 'qc_tested'];
+
+/** Stage options procurement filters by — the three QC stages appear once, as 'In QC'. */
+const PROC_STAGE_FILTERS: { value: string; label: string }[] = [
+  { value: 'in_transit', label: GRN_STAGE_CONFIG.in_transit.label },
+  { value: 'landed', label: GRN_STAGE_CONFIG.landed.label },
+  { value: 'in_qc', label: 'In QC' },
+  { value: 'grn_completed', label: GRN_STAGE_CONFIG.grn_completed.label },
+];
+
+function stageDisplayConfig(stage: string) {
+  if (QC_STAGES.includes(stage)) return { ...GRN_STAGE_CONFIG.qc_tested, label: 'In QC' };
+  return GRN_STAGE_CONFIG[isGrnStage(stage) ? stage : 'in_transit'];
+}
+
 function StagePill({ stage, onClick }: { stage: string; onClick?: () => void }) {
-  const key = isGrnStage(stage) ? stage : 'in_transit';
-  const c = GRN_STAGE_CONFIG[key];
+  const c = stageDisplayConfig(stage);
   const inner = (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${c.text} ${c.bg} ${c.border}`}>
       {c.label}
@@ -46,7 +65,8 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
   const [rows, setRows] = useState<GrnTrackerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stageFilter, setStageFilter] = useState<'all' | GrnStage>('all');
+  // 'in_qc' is a procurement-only bucket covering the three QC stages; the rest map 1:1 to GrnStage.
+  const [stageFilter, setStageFilter] = useState<'all' | 'in_qc' | GrnStage>('all');
   const [vendorFilter, setVendorFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [timelineRow, setTimelineRow] = useState<GrnTrackerRow | null>(null);
@@ -69,7 +89,9 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out = rows.filter((r) => {
-      if (stageFilter !== 'all' && r.stage !== stageFilter) return false;
+      if (stageFilter === 'in_qc') {
+        if (!QC_STAGES.includes(r.stage)) return false;
+      } else if (stageFilter !== 'all' && r.stage !== stageFilter) return false;
       if (vendorFilter !== 'all' && r.vendor !== vendorFilter) return false;
       if (q && !`${r.grnNo} ${r.sbCode ?? ''} ${r.poNo ?? ''} ${r.vendor ?? ''} ${r.item.name} ${r.item.code}`.toLowerCase().includes(q)) return false;
       return true;
@@ -108,7 +130,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
         <ProcSearch value={search} onChange={setSearch} placeholder="Search GRN #, SB #, PO #, item, vendor…" />
         <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value as typeof stageFilter)} aria-label="Filter by stage" className={procSelectClass}>
           <option value="all">All Stages</option>
-          {GRN_STAGE_ORDER.map((s) => <option key={s} value={s}>{GRN_STAGE_CONFIG[s].label}</option>)}
+          {PROC_STAGE_FILTERS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} aria-label="Filter by vendor" className={procSelectClass}>
           <option value="all">All Vendors</option>
@@ -179,7 +201,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
       {/* Record detail — click any GRN row to see the full record */}
       {detailRow && (() => {
         const r = detailRow;
-        const stageCfg = isGrnStage(r.stage) ? GRN_STAGE_CONFIG[r.stage] : GRN_STAGE_CONFIG.in_transit;
+        const stageCfg = stageDisplayConfig(r.stage);
         const steps = r.workflowSteps ?? [];
         const sections: DetailSection[] = [
           {
@@ -212,7 +234,7 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
                 {steps.map((s, i) => {
                   const isStr = typeof s === 'string';
                   const stageKey = isStr ? s : s.stage;
-                  const label = isGrnStage(stageKey) ? GRN_STAGE_CONFIG[stageKey].label : stageKey;
+                  const label = isGrnStage(stageKey) ? stageDisplayConfig(stageKey).label : stageKey;
                   return (
                     <li key={i} className="flex items-start gap-2">
                       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />

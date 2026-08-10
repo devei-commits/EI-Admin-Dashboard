@@ -247,9 +247,20 @@ function openInboundRowAction(
   onSendToQc?: (grn: GRNRecord) => void,
   onOpenQcCheck?: (grn: GRNRecord, lineItem: LineItem | null) => void,
 ): void {
-  if (actionLabel === 'Confirm' && onConfirmArrival) {
-    onConfirmArrival(grn);
-    return;
+  if (actionLabel === 'Confirm') {
+    // Arrival confirmation IS step 1 of the warehouse GRN — vehicle/shipment details and receipt
+    // photos. This used to flip the GRN to LANDED silently, so that capture was skipped entirely
+    // and the operator never saw the first step. Open the staged modal; its step-1 save stamps the
+    // arrival. onConfirmArrival stays as the fallback for a GRN with no resolvable line.
+    const arrivalLine = lineItem ?? (Array.isArray(grn.lineItems) ? (grn.lineItems[0] ?? null) : null);
+    if (arrivalLine) {
+      openReceipt({ grn, lineItem: arrivalLine, mode: 'confirm-receipt' });
+      return;
+    }
+    if (onConfirmArrival) {
+      onConfirmArrival(grn);
+      return;
+    }
   }
   if (actionLabel === 'Send to QC' && onSendToQc) {
     onSendToQc(grn);
@@ -266,10 +277,18 @@ function openInboundRowAction(
     openDetail(grn, lineItem, 'assign-rack');
     return;
   }
-  if (lineItem && (actionLabel === 'Confirm Receipt' || actionLabel === 'GRN Copy')) {
+  // Receiving runs entirely through the staged modal — vehicle/shipment details, documents, pack
+  // counts, QC and quarantine all live there. The monolithic GRN detail modal is no longer part of
+  // this flow; 'Complete GRN' and any unmatched label land in the staged flow too rather than
+  // dropping the operator into a single all-at-once form.
+  //
+  // A GRN whose line items did not resolve renders one row with lineItem = null, so recover the
+  // line from the GRN itself; only a GRN with no line at all can't be shown staged.
+  const line = lineItem ?? (Array.isArray(grn.lineItems) ? (grn.lineItems[0] ?? null) : null);
+  if (line) {
     openReceipt({
       grn,
-      lineItem,
+      lineItem: line,
       mode: actionLabel === 'Confirm Receipt' ? 'confirm-receipt' : 'grn-copy',
     });
     return;

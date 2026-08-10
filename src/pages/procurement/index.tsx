@@ -4024,7 +4024,7 @@ const Procurement: React.FC = () => {
     });
   };
 
-  const markIssuedPOShipped = (record: {
+  const markIssuedPOShipped = async (record: {
     backendPoId?: string;
     poNumber?: string;
     requestCode?: string;
@@ -4043,7 +4043,15 @@ const Procurement: React.FC = () => {
       return;
     }
 
-    const tracking = releasedPoTrackingByBackendId?.[backendPoId];
+    // The batch map only loads inside the Purchase Orders section and only for POs in
+    // releasedPoBackendIdsForTracking, so a PO opened from Planning has no entry and this gate used
+    // to reject it as "vendor not confirmed" while the timeline right above showed it confirmed.
+    // Fall back to this PO's own tracking row before deciding.
+    let tracking = releasedPoTrackingByBackendId?.[backendPoId];
+    if (!tracking) {
+      const fresh = await fetchPoTracking(backendPoId);
+      if (fresh.success) tracking = fresh.data ?? undefined;
+    }
     if (!hasPoTrackingTimestamp(tracking?.vendorConfirmedAt)) {
       addToast('error', 'Mark vendor confirmed before marking shipped.');
       return;
@@ -6693,12 +6701,9 @@ const Procurement: React.FC = () => {
             shippedAt: poTrackingForm.shippedAt ?? null,
             shippedNote: poTrackingForm.shippedNote ?? null,
             orderTrackingRef: poTrackingForm.orderTrackingRef ?? null,
-            deliveredAt: poTrackingForm.deliveredAt ?? null,
-            deliveredNote: poTrackingForm.deliveredNote ?? null,
-            underGrnAt: poTrackingForm.underGrnAt ?? null,
-            underGrnNote: poTrackingForm.underGrnNote ?? null,
-            grnCompleteAt: poTrackingForm.grnCompleteAt ?? null,
-            grnCompleteNote: poTrackingForm.grnCompleteNote ?? null,
+            // delivered / underGrn / grnComplete are intentionally NOT sent: the warehouse owns them.
+            // The API drops undefined but persists null (poTracking/controller.js: `if (v !== undefined)`),
+            // so sending `?? null` here would wipe a stamp the warehouse had just written.
           });
           if (!res.success) {
             addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to save tracking'));
@@ -7031,14 +7036,15 @@ const Procurement: React.FC = () => {
                         </div>
                       );
                     })()}
+                    {/* Procurement owns the PO only up to Shipped / In Transit. Delivered, Under GRN
+                        and GRN Complete are stamped by the warehouse as the GRN lands and completes
+                        (grn/controller.js stampPoTrackingForGrn), so editing them here would let the
+                        two sides disagree. They stay visible in the read-only timeline above. */}
                     {[
                       { label: 'PO Released', at: 'poReleasedAt', note: 'poReleasedNote' },
                       { label: 'Advance Paid', at: 'advancePaidAt', note: 'advancePaidNote' },
                       { label: 'Vendor Confirmed', at: 'vendorConfirmedAt', note: 'vendorConfirmedNote' },
                       { label: 'Shipped', at: 'shippedAt', note: 'shippedNote' },
-                      { label: 'Delivered', at: 'deliveredAt', note: 'deliveredNote' },
-                      { label: 'Under GRN', at: 'underGrnAt', note: 'underGrnNote' },
-                      { label: 'GRN Complete', at: 'grnCompleteAt', note: 'grnCompleteNote' },
                     ].map(({ label, at, note }) => (
                       <div key={at} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center text-sm">
                         <span className="text-ink-2 font-medium">{label}</span>
