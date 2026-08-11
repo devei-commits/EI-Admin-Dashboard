@@ -683,7 +683,17 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       await updateGRN(grn.id, payload);
       setSourceDocuments((prev) => ({ ...prev, receipt: confirmedMeta }));
       addToast('success', 'Receipt confirmed. Continue with shipment details.');
-      onSaved({ ...grn, sourceDocuments: mergedDocs, receivedDate: receivedDate ?? grn.receivedDate });
+      // Echo back everything the payload actually wrote. Omitting status/workflowSteps/grnDate left
+      // the inbound row showing IN TRANSIT with the old date until a manual refresh revealed LANDED,
+      // because handleReceiptSaved falls back to the previous value for any field not supplied.
+      onSaved({
+        ...grn,
+        sourceDocuments: mergedDocs,
+        receivedDate: payload.receivedDate ?? grn.receivedDate,
+        ...(payload.status ? { status: payload.status } : {}),
+        ...(payload.workflowSteps ? { workflowSteps: payload.workflowSteps } : {}),
+        ...(payload.grnDate ? { grnDate: payload.grnDate } : {}),
+      });
       setCurrentStep(2);
     } catch (e: unknown) {
       addToast('error', e instanceof Error ? e.message : 'Failed to confirm receipt');

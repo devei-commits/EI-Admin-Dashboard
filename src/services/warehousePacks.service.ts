@@ -13,6 +13,8 @@ export interface WarehousePack {
   packId: number | null;
   rackId: number | null;
   packagingNo: string | null;
+  /** Bucket stock (ML1/ML2) not yet assigned to a rack — pickable, but no rack is known. */
+  unassigned?: boolean;
   zone: string | null;
   rack: string | null;
   vendorBatch: string | null;
