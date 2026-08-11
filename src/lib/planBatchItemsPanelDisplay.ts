@@ -8,6 +8,7 @@ import {
   planBatchStatusClass,
 } from './planBatchMaterialLeadTime';
 import { parseSpecificGravity, rmPrimaryQtyToKg, specificGravityFromBomLine } from './rmUnitConversion';
+import { parseQtyLabelInt } from './parseQtyLabel';
 
 export type BatchItemsPanelMaterialFilter = 'RM' | 'PM' | 'ALL';
 
@@ -133,7 +134,7 @@ export function buildBatchItemsPanelRows(input: {
 }): BatchItemsPanelRow[] {
   const { batch, warehouseRows, rawMaterials, packMaterials, itemsInvolved, materialFilter } = input;
   const sizeKg = Number(batch.sizeKg) || 0;
-  const orderQtyNum = parseInt(String(batch.orderQty || '0').replace(/\D/g, ''), 10) || 0;
+  const orderQtyNum = parseQtyLabelInt(batch.orderQty);
   const totalKg = parseFloat(String(batch.totalKg || '0').replace(/[^\d.]/g, '')) || 0;
   const kgPerUnit = orderQtyNum > 0 && totalKg > 0 ? totalKg / orderQtyNum : 1;
   const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;

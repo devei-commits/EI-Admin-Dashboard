@@ -47,6 +47,7 @@ import {
   buildOrderHubSoPath,
   buildProductionBatchDetailPath,
 } from '../lib/planningBatchesNavigation';
+import { parseQtyLabel, parseQtyLabelInt } from '../lib/parseQtyLabel';
 import type { FFStatus } from '../types/orderFulfillment';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
 import { fetchSoPlanningAvailability, fetchFulfillmentOrders } from '../services/fulfillment.service';
@@ -3369,7 +3370,7 @@ const Planning = () => {
         const sentIdx = selectedSOForBatch?.sentBatchIndices ?? [];
         const bufferIdx = new Set((selectedSOForBatch?.bufferBatchIndices ?? []).map(Number));
         const allSent = planningBatches.every((_, i) => sentIdx.includes(i));
-        const oq = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+        const oq = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
         const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
         const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
         // SO remaining excludes buffer / over-production batches (they sit above the SO qty).
@@ -3570,7 +3571,7 @@ const Planning = () => {
   // While editing in the modal, auto-sync would overwrite manual preview / unit inputs.
   useEffect(() => {
     if (!selectedSOForBatch || planBatchesModalOpen) return;
-    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
     const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
     if (orderQtyNum <= 0 || totalKgNum <= 0) {
@@ -3602,7 +3603,7 @@ const Planning = () => {
     }
     if (previewInitializedForModalRef.current) return;
     previewInitializedForModalRef.current = true;
-    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
     const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
     if (orderQtyNum <= 0 || totalKgNum <= 0) return;
@@ -3614,7 +3615,7 @@ const Planning = () => {
   }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg, sentKgForPlanBatches]);
 
   const kgPerUnitForPlanBatches = useMemo(() => {
-    const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
     const totalKgNum = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     return orderQtyNum > 0 && totalKgNum > 0 ? totalKgNum / orderQtyNum : 0;
   }, [selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg]);
@@ -3630,7 +3631,7 @@ const Planning = () => {
    */
   const planBatchesAllocationSummary = useMemo(() => {
     if (!selectedSOForBatch) return null;
-    const oq = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const oq = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
     const tk = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
@@ -4069,9 +4070,9 @@ const Planning = () => {
     setPrOmittedCount(omitted);
   }, [prModalOpen, selectedSO?.id, prShowPMOnly, warehouseRows, rawMaterialsList, packMaterialsList]);
 
-  const batchSizeNum = parseInt(selectedSOForBatch?.batchSize?.replace(/\D/g, '') || '500', 10) || 500;
+  const batchSizeNum = (parseQtyLabel(selectedSOForBatch?.batchSize) || 500);
   const batchesReq = selectedSOForBatch?.batchesRequired ?? 15;
-  const orderQtyNum = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+  const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
   const totalKgNum = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
   const unitsPerBatch = batchesReq > 0 ? orderQtyNum / batchesReq : 0;
 
@@ -4367,7 +4368,7 @@ const Planning = () => {
     (batchIndex: number, units: number) => {
       if (isEditingExistingBatch && batchIndex !== selectedBatchPlanIndex) return;
       if (!getPlanningBatchEditableAtIndex(batchIndex)) return;
-      const oq = parseInt(selectedSOForBatch?.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+      const oq = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
       const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
       const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
       if (kpu <= 0) return;
@@ -5069,7 +5070,7 @@ const Planning = () => {
         const pct = Number(line.pct_w_w ?? line.pct ?? 0) || 0;
         out.set(key, roundMaterialQty((sizeKg * pct) / 100));
       } else {
-        const orderQty = parseInt(String(batch.orderQty ?? '').replace(/\D/g, ''), 10) || 0;
+        const orderQty = parseQtyLabelInt(batch.orderQty);
         const totalKg = parseFloat(String(batch.totalKg ?? '').replace(/[^\d.]/g, '')) || 0;
         const kgPerUnit = orderQty > 0 && totalKg > 0 ? totalKg / orderQty : 0;
         const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
@@ -6152,7 +6153,8 @@ const Planning = () => {
     setSwapGroupName('');
     setSwapPendingGroupRm(null);
     setNumBatches(String(order.batchesRequired || 1));
-    setBatchSizeKg(order.batchSize?.replace(/\D/g, '') || '500');
+    // Batch size is KG and routinely fractional — stripping non-digits turned 1.544 into 1544.
+    setBatchSizeKg(String(parseQtyLabel(order.batchSize) || 500));
     setPlannedStartDate(new Date().toISOString().split('T')[0]);
     setProductionLine('Line 1 — Primary Mixer');
     setCustomBatches([]);
@@ -6178,7 +6180,7 @@ const Planning = () => {
     if (Boolean(order.bomConfirmedAt)) {
       setActiveBatchTab('batch-plan');
     }
-    const oq = parseInt(order.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const oq = (parseQtyLabelInt(order.orderQty) || 0);
     const tk = parseFloat(order.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
     previewInitializedForModalRef.current = true;
@@ -6201,7 +6203,7 @@ const Planning = () => {
 
   /** Build PR items for a single batch and open PR modal (PR is per batch, not bulk). */
   const handleRaisePRForBatch = (order: SalesOrder, batchIndex: number) => {
-    const batchSizeKg = parseFloat(order.batchSize?.replace(/\D/g, '') || '') || 500;
+    const batchSizeKg = parseQtyLabel(order.batchSize) || 500;
     const batchLen =
       order.customBatches?.length
         ? order.customBatches.length
@@ -6274,7 +6276,7 @@ const Planning = () => {
     }
 
     const orderTotalKg = parseFloat(order.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-    const orderQtyNum = parseInt(order.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(order.orderQty) || 0);
     const kgPerUnit = orderQtyNum > 0 ? orderTotalKg / orderQtyNum : 0;
     const unitsForBatch = kgPerUnit > 0 ? Math.round(sizeKgForBatch / kgPerUnit) : sizeKgForBatch;
 
@@ -6486,7 +6488,7 @@ const Planning = () => {
       addToast('error', 'Select a working batch first.');
       return;
     }
-    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
     const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
@@ -6807,7 +6809,7 @@ const Planning = () => {
       throw new Error(`B-${String(batchIndex + 1).padStart(2, '0')} is already sent to Production.`);
     }
 
-    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
     const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
@@ -10587,7 +10589,7 @@ const Planning = () => {
                     </div>
                     {(() => {
                       const orderQtyNum = parseInt(
-                        String(selectedSOForBatch?.orderQty ?? '').replace(/\D/g, ''),
+                        String(parseQtyLabelInt(selectedSOForBatch?.orderQty)),
                         10
                       ) || 0;
                       return (
@@ -10620,7 +10622,7 @@ const Planning = () => {
 
                   {(() => {
                     const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-                    const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+                    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
                     const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : (orderTotalKg || 1);
                     const soBatchTotal = customBatches.reduce((sum, b, i) => sum + (bufferBatchIndexSet.has(i) ? 0 : (b.sizeKg || 0)), 0);
                     const bufferBatchTotal = customBatches.reduce((sum, b, i) => sum + (bufferBatchIndexSet.has(i) ? (b.sizeKg || 0) : 0), 0);
@@ -10662,7 +10664,7 @@ const Planning = () => {
                     const getBatchPmRequirementsForBatch = (batchSizeForCalc: number, batchRow?: PlanningBatchRow) => {
                       const pmLines = Array.isArray(batchRow?.pmLines) ? batchRow.pmLines : [];
                       if (pmLines.length === 0) return [];
-                      const orderQtyNum = parseInt(selectedSOForBatch.orderQty?.replace(/\D/g, '') || '0', 10) || 0;
+                      const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
                       const unitsFraction = orderTotalKg > 0 ? batchSizeForCalc / orderTotalKg : 0;
                       const unitsForBatch = Math.ceil(orderQtyNum * unitsFraction);
                       return pmLines.map((line: { description?: string; pm_code?: string; qty_per_unit?: number }) => {
