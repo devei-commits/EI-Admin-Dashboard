@@ -2345,8 +2345,34 @@ function EditBatchModal({ batch, onClose, onSave }: {
   const [dueDate, setDueDate] = useState(batch.dueDate || '');
   const [needByNote, setNeedByNote] = useState(batch.needByNote || '');
   const [saving, setSaving] = useState(false);
+  const [scheduledMuZone, setScheduledMuZone] = useState(batch.scheduledMuZone || '');
+  const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
 
   const batchPk = (batch as Batch & { _pk?: number })._pk;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchFacilityAreas('production').then((res) => {
+      if (!cancelled) setProductionAreas(res.data || []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const allProductionZones = useMemo(
+    () => productionAreas.flatMap((a) => a.zones || []),
+    [productionAreas],
+  );
+  const zoneChanged =
+    String(scheduledMuZone || '').trim() !== String(batch.scheduledMuZone || '').trim();
+  // The backend licence-checks the zone but does not gate it by stage. Once material has been
+  // transferred to the scheduled unit and dispensing has begun, moving the batch elsewhere would
+  // leave that stock stranded at the old MU, so lock the field from dispensing onwards.
+  const zoneLocked =
+    ['dispensing', 'in_production', 'bulk_qc', 'qc_failed', 'cleared'].includes(
+      String(batch.bmrStatus || '').toLowerCase(),
+    )
+    || (batch.dispensingRM?.length ?? 0) > 0
+    || (batch.dispensingPM?.length ?? 0) > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -2375,6 +2401,11 @@ function EditBatchModal({ batch, onClose, onSave }: {
 
   const handleSave = () => {
     const updates: Partial<Batch> = { priority, dueDate, needByNote };
+    // Only send the zone when it actually changed. The backend gate fires on
+    // "zone set or changed" (products/prFacilityLicenceGate.js), so resending the same value on an
+    // unrelated edit would re-run the licence check and could block a size/priority change on a
+    // batch whose licence lapsed after it was scheduled.
+    if (zoneChanged) updates.scheduledMuZone = scheduledMuZone;
     if (newKg > 0) updates.batchSize = newKg;
     if (sizeChanged && (batch.dispensingRM?.length > 0 || batch.dispensingPM?.length > 0)) {
       if (batch.dispensingRM?.length) {
@@ -2460,6 +2491,49 @@ function EditBatchModal({ batch, onClose, onSave }: {
               </p>
             </>
           )}
+        </div>
+
+        {/* Manufacturing location (MU zone) */}
+        <div className="sm:col-span-2">
+          <label className={LBL}>Manufacturing location</label>
+          <select
+            className={INP}
+            value={scheduledMuZone}
+            disabled={zoneLocked}
+            onChange={(e) => setScheduledMuZone(e.target.value)}
+          >
+            <option value="">— Select manufacturing site —</option>
+            {productionAreas.map((a) => (
+              <optgroup key={a.id} label={`${a.name} (manufacturing unit)`}>
+                {(a.zones || []).map((z) => (
+                  <option key={z.code} value={z.code}>
+                    {z.name}{z.zoneLabel ? ` — ${z.zoneLabel}` : ''} ({z.code})
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {zoneLocked ? (
+            <p className="mt-1 text-[11px] text-gray-500">
+              Locked — dispensing has started at this site. Moving the batch now would strand the material
+              already transferred here.
+            </p>
+          ) : allProductionZones.length === 0 ? (
+            <p className="mt-1 text-[11px] text-warn">
+              Add manufacturing zones under Masters → Facility Management.
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] text-gray-400">
+              Dispensing draws stock from this site only. Changing it is licence-checked against the PR master
+              and rejected if this product is not cleared for the new unit.
+            </p>
+          )}
+          {zoneChanged && (batch.rmReserved || batch.pmReserved) ? (
+            <p className="mt-1 text-[11px] text-orange-600">
+              RM/PM are reserved against the current site — un-reserve and re-reserve after moving the batch,
+              or dispensing will look for stock at the new unit.
+            </p>
+          ) : null}
         </div>
 
         {/* Priority */}

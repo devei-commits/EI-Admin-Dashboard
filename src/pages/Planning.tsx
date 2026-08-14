@@ -2026,7 +2026,17 @@ function PlanningBatchTableRow({
       // Refresh every batch-derived view + KPIs (PIS Extracted, Items Involved, Batches, production, availability).
       invalidatePlanningBatchData(queryClient);
     } catch (err) {
-      addToast('error', err instanceof Error ? err.message : 'Could not delete batch');
+      const message = err instanceof Error ? err.message : 'Could not delete batch';
+      // Planning batches get re-created with fresh ids (re-plan, re-import, batch resync). This list
+      // only refetches on mount — refetchOnWindowFocus is off — so a tab left open holds ids that no
+      // longer exist and every delete 404s with no way forward. Treat "not found" as a staleness
+      // signal and pull the current batches so the retry uses the real id.
+      if (/not found|404/i.test(message)) {
+        invalidatePlanningBatchData(queryClient);
+        addToast('error', 'That batch no longer exists — the list was out of date. Refreshed, please try again.');
+      } else {
+        addToast('error', message);
+      }
     } finally {
       setDeleting(false);
     }
@@ -2313,6 +2323,12 @@ function PlanningBatchesTab({
     queryKey: ['planning-batches-all'],
     queryFn: fetchAllBatches,
     enabled: true,
+    // Rows here carry planning_batches ids that Edit/Delete post straight back. Batches are
+    // re-created with new ids by re-planning, re-import and batch resync, so a tab left open on
+    // this tab accumulates dead ids and every action 404s. The global default disables focus
+    // refetch (it caused warehouse-inventory request storms); opt back in for this one query so
+    // returning to the tab re-reads the ids it is about to act on.
+    refetchOnWindowFocus: true,
   });
   const { data: productionBatches = [] } = useQuery({
     queryKey: ['production-batches', 'planning-batches-tab'],

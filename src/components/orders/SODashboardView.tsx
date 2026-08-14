@@ -414,6 +414,10 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
   // Group rows by client name
   type ClientGroup = { clientKey: string; clientName: string; clientCode: string | null; rows: SODashboardRow[]; totalValue: number };
+  /** SO numbers are text with a numeric tail (SO-00029 / SO-00203) — compare numerically so 30 < 203. */
+  const bySoNo = (a: SODashboardRow, b: SODashboardRow) =>
+    String(a.soNo ?? '').localeCompare(String(b.soNo ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+
   const groups: ClientGroup[] = [];
   const seenClients = new Map<string, ClientGroup>();
   for (const row of rows) {
@@ -426,6 +430,21 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     const g = seenClients.get(key)!;
     g.rows.push(row);
     g.totalValue += row.soValue;
+  }
+  // Order by SO No: inside each client, and the clients themselves by their earliest SO, so the
+  // whole page reads in SO order top to bottom rather than in fetch order.
+  for (const g of groups) g.rows.sort(bySoNo);
+  groups.sort((a, b) => (a.rows[0] && b.rows[0] ? bySoNo(a.rows[0], b.rows[0]) : 0));
+
+  // Serial numbers are assigned over the fully sorted list, so a row keeps its number when other
+  // client groups are collapsed — a counter that renumbered on collapse would be useless to quote.
+  const srNoByRowId = new Map<number, number>();
+  let srCounter = 0;
+  for (const g of groups) {
+    for (const r of g.rows) {
+      srCounter += 1;
+      srNoByRowId.set(r.id, srCounter);
+    }
   }
 
   const toggleClient = (key: string) => {
@@ -469,7 +488,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     }
   };
 
-  const COL_COUNT = 10;
+  const COL_COUNT = 11;
 
   return (
     <>
@@ -571,7 +590,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       {/* Table */}
       {loading ? (
         <ProcTableCard>
-          <tbody><tr><td className="p-5"><TableSkeleton rows={8} cols={10} /></td></tr></tbody>
+          <tbody><tr><td className="p-5"><TableSkeleton rows={8} cols={COL_COUNT} /></td></tr></tbody>
         </ProcTableCard>
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
@@ -580,7 +599,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       ) : (
         <ProcTableCard>
             <ProcThead
-              cols={['', 'SO No', 'Product', 'Status', { label: 'Order Qty', align: 'right' }, { label: 'Price/U', align: 'right' }, { label: 'Amount', align: 'right' }, 'Fulfillment Status', 'Batch Stage', { label: 'Actions', align: 'center' }]}
+              cols={['', { label: 'Sr', align: 'right' }, 'SO No', 'Product', 'Status', { label: 'Order Qty', align: 'right' }, { label: 'Price/U', align: 'right' }, { label: 'Amount', align: 'right' }, 'Fulfillment Status', 'Batch Stage', { label: 'Actions', align: 'center' }]}
             />
             <tbody className="divide-y divide-hairline">
               {groups.map((group) => {
@@ -615,6 +634,9 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                     {!collapsed && group.rows.map((row) => (
                       <tr key={row.id} onClick={() => runAction(row.id, 'detail')} className="hover:bg-brand-soft/30 transition-colors align-top cursor-pointer">
                         <td className="px-3 py-2" />
+                        <td className="px-3 py-2 whitespace-nowrap text-right align-top">
+                          <span className="text-[11px] tabular-nums text-ink-4">{srNoByRowId.get(row.id)}</span>
+                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <button
                             onClick={(e) => { e.stopPropagation(); runAction(row.id, 'detail'); }}
