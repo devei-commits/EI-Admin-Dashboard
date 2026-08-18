@@ -90,7 +90,9 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     orderedQty: 1000,
     unitPrice: 0,
     mrp: 0,
-    bmrNo: ''
+    bmrNo: '',
+    /** Set once the user types a price here, so the price-list resolver stops overwriting it. */
+    priceManual: false,
   }]);
 
   const [errors, setErrors] = useState<string[]>([]);
@@ -100,7 +102,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const [loadingData, setLoadingData] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [priceHints, setPriceHints] = useState<Record<number, string>>({});
-  const priceResolveGenRef = useRef(0);
+  // Per-ROW generation counters. A single shared counter cancelled sibling rows: the effect fires
+  // one resolve per row, each bumped the same counter, so only the last row's response survived
+  // the staleness check and every other row's price-list lookup was silently discarded.
+  const priceResolveGenRef = useRef<Record<number, number>>({});
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
@@ -216,14 +221,15 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       const productId = parseProductIdFromOption(product);
       if (!productId) return;
 
-      const gen = ++priceResolveGenRef.current;
+      const gen = (priceResolveGenRef.current[index] ?? 0) + 1;
+      priceResolveGenRef.current[index] = gen;
       try {
         const result = await fetchClientProductPrice({
           clientId,
           productId,
           quantity: line.orderedQty,
         });
-        if (gen !== priceResolveGenRef.current) return;
+        if (gen !== priceResolveGenRef.current[index]) return;
 
         const fromTier = result.source === 'client_price_list_tier';
         const fromDefaultRate = result.source === 'client_price_list_rate';
@@ -231,6 +237,10 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
 
         setItems((prev) => {
           if (prev[index]?.productName?.trim() !== line.productName.trim()) return prev;
+          // This resolver re-runs for EVERY row whenever any row's product or quantity changes
+          // (see linePriceSignature). Zeroing a hand-typed price here wiped prices the user had
+          // already entered on other rows — every "Add Another Item" reset them to 0.
+          if (prev[index]?.priceManual) return prev;
           const next = [...prev];
           if (fromTier || (fromDefaultRate && autoPrice)) {
             next[index] = { ...next[index], unitPrice: result.price_per_unit! };
@@ -329,14 +339,21 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   };
 
   const handleAddItem = () => {
-    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '' }]);
+    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
 
+    // A price typed by hand must survive the price-list resolver re-running for other rows.
+    if (field === 'unitPrice') {
+      newItems[index].priceManual = true;
+    }
+
     if (field === 'productName') {
+      // Different product — the previously typed price no longer applies, so let the resolver own it.
+      newItems[index].priceManual = false;
       const selected = productsByName.get(value);
       if (selected) {
         newItems[index].sku = selected.sku;
@@ -360,6 +377,18 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   const handleRemoveItem = (index: number) => {
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
+    // priceHints and the resolve counters are keyed by row index, so removing a row would otherwise
+    // leave every later row showing the hint belonging to its old neighbour.
+    setPriceHints((prev) => {
+      const next: Record<number, string> = {};
+      Object.keys(prev).forEach((k) => {
+        const i = Number(k);
+        if (i < index) next[i] = prev[i];
+        else if (i > index) next[i - 1] = prev[i];
+      });
+      return next;
+    });
+    priceResolveGenRef.current = {};
   };
 
   const handleSubmit = () => {
@@ -466,7 +495,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomerCreditLimit('');
     applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
-    setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '' }]);
+    setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
     setSelectedCustomerId(null);
     setPriceHints({});
     setErrors([]);
