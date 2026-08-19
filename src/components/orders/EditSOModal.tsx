@@ -607,7 +607,8 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
           </div>
           <div className="p-3 space-y-2">
             {/* Column headings */}
-            <div className="grid grid-cols-12 gap-2 pb-1 border-b border-hairline">
+            <div className="grid grid-cols-[2.25rem_repeat(12,minmax(0,1fr))] gap-2 pb-1 border-b border-hairline">
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide text-right">Sr</div>
               <div className="col-span-3 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Product</div>
               <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">SKU</div>
               <div className="col-span-1 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Pack</div>
@@ -617,7 +618,8 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               <div className="col-span-1" />
             </div>
             {items.map((item, index) => (
-              <div key={`edit-so-item-${index}`} className="grid grid-cols-12 gap-2">
+              <div key={`edit-so-item-${index}`} className="grid grid-cols-[2.25rem_repeat(12,minmax(0,1fr))] gap-2">
+                <div className="flex items-center justify-end pr-0.5 text-xs tabular-nums text-ink-4">{index + 1}</div>
                 <input
                   ref={(el) => {
                     productInputRefs.current[index] = el;
@@ -695,7 +697,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
                   <Trash2 size={13} />
                 </button>
                 {priceHints[index] ? (
-                  <div className="col-span-12 text-[11px] text-brand flex items-center gap-1">
+                  <div className="col-start-2 col-span-12 text-[11px] text-brand flex items-center gap-1">
                     <span>💡</span>{priceHints[index]}
                   </div>
                 ) : null}
