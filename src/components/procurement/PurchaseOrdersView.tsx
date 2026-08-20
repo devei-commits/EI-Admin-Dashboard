@@ -59,6 +59,27 @@ function isShippable(record: IssuedPOViewRecord): boolean {
   return PO_SHIPPABLE_STATUSES.includes(resolvePoWorkflowStatus(record));
 }
 
+/**
+ * Connecting dates on a PO — the per-item expected arrival. Shown on the row because a PO can carry
+ * several items connecting on different days, and that spread is what drives scheduling; a single
+ * PO-level ETA hides it.
+ */
+function connectingDatesForRecord(record: IssuedPOViewRecord): { label: string; items: string[] } | null {
+  const map = record.connectingDateByItem;
+  if (!map || typeof map !== 'object') return null;
+  const entries = Object.entries(map)
+    .map(([k, v]) => ({ key: String(k), date: String(v ?? '').trim() }))
+    .filter((e) => e.date !== '')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (entries.length === 0) return null;
+  const items = entries.map((e) => `${e.key}: ${fmtDate(e.date)}`);
+  const first = fmtDate(entries[0].date);
+  const last = fmtDate(entries[entries.length - 1].date);
+  // One date, or a range when the items connect on different days.
+  const label = entries.length === 1 || first === last ? first : `${first} – ${last}`;
+  return { label, items };
+}
+
 function fmtMoney(n: number): string {
   return `₹${(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
@@ -760,7 +781,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           ) : (
             <>
             <ProcTableCard>
-                <ProcThead cols={['PO Date', 'PO #', 'Item', 'PO Status', { label: 'PO Value', align: 'center' }, { label: 'In-Transit', align: 'center' }, { label: 'Received', align: 'center' }, { label: 'Billed', align: 'center' }, { label: 'Return', align: 'center' }, 'Actions']} />
+                <ProcThead cols={['PO Date', 'PO #', 'Item', 'PO Status', { label: 'PO Value', align: 'center' }, 'Connecting', { label: 'In-Transit', align: 'center' }, { label: 'Received', align: 'center' }, { label: 'Billed', align: 'center' }, { label: 'Return', align: 'center' }, 'Actions']} />
                 <tbody>
                   {vendorGroups.map(({ vendor, vendorRows, vendorTotal }) => (
                     <React.Fragment key={vendor}>
@@ -809,6 +830,20 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 whitespace-nowrap text-center">
                               <div className="text-xs font-bold text-ink tabular-nums">{fmtMoney(r.grandTotal)}</div>
                               <div className="text-[9.5px] text-ink-4">{r.lineItems.length} item{r.lineItems.length !== 1 ? 's' : ''}</div>
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              {(() => {
+                                const conn = connectingDatesForRecord(r);
+                                if (!conn) return <span className="text-xs text-ink-4">—</span>;
+                                return (
+                                  <div className="text-xs text-ink-2" title={conn.items.join('\n')}>
+                                    {conn.label}
+                                    {conn.items.length > 1 && (
+                                      <div className="text-[9.5px] text-ink-4">{conn.items.length} items</div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.inTransit} ordered={rollup.ordered} onClick={onOpenGrnForPo ? () => onOpenGrnForPo(r.poNumber) : undefined} /></td>
                             <td className="px-3 py-2.5 text-center"><QtyLink value={rollup.received} ordered={rollup.ordered} /></td>

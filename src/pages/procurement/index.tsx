@@ -3598,6 +3598,7 @@ const Procurement: React.FC = () => {
               createdDate: linkedPO.date ?? draftOverlay?.createdDate ?? request.createdDate ?? '',
               paymentTerms: linkedPO.paymentTerms ?? draftOverlay?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
               backendPoId: /^\d+$/.test(backendPoId) ? backendPoId : undefined,
+              connectingDateByItem: connectingOverridesFromFormData(linkedPO.formData) ?? null,
             };
           });
         }
@@ -3745,6 +3746,7 @@ const Procurement: React.FC = () => {
         requestCode: placeholderRequest.code,
         createdDate: po.date ?? '',
         paymentTerms: po.paymentTerms ?? 'As per contract',
+        connectingDateByItem: connectingOverridesFromFormData(po.formData) ?? null,
       };
     });
 

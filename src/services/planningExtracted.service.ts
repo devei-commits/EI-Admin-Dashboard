@@ -49,6 +49,7 @@ export interface PlanningExtractedRow {
   totalKg: string;
   orderDate: string;
   dueDate: string;
+  committedDate?: string;
   daysLeft: string;
   batchSize: string;
   batchesRequired: number;
@@ -114,6 +115,7 @@ export interface UpdatePlanningExtractedPayload {
   total_kg_display?: string;
   order_date?: string;
   due_date?: string;
+  committed_date?: string;
   batch_size_display?: string;
   batches_required?: number;
   raw_materials?: PlanningExtractedRawMaterial[];
@@ -319,6 +321,7 @@ export interface PlanningBatchAllRow extends PlanningBatchRow {
   totalKg?: string;
   orderDate?: string;
   dueDate?: string;
+  committedDate?: string;
   bomStatus?: string;
   productId?: number | null;
 }
@@ -391,6 +394,8 @@ export interface ItemsInvolvedRow {
   plannedQty?: number;
   /** Stage-flow PO balance: totalOnPO minus what has already shipped (in-transit) or been received. */
   poQty?: number;
+  /** Expected arrival per covering PO, date-ordered. Empty when no PO declares one. */
+  connectingDates?: { poNo: string; date: string }[];
   /** Stage-flow in-transit balance: shipped but not yet received via GRN Complete. */
   inTransitQty?: number;
   /** Under-GRN balance: arrived at warehouse, under review (distinct stage after In-Transit). */

@@ -29,6 +29,7 @@ import {
   updateBatch as apiBatchUpdate,
   createRworkBatch as apiCreateRworkBatch,
   splitBatchForVessel as apiSplitBatchForVessel,
+  splitBatchByRemainder as apiSplitBatchByRemainder,
   createEquipment as apiCreateEquipment,
   updateEquipment as apiUpdateEquipment,
   deleteEquipment as apiDeleteEquipment,
@@ -2348,10 +2349,14 @@ function AdjustBatchSizeModal({ batch, onClose, onSave }: {
 
 /* ──────────────── EDIT BATCH (units resize + priority + need-by) ───── */
 
-function EditBatchModal({ batch, onClose, onSave }: {
+function EditBatchModal({ batch, onClose, onSave, onSplit }: {
   batch: Batch;
   onClose: () => void;
   onSave: (updates: Partial<Batch>) => void;
+  /** Reducing the size below the current value goes through this instead of onSave — it creates a
+   * new sequential sibling batch (B{n+1}) for the difference rather than silently shrinking demand
+   * out of existence. Parent performs the actual API call + refresh, matching how onSave works. */
+  onSplit: (newSizeKg: number) => Promise<void> | void;
 }) {
   const oldKg = batch.batchSize || 0;
   const [loading, setLoading] = useState(true);
@@ -2418,7 +2423,41 @@ function EditBatchModal({ batch, onClose, onSave }: {
   const sizeChanged = newKg > 0 && newKg !== oldKg;
   const hasReservations = batch.rmReserved || batch.pmReserved;
 
+  // Reducing size now SPLITS: this batch keeps newKg, a new sequential sibling batch is created for
+  // the remainder in both Planning and Production. Growing the size stays a plain in-place resize —
+  // there's nothing to split when a batch just gets bigger. Eligibility mirrors the backend's own
+  // guard exactly (assertBatchEligibleForVesselSplit / hasDispensingProgress in
+  // production/vesselSplitMath.js) so the modal can explain a block instead of failing after submit.
+  const isDecrease = newKg > 0 && newKg < oldKg;
+  const remainderKg = isDecrease ? Math.max(0, Math.round((oldKg - newKg) * 1000) / 1000) : 0;
+  const SPLITTABLE_BMR = new Set(['draft', 'batch_confirmed', 'rm_reserved', 'scheduled']);
+  const dispensingStarted =
+    [...(batch.dispensingRM ?? []), ...(batch.dispensingPM ?? [])].some(
+      (l) => Number(l?.dispensed) > 0 || l?.done === true,
+    );
+  const splitBlockReason = !isDecrease
+    ? null
+    : String(batch.bprStatus || 'draft').toLowerCase() !== 'draft'
+      ? 'Split is only allowed before packaging (BPR must be draft).'
+      : !SPLITTABLE_BMR.has(String(batch.bmrStatus || 'draft').toLowerCase())
+        ? 'Split is only allowed before RM connect / dispensing (draft through scheduled).'
+        : dispensingStarted
+          ? 'Cannot split after dispensing has started on this batch.'
+          : remainderKg < 1
+            ? 'Remainder must be at least 1 KG — reduce by less.'
+            : batchPk == null
+              ? 'Batch id missing — cannot split.'
+              : null;
+
   const handleSave = () => {
+    if (isDecrease) {
+      if (splitBlockReason || batchPk == null) return;
+      setSaving(true);
+      // Stay open and re-enable Save on failure — onSplit already toasted the reason (e.g. someone
+      // started dispensing on this batch between opening the modal and clicking Save).
+      void Promise.resolve(onSplit(newKg)).then(() => onClose()).catch(() => setSaving(false));
+      return;
+    }
     const updates: Partial<Batch> = { priority, dueDate, needByNote };
     // Only send the zone when it actually changed. The backend gate fires on
     // "zone set or changed" (products/prFacilityLicenceGate.js), so resending the same value on an
@@ -2510,6 +2549,26 @@ function EditBatchModal({ batch, onClose, onSave }: {
               </p>
             </>
           )}
+          {isDecrease ? (
+            splitBlockReason ? (
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-err-soft bg-err-soft/50 px-2.5 py-2 text-[11px] text-err">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>Can&apos;t split: {splitBlockReason}</span>
+              </p>
+            ) : (
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-brand-soft bg-brand-soft/40 px-2.5 py-2 text-[11px] text-ink-2">
+                <Layers size={12} className="mt-0.5 shrink-0 text-brand" />
+                <span>
+                  This keeps <b>{fmt(newKg)} kg</b> on {formatUnifiedBatchLabel(batch)} and creates a new sequential
+                  batch for the remaining <b>{fmt(remainderKg)} kg</b>
+                  {usingUnits && kgPerUnit ? <> (~{Math.round(remainderKg / kgPerUnit).toLocaleString()} units)</> : null}
+                  {' '}in both Planning and Production — same as adding a batch from Planning. Reservations and
+                  procurement already made against this batch are untouched; the new batch starts fresh and needs
+                  its own scheduling.
+                </span>
+              </p>
+            )
+          ) : null}
         </div>
 
         {/* Manufacturing location (MU zone) */}
@@ -2589,10 +2648,11 @@ function EditBatchModal({ batch, onClose, onSave }: {
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || loading}
+          disabled={saving || loading || (isDecrease && splitBlockReason != null)}
           className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm transition-colors"
         >
-          <CheckCircle2 size={13} /> Save &amp; Sync
+          {isDecrease ? <Layers size={13} /> : <CheckCircle2 size={13} />}
+          {saving ? 'Working…' : isDecrease ? 'Split & Save' : 'Save & Sync'}
         </button>
       </div>
     </Modal>
@@ -5598,6 +5658,32 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
                       </button>
                       <button type="button" onClick={() => setDispenseForIdx(idx)} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-purple-600 hover:bg-purple-700 text-white">🧪 Dispense</button>
                     </>
+                  ) : isDispensingLineShort(r) ? (
+                    // Nothing to pick from at this site — offering "🎯 Pick" here just sent the
+                    // operator into a rack picker with insufficient stock. Show the same shortage
+                    // warning the PM Dispense button already uses instead, so the fix (MTR to this
+                    // site) is stated up front rather than discovered after opening the dialog.
+                    <span
+                      title={`Short ${formatQtyShortage(
+                        calcShortageQtyForKind(
+                          materialQtyToNum(muQtyStrForCode(r.code)),
+                          materialQtyToNum(r.required),
+                          qtyKind,
+                        ),
+                        qtyKind,
+                      )} at ${muZone || 'this site'} — MTR to this site first`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-warn text-white"
+                    >
+                      <AlertTriangle size={10} aria-hidden />
+                      Short {formatQtyShortage(
+                        calcShortageQtyForKind(
+                          materialQtyToNum(muQtyStrForCode(r.code)),
+                          materialQtyToNum(r.required),
+                          qtyKind,
+                        ),
+                        qtyKind,
+                      )}
+                    </span>
                   ) : (
                     <>
                       <span className="text-[10px] rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 font-semibold">PENDING PICK</span>
@@ -11665,7 +11751,34 @@ const Production = () => {
         <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'editBatch' && (
-        <EditBatchModal batch={modalBatch} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
+        <EditBatchModal
+          batch={modalBatch}
+          onClose={closeModal}
+          onSave={async (updates) => { await handleModalSave(updates); closeModal(); }}
+          onSplit={async (newSizeKg) => {
+            const pk = (modalBatch as Batch & { _pk?: number })._pk;
+            if (!pk) return;
+            try {
+              const result = await apiSplitBatchByRemainder(pk, newSizeKg);
+              const original = apiBatchToBatch(result.original);
+              const split = apiBatchToBatch(result.split);
+              addToast(
+                'success',
+                `Split complete — ${formatUnifiedBatchLabel(original)} (${original.batchSize} KG) + `
+                + `${formatUnifiedBatchLabel(split)} (${split.batchSize} KG) created in Planning + Production. `
+                + `Schedule ${formatUnifiedBatchLabel(split)} when ready.`,
+              );
+              await refreshProductionBatches();
+              closeModal();
+            } catch (e) {
+              const msg = e && typeof e === 'object' && 'message' in e
+                ? String((e as { message: string }).message)
+                : 'Failed to split batch';
+              addToast('error', msg);
+              throw e; // let EditBatchModal know the split failed so it stays open, not closes silently
+            }
+          }}
+        />
       )}
       {modalBatch && modalType === 'confirmSchedule' && (
         <ConfirmScheduleModal

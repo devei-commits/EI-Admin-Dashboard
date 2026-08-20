@@ -258,6 +258,24 @@ export async function splitBatchForVessel(
   return (res as { data?: SplitBatchForVesselResult }).data ?? (res as SplitBatchForVesselResult);
 }
 
+/**
+ * Reduce a batch's own size and spin the difference off as a new sequential batch (B{n+1}) in
+ * both Planning and Production, with its own fresh BMR/BPR. Distinct from splitBatchForVessel:
+ * that one is a vessel-capacity workaround (sibling named "-sp-NN"); this is a planner right-sizing
+ * an order allocation, so the sibling gets an ordinary batch number instead.
+ */
+export async function splitBatchByRemainder(
+  baseBatchId: number,
+  newSizeKg: number,
+  reason?: string,
+): Promise<SplitBatchForVesselResult> {
+  const res = await api.post<SplitBatchForVesselResult>(`${BASE}/batches/${baseBatchId}/split-remainder`, {
+    newSizeKg,
+    reason: reason ?? '',
+  });
+  return (res as { data?: SplitBatchForVesselResult }).data ?? (res as SplitBatchForVesselResult);
+}
+
 export async function updateBatch(pk: number, payload: Record<string, unknown>): Promise<BatchRow> {
   const res = await api.patch<BatchRow>(`${BASE}/batches/${pk}`, payload);
   return (res as any)?.data ?? res;

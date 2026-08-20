@@ -535,7 +535,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     }
   };
 
-  const COL_COUNT = 11;
+  const COL_COUNT = 13;
 
   return (
     <>
@@ -646,7 +646,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       ) : (
         <ProcTableCard>
             <ProcThead
-              cols={['', { label: 'Sr', align: 'right' }, 'SO No', 'Product', 'Status', { label: 'Order Qty', align: 'right' }, { label: 'Price/U', align: 'right' }, { label: 'Amount', align: 'right' }, 'Fulfillment Status', 'Batch Stage', { label: 'Actions', align: 'center' }]}
+              cols={['', { label: 'Sr', align: 'right' }, 'SO No', 'Due Date', 'Committed Date', 'Product', 'Status', { label: 'Order Qty', align: 'right' }, { label: 'Price/U', align: 'right' }, { label: 'Amount', align: 'right' }, 'Fulfillment Status', 'Batch Stage', { label: 'Actions', align: 'center' }]}
             />
             <tbody className="divide-y divide-hairline">
               {groups.map((group) => {
@@ -698,6 +698,16 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
                               {row.slaFlag.daysOverdue}d overdue
                             </p>
                           )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className={`text-xs tabular-nums ${row.slaFlag?.overdue ? 'text-err font-semibold' : 'text-ink-2'}`}>
+                            {fmtDate(row.dueDate)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="text-xs tabular-nums text-ink-2">
+                            {row.committedDate ? fmtDate(row.committedDate) : '—'}
+                          </span>
                         </td>
                         {/* Product — allow wrap, no truncate */}
                         <td className="px-3 py-2 min-w-[180px] max-w-[260px]">

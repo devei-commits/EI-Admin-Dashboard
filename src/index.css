@@ -252,7 +252,10 @@
 }
 
 body {
- background-color: var(--color-bg);
+ /* Match --canvas (the page background every module actually paints), not the stale --color-bg
+    token — otherwise overscroll/rubber-band bounce past the end of a tall page (e.g. Planning's
+    Batches tab) briefly reveals this slightly different gray as a visible "blank" seam. */
+ background-color: var(--canvas, var(--color-bg));
  color: var(--color-text);
 }
 

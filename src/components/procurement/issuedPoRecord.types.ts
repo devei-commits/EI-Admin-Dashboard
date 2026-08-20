@@ -27,4 +27,6 @@ export type IssuedPOViewRecord = {
    * shipment, and the row previously showed a dead "Initiate Shipment" regardless.
    */
   approvalStatus?: string | null;
+  /** Per-item expected arrival, from purchase_orders.form_data.connectingDateByItem. */
+  connectingDateByItem?: Record<string, string> | null;
 };

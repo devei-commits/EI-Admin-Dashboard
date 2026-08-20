@@ -363,6 +363,8 @@ export interface SODashboardRow {
   soNo: string;
   soDate: string | null;
   dueDate: string | null;
+  /** Planner-set target date sourced from Planning (planning_extracted.committed_date), not editable here. */
+  committedDate: string | null;
   priority: string;
   soStatus: string;
   commercialStatus: CommercialStatus;

@@ -1,3 +1,10 @@
+/** "2026-08-10" -> "10 Aug". Falls back to the raw string if it is not a parseable date. */
+function fmtConnectingDate(raw: string): string {
+  const d = new Date(`${String(raw).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(raw);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+
 import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -338,6 +345,8 @@ interface ItemsInvolvedDisplayRow {
   totalRequired: number;
   /** Number of production batches (released) that use this item. */
   batchCount: number;
+  /** Expected arrival per covering PO — a material on several POs carries one entry each. */
+  connectingDates: { poNo: string; date: string }[];
   sih: string;
   sihNum: number;
   surplusShortage: string;
@@ -1264,6 +1273,7 @@ function mapItemsInvolvedApiRowsToDisplay(rows: ItemsInvolvedRow[]): ItemsInvolv
       totalRequired: grossDemand,
       unallocatedToBatches: batchUnallocatedNum,
       batchCount: row.batchCount ?? 0,
+      connectingDates: Array.isArray(row.connectingDates) ? row.connectingDates : [],
       sih: sihStr,
       sihNum: row.sih,
       surplusShortage: surplusShortageStr,
@@ -1653,6 +1663,8 @@ interface SalesOrder {
   /** When this row entered planning — SLA clock starts here (not SO date at midnight). */
   createdAt?: string | null;
   dueDate: string;
+  /** Planner-set target date, distinct from dueDate (copied once from the SO, never edited). */
+  committedDate?: string;
   daysLeft: string;
   batchSize: string;
   batchesRequired: number;
@@ -1747,6 +1759,7 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
     orderDate: row.orderDate,
     createdAt: row.createdAt ?? null,
     dueDate: row.dueDate,
+    committedDate: row.committedDate,
     daysLeft: row.daysLeft,
     batchSize: row.batchSize,
     batchesRequired: row.batchesRequired,
@@ -1928,6 +1941,57 @@ function BatchTableLinkButton({
   );
 }
 
+/** Inline-editable "Committed Date" cell — planner's own target, saved on demand (not on every keystroke). */
+function CommittedDateCell({
+  value,
+  onSave,
+}: {
+  value?: string | null;
+  onSave: (next: string) => Promise<void>;
+}): ReactElement {
+  const [draft, setDraft] = useState(value || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(value || '');
+  }, [value]);
+
+  const dirty = draft !== (value || '');
+
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!dirty) return;
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <input
+        type="date"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className="border border-border rounded-md px-2 py-1 text-xs text-ink"
+        aria-label="Committed date"
+      />
+      {dirty ? (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="px-2 py-1 text-[10px] font-semibold rounded bg-ok text-white hover:bg-ok disabled:opacity-50 whitespace-nowrap"
+        >
+          {saving ? '…' : 'Save'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** One row on /planning/batches — column layout matches planning batches spec. */
 function PlanningBatchTableRow({
   row,
@@ -2103,6 +2167,28 @@ function PlanningBatchTableRow({
       </td>
       <td className="px-3 py-2.5 text-ink-2 whitespace-nowrap">
         {formatPlanningBatchSoDate(row.orderDate)}
+      </td>
+      <td className="px-3 py-2.5 text-ink-2 whitespace-nowrap">
+        {row.dueDate ? formatPisTableDate(row.dueDate) : '—'}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <CommittedDateCell
+          value={row.committedDate}
+          onSave={async (next) => {
+            try {
+              const updated = await updatePlanningExtracted(String(row.planningExtractedId), { committed_date: next || undefined });
+              if (updated) {
+                addToast('success', 'Committed date saved');
+                await queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+                await queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+              } else {
+                addToast('error', 'Could not save committed date');
+              }
+            } catch (err) {
+              addToast('error', err instanceof Error ? err.message : 'Could not save committed date');
+            }
+          }}
+        />
       </td>
       <td className="px-3 py-2.5 text-ink min-w-[120px]">
         {row.customerName ? (
@@ -2602,7 +2688,7 @@ function PlanningBatchesTab({
       </ProcFilterBar>
       <div className="border border-border rounded-lg overflow-hidden bg-surface">
         {/* Vertical scroll container so the column header can stay pinned (sticky) while rows scroll. */}
-        <div className="overflow-auto max-h-[calc(100vh-300px)]">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-sm min-w-[1440px]">
             <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
               <tr className="bg-surface-2 border-b border-border text-[11px] shadow-[0_1px_0_0_var(--border)]">
@@ -2610,6 +2696,8 @@ function PlanningBatchesTab({
                 <SortableTableTh label="Batch #" column="batchNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO #" column="soNo" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="SO Date" column="soDate" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap">Due Date</th>
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap">Committed Date</th>
                 <SortableTableTh label="Client" column="client" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <SortableTableTh label="Product Code" column="product" sortColumn={sortColumn} sortDirection={sortDirection} onSort={toggleBatchSort} />
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product Name</th>
@@ -7650,6 +7738,12 @@ const Planning = () => {
                         onSort={togglePisSort}
                         align="right"
                       />
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2 whitespace-nowrap">
+                        Due Date
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink-2 whitespace-nowrap">
+                        Committed Date
+                      </th>
                       <SortableTableTh
                         label={
                           <span className="inline-flex flex-col items-start gap-0.5 normal-case tracking-normal">
@@ -7774,6 +7868,27 @@ const Planning = () => {
                           </td>
                           <td className="px-4 py-3 text-right text-ink text-xs whitespace-nowrap">
                             {formatPisOrdQty(order.orderQty)}
+                          </td>
+                          <td className="px-4 py-3 text-ink-2 text-xs whitespace-nowrap">
+                            {order.dueDate ? formatPisTableDate(order.dueDate) : '—'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <CommittedDateCell
+                              value={order.committedDate}
+                              onSave={async (next) => {
+                                try {
+                                  const updated = await updatePlanningExtracted(order.id, { committed_date: next || undefined });
+                                  if (updated) {
+                                    addToast('success', 'Committed date saved');
+                                    await queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+                                  } else {
+                                    addToast('error', 'Could not save committed date');
+                                  }
+                                } catch (err) {
+                                  addToast('error', err instanceof Error ? err.message : 'Could not save committed date');
+                                }
+                              }}
+                            />
                           </td>
                           <td className="px-4 py-3 min-w-[220px]">
                             {planView.kind === 'pending' ? (
@@ -8404,6 +8519,22 @@ const Planning = () => {
                                 </button>
                               ) : (
                                 item.poQtyStr
+                              )}
+                              {/* Expected arrival per covering PO. A material can sit on several POs
+                                  connecting on different dates, so each is listed rather than rolled
+                                  into one — the spread is what matters for scheduling. */}
+                              {item.connectingDates.length > 0 && (
+                                <div className="mt-0.5 space-y-0.5">
+                                  {item.connectingDates.map((c) => (
+                                    <div
+                                      key={`${c.poNo}-${c.date}`}
+                                      className="text-[10px] font-normal text-ink-3 whitespace-nowrap"
+                                      title={`${c.poNo} connects on ${fmtConnectingDate(c.date)}`}
+                                    >
+                                      {c.poNo} · {fmtConnectingDate(c.date)}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink">
