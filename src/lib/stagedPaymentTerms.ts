@@ -286,3 +286,65 @@ export function creditDaysFromPaymentTermsStored(raw: string | null | undefined)
       return 30;
   }
 }
+
+/** One payable stage of a staged payment term, with its share of a known order value. */
+export interface PaymentStageBreakdown {
+  key: 'advance' | 'pre_shipment' | 'post_shipment';
+  label: string;
+  /** When the money actually moves — the part a bare "Advance %" column never says. */
+  when: string;
+  pct: number;
+  /** Share of `amount`, or null when the order value is not known to the caller. */
+  amount: number | null;
+}
+
+export interface StagedPaymentTermsBreakdown {
+  /** Only the stages that carry money. A 0% stage is noise in a summary view. */
+  stages: PaymentStageBreakdown[];
+  creditDays: number;
+  totalPct: number;
+  /** Set when the stages do not add up to 100% — a real data problem worth surfacing. */
+  pctWarning: string | null;
+}
+
+const STAGE_META: Array<{ key: PaymentStageBreakdown['key']; label: string; when: string; field: keyof StagedPaymentTerms }> = [
+  { key: 'advance', label: 'Advance', when: 'on PO release', field: 'advance_pct' },
+  { key: 'pre_shipment', label: 'Pre-shipment', when: 'before dispatch', field: 'pre_shipment_pct' },
+  { key: 'post_shipment', label: 'Post-shipment', when: 'after delivery', field: 'post_shipment_pct' },
+];
+
+/**
+ * Turn staged terms into something a reader can act on.
+ *
+ * The four-number grid (Advance / Pre-ship / Post-ship / Credit) gave a 0% stage the same weight as
+ * the stage that carries the whole payment, so "0 · 100 · 0 · 60" had to be decoded rather than
+ * read. This keeps the stages that carry money, says when each one falls due, and — when the order
+ * value is known — what each stage is actually worth.
+ */
+export function describeStagedPaymentTerms(
+  staged: StagedPaymentTerms,
+  amount?: number | null
+): StagedPaymentTermsBreakdown {
+  const total = STAGE_META.reduce((sum, m) => sum + clampPct(staged[m.field]), 0);
+  const orderValue = Number(amount);
+  const hasAmount = Number.isFinite(orderValue) && orderValue > 0;
+  const stages = STAGE_META.map((m) => {
+    const pct = clampPct(staged[m.field]);
+    return {
+      key: m.key,
+      label: m.label,
+      when: m.when,
+      pct,
+      amount: hasAmount ? (orderValue * pct) / 100 : null,
+    };
+  }).filter((stage) => stage.pct > 0);
+
+  const rounded = Math.round(total * 100) / 100;
+  return {
+    stages,
+    creditDays: Math.max(0, Math.floor(Number(staged.credit_days) || 0)),
+    totalPct: rounded,
+    // Stages summing to 0 means "nothing scheduled" (credit-only terms), not a broken split.
+    pctWarning: rounded === 0 || rounded === 100 ? null : `Stages total ${rounded}%, not 100%`,
+  };
+}

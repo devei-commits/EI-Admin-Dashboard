@@ -72,7 +72,7 @@ describe('inboundGrnTableDisplay', () => {
     expect(view.actionLabel).toBe('Awaiting QC');
   });
 
-  it('shows GRN Copy when landed and receipt confirmed', () => {
+  it('shows Complete GRN when landed, receipt confirmed, docs/labels pending', () => {
     const view = buildInboundGrnTableRowView({
       grnNo: 'GRN-2026-0310',
       status: 'Under GRN',
@@ -81,8 +81,8 @@ describe('inboundGrnTableDisplay', () => {
       lineItem: { poQty: 100, rcvdQty: 100, unit: 'kg' },
     });
     expect(view.statusLabel).toBe('LANDED');
-    expect(view.actionLabel).toBe('GRN Copy');
-    expect(view.actionPrefix).toBe('📋');
+    expect(view.actionLabel).toBe('Complete GRN');
+    expect(view.actionPrefix).toBe('📦');
   });
 
   it('shows QC Check after QC complete and Assign Rack when passed', () => {
@@ -107,6 +107,8 @@ describe('inboundGrnTableDisplay', () => {
       label: 'QC Check',
       prefix: '🧪',
     });
+    // Rack-first: after QC pass the unracked GRN routes to Assign Rack; once a real rack is set,
+    // the remaining paperwork (docs + labels + completion) lives in GRN Copy.
     expect(
       inboundGrnActionView({
         grnNo: 'x',
@@ -115,8 +117,8 @@ describe('inboundGrnTableDisplay', () => {
         qcStatus: 'Passed',
       }),
     ).toEqual({
-      label: 'GRN Copy',
-      prefix: '📋',
+      label: 'Assign Rack',
+      prefix: '📍',
     });
     expect(
       inboundGrnActionView({
@@ -125,10 +127,11 @@ describe('inboundGrnTableDisplay', () => {
         workflowSteps: ['Sent to QC', 'Label Generation'],
         qcStatus: 'Passed',
         generatedLabels: [{}],
+        locationPrefix: 'SW-R1',
       }),
     ).toEqual({
-      label: 'Assign Rack',
-      prefix: '📍',
+      label: 'GRN Copy',
+      prefix: '📋',
     });
     expect(
       inboundGrnActionView({
@@ -178,7 +181,7 @@ describe('inboundGrnTableDisplay', () => {
     expect(view.actionPrefix).toBe('📍');
   });
 
-  it('shows GRN Copy when QC passed but labels not generated yet', () => {
+  it('shows Assign Rack when QC passed but no rack assigned yet (rack-first)', () => {
     const view = buildInboundGrnTableRowView({
       grnNo: 'GRN-2026-0312',
       status: 'Under GRN',
@@ -187,8 +190,8 @@ describe('inboundGrnTableDisplay', () => {
       lineItem: { poQty: 100, rcvdQty: 100, unit: 'kg', qcStatus: 'Pass' },
     });
     expect(view.statusLabel).toBe('QC TESTED · PASS');
-    expect(view.actionLabel).toBe('GRN Copy');
-    expect(view.actionPrefix).toBe('📋');
+    expect(view.actionLabel).toBe('Assign Rack');
+    expect(view.actionPrefix).toBe('📍');
   });
 
   it('counts partial source docs', () => {

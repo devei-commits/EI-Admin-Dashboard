@@ -20,6 +20,7 @@ import {
   PO_SEND_CHANNEL_OPTIONS,
   SLA_LEVEL_CLASSES,
   SLA_LEVEL_PREFIX,
+  toPoApprovalStatus,
   type PoVendorStatus,
 } from '../../constants/procurement';
 import { ErrorState } from '../ui/ErrorState';
@@ -103,11 +104,26 @@ export const PoVendorPanel: React.FC<PoVendorPanelProps> = ({ poId, onToast, onC
   const btnBase = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold disabled:opacity-50';
   const actionsDisabled = busy != null || locked;
 
-  // Not yet approved → the vendor loop is locked.
+  // Not yet approved → the vendor loop is locked. Name the step that is actually outstanding:
+  // "Approve the PO" is the end of the chain, not the next action, and on a PO still sitting at
+  // not_submitted it reads as though an Approve button should already be available somewhere.
   if (!approved && vs === 'not_sent') {
+    // Shared normaliser, so a null approval_status reads as "not submitted" here exactly as it does
+    // in the Approval panel above.
+    const stage = toPoApprovalStatus(state.approvalStatus);
+    const lockedMessage =
+      stage === 'under_review'
+        ? 'Submitted for review — the reviewer must forward it, then the approver signs off, before it can be sent to the vendor.'
+        : stage === 'under_approval'
+          ? 'Reviewed — waiting on the approver. The PO can be sent to the vendor once approved.'
+          : stage === 'changes_requested'
+            ? 'Changes requested — edit the PO and resubmit it for review before it can be sent to the vendor.'
+            : stage === 'rejected'
+              ? 'This PO was rejected in approval. It cannot be sent to the vendor.'
+              : 'Not submitted yet — use Submit for Review in the Approval section above. The PO can be sent to the vendor once it is approved.';
     return (
       <div className="rounded-lg border border-border bg-surface-3 px-4 py-3 text-[12px] text-ink-3 flex items-center gap-2">
-        <Lock className="h-4 w-4 shrink-0" /> Approve the PO to enable sending it to the vendor.
+        <Lock className="h-4 w-4 shrink-0" /> {lockedMessage}
       </div>
     );
   }

@@ -106,6 +106,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<EditableItem[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -393,6 +394,17 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     // Reads itemsRef.current (a ref) so it fires only on customer / open / resolver change, not per keystroke.
   }, [selectedCustomerId, isOpen, resolveLinePrice]);
 
+  useEffect(() => {
+    if (errors.length === 0) return;
+    const el = errorBannerRef.current;
+    if (!el) return;
+    // Scrolls the modal body (nearest scrollable ancestor), not the page behind it.
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Focus so keyboard and screen-reader users land on the message too.
+    el.focus({ preventScroll: true });
+    // `errors` is a fresh array on every failed Save, so repeat attempts re-trigger this.
+  }, [errors]);
+
   const handleSave = async () => {
     if (!canEdit || isSaving) return;
     const nextErrors = validate();
@@ -524,7 +536,12 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
         )}
 
         {errors.length > 0 && (
-          <div className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2">
+          <div
+            ref={errorBannerRef}
+            role="alert"
+            tabIndex={-1}
+            className="rounded-lg border border-[color:var(--st-red-fg)]/30 bg-err-soft px-3 py-2 scroll-mt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--st-red-fg)]/40"
+          >
             <ul className="list-disc list-inside text-sm text-err">
               {errors.map((error) => (
                 <li key={error}>{error}</li>

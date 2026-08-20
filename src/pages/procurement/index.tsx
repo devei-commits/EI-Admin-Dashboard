@@ -176,9 +176,11 @@ import {
   SLA_LEVEL_CLASSES,
   SLA_LEVEL_PREFIX,
   type SlaLevel,
+  type PoApprovalStatus,
 } from '../../constants/procurement';
 import GrnMonitorDetailPanel from '../../components/procurement/GrnMonitorDetailPanel';
 import PoApprovalPanel from '../../components/procurement/PoApprovalPanel';
+import { poBackendId } from '../../services/poApproval.service';
 import PoVendorPanel from '../../components/procurement/PoVendorPanel';
 import PoMatchPanel from '../../components/procurement/PoMatchPanel';
 import PoExceptionBar from '../../components/procurement/PoExceptionBar';
@@ -1086,6 +1088,10 @@ const Procurement: React.FC = () => {
   const [showNewPo, setShowNewPo] = useState(false);
   /** Bumped after any approval/vendor transition so both PO workflow panels refetch in sync. */
   const [poWorkflowRefresh, setPoWorkflowRefresh] = useState(0);
+  // Governed approval status of the PO open in the detail popup, reported by PoApprovalPanel.
+  // The footer gates on THIS, not purchase_orders.status — the backend only allows Release
+  // when approval_status === 'approved'.
+  const [poApprovalStatus, setPoApprovalStatus] = useState<PoApprovalStatus>('not_submitted');
   /** Lifted from PoExceptionBar so sibling workflow panels grey out while a PO is held/cancelled. */
   const [poLock, setPoLock] = useState<{ onHold: boolean; cancelled: boolean }>({ onHold: false, cancelled: false });
   // Reset the lock whenever the open PO changes (the exception bar re-reports on load).
@@ -1838,6 +1844,32 @@ const Procurement: React.FC = () => {
       .filter((p) => p.status === 'Draft')
       .map((po) => mapPurchaseOrderToDraftPO(po, reqs));
   }, [purchaseOrders, requestsFromApi]);
+
+  /**
+   * Live backend status of the PO behind the open Draft-PO panel.
+   *
+   * `draftPOs` only holds purchase orders whose status is still 'Draft'. Once a PO is approved and
+   * sent to the vendor the backend flips it to 'Released', so it drops out of that list — but the
+   * open panel kept rendering the snapshot it was opened with, still showing "Pending Approval" and
+   * still offering "Release PO to Vendor". Clicking it looked the PO up in `draftPOs`, missed, and
+   * reported "Draft PO not found" for a PO that exists and is simply no longer a draft.
+   *
+   * Resolved against the full `purchaseOrders` list (not `draftPOs`) so it is null while loading
+   * rather than briefly claiming a live draft has been released.
+   */
+  const selectedDraftPOLiveStatus = useMemo(() => {
+    const bid = poBackendId(String(selectedDraftPO?.backendPoId ?? ''));
+    if (!bid) return null;
+    // The two id shapes differ: the PO list carries "PO-1091" (`toOrder` prefixes by type) while a
+    // DraftPO carries the bare "1091". Comparing them raw never matched, so this always resolved to
+    // null and the guard below silently did nothing — the panel kept offering Release on a PO that
+    // had already been released. Normalise both sides through the same helper.
+    const po = purchaseOrders.find((p) => poBackendId(String(p.id ?? '')) === bid);
+    return po ? String(po.status ?? '').trim() : null;
+  }, [selectedDraftPO?.backendPoId, purchaseOrders]);
+
+  const selectedDraftPONoLongerDraft =
+    selectedDraftPOLiveStatus != null && selectedDraftPOLiveStatus !== 'Draft';
 
   const vendorItemPriceMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -4694,6 +4726,26 @@ const Procurement: React.FC = () => {
     }
   };
 
+  /**
+   * Why a draft-PO lookup missed.
+   *
+   * `draftPOs` holds only status==='Draft' purchase orders, so a PO that has been approved and
+   * released is absent by design — "Draft PO not found" then reads as data loss for a PO that is
+   * alive and simply past this stage.
+   */
+  const draftPoLookupMessage = (draftPoId: string): string => {
+    const po = purchaseOrders.find(
+      (p) =>
+        String(p.poNumber ?? '') === String(draftPoId) ||
+        poBackendId(String(p.id ?? '')) === poBackendId(String(draftPoId)),
+    );
+    const status = po ? String(po.status ?? '').trim() : '';
+    if (status && status !== 'Draft') {
+      return `${draftPoId} is already ${status} — it is no longer a draft PO.`;
+    }
+    return 'Draft PO not found — refresh the page and try again.';
+  };
+
   const approveDraftPO = async (draftPoId: string) => {
     if (approveDraftPOBusy) return;
     setApproveDraftPOBusy(true);
@@ -4701,7 +4753,7 @@ const Procurement: React.FC = () => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
-      addToast('warning', 'Draft PO not found');
+      addToast('warning', draftPoLookupMessage(draftPoId));
       return;
     }
 
@@ -5023,7 +5075,7 @@ const Procurement: React.FC = () => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
-      addToast('warning', 'Draft PO not found');
+      addToast('warning', draftPoLookupMessage(draftPoId));
       return false;
     }
 
@@ -5053,7 +5105,7 @@ const Procurement: React.FC = () => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
-      addToast('warning', 'Draft PO not found');
+      addToast('warning', draftPoLookupMessage(draftPoId));
       return;
     }
 
@@ -5309,7 +5361,7 @@ const Procurement: React.FC = () => {
     const target = draftPOs.find((draftPo) => draftPo.id === draftPoId);
 
     if (!target) {
-      addToast('warning', 'Draft PO not found');
+      addToast('warning', draftPoLookupMessage(draftPoId));
       return;
     }
 
@@ -5740,7 +5792,7 @@ const Procurement: React.FC = () => {
           if (n0 && rn0 && (n0 === rn0 || n0.includes(rn0) || rn0.includes(n0))) return true;
           return false;
         });
-        const itemsListSlab0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
+        const vendorSlabs0 = (matchedItem0?.vendorRates ?? []).flatMap((rate) =>
           (rate.tiers ?? []).map((tier) => ({
             vendor: String(rate.vendor_name ?? '').trim(),
             moq: Number(tier.moq_min ?? 0) || 0,
@@ -5748,7 +5800,14 @@ const Procurement: React.FC = () => {
             leadDays: Number(rate.lead_time_days ?? 0) || 0,
             terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
           }))
-        ).find((s) => s.vendor);
+        );
+        // The vendor the request is planned for decides the draft. Only that vendor's slab
+        // may set price / lead / terms — using the first rate on the item paired one vendor's
+        // name with another vendor's pricing.
+        const plannedVendor0 = String(liveReq.preferredVendor ?? '').trim();
+        const itemsListSlab0 = plannedVendor0
+          ? vendorSlabs0.find((v) => v.vendor.toLowerCase() === plannedVendor0.toLowerCase())
+          : vendorSlabs0.find((v) => v.vendor);
         const reqQuotesForItem = quotes.filter(
           (q) => q.requestId === liveReq.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
         );
@@ -5756,7 +5815,7 @@ const Procurement: React.FC = () => {
         const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
         const pt0 = parsePaymentTermsString(itemsListSlab0?.terms ?? first?.terms ?? 'As per contract');
         setReleaseToPlannedForm({
-          vendor: itemsListSlab0?.vendor ?? first?.vendor ?? liveReq.preferredVendor ?? '',
+          vendor: plannedVendor0 || first?.vendor || itemsListSlab0?.vendor || '',
           moqDisplay: item.moq
             ? `${item.moq} (₹${itemsListSlab0?.unitPrice ?? firstLine?.pricePerUnit ?? 0} · ${itemsListSlab0?.leadDays ?? first?.leadTimeDays ?? 0}d)`
             : '',
@@ -5853,14 +5912,21 @@ const Procurement: React.FC = () => {
           if (n1 && rn1 && (n1 === rn1 || n1.includes(rn1) || rn1.includes(n1))) return true;
           return false;
         });
-        const itemsListSlab1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
+        const vendorSlabs1 = (matchedItem1?.vendorRates ?? []).flatMap((rate) =>
           (rate.tiers ?? []).map((tier) => ({
             vendor: String(rate.vendor_name ?? '').trim(),
             unitPrice: Number(tier.price_per_unit ?? 0) || 0,
             leadDays: Number(rate.lead_time_days ?? 0) || 0,
             terms: String(rate.payment_terms ?? '').trim() || 'As per contract',
           }))
-        ).find((s) => s.vendor);
+        );
+        // The vendor the request is planned for decides the draft. Only that vendor's slab
+        // may set price / lead / terms — using the first rate on the item paired one vendor's
+        // name with another vendor's pricing.
+        const plannedVendor1 = String(req.preferredVendor ?? '').trim();
+        const itemsListSlab1 = plannedVendor1
+          ? vendorSlabs1.find((v) => v.vendor.toLowerCase() === plannedVendor1.toLowerCase())
+          : vendorSlabs1.find((v) => v.vendor);
         const reqQuotesForItem = quotes.filter(
           (q) => q.requestId === req.id && q.lines.some((l) => quoteLineMatchesReleaseTarget(l, relItem))
         );
@@ -5868,7 +5934,7 @@ const Procurement: React.FC = () => {
         const firstLine = first?.lines.find((l) => quoteLineMatchesReleaseTarget(l, relItem));
         const pt1 = parsePaymentTermsString(itemsListSlab1?.terms ?? first?.terms ?? 'As per contract');
         setReleaseToPlannedForm({
-          vendor: itemsListSlab1?.vendor ?? first?.vendor ?? req.preferredVendor ?? '',
+          vendor: plannedVendor1 || first?.vendor || itemsListSlab1?.vendor || '',
           moqDisplay: '',
           qty: String(qty ?? 0),
           unitPrice: String(itemsListSlab1?.unitPrice ?? firstLine?.pricePerUnit ?? price ?? 0),
@@ -7329,7 +7395,7 @@ const Procurement: React.FC = () => {
                           day: '2-digit',
                         }),
                       },
-                      { label: 'Payment Terms', paymentTerms: dpo.paymentTerms },
+                      { label: 'Payment Terms', paymentTerms: dpo.paymentTerms, amount: grandTotal },
                       {
                         label: 'Expected Delivery',
                         value: new Date(dpo.expectedDelivery).toLocaleDateString('en-IN', {
@@ -7340,17 +7406,23 @@ const Procurement: React.FC = () => {
                       },
                       { label: 'Lead time', value: `${maxLeadDaysForDpo} days` },
                       { label: 'Grand Total', value: `₹${grandTotal.toLocaleString('en-IN')}`, bold: true },
-                      { label: 'Status', value: dpo.status, highlight: dpo.status === 'Pending Approval' },
+                      {
+                        label: 'Status',
+                        // Live status wins: the snapshot still said "Pending Approval" after the PO
+                        // had already been approved and released.
+                        value: selectedDraftPONoLongerDraft ? (selectedDraftPOLiveStatus as string) : dpo.status,
+                        highlight: !selectedDraftPONoLongerDraft && dpo.status === 'Pending Approval',
+                      },
                     ] as Array<
                       | { label: string; value: string; bold?: boolean; highlight?: boolean }
-                      | { label: string; paymentTerms: string }
+                      | { label: string; paymentTerms: string; amount?: number }
                     >
                   ).map((row) =>
                     'paymentTerms' in row ? (
                       <div key={row.label} className="flex flex-col gap-2 px-4 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <span className="text-ink-3 shrink-0 pt-0.5">{row.label}</span>
                         <div className="min-w-0 w-full sm:max-w-md sm:flex-1 sm:flex sm:justify-end">
-                          <PaymentTermsDisplay value={row.paymentTerms} />
+                          <PaymentTermsDisplay value={row.paymentTerms} amount={row.amount} />
                         </div>
                       </div>
                     ) : (
@@ -7382,6 +7454,7 @@ const Procurement: React.FC = () => {
                       refreshKey={poWorkflowRefresh}
                       locked={poLocked}
                       onToast={addToast}
+                      onStatusChange={setPoApprovalStatus}
                       onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
                     />
                     <PoVendorPanel
@@ -7461,6 +7534,16 @@ const Procurement: React.FC = () => {
 
               {/* Footer */}
               <div className="sticky bottom-0 bg-surface rounded-b-xl border-t border-brand-soft px-5 py-3 flex items-center justify-end gap-2">
+                {/* Already released: every action below acts on the draft list this PO has left, so
+                    offering them produced a "Draft PO not found" on a PO that exists. */}
+                {selectedDraftPONoLongerDraft ? (
+                  <span className="text-xs text-ink-2 mr-auto">
+                    This PO is <span className="font-semibold text-ink">{selectedDraftPOLiveStatus}</span> — it has
+                    left the draft stage. Track it from Purchase Orders; use the Vendor section above for
+                    acknowledgement.
+                  </span>
+                ) : (
+                <>
                 <button
                   type="button"
                   disabled={deletingDraftPoId === dpo.id}
@@ -7476,19 +7559,23 @@ const Procurement: React.FC = () => {
                 >
                   Edit
                 </button>
-                {dpo.status === 'Pending Approval' && (
-                  <button
-                    disabled={approveDraftPOBusy}
-                    onClick={() => {
-                      approveDraftPO(dpo.id);
-                      setSelectedDraftPO(null);
-                    }}
-                    className="px-4 py-2 rounded-lg bg-ok text-white text-sm font-bold hover:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {approveDraftPOBusy ? 'Approving…' : 'Approve'}
-                  </button>
+                {/* Approval happens in the Approval panel above — Submit for Review, then the
+                    routed approver decides. The old footer "Approve" wrote purchase_orders.status
+                    directly, skipping the role check and the audit trail, and left approval_status
+                    at 'not_submitted' — so the Release that it unlocked was then refused by the
+                    backend (PO_NOT_APPROVED). One flow now, and the footer follows it. */}
+                {poApprovalStatus !== 'approved' && (
+                  <span className="text-xs text-ink-3 mr-auto">
+                    {poApprovalStatus === 'not_submitted'
+                      ? 'Use Submit for Review in the Approval section to start approval.'
+                      : poApprovalStatus === 'changes_requested'
+                        ? 'Changes requested — edit the PO, then resubmit for review.'
+                        : poApprovalStatus === 'rejected'
+                          ? 'This PO was rejected in the approval workflow.'
+                          : 'Awaiting a decision in the Approval section above.'}
+                  </span>
                 )}
-                {dpo.status === 'Approved' && (
+                {poApprovalStatus === 'approved' && (
                   <>
                     {draftPaymentTermsRequireAdvance(dpo.paymentTerms) && (
                       <button
@@ -7515,6 +7602,8 @@ const Procurement: React.FC = () => {
                       Split PO
                     </button>
                   </>
+                )}
+                </>
                 )}
                 <button
                   onClick={() => setSelectedDraftPO(null)}

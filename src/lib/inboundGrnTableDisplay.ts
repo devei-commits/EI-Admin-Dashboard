@@ -200,6 +200,13 @@ export function buildInboundGrnStatusView(grn: InboundGrnRowInput): {
     return { label: 'GRN COMPLETED', subLabel: null, tone: 'complete' };
   }
 
+  // QC pass outranks quarantine: the mismatch workflow step that flags quarantine is append-only,
+  // so without this a quarantined GRN whose QC later PASSED read QUARANTINED forever ("in QC hold")
+  // and its Assign Rack action never surfaced. Mirrors INBOUND_GRN_LIFECYCLE order.
+  if (isInboundGrnQcTested(grn)) {
+    return { label: 'QC TESTED · PASS', subLabel: null, tone: 'qc' };
+  }
+
   if (isInboundGrnQuarantined(grn)) {
     const line = grn.lineItem;
     const unit = String(line?.unit ?? '').trim();
@@ -223,10 +230,6 @@ export function buildInboundGrnStatusView(grn: InboundGrnRowInput): {
           : null;
     }
     return { label: 'QUARANTINED', subLabel, tone: 'quarantine' };
-  }
-
-  if (isInboundGrnQcTested(grn)) {
-    return { label: 'QC TESTED · PASS', subLabel: null, tone: 'qc' };
   }
 
   if (isInboundGrnVerified(grn)) {
@@ -377,11 +380,15 @@ export function inboundGrnArrivalConfirmPayload(
 export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; prefix: string | null } {
   const statusView = buildInboundGrnStatusView(grn);
 
-  /** Assign Rack only after GRN Copy (documents + QR labels). */
-  const assignRackOrGrnCopy = (): { label: string; prefix: string | null } =>
-    isInboundGrnVerified(grn)
-      ? { label: 'Assign Rack', prefix: '📍' }
-      : { label: 'GRN Copy', prefix: '📋' };
+  /** Rack first, then labels: an unracked GRN goes to the Assign Rack popup; once racked, what
+      remains (documents + QR labels + completion) lives in GRN Copy. */
+  const assignRackOrGrnCopy = (): { label: string; prefix: string | null } => {
+    const pfx = String(grn.locationPrefix ?? '').trim();
+    const racked = pfx !== '' && pfx.toUpperCase() !== 'DEFAULT';
+    return racked
+      ? { label: 'GRN Copy', prefix: '📋' }
+      : { label: 'Assign Rack', prefix: '📍' };
+  };
 
   if (statusView.label === 'GRN COMPLETED') {
     return { label: 'GRN Copy', prefix: '📋' };
@@ -543,6 +550,21 @@ export function inboundGrnActionLabel(status: string | null | undefined): string
 
 export function formatInboundShipmentLabel(grn: InboundGrnRowInput): string {
   return formatInboundTableDate(grn.grnDate ?? grn.receivedDate ?? grn.expectedDate);
+}
+
+/**
+ * Sortable instant behind the Shipment column.
+ *
+ * The column sorted on its own display label ("24-Jul"), so it ordered alphabetically —
+ * 10-Aug, 11-Aug, 17-Jul, 21-Aug — rather than chronologically. Same field precedence as
+ * `formatInboundShipmentLabel` so the sort always matches what the cell shows.
+ * Undated rows collapse to 0 and settle at the old end of the list.
+ */
+export function inboundShipmentSortValue(grn: InboundGrnRowInput): number {
+  const raw = grn.grnDate ?? grn.receivedDate ?? grn.expectedDate;
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
 }
 
 export function formatInboundLoc(grn: InboundGrnRowInput): string {

@@ -21,4 +21,10 @@ export type IssuedPOViewRecord = {
   createdDate: string;
   paymentTerms: string;
   backendPoId?: string;
+  /**
+   * PO approval stage (Sub-flow E): not_submitted | under_review | under_approval | approved.
+   * Drives the row's pre-shipment call-to-action — a draft PO's real next step is approval, not
+   * shipment, and the row previously showed a dead "Initiate Shipment" regardless.
+   */
+  approvalStatus?: string | null;
 };

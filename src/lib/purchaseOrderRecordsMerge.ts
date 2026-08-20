@@ -73,6 +73,7 @@ export function mergePurchaseOrderRecords(
       createdDate: dpo.createdDate,
       paymentTerms: dpo.paymentTerms,
       backendPoId: dpo.backendPoId,
+      approvalStatus: dpo.approvalStatus ?? null,
     });
   }
 

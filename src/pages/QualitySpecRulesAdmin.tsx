@@ -8,6 +8,8 @@ import { createEmptyQualitySpecRow, type QualitySpecTableRow } from '../types/qu
 import {
   fetchQualitySpecRules,
   saveQualitySpecRule,
+  fetchRuleScopes,
+  type PmRuleScope,
   deleteQualitySpecRule,
   QUALITY_SPEC_RULE_ENTITY_TYPES,
   type QualitySpecRule,
@@ -23,7 +25,9 @@ import {
   taxonomyEntityFor,
   ruleCategoryOptions,
   ruleSubCategoryOptions,
+  ruleSubSubCategoryOptions,
   mergeOptions,
+  pmCategoryItemTypes,
 } from '../lib/specRuleTaxonomy';
 import {
   fetchRawMaterialsForPicker,
@@ -91,6 +95,14 @@ export default function QualitySpecRulesAdmin() {
   const [editingRule, setEditingRule] = useState<QualitySpecRule | null>(null);
   const [editCategory, setEditCategory] = useState('');
   const [editSubCategory, setEditSubCategory] = useState('');
+  /**
+   * Item code for an item-scoped rule ('' = a category-ladder rule). An item rule is the most
+   * specific rung and overrides every category rule that reaches that item, in the item's master
+   * quality specification and in the GRN quality-test screen.
+   */
+  const [editItemCode, setEditItemCode] = useState('');
+  /** Third scope level, matching the masters' sub-sub category (RM: 'ANIONIC'; PM: 'PET'). */
+  const [editSubSubCategory, setEditSubSubCategory] = useState('');
   const [editRows, setEditRows] = useState<QualitySpecTableRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [specModalOpen, setSpecModalOpen] = useState(false);
@@ -160,14 +172,33 @@ export default function QualitySpecRulesAdmin() {
     [qualityRules.length, technicalRules.length],
   );
 
+  // Scopes the pack materials themselves resolve to. Merged into the dropdowns so every scope a
+  // master displays is pickable here — the static taxonomy alone omitted legacy imported values
+  // ("Labels", "Packaging - Primary") that a large share of the PM catalogue actually uses.
+  const [pmScopes, setPmScopes] = useState<PmRuleScope[]>([]);
+  const [uncategorisedCount, setUncategorisedCount] = useState(0);
+  useEffect(() => {
+    if (entityType !== 'PM' && entityType !== 'RM') {
+      setPmScopes([]); setUncategorisedCount(0); return;
+    }
+    let alive = true;
+    void fetchRuleScopes(entityType).then((r) => {
+      if (!alive) return;
+      setPmScopes(r.scopes);
+      setUncategorisedCount(r.uncategorisedItemCount);
+    });
+    return () => { alive = false; };
+  }, [entityType]);
+
   // Category / sub-category dropdown options — taxonomy for this entity + scopes already saved.
   const taxEntity = taxonomyEntityFor(entityType);
   const allRuleScopes = useMemo(
     () => [
       ...qualityRules.map((r) => ({ category: r.category, subCategory: r.subCategory })),
       ...technicalRules.map((r) => ({ category: r.category, subCategory: r.subCategory })),
+      ...pmScopes.map((s) => ({ category: s.category, subCategory: s.subCategory })),
     ],
-    [qualityRules, technicalRules],
+    [qualityRules, technicalRules, pmScopes],
   );
   const categoryOptionList = useMemo(
     () => mergeOptions(ruleCategoryOptions(taxEntity), allRuleScopes.map((s) => s.category)),
@@ -187,12 +218,28 @@ export default function QualitySpecRulesAdmin() {
     () => subCategoryOptionsFor(editCategory),
     [subCategoryOptionsFor, editCategory],
   );
+  const qualitySubSubOptions = useMemo(
+    () =>
+      mergeOptions(
+        ruleSubSubCategoryOptions(taxEntity, editCategory, editSubCategory),
+        [...qualityRules, ...technicalRules]
+          .filter(
+            (r) =>
+              r.category.trim().toLowerCase() === editCategory.trim().toLowerCase() &&
+              r.subCategory.trim().toLowerCase() === editSubCategory.trim().toLowerCase(),
+          )
+          .map((r) => r.subSubCategory ?? ''),
+      ),
+    [taxEntity, editCategory, editSubCategory, qualityRules, technicalRules],
+  );
 
   // ── Quality editor actions ──────────────────────────────────
   const openCreateQuality = () => {
     setEditingRule(null);
     setEditCategory('');
     setEditSubCategory('');
+    setEditSubSubCategory('');
+    setEditItemCode('');
     setEditRows([]);
     setModalOpen(true);
   };
@@ -201,19 +248,31 @@ export default function QualitySpecRulesAdmin() {
     setEditingRule(rule);
     setEditCategory(rule.category);
     setEditSubCategory(rule.subCategory);
+    setEditSubSubCategory(rule.subSubCategory ?? '');
+    setEditItemCode(rule.itemCode ?? '');
     setEditRows(rule.rows.map((row) => createEmptyQualitySpecRow(row)));
     setModalOpen(true);
   };
 
   const saveQuality = async () => {
     const category = editCategory.trim();
-    if (!category) {
-      addToast('error', 'Category is required');
+    const itemCode = editItemCode.trim();
+    // An item rule is keyed by the item, so it does not need a category — and requiring one would
+    // strand the rule the moment that item is recategorised.
+    if (!category && !itemCode) {
+      addToast('error', 'Pick a category, or an item code for an item-specific rule');
       return;
     }
     setSaving(true);
     try {
-      await saveQualitySpecRule({ entityType, category, subCategory: editSubCategory.trim(), rows: editRows });
+      await saveQualitySpecRule({
+        entityType,
+        category,
+        subCategory: editSubCategory.trim(),
+        subSubCategory: editSubSubCategory.trim(),
+        itemCode,
+        rows: editRows,
+      });
       addToast('success', editingRule ? 'Quality rule updated' : 'Quality rule created');
       setModalOpen(false);
       await load();
@@ -677,6 +736,19 @@ export default function QualitySpecRulesAdmin() {
               { label: 'Category', value: detailRec.rule.category },
               { label: 'Sub-category', value: detailRec.rule.subCategory },
               { label: 'Sub-sub category', value: detailRec.rule.subSubCategory },
+              // Item scope is the deciding factor for where this rule applies, so it is stated
+              // explicitly rather than left to be inferred from a blank category field.
+              {
+                label: 'Applies to',
+                value:
+                  ('itemCode' in detailRec.rule && detailRec.rule.itemCode)
+                    ? `Item ${detailRec.rule.itemCode} only (overrides category rules)`
+                    : detailRec.rule.subSubCategory
+                      ? 'Every item in this sub-sub category'
+                      : detailRec.rule.subCategory
+                        ? 'Every item in this sub-category'
+                        : 'Every item in this category',
+              },
               { label: 'Updated', value: detailRec.rule.updatedAt ? new Date(detailRec.rule.updatedAt).toLocaleDateString() : '' },
             ],
           },
@@ -754,6 +826,7 @@ export default function QualitySpecRulesAdmin() {
                   onChange={(v) => {
                     setEditCategory(v);
                     setEditSubCategory('');
+                    setEditSubSubCategory('');
                   }}
                   disabled={Boolean(editingRule)}
                   placeholder="Select or type a category"
@@ -765,12 +838,104 @@ export default function QualitySpecRulesAdmin() {
                   accent="emerald"
                   options={qualitySubOptions}
                   value={editSubCategory}
-                  onChange={setEditSubCategory}
+                  onChange={(v) => {
+                    setEditSubCategory(v);
+                    setEditSubSubCategory('');
+                  }}
                   disabled={Boolean(editingRule) || !editCategory.trim()}
                   placeholder={editCategory.trim() ? 'Select or type a sub-category' : 'Select a category first'}
                 />
+                {/* The five PM category names appear nowhere in the PM master form, so the item
+                    types each one covers are spelled out — otherwise there is no way to tell which
+                    scope will match which item. */}
+                {entityType === 'PM' && editCategory.trim() && (() => {
+                  const inUse = pmScopes.filter(
+                    (sc) => sc.category.trim().toLowerCase() === editCategory.trim().toLowerCase() && sc.subCategory,
+                  );
+                  const picked = editSubCategory.trim()
+                    ? inUse.find((sc) => sc.subCategory.toLowerCase() === editSubCategory.trim().toLowerCase())
+                    : null;
+                  return (
+                    <span className="mt-1 block text-[11px] font-normal text-ink-3">
+                      {picked
+                        ? `${picked.itemCount.toLocaleString('en-IN')} pack material${picked.itemCount === 1 ? '' : 's'} currently match this scope.`
+                        : inUse.length > 0
+                          ? `In use by your items: ${inUse
+                              .slice()
+                              .sort((a, b) => b.itemCount - a.itemCount)
+                              .slice(0, 5)
+                              .map((sc) => `${sc.subCategory} (${sc.itemCount})`)
+                              .join(', ')}`
+                          : pmCategoryItemTypes(editCategory).length > 0
+                            ? `Covers master item types: ${pmCategoryItemTypes(editCategory).join(', ')}`
+                            : ''}
+                    </span>
+                  );
+                })()}
+              </label>
+              <label className="block text-xs font-semibold text-ink-2">
+                Sub-sub category (optional)
+                <SpecScopeCombobox
+                  accent="emerald"
+                  options={qualitySubSubOptions}
+                  value={editSubSubCategory}
+                  onChange={setEditSubSubCategory}
+                  disabled={Boolean(editingRule) || !editSubCategory.trim() || qualitySubSubOptions.length === 0}
+                  placeholder={
+                    !editSubCategory.trim()
+                      ? 'Select a sub-category first'
+                      : qualitySubSubOptions.length === 0
+                        ? 'No sub-sub options for this sub-category'
+                        : 'Select or type a sub-sub category'
+                  }
+                />
               </label>
             </div>
+
+            <label className="mt-3 block text-xs font-semibold text-ink-2">
+              Item code (leave blank for a category rule)
+              <input
+                type="text"
+                value={editItemCode}
+                disabled={Boolean(editingRule)}
+                onChange={(e) => setEditItemCode(e.target.value)}
+                placeholder="e.g. 1001150 — applies to this item only"
+                className="mt-1 w-full rounded-md border border-border px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-ink-3">
+                {editItemCode.trim()
+                  ? `Applies to item ${editItemCode.trim()} only, overriding any category rule — in the item's master quality specification and in its quality tests.`
+                  : 'Set an item code to override the category rules for one specific item.'}
+              </span>
+              {/* Confirm the chosen scope actually reaches items; only fall back to the
+                  uncategorised warning when no category has been picked, since that is the case
+                  where an item code really is the only option. */}
+              {(() => {
+                if (editItemCode.trim()) return null;
+                const cat = editCategory.trim().toLowerCase();
+                const sub = editSubCategory.trim().toLowerCase();
+                if (cat) {
+                  const reach = pmScopes
+                    .filter((sc) => sc.category.trim().toLowerCase() === cat)
+                    .filter((sc) => (sub ? sc.subCategory.trim().toLowerCase() === sub : true))
+                    .reduce((n, sc) => n + sc.itemCount, 0);
+                  const noun = entityType === 'RM' ? 'raw material' : 'pack material';
+                  return (
+                    <span className={`mt-1 block text-[11px] font-normal ${reach > 0 ? 'text-ok' : 'text-warn'}`}>
+                      {reach > 0
+                        ? `${reach.toLocaleString('en-IN')} ${noun}${reach === 1 ? '' : 's'} currently match this scope — no item code needed.`
+                        : 'No items currently resolve to this scope. The rule saves, but reaches nothing until an item is categorised this way.'}
+                    </span>
+                  );
+                }
+                return uncategorisedCount > 0 ? (
+                  <span className="mt-1 block text-[11px] font-normal text-ink-3">
+                    {uncategorisedCount.toLocaleString('en-IN')} {entityType === 'RM' ? 'raw' : 'pack'} materials have
+                    no category at all — those can only be given a spec by item code.
+                  </span>
+                ) : null;
+              })()}
+            </label>
 
             <div className="mt-5">
               <QualitySpecTable
@@ -793,7 +958,9 @@ export default function QualitySpecRulesAdmin() {
               <button
                 type="button"
                 onClick={() => void saveQuality()}
-                disabled={saving || !editCategory.trim()}
+                // An item-scoped rule needs no category (it is keyed by the item), so gating Save on
+                // category alone left the button dead after typing an item code.
+                disabled={saving || (!editCategory.trim() && !editItemCode.trim())}
                 className={procBtnPrimary}
               >
                 {saving ? 'Saving…' : 'Save'}

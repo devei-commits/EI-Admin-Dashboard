@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search, AlertCircle, MessageSquare, RefreshCw, ChevronDown, ChevronRight,
   Package, Plus, MoreVertical, Eye, Pencil, PackageCheck, FileText, Truck, MapPin,
@@ -194,7 +195,47 @@ interface RowActionsProps {
   onToggle: () => void;
   onAction: (action: RowActionKey) => void;
 }
+/** Menu height cap; also the space-below threshold that decides whether it opens upward. */
+const ROW_ACTIONS_MAX_H = 300;
+
 function RowActions({ open, onToggle, onAction }: RowActionsProps) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+
+  /**
+   * The menu is rendered in a portal at fixed coordinates rather than absolutely inside the row.
+   * ProcTableCard is its own scroll box (`max-h-[70vh]` + overflow), which clipped an absolutely
+   * positioned dropdown — everything below "Pick / Pack" was cut off and unreachable.
+   */
+  const place = useCallback(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const MENU_W = 192; // w-48
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < ROW_ACTIONS_MAX_H && r.top > spaceBelow;
+    // Right-aligned to the button, clamped so it never runs off either edge.
+    const left = Math.min(Math.max(8, r.right - MENU_W), window.innerWidth - MENU_W - 8);
+    // Opening upward anchors the menu's BOTTOM to the button; pinning `top` at a fixed offset
+    // would leave a gap whenever the menu is shorter than the cap.
+    setPos(openUp
+      ? { bottom: Math.max(8, window.innerHeight - r.top + 4), left }
+      : { top: r.bottom + 4, left });
+  }, []);
+
+  useLayoutEffect(() => { if (open) place(); }, [open, place]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    // Reposition rather than close, so the menu tracks the row while the table scrolls.
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open, place]);
+
   const items: Array<{ key: RowActionKey; label: string; Icon: typeof Eye; danger?: boolean }> = [
     { key: 'detail',         label: 'View details',        Icon: Eye },
     { key: 'edit',           label: 'Edit SO',             Icon: Pencil },
@@ -208,16 +249,21 @@ function RowActions({ open, onToggle, onAction }: RowActionsProps) {
   return (
     <div className="relative">
       <button
+        ref={btnRef}
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
         className={`p-1.5 rounded-lg transition-colors ${open ? 'bg-brand-soft text-brand' : 'text-ink-4 hover:bg-surface-3 hover:text-ink-2'}`}
         title="Actions"
         aria-label="Actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <MoreVertical size={14} />
       </button>
-      {open && (
+      {open && pos && createPortal(
         <div
-          className="absolute right-0 top-full mt-1 z-30 w-48 rounded-lg border border-border bg-surface shadow-lg py-1"
+          role="menu"
+          style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, maxHeight: ROW_ACTIONS_MAX_H }}
+          className="z-[10000] w-48 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg py-1"
           onClick={(e) => e.stopPropagation()}
         >
           {items.map(({ key, label, Icon, danger }) => (
@@ -234,7 +280,8 @@ function RowActions({ open, onToggle, onAction }: RowActionsProps) {
               {label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

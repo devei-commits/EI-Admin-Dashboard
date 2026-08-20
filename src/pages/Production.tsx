@@ -1351,8 +1351,8 @@ const LBL = 'block text-[11px] font-semibold text-ink-3 mb-1 tracking-wide';
 
 /* ──────────────── CONFIRM BATCH MODAL ──────────────────────── */
 
-function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
-  batch: Batch; equipment: EquipmentData; team: TeamMember[];
+function ConfirmBatchModal({ batch, batches, equipment, team, onClose, onSave }: {
+  batch: Batch; batches: Batch[]; equipment: EquipmentData; team: TeamMember[];
   onClose: () => void; onSave: (updates: Partial<Batch>) => void;
 }) {
   const [tab, setTab] = useState('process');
@@ -1363,10 +1363,20 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
     fillingType: batch.fillingType,
     monocarton: batch.monocarton,
     shrink: batch.shrink,
-    compatibleVessels: batch.compatibleVessels || [] as string[],
-    supportingTanks: batch.supportingTanks || [] as string[],
-    compatibleFillLines: batch.compatibleFillLines || [] as string[],
-    compatiblePackLines: batch.compatiblePackLines || [] as string[],
+    // Materialized defaults: when Planning sent no explicit selection, seed the form with every
+    // eligible id so what is CHECKED is exactly what is STORED. The old display-only fallback
+    // ("empty array renders as all checked") meant the first click collapsed the selection to a
+    // single id and every other checkbox appeared to toggle by itself.
+    compatibleVessels: (batch.compatibleVessels?.length
+      ? batch.compatibleVessels
+      : equipment.manufacturing.filter(e => e.type !== 'support' && e.cap >= (batch.batchSize || 0)).map(e => e.id)) as string[],
+    supportingTanks: (batch.supportingTanks || []) as string[],
+    compatibleFillLines: (batch.compatibleFillLines?.length
+      ? batch.compatibleFillLines
+      : equipment.filling.filter(e => e.compatible.includes(batch.fillingType)).map(e => e.id)) as string[],
+    compatiblePackLines: (batch.compatiblePackLines?.length
+      ? batch.compatiblePackLines
+      : equipment.packaging.map(e => e.id)) as string[],
     teamBMR: batch.teamBMR || [] as string[],
     teamBPR: batch.teamBPR || [] as string[],
     qcOfficerBMR: batch.qcOfficerBMR || '',
@@ -1428,16 +1438,19 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {equipment.manufacturing.filter(e => e.type !== 'support').map(e => {
                 const ok = e.cap >= form.batchSize;
-                const checked = form.compatibleVessels.includes(e.id) || (form.compatibleVessels.length === 0 && ok);
+                const reservedOn = batch.mfgDate ? getEquipmentOccupiedOnDate(batches, e.id, batch.mfgDate, batch.bmrNo) : null;
+                const usable = ok && !reservedOn;
+                const checked = form.compatibleVessels.includes(e.id);
                 return (
-                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-ok-soft bg-ok-soft/60' : 'border-border bg-surface hover:bg-surface-2') : 'border-err-soft bg-err-soft/50 opacity-50 cursor-not-allowed'}`}>
-                    <input type="checkbox" className="mt-0.5 accent-ok" checked={ok && checked} disabled={!ok}
-                      onChange={() => ok && setForm(f => ({ ...f, compatibleVessels: toggle(f.compatibleVessels, e.id) }))} />
+                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 transition-all ${usable ? (checked ? 'border-ok-soft bg-ok-soft/60 cursor-pointer' : 'border-border bg-surface hover:bg-surface-2 cursor-pointer') : 'border-err-soft bg-err-soft/50 opacity-50 cursor-not-allowed'}`}>
+                    <input type="checkbox" className="mt-0.5 accent-ok" checked={usable && checked} disabled={!usable}
+                      onChange={() => usable && setForm(f => ({ ...f, compatibleVessels: toggle(f.compatibleVessels, e.id) }))} />
                     <div>
                       <div className="text-xs font-bold text-ink">{e.id} <span className="text-ink-4">({e.cap}L)</span></div>
                       <div className="text-[10px] text-ink-3">{e.name}</div>
                       <div className="text-[10px] text-ink-4">{e.homogenizer ? 'Homogenizer' : 'No homogenizer'} - {e.processType.join(', ').toUpperCase()}</div>
                       {!ok && <div className="text-[10px] text-err font-semibold mt-0.5 flex items-center gap-0.5"><X size={10} /> {e.cap}L &lt; {form.batchSize} KG</div>}
+                      {ok && reservedOn && <div className="text-[10px] text-err font-semibold mt-0.5 flex items-center gap-0.5"><X size={10} /> Reserved {reservedOn} · free from {equipmentAvailableFromDate(reservedOn)}</div>}
                     </div>
                   </label>
                 );
@@ -1448,12 +1461,13 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             <SectionLabel icon={<Cylinder size={13} />} color="text-brand">Supporting Tanks</SectionLabel>
             <div className="grid grid-cols-3 gap-2">
               {equipment.manufacturing.filter(e => e.type === 'support').map(e => {
+                const reservedOn = batch.mfgDate ? getEquipmentOccupiedOnDate(batches, e.id, batch.mfgDate, batch.bmrNo) : null;
                 const checked = form.supportingTanks.includes(e.id);
                 return (
-                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-brand-soft bg-brand-soft/60' : 'border-border'}`}>
-                    <input type="checkbox" className="accent-brand" checked={checked}
-                      onChange={() => setForm(f => ({ ...f, supportingTanks: toggle(f.supportingTanks, e.id) }))} />
-                    <span className="text-xs font-semibold">{e.id} <span className="text-ink-4">{e.cap}L</span></span>
+                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all ${reservedOn ? 'border-err-soft bg-err-soft/50 opacity-50 cursor-not-allowed' : checked ? 'border-brand-soft bg-brand-soft/60 cursor-pointer' : 'border-border cursor-pointer'}`}>
+                    <input type="checkbox" className="accent-brand" checked={!reservedOn && checked} disabled={!!reservedOn}
+                      onChange={() => !reservedOn && setForm(f => ({ ...f, supportingTanks: toggle(f.supportingTanks, e.id) }))} />
+                    <span className="text-xs font-semibold">{e.id} <span className="text-ink-4">{e.cap}L</span>{reservedOn ? <span className="block text-[10px] text-err font-semibold">Reserved {reservedOn} · free from {equipmentAvailableFromDate(reservedOn)}</span> : null}</span>
                   </label>
                 );
               })}
@@ -1464,15 +1478,18 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             <div className="grid grid-cols-2 gap-2">
               {equipment.filling.map(e => {
                 const ok = e.compatible.includes(form.fillingType);
-                const checked = form.compatibleFillLines.includes(e.id) || (form.compatibleFillLines.length === 0 && ok);
+                const reservedOn = batch.fillDate ? getEquipmentOccupiedOnDate(batches, e.id, batch.fillDate, batch.bmrNo) : null;
+                const usable = ok && !reservedOn;
+                const checked = form.compatibleFillLines.includes(e.id);
                 return (
-                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${ok ? (checked ? 'border-brand-soft bg-brand-soft/60' : 'border-border hover:bg-surface-2') : 'border-border bg-surface-2/50 opacity-50 cursor-not-allowed'}`}>
-                    <input type="checkbox" className="mt-0.5 accent-brand" checked={ok && checked} disabled={!ok}
-                      onChange={() => ok && setForm(f => ({ ...f, compatibleFillLines: toggle(f.compatibleFillLines, e.id) }))} />
+                  <label key={e.id} className={`flex items-start gap-2 p-2.5 rounded-xl border-2 transition-all ${usable ? (checked ? 'border-brand-soft bg-brand-soft/60 cursor-pointer' : 'border-border hover:bg-surface-2 cursor-pointer') : 'border-border bg-surface-2/50 opacity-50 cursor-not-allowed'}`}>
+                    <input type="checkbox" className="mt-0.5 accent-brand" checked={usable && checked} disabled={!usable}
+                      onChange={() => usable && setForm(f => ({ ...f, compatibleFillLines: toggle(f.compatibleFillLines, e.id) }))} />
                     <div>
                       <div className="text-xs font-bold">{e.id} <Badge className="bg-brand-soft text-brand">{e.type.toUpperCase()}</Badge></div>
                       <div className="text-[10px] text-ink-3">{e.name} - {fmt(e.speed)}/hr</div>
                       {!ok && <div className="text-[10px] text-err flex items-center gap-0.5"><X size={10} /> Not compatible with {form.fillingType.toUpperCase()}</div>}
+                      {ok && reservedOn && <div className="text-[10px] text-err font-semibold flex items-center gap-0.5"><X size={10} /> Reserved {reservedOn} · free from {equipmentAvailableFromDate(reservedOn)}</div>}
                     </div>
                   </label>
                 );
@@ -1483,14 +1500,16 @@ function ConfirmBatchModal({ batch, equipment, team, onClose, onSave }: {
             <SectionLabel icon={<Package size={13} />} color="text-ok">Packaging Lines</SectionLabel>
             <div className="grid grid-cols-3 gap-2">
               {equipment.packaging.map(e => {
-                const checked = form.compatiblePackLines.includes(e.id) || form.compatiblePackLines.length === 0;
+                const reservedOn = batch.packDate ? getEquipmentOccupiedOnDate(batches, e.id, batch.packDate, batch.bmrNo) : null;
+                const checked = form.compatiblePackLines.includes(e.id);
                 return (
-                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 cursor-pointer transition-all ${checked ? 'border-ok-soft bg-ok-soft/60' : 'border-border'}`}>
-                    <input type="checkbox" className="accent-ok" checked={checked}
-                      onChange={() => setForm(f => ({ ...f, compatiblePackLines: toggle(f.compatiblePackLines, e.id) }))} />
+                  <label key={e.id} className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all ${reservedOn ? 'border-err-soft bg-err-soft/50 opacity-50 cursor-not-allowed' : checked ? 'border-ok-soft bg-ok-soft/60 cursor-pointer' : 'border-border cursor-pointer'}`}>
+                    <input type="checkbox" className="accent-ok" checked={!reservedOn && checked} disabled={!!reservedOn}
+                      onChange={() => !reservedOn && setForm(f => ({ ...f, compatiblePackLines: toggle(f.compatiblePackLines, e.id) }))} />
                     <div>
                       <div className="text-xs font-bold">{e.id}</div>
                       <div className="text-[10px] text-ink-3">{e.type.toUpperCase()} - {fmt(e.speed)}/hr</div>
+                      {reservedOn && <div className="text-[10px] text-err font-semibold">Reserved {reservedOn} · free from {equipmentAvailableFromDate(reservedOn)}</div>}
                     </div>
                   </label>
                 );
@@ -11640,7 +11659,7 @@ const Production = () => {
       )}
 
       {modalBatch && modalType === 'confirm' && (
-        <ConfirmBatchModal batch={modalBatch} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
+        <ConfirmBatchModal batch={modalBatch} batches={state.batches} equipment={state.equipment} team={state.team} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />
       )}
       {modalBatch && modalType === 'adjustBatch' && (
         <AdjustBatchSizeModal batch={modalBatch} onClose={closeModal} onSave={async (updates) => { await handleModalSave(updates); closeModal(); }} />

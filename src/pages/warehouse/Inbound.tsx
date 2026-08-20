@@ -37,7 +37,7 @@ import {
   buildInboundGrnSlaView,
   displayInboundGrnNo,
   formatInboundQty,
-  formatInboundShipmentLabel,
+  inboundShipmentSortValue,
   formatInboundSourceDocSet,
   formatInboundStorage,
   inboundGrnArrivalConfirmPayload,
@@ -348,7 +348,8 @@ function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): s
   const input = toInboundRowInput(grn, lineItem);
   switch (col) {
     case 'shipment':
-      return formatInboundShipmentLabel(input);
+      // Sort on the instant, not the "24-Jul" label — the label sorts alphabetically.
+      return inboundShipmentSortValue(input);
     case 'grnNo':
       return displayInboundGrnNo(grn.grnNo);
     case 'loc':
@@ -907,6 +908,18 @@ const GRNDetailModal = ({
     void persistUpdate({});
   };
 
+  /**
+   * Assign Rack is not the end of the flow: it records where the stock goes, then GRN Copy prints
+   * the labels (which carry this rack code) and completes the GRN. Saving and closing puts the row
+   * back in the list, where its action is GRN Copy.
+   */
+  const handleSaveAndContinueToGrnCopy = async (): Promise<void> => {
+    const saved = await persistUpdate({});
+    if (!saved) return;
+    addToast('success', 'Put-away saved. Open GRN Copy to generate labels and complete this GRN.');
+    onClose();
+  };
+
   const qcTestBlockers = grnQcCompletionBlockers(qcSpecs);
   const isAssignRackMode = mode === 'assign-rack';
   const completionBlockers: string[] = [];
@@ -918,12 +931,13 @@ const GRNDetailModal = ({
     if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   }
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
-  if (!allLineItemsLabeled) {
-    completionBlockers.push(
-      isAssignRackMode
-        ? 'Complete GRN Copy (documents + QR labels) before assign rack.'
-        : 'QR labels must be generated in GRN Copy for all GRN materials.',
-    );
+  // Labels are NOT a blocker for this step. The rack code is printed on the QR labels, so the rack
+  // is chosen first and GRN Copy — where labels are generated — is the last step. Requiring labels
+  // here inverted that order and deadlocked the pair: GRN Copy asked for a rack, Assign Rack asked
+  // for labels. This step now saves the put-away and hands off; GRN Copy finishes the GRN.
+  const labelsPendingForHandoff = isAssignRackMode && !allLineItemsLabeled;
+  if (!allLineItemsLabeled && !isAssignRackMode) {
+    completionBlockers.push('QR labels must be generated in GRN Copy for all GRN materials.');
   }
   if (!locationPrefix.trim()) {
     completionBlockers.push(
@@ -1317,7 +1331,9 @@ const GRNDetailModal = ({
           </section>
           ) : (
             <section className="rounded-xl border border-ok bg-ok-soft/80 px-4 py-3 text-sm text-ok">
-              <strong>QC passed.</strong> QR labels were created in <strong>GRN Copy</strong>. Use this step to assign put-away rack, upload post-racking photos, and complete the GRN.
+              <strong>QC passed.</strong> Assign the put-away rack and upload post-racking photos here. The rack code
+              is then printed on the QR labels, which are generated in <strong>GRN Copy</strong> — the final step,
+              where the GRN is completed.
             </section>
           )}
 
@@ -1462,7 +1478,8 @@ const GRNDetailModal = ({
             </h3>
             {isAssignRackMode ? (
               <p className="text-xs text-ink-2">
-                QR labels were generated in <strong>GRN Copy</strong>. Select the physical rack for put-away below. Labels cannot be created or regenerated here.
+                Select the physical rack for put-away below. Its code is printed on the QR labels, which are
+                generated afterwards in <strong>GRN Copy</strong> — labels cannot be created here.
               </p>
             ) : (
               <p className="text-xs text-ink-2">
@@ -1491,7 +1508,9 @@ const GRNDetailModal = ({
 
             {isAssignRackMode && !labelsGenerated && (
               <div className="rounded-lg bg-err-soft border border-err px-4 py-3 text-sm text-err">
-                No QR labels on this GRN yet. Complete <strong>GRN Copy</strong> first (documents + Generate Labels), then return to assign rack.
+                Labels come after this step. Choose and <strong>save</strong> the rack below — its code is printed on
+                the labels — then generate them in <strong>GRN Copy</strong>, which completes the GRN. GRN Copy needs
+                the source documents, invoice qty, unit price, pack counts and a shipment photo.
               </div>
             )}
 
@@ -1864,20 +1883,31 @@ const GRNDetailModal = ({
               {saving ? 'Saving…' : mode === 'assign-rack' ? 'Save draft' : 'Save changes'}
             </button>
             <button
-              onClick={handleCompleteGRN}
+              onClick={labelsPendingForHandoff ? handleSaveAndContinueToGrnCopy : handleCompleteGRN}
               disabled={saving || !canMarkComplete}
               className={`px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${grn.status === 'In Transit' ? 'bg-ok hover:bg-ok-press' : 'bg-brand hover:bg-brand-press'
                 }`}
             >
-              {mode === 'assign-rack'
-                ? 'Complete GRN'
-                : grn.status === 'In Transit'
-                  ? 'Complete GRN & Initiate Stock'
-                  : 'Mark complete'}
+              {labelsPendingForHandoff
+                ? saving
+                  ? 'Saving…'
+                  : 'Save & Continue to GRN Copy →'
+                : mode === 'assign-rack'
+                  ? 'Complete GRN'
+                  : grn.status === 'In Transit'
+                    ? 'Complete GRN & Initiate Stock'
+                    : 'Mark complete'}
             </button>
+            {labelsPendingForHandoff && canMarkComplete && (
+              <p className="w-full text-right text-xs text-ink-3">
+                Put-away is saved here; GRN Copy generates the labels (printed with rack{' '}
+                {locationPrefix.trim() || '—'}) and completes the GRN.
+              </p>
+            )}
             {!canMarkComplete && (
               <p className="w-full text-right text-xs text-warn">
-                Mark complete is disabled until: {completionBlockers.join(' ')}
+                {labelsPendingForHandoff ? 'Save & Continue is disabled until:' : 'Mark complete is disabled until:'}{' '}
+                {completionBlockers.join(' ')}
               </p>
             )}
           </div>
@@ -2057,6 +2087,9 @@ const WarehouseInbound = () => {
   const handleReceiptSaved = (updated: {
     id: string;
     status?: string;
+    qcStatus?: string | null;
+    locationZone?: string | null;
+    locationPrefix?: string | null;
     sourceDocuments?: InboundGrnSourceDocuments | null;
     workflowSteps?: string[];
     noOfBoxes?: number | null;
@@ -2065,23 +2098,28 @@ const WarehouseInbound = () => {
     receivedDate?: string | null;
     grnDate?: string | null;
   }) => {
-    setGrnData((prev) =>
-      prev.map((grn) =>
-        grn.id === updated.id
-          ? {
-              ...grn,
-              status: (updated.status ?? grn.status) as GRNStatus,
-              receivedDate: updated.receivedDate ?? grn.receivedDate,
-              grnDate: updated.grnDate ?? grn.grnDate,
-              sourceDocuments: updated.sourceDocuments ?? grn.sourceDocuments,
-              workflowSteps: (updated.workflowSteps ?? grn.workflowSteps) as WorkflowStep[] | undefined,
-              noOfBoxes: updated.noOfBoxes ?? grn.noOfBoxes,
-              unitsPerBox: updated.unitsPerBox ?? grn.unitsPerBox,
-              generatedLabels: updated.generatedLabels ?? grn.generatedLabels,
-            }
-          : grn,
-      ),
-    );
+    const mergeUpdate = (grn: GRNRecord): GRNRecord => ({
+      ...grn,
+      status: (updated.status ?? grn.status) as GRNStatus,
+      qcStatus: (updated.qcStatus ?? grn.qcStatus) as GRNRecord['qcStatus'],
+      locationZone: updated.locationZone ?? grn.locationZone,
+      locationPrefix: updated.locationPrefix ?? grn.locationPrefix,
+      receivedDate: updated.receivedDate ?? grn.receivedDate,
+      grnDate: updated.grnDate ?? grn.grnDate,
+      sourceDocuments: updated.sourceDocuments ?? grn.sourceDocuments,
+      workflowSteps: (updated.workflowSteps ?? grn.workflowSteps) as WorkflowStep[] | undefined,
+      noOfBoxes: updated.noOfBoxes ?? grn.noOfBoxes,
+      unitsPerBox: updated.unitsPerBox ?? grn.unitsPerBox,
+      generatedLabels: updated.generatedLabels ?? grn.generatedLabels,
+    });
+    setGrnData((prev) => prev.map((grn) => (grn.id === updated.id ? mergeUpdate(grn) : grn)));
+    // GrnCopyReceiptModal derives labelsMissing / putawayMissing / docsLocked straight off its `grn`
+    // prop. receiptModal.grn is set once when the modal opens and — unlike the row list above — was
+    // never refreshed here, so every check inside the modal kept reading pre-save values for the
+    // rest of that session: generate labels, and the modal still believed no labels existed; the
+    // Accept button stayed stuck offering "Assign Rack next" even after the rack was assigned. Keep
+    // the still-open modal's own copy in sync with every save, exactly like the row list.
+    setReceiptModal((prev) => (prev && prev.grn.id === updated.id ? { ...prev, grn: mergeUpdate(prev.grn) } : prev));
   };
 
   const handleConfirmArrival = async (grn: GRNRecord): Promise<void> => {
@@ -2220,8 +2258,22 @@ const WarehouseInbound = () => {
     });
   }, [filteredData]);
 
+  /** Newest shipment first, with a GRN's own lines kept together. */
+  const compareLatestFirst = useCallback((a: InboundTableRow, b: InboundTableRow) => {
+    const at = inboundShipmentSortValue(toInboundRowInput(a.grn, a.lineItem));
+    const bt = inboundShipmentSortValue(toInboundRowInput(b.grn, b.lineItem));
+    if (at !== bt) return bt - at;
+    const byGrn = displayInboundGrnNo(b.grn.grnNo).localeCompare(
+      displayInboundGrnNo(a.grn.grnNo), undefined, { numeric: true, sensitivity: 'base' },
+    );
+    if (byGrn !== 0) return byGrn;
+    return a.rowId.localeCompare(b.rowId, undefined, { numeric: true, sensitivity: 'base' });
+  }, []);
+
   const sortedItemRows = useMemo(() => {
-    if (!sortColumn) return filteredItemRows;
+    // No column picked: rows arrived in backend order, which interleaved July and August GRNs.
+    // A receiving desk reads newest-first, so that is the default rather than "unsorted".
+    if (!sortColumn) return [...filteredItemRows].sort(compareLatestFirst);
     return [...filteredItemRows].sort((a, b) => {
       const cmp = compareSortValues(
         sortValueForInboundRow(a, sortColumn),
@@ -2231,7 +2283,7 @@ const WarehouseInbound = () => {
       if (cmp !== 0) return cmp;
       return a.rowId.localeCompare(b.rowId, undefined, { numeric: true, sensitivity: 'base' });
     });
-  }, [filteredItemRows, sortColumn, sortDirection]);
+  }, [filteredItemRows, sortColumn, sortDirection, compareLatestFirst]);
 
   const toggleInboundSort = (column: InboundSortColumn) => {
     if (sortColumn === column) {

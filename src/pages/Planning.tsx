@@ -2377,10 +2377,12 @@ function PlanningBatchesTab({
     setSortDirection('asc');
   };
 
-  // Show ALL planning batches — sent (In Mfg / QC / …) AND unsent drafts (status "Planned").
-  // Drafts must be visible here so the batches that Items Involved counts (unsent draft batches
-  // referencing a confirmed PI) resolve in this tab. Narrow with the status filter (All / Planned / …).
-  const rows = allBatches as PlanningBatchAllRow[];
+  // Batches = what has actually been RELEASED to production. A planning row that has not been sent
+  // is still a plan, not a batch: it belongs to Planning, where it shows as "Pending to plan".
+  // Listing unsent rows here made a 1000-unit order look like two batches when only one was sent.
+  // (The unfiltered list is still fetched for Items Involved, which counts demand from every
+  // planned batch, sent or not — only this tab narrows to released.)
+  const rows = (allBatches as PlanningBatchAllRow[]).filter((row) => row.sent === true);
   const dateFilteredRows = rows.filter((row) =>
     matchesDateRangeFilter(row.orderDate || row.createdAt || row.dueDate, dateFilter.from, dateFilter.to),
   );
@@ -8756,8 +8758,16 @@ const Planning = () => {
       />
 
       {usedInModalItem && (() => {
-        const rows = getUsedInBatchesForItem(usedInModalItem);
-        // Totals across every batch that consumes this item — what to procure for all of them.
+        // A batch only exists once it has been RELEASED to production. Planning rows that are drafted
+        // but not sent are still plans, and belong to the Planning tab — listing them here reported a
+        // single released batch as "2 batches · 1,000 PCS". This matches the Batches tab and
+        // items-involved batchCount, both of which are sent-only.
+        const allUsedInRows = getUsedInBatchesForItem(usedInModalItem);
+        const rows = getReleaseSplitBatchesForItem(usedInModalItem);
+        // Each row's requirement is computed from its own sizeKg x BOM pct, not by splitting a
+        // consolidated total, so narrowing the list leaves the per-row numbers untouched.
+        const plannedNotReleased = Math.max(0, allUsedInRows.length - rows.length);
+        // Totals across every RELEASED batch that consumes this item.
         const usedInQtyKind = usedInModalItem.itemType === 'PM' ? 'pcs' : 'kg';
         const usedInTotalRequired = rows.reduce(
           (sum, row) => sum + (Number(getItemRequiredInBatch(usedInModalItem, row)) || 0),
@@ -8780,6 +8790,12 @@ const Planning = () => {
                       </span>
                     </p>
                   )}
+                  {plannedNotReleased > 0 && (
+                    <p className="text-xs text-ink-3 mt-1">
+                      {plannedNotReleased} more planned batch{plannedNotReleased === 1 ? '' : 'es'} not yet
+                      released to production {plannedNotReleased === 1 ? 'is' : 'are'} not counted here.
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -8792,7 +8808,11 @@ const Planning = () => {
               </div>
               <div className="p-4 overflow-auto max-h-[70vh]">
                 {rows.length === 0 ? (
-                  <div className="text-sm text-ink-3 p-6 text-center">No batches found for this item.</div>
+                  <div className="text-sm text-ink-3 p-6 text-center">
+                    {plannedNotReleased > 0
+                      ? `No batches released to production yet. ${plannedNotReleased} planned batch${plannedNotReleased === 1 ? '' : 'es'} will appear here once sent.`
+                      : 'No batches found for this item.'}
+                  </div>
                 ) : (
                   <table className="w-full text-xs border-collapse">
                     <thead>

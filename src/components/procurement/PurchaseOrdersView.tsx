@@ -8,14 +8,14 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck } from 'lucide-react';
 import { Package, Flag, Warning, Check } from '@phosphor-icons/react';
 import { Pagination } from '../ui';
 import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
-  GRN_STAGE_CONFIG, PURCHASE_STATUS_CONFIG, PO_STATUS_CONFIG, PO_SHIPPABLE_STATUSES,
+  GRN_STAGE_CONFIG, PURCHASE_STATUS_CONFIG, PO_STATUS_CONFIG, PO_SHIPPABLE_STATUSES, toPoApprovalStatus,
   type GrnStage, type PurchaseStatus, type PoStatus,
 } from '../../constants/procurement';
 import { InitiateTransitPopup, ConsolidatedShipmentPopup, type ConsolidatedLine } from './TransitPopups';
@@ -137,6 +137,34 @@ function shipmentAction(rollup: Rollup): { label: string; title: string } {
   }
   const remaining = Math.max(0, rollup.ordered - shipped);
   return { label: 'Add Shipment', title: `${of} shipped · ${remaining.toLocaleString('en-IN')} remaining` };
+}
+
+/**
+ * What a PO that cannot ship yet is actually waiting on.
+ *
+ * A draft PO showed a greyed-out "Initiate Shipment" whose tooltip said "Available once PO is
+ * Issued/Accepted" — true, but it names a state rather than an action, and reads as if shipping is
+ * the thing to do next. It isn't: the PO has to clear approval and be released to the vendor first.
+ * Returning null means the PO really is shippable and the normal shipment button applies.
+ */
+export function preShipmentAction(record: IssuedPOViewRecord): { label: string; title: string } | null {
+  if (record.status !== 'Draft') return null;
+  // Reuse the shared normaliser so this agrees with the Approval panel: a null approval_status (a
+  // draft PO that has never entered the workflow, like DPO-008) is 'not_submitted', not "unknown".
+  switch (toPoApprovalStatus(record.approvalStatus)) {
+    case 'under_review':
+      return { label: 'Awaiting Review', title: 'Submitted — waiting for the reviewer to forward it' };
+    case 'under_approval':
+      return { label: 'Awaiting Approval', title: 'Reviewed — waiting for the approver to sign off' };
+    case 'approved':
+      return { label: 'Release to Vendor', title: 'Approved — release the PO to the vendor, then it can ship' };
+    case 'changes_requested':
+      return { label: 'Changes Requested', title: 'Edit the PO, then resubmit it for review' };
+    case 'rejected':
+      return { label: 'Rejected', title: 'Rejected in approval — this PO cannot proceed' };
+    default:
+      return { label: 'Submit for Review', title: 'Not submitted — open the PO and submit it for review' };
+  }
 }
 
 function QtyLink({ value, ordered, onClick }: { value: number; ordered: number; onClick?: () => void }) {
@@ -790,6 +818,20 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                               <div className="flex gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
                                 {(() => {
+                                  // Before a PO can ship it must clear approval and be released. Showing the
+                                  // shipment verb here (greyed out) read as "shipping is next" when it isn't,
+                                  // so a pre-shipment PO gets its own action that opens the approval panel.
+                                  const pending = preShipmentAction(r);
+                                  if (pending) {
+                                    return (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); onOpenDetail(r); }}
+                                        title={pending.title}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-warn text-warn bg-warn-soft hover:opacity-80 text-[10.5px] font-semibold">
+                                        <ShieldCheck size={12} /> {pending.label}
+                                      </button>
+                                    );
+                                  }
                                   const ship = shipmentAction(rollup);
                                   return (
                                     <button

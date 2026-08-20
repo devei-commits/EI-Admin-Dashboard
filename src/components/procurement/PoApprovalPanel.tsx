@@ -28,6 +28,12 @@ export interface PoApprovalPanelProps {
   onToast?: (type: 'success' | 'error' | 'info' | 'warning', msg: string) => void;
   /** Called after any successful transition so the host can refetch POs. */
   onChanged?: () => void;
+  /**
+   * Current approval status, emitted on load and after every transition. The host footer needs it
+   * to gate post-approval actions on the governed workflow rather than on purchase_orders.status —
+   * the backend only permits Release when approval_status is 'approved'.
+   */
+  onStatusChange?: (status: PoApprovalStatus) => void;
   /** Bump to force a refetch from the host (keeps sibling panels in sync). */
   refreshKey?: number;
   /** Disable actions when the PO is on hold / cancelled. */
@@ -41,7 +47,7 @@ function fmtWhen(iso: string | null): string {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast, onChanged, refreshKey = 0, locked = false }) => {
+export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast, onChanged, onStatusChange, refreshKey = 0, locked = false }) => {
   const [state, setState] = useState<PoApprovalState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,6 +71,11 @@ export const PoApprovalPanel: React.FC<PoApprovalPanelProps> = ({ poId, onToast,
 
   const status: PoApprovalStatus = toPoApprovalStatus(state?.approvalStatus);
   const route = state?.route;
+
+  // Emit on load and after every transition, so the host footer always reflects this panel.
+  useEffect(() => {
+    if (state) onStatusChange?.(status);
+  }, [state, status, onStatusChange]);
 
   const run = useCallback(
     async (fn: () => Promise<{ success: boolean; error: unknown; data: PoApprovalState | null }>, label: string, okMsg: string) => {

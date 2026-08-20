@@ -6,6 +6,15 @@
  * Stored inside the GRN's existing `sourceDocuments` JSON blob (key `batches`).
  */
 
+/**
+ * One COA document on a batch. Metadata only — the file itself is not uploaded, matching how every
+ * other GRN source document (bill / waybill / LR / COA) is recorded.
+ */
+export type GrnBatchCoaDoc = {
+  fileName: string;
+  uploadedAt?: string | null;
+};
+
 export type GrnBatchRow = {
   vendorBatchNo?: string | null;
   /** yyyy-mm-dd */
@@ -14,13 +23,26 @@ export type GrnBatchRow = {
   expDate?: string | null;
   noOfPacks?: number | null;
   qtyPerPack?: number | null;
-  /** COA file name (metadata only — file is not uploaded). */
+  /**
+   * Legacy single-COA field. Kept so GRNs saved before multi-COA still render, and mirrored from
+   * `coaDocs[0]` on write. Read through `batchCoaDocs()` rather than using this directly.
+   */
   coaFileName?: string | null;
+  /** COA documents on this batch. A batch can arrive with several (per-test, per-lot, revisions). */
+  coaDocs?: GrnBatchCoaDoc[] | null;
 };
 
 export type InboundGrnBatchesMeta = {
   rows?: GrnBatchRow[];
   confirmedAt?: string | null;
+  /**
+   * The vendor did not supply batch identity for this shipment (no batch number, no MFG/EXP).
+   *
+   * Waives only the identity fields. Pack counts are still required: Step 4 mints one packaging
+   * number per pack and the QR labels are printed per pack, so a shipment with no packs would leave
+   * nothing to label or put away.
+   */
+  vendorBatchNotApplicable?: boolean;
 };
 
 export function emptyBatchRow(): GrnBatchRow {
@@ -31,11 +53,63 @@ export function emptyBatchRow(): GrnBatchRow {
     noOfPacks: null,
     qtyPerPack: null,
     coaFileName: null,
+    coaDocs: [],
   };
 }
 
+/**
+ * The batch's COA documents, upgrading a legacy single `coaFileName` into the list form.
+ * Every reader goes through here so old and new GRNs look identical to the UI.
+ */
+export function batchCoaDocs(row: GrnBatchRow | null | undefined): GrnBatchCoaDoc[] {
+  const docs = Array.isArray(row?.coaDocs) ? row!.coaDocs! : null;
+  if (docs && docs.length > 0) {
+    return docs
+      .filter((d) => d && String(d.fileName ?? '').trim() !== '')
+      .map((d) => ({ fileName: String(d.fileName).trim(), uploadedAt: d.uploadedAt ?? null }));
+  }
+  const legacy = String(row?.coaFileName ?? '').trim();
+  return legacy ? [{ fileName: legacy, uploadedAt: null }] : [];
+}
+
+/** Patch that writes `docs` back, keeping the legacy field mirrored to the first entry. */
+export function batchCoaDocsPatch(docs: GrnBatchCoaDoc[]): Pick<GrnBatchRow, 'coaDocs' | 'coaFileName'> {
+  return { coaDocs: docs, coaFileName: docs.length > 0 ? docs[0].fileName : null };
+}
+
+/**
+ * Append picked files. Re-picking a file already on the batch is ignored: only the name is stored,
+ * so a repeat name is indistinguishable from the document already there and would read as a
+ * duplicate COA.
+ */
+export function addBatchCoaDocs(
+  row: GrnBatchRow,
+  fileNames: string[],
+  at: string,
+): Pick<GrnBatchRow, 'coaDocs' | 'coaFileName'> {
+  const existing = batchCoaDocs(row);
+  const seen = new Set(existing.map((d) => d.fileName.toLowerCase()));
+  const added: GrnBatchCoaDoc[] = [];
+  for (const raw of fileNames ?? []) {
+    const name = String(raw ?? '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    added.push({ fileName: name, uploadedAt: at });
+  }
+  return batchCoaDocsPatch([...existing, ...added]);
+}
+
+/** Drop one document by index. Out-of-range indexes leave the list untouched. */
+export function removeBatchCoaDoc(row: GrnBatchRow, index: number): Pick<GrnBatchRow, 'coaDocs' | 'coaFileName'> {
+  const existing = batchCoaDocs(row);
+  if (!Number.isInteger(index) || index < 0 || index >= existing.length) return batchCoaDocsPatch(existing);
+  return batchCoaDocsPatch(existing.filter((_, i) => i !== index));
+}
+
 export function emptyGrnBatchesMeta(): InboundGrnBatchesMeta {
-  return { rows: [], confirmedAt: null };
+  return { rows: [], confirmedAt: null, vendorBatchNotApplicable: false };
 }
 
 /** Read the batches blob off a sourceDocuments object, tolerating older rows that lack it. */
@@ -48,6 +122,7 @@ export function readGrnBatchesMeta(
     ...emptyGrnBatchesMeta(),
     ...stored,
     rows: Array.isArray(stored.rows) ? stored.rows.map((r) => ({ ...emptyBatchRow(), ...r })) : [],
+    vendorBatchNotApplicable: stored.vendorBatchNotApplicable === true,
   };
 }
 
@@ -59,15 +134,24 @@ export function reconcileBatchRows(rows: GrnBatchRow[], count: number): GrnBatch
   return out;
 }
 
-/** Every batch needs an identifier and a pack count (the pack count drives step 4). */
+/**
+ * Every batch needs an identifier and a pack count (the pack count drives step 4).
+ *
+ * When the vendor supplied no batch identity (`vendorBatchNotApplicable`), the batch number is not
+ * demanded — but the pack count still is, because Step 4 mints a packaging number per pack and the
+ * QR labels print per pack.
+ */
 export function grnBatchesValidationErrors(meta: InboundGrnBatchesMeta, expectedCount: number): string[] {
   const rows = meta.rows ?? [];
   const errors: string[] = [];
+  const identityWaived = meta.vendorBatchNotApplicable === true;
   if (expectedCount > 0 && rows.length !== expectedCount) {
     errors.push(`Enter details for all ${expectedCount} batches.`);
   }
   rows.forEach((r, i) => {
-    if (!String(r.vendorBatchNo ?? '').trim()) errors.push(`Batch ${i + 1}: vendor batch no. is required.`);
+    if (!identityWaived && !String(r.vendorBatchNo ?? '').trim()) {
+      errors.push(`Batch ${i + 1}: vendor batch no. is required.`);
+    }
     if (!(Number(r.noOfPacks) >= 1)) errors.push(`Batch ${i + 1}: no. of packs must be at least 1.`);
   });
   return errors;
