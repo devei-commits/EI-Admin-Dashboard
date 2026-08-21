@@ -1007,6 +1007,8 @@ const Procurement: React.FC = () => {
   }>({ priority: 'Medium', requiredByDate: '', notes: '', status: 'New', preferredVendor: '', selectedQuotationId: '', items: [] });
   const [editDraftPOTarget, setEditDraftPOTarget] = useState<DraftPO | null>(null);
   const [editDraftPOForm, setEditDraftPOForm] = useState<Pick<DraftPO, 'vendor' | 'paymentTerms' | 'expectedDelivery' | 'deliveryAddress' | 'lineItems'>>({ vendor: '', paymentTerms: '', expectedDelivery: '', deliveryAddress: '', lineItems: [] });
+  // Draft PO editor: "add new item" picker — mirrors addPoItemSearch on the Issued PO modal.
+  const [addDraftPoItemSearch, setAddDraftPoItemSearch] = useState('');
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
@@ -2839,6 +2841,7 @@ const Procurement: React.FC = () => {
       deliveryAddress: editDraftPOTarget.deliveryAddress,
       lineItems: editDraftPOTarget.lineItems.map((l) => ({ ...l })),
     });
+    setAddDraftPoItemSearch('');
   }, [editDraftPOTarget]);
 
   const updateEditRequestItem = (index: number, updates: Partial<BackendPRItem>) => {
@@ -10381,6 +10384,78 @@ const Procurement: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Add a new line — same picker as the Issued PO editor. Its qty counts toward
+                    PO Qty / total once saved but isn't matched against the linked request's
+                    demand (there's nothing there to sync — it was never asked for). */}
+                <div className="mt-2 relative">
+                  <input
+                    type="text"
+                    placeholder="+ Add item — search by name or code…"
+                    value={addDraftPoItemSearch}
+                    onChange={(e) => setAddDraftPoItemSearch(e.target.value)}
+                    className="w-full rounded border border-dashed border-border px-2 py-1.5 text-xs focus:outline-none focus:border-brand"
+                  />
+                  {addDraftPoItemSearch.trim().length >= 2 && (() => {
+                    const q = addDraftPoItemSearch.trim().toLowerCase();
+                    const alreadyOnPo = new Set(
+                      editDraftPOForm.lineItems.map((l) => String(l.itemCode ?? '').trim().toLowerCase()).filter(Boolean)
+                    );
+                    const matches = poAddItemCatalog
+                      .filter((it): it is PriceListItemPage & { type: RequestType } => {
+                        if (it.type !== 'RM' && it.type !== 'PM') return false; // PO lines are RM/PM only
+                        const code = String(it.code ?? '').trim().toLowerCase();
+                        const name = String(it.name ?? '').trim().toLowerCase();
+                        if (code && alreadyOnPo.has(code)) return false;
+                        return code.includes(q) || name.includes(q);
+                      })
+                      .slice(0, 8);
+                    if (!matches.length) {
+                      return (
+                        <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-lg px-3 py-2 text-xs text-ink-3">
+                          No matching item found (or it&apos;s already on this PO).
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-lg max-h-56 overflow-auto">
+                        {matches.map((it) => (
+                          <button
+                            key={`${it.type}-${it.code}`}
+                            type="button"
+                            onClick={() => {
+                              const price = resolveStartingPriceForVendor(it, editDraftPOForm.vendor);
+                              const base: DraftPOLineItem = {
+                                item: it.name,
+                                itemCode: it.code,
+                                type: it.type,
+                                qty: '1',
+                                pricePerUnit: price,
+                                gstPercent: it.gst ?? 18,
+                                gstAmount: 0,
+                                lineTotal: 0,
+                                unit: it.uom,
+                                raw_material_id: it.raw_material_id ?? undefined,
+                                pack_material_id: it.pack_material_id ?? undefined,
+                              };
+                              setEditDraftPOForm((f) => ({
+                                ...f,
+                                lineItems: [...f.lineItems, recalcDraftPoLineItem(base, { qty: '1', pricePerUnit: price })],
+                              }));
+                              setAddDraftPoItemSearch('');
+                              addToast('info', `${it.name} added to this PO — set qty/price, then Save.`);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-surface-3 border-b border-hairline last:border-0"
+                          >
+                            <span className="font-medium text-ink">{it.name}</span>
+                            <span className="text-ink-3 ml-2 font-mono text-[10px]">{it.code}</span>
+                            <span className="text-ink-4 ml-2 text-[10px] uppercase">{it.type}</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
