@@ -1009,6 +1009,9 @@ const Procurement: React.FC = () => {
   const [editDraftPOForm, setEditDraftPOForm] = useState<Pick<DraftPO, 'vendor' | 'paymentTerms' | 'expectedDelivery' | 'deliveryAddress' | 'lineItems'>>({ vendor: '', paymentTerms: '', expectedDelivery: '', deliveryAddress: '', lineItems: [] });
   // Draft PO editor: "add new item" picker — mirrors addPoItemSearch on the Issued PO modal.
   const [addDraftPoItemSearch, setAddDraftPoItemSearch] = useState('');
+  // Raw text as typed per row — see editIssuedPoPriceDraft for why this can't just be derived
+  // from the parsed number (a mid-typed "60." would collapse back to "60" every keystroke).
+  const [editDraftPoPriceDraft, setEditDraftPoPriceDraft] = useState<Record<number, string>>({});
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
@@ -1032,10 +1035,15 @@ const Procurement: React.FC = () => {
   // from the original procurement request (so it isn't matched/synced against PR demand — see
   // handleSaveIssuedPoLineItems / syncProcurementItemsAfterDraftPoLineQtyEdit).
   const [addPoItemSearch, setAddPoItemSearch] = useState('');
+  // Raw text as typed per row (keyed by line index) — keeps a mid-typed "60." from being
+  // collapsed back to "60" on every keystroke, which happened when the input's displayed value
+  // was re-derived from the parsed number instead of the exact characters the user typed.
+  const [editIssuedPoPriceDraft, setEditIssuedPoPriceDraft] = useState<Record<number, string>>({});
   useEffect(() => {
     setEditIssuedPoLines(Array.isArray(selectedPO?.lineItems) ? selectedPO.lineItems.map((l) => ({ ...l })) : []);
     setPoEditGate(null);
     setAddPoItemSearch('');
+    setEditIssuedPoPriceDraft({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPO?.backendPoId, selectedPO?.poNumber]);
   // Guards the released-PO detail modal's mutation buttons against double-submit while in flight.
@@ -2842,6 +2850,7 @@ const Procurement: React.FC = () => {
       lineItems: editDraftPOTarget.lineItems.map((l) => ({ ...l })),
     });
     setAddDraftPoItemSearch('');
+    setEditDraftPoPriceDraft({});
   }, [editDraftPOTarget]);
 
   const updateEditRequestItem = (index: number, updates: Partial<BackendPRItem>) => {
@@ -7090,14 +7099,14 @@ const Procurement: React.FC = () => {
                       <span className="block text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">
                         Line items — qty &amp; price/unit
                       </span>
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        <table className="w-full text-sm">
+                      <div className="rounded-lg border border-border overflow-x-auto">
+                        <table className="w-full text-sm min-w-[480px]">
                           <thead>
                             <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
                               <th scope="col" className="px-2 py-2 font-semibold">Item</th>
-                              <th scope="col" className="px-2 py-2 font-semibold text-right w-24">Qty</th>
-                              <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
-                              <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-32">Qty</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-36">Price/unit (₹)</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-40">Line total</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -7127,10 +7136,15 @@ const Procurement: React.FC = () => {
                                     type="text"
                                     inputMode="decimal"
                                     placeholder="0"
-                                    value={line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : ''}
+                                    value={
+                                      editIssuedPoPriceDraft[idx] ??
+                                      (line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : '')
+                                    }
                                     onChange={(e) => {
-                                      const raw = e.target.value.replace(/,/g, '').trim();
-                                      const price = raw === '' ? 0 : parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+                                      const raw = e.target.value;
+                                      setEditIssuedPoPriceDraft((prev) => ({ ...prev, [idx]: raw }));
+                                      const cleaned = raw.replace(/,/g, '').trim();
+                                      const price = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
                                       const next = editIssuedPoLines.map((l, i) =>
                                         i === idx ? recalcDraftPoLineItem(l, { pricePerUnit: price }) : l,
                                       );
@@ -7209,11 +7223,13 @@ const Procurement: React.FC = () => {
                                     setAddPoItemSearch('');
                                     addToast('info', `${it.name} added to this PO — set qty/price, then Save item changes.`);
                                   }}
-                                  className="w-full text-left px-3 py-2 text-xs hover:bg-surface-3 border-b border-hairline last:border-0"
+                                  className="w-full text-left px-3 py-2.5 hover:bg-surface-3 border-b border-hairline last:border-0"
                                 >
-                                  <span className="font-medium text-ink">{it.name}</span>
-                                  <span className="text-ink-3 ml-2 font-mono text-[10px]">{it.code}</span>
-                                  <span className="text-ink-4 ml-2 text-[10px] uppercase">{it.type}</span>
+                                  <p className="text-xs font-medium text-ink leading-snug break-words">{it.name}</p>
+                                  <p className="text-[10px] text-ink-3 mt-0.5">
+                                    <span className="font-mono">{it.code}</span>
+                                    <span className="text-ink-4 uppercase ml-2">{it.type}</span>
+                                  </p>
                                 </button>
                               ))}
                             </div>
@@ -10263,7 +10279,7 @@ const Procurement: React.FC = () => {
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setEditDraftPOTarget(null)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
-            className="relative w-full max-w-lg rounded-xl bg-surface shadow-xl border border-border p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-2xl rounded-xl bg-surface shadow-xl border border-border p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between">
@@ -10325,14 +10341,14 @@ const Procurement: React.FC = () => {
               </div>
               <div>
                 <span className="block text-xs font-semibold text-ink-3 mb-2">Line items — qty &amp; price/unit</span>
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <table className="w-full text-sm">
+                <div className="rounded-lg border border-border overflow-x-auto">
+                  <table className="w-full text-sm min-w-[480px]">
                     <thead>
                       <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
                         <th scope="col" className="px-2 py-2 font-semibold">Item</th>
-                        <th scope="col" className="px-2 py-2 font-semibold text-right w-24">Qty</th>
-                        <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
-                        <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-32">Qty</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-36">Price/unit (₹)</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-40">Line total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -10365,10 +10381,15 @@ const Procurement: React.FC = () => {
                               type="text"
                               inputMode="decimal"
                               placeholder="0"
-                              value={line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : ''}
+                              value={
+                                editDraftPoPriceDraft[idx] ??
+                                (line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : '')
+                              }
                               onChange={(e) => {
-                                const raw = e.target.value.replace(/,/g, '').trim();
-                                const price = raw === '' ? 0 : parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+                                const raw = e.target.value;
+                                setEditDraftPoPriceDraft((prev) => ({ ...prev, [idx]: raw }));
+                                const cleaned = raw.replace(/,/g, '').trim();
+                                const price = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
                                 const next = editDraftPOForm.lineItems.map((l, i) =>
                                   i === idx ? recalcDraftPoLineItem(l, { pricePerUnit: price }) : l,
                                 );
@@ -10446,11 +10467,13 @@ const Procurement: React.FC = () => {
                               setAddDraftPoItemSearch('');
                               addToast('info', `${it.name} added to this PO — set qty/price, then Save.`);
                             }}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-surface-3 border-b border-hairline last:border-0"
+                            className="w-full text-left px-3 py-2.5 hover:bg-surface-3 border-b border-hairline last:border-0"
                           >
-                            <span className="font-medium text-ink">{it.name}</span>
-                            <span className="text-ink-3 ml-2 font-mono text-[10px]">{it.code}</span>
-                            <span className="text-ink-4 ml-2 text-[10px] uppercase">{it.type}</span>
+                            <p className="text-xs font-medium text-ink leading-snug break-words">{it.name}</p>
+                            <p className="text-[10px] text-ink-3 mt-0.5">
+                              <span className="font-mono">{it.code}</span>
+                              <span className="text-ink-4 uppercase ml-2">{it.type}</span>
+                            </p>
                           </button>
                         ))}
                       </div>
