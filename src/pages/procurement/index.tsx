@@ -167,6 +167,7 @@ import {
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import { splitLinesByQuantity, lineQtyNumber } from '../../lib/splitPoByQuantity';
 import {
   type PoType,
   PO_TYPE_CONFIG,
@@ -184,6 +185,7 @@ import { poBackendId } from '../../services/poApproval.service';
 import PoVendorPanel from '../../components/procurement/PoVendorPanel';
 import PoMatchPanel from '../../components/procurement/PoMatchPanel';
 import PoExceptionBar from '../../components/procurement/PoExceptionBar';
+import type { PoExceptionState } from '../../services/poException.service';
 import PoGrnExceptionPanel from '../../components/procurement/PoGrnExceptionPanel';
 import NewPrModal from '../../components/procurement/NewPrModal';
 import NewPoModal from '../../components/procurement/NewPoModal';
@@ -304,6 +306,23 @@ function procurementRequestApiSyncKey(req: ProcurementRequest): string {
     req.stockCheckNotes ?? '',
     itemSig,
   ].join('\0');
+}
+
+/**
+ * Starting price for a newly-added PO line: this vendor's default rate, else their lowest-MOQ
+ * tier, else the catalog's own pricePerUnit, else 0. Only a starting point — qty is 0 when a
+ * line is first added, so no MOQ tier is truly "correct" yet; the price stays editable.
+ */
+function resolveStartingPriceForVendor(item: PriceListItemPage, vendorName: string): number {
+  const vendorNorm = String(vendorName ?? '').trim().toLowerCase();
+  const rate = (item.vendorRates ?? []).find(
+    (r) => String(r.vendor_name ?? '').trim().toLowerCase() === vendorNorm
+  );
+  if (rate) {
+    const cheapestTier = [...(rate.tiers ?? [])].sort((a, b) => Number(a.moq_min) - Number(b.moq_min))[0];
+    if (cheapestTier && Number(cheapestTier.price_per_unit) > 0) return Number(cheapestTier.price_per_unit);
+  }
+  return Number(item.pricePerUnit) > 0 ? Number(item.pricePerUnit) : 0;
 }
 
 /**
@@ -1000,6 +1019,23 @@ const Procurement: React.FC = () => {
   // Issued-PO detail: editable per-item connecting dates (norm itemCode -> YYYY-MM-DD, '' = cleared to auto).
   const [connectingDateDraft, setConnectingDateDraft] = useState<Record<string, string>>({});
   const [connectingDateSaving, setConnectingDateSaving] = useState(false);
+  // Issued-PO detail: editable line items (qty / price), same mechanics as the Draft PO editor.
+  // Gated by the lifecycle-exception state fetched inside PoExceptionBar — only editable while the
+  // PO could also be Amended (approved/sent, not shipped/GRN'd/held/cancelled) so a qty change here
+  // can't desync from stock already moving against the old numbers.
+  const [editIssuedPoLines, setEditIssuedPoLines] = useState<DraftPOLineItem[]>([]);
+  const [editIssuedPoSaving, setEditIssuedPoSaving] = useState(false);
+  const [poEditGate, setPoEditGate] = useState<PoExceptionState | null>(null);
+  // New-item picker for the same editable table — a genuine correction/addition, not sourced
+  // from the original procurement request (so it isn't matched/synced against PR demand — see
+  // handleSaveIssuedPoLineItems / syncProcurementItemsAfterDraftPoLineQtyEdit).
+  const [addPoItemSearch, setAddPoItemSearch] = useState('');
+  useEffect(() => {
+    setEditIssuedPoLines(Array.isArray(selectedPO?.lineItems) ? selectedPO.lineItems.map((l) => ({ ...l })) : []);
+    setPoEditGate(null);
+    setAddPoItemSearch('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPO?.backendPoId, selectedPO?.poNumber]);
   // Guards the released-PO detail modal's mutation buttons against double-submit while in flight.
   const [poActionBusy, setPoActionBusy] = useState<string | null>(null);
   const runPoAction = async (name: string, fn: () => void | Promise<unknown>) => {
@@ -1131,6 +1167,8 @@ const Procurement: React.FC = () => {
   } | null>(null);
   const [splitPOTarget, setSplitPOTarget] = useState<DraftPO | null>(null);
   const [splitSelectedLineIndexes, setSplitSelectedLineIndexes] = useState<number[]>([]);
+  /** Quantity of each line assigned to Split PO 1; the remainder goes to Split PO 2. */
+  const [splitQtyForS1, setSplitQtyForS1] = useState<Record<number, string>>({});
   const [releasePOTarget, setReleasePOTarget] = useState<DraftPO | null>(null);
   const [deletingDraftPoId, setDeletingDraftPoId] = useState<string | null>(null);
   const [draftPoDeleteConfirmTarget, setDraftPoDeleteConfirmTarget] = useState<DraftPO | null>(null);
@@ -1788,6 +1826,12 @@ const Procurement: React.FC = () => {
     },
     enabled: needItemsListForQuotesOrDraftPO || backendPrArray.length > 0,
   });
+
+  // Combined RM+PM catalog for the "add new item" picker on an already-released PO.
+  const poAddItemCatalog = useMemo(
+    () => [...(itemsListRm ?? []), ...(itemsListPm ?? [])],
+    [itemsListRm, itemsListPm]
+  );
 
   const resolveRmPrimaryUnit = useCallback(
     (rawMaterialId?: number | null, itemCode?: string | null, fallback?: string | null): string => {
@@ -5372,14 +5416,17 @@ const Procurement: React.FC = () => {
       return;
     }
 
-    if (target.lineItems.length < 2) {
-      addToast('warning', 'Need at least 2 items to split this PO');
+    // A single-line PO is splittable by QUANTITY (50,000 bottles → 30,000 + 20,000), so only an
+    // empty PO is refused. The old "need 2 items" rule assumed splits only moved whole lines.
+    if (target.lineItems.length === 0) {
+      addToast('warning', 'This PO has no items to split');
       return;
     }
 
     setSplitPOTarget(target);
     // Start with no preselection to avoid accidental S1 assignment.
     setSplitSelectedLineIndexes([]);
+    setSplitQtyForS1({});
   };
 
   const toggleSplitLineSelection = (lineIndex: number) => {
@@ -5419,20 +5466,24 @@ const Procurement: React.FC = () => {
     try {
     if (!splitPOTarget) return;
 
-    const uniqueIndexes = Array.from(new Set(splitSelectedLineIndexes)).sort((a, b) => a - b);
+    // Quantity-based split: a ticked line contributes its typed quantity (default = all of it) to
+    // S1, and whatever is left of that line goes to S2. This is what makes a single-line PO
+    // splittable — the old index-only split could only move whole lines.
+    const qtyPlan: Record<number, number> = {};
+    splitPOTarget.lineItems.forEach((line, index) => {
+      if (!splitSelectedLineIndexes.includes(index)) return;
+      const typed = String(splitQtyForS1[index] ?? '').trim();
+      qtyPlan[index] = typed === '' ? lineQtyNumber(line) : Number(typed);
+    });
 
-    if (uniqueIndexes.length === 0) {
-      addToast('warning', 'Select at least one item for Split PO 1');
+    const plan = splitLinesByQuantity(splitPOTarget.lineItems, qtyPlan);
+    if (plan.error) {
+      addToast('warning', plan.error);
       return;
     }
 
-    if (uniqueIndexes.length === splitPOTarget.lineItems.length) {
-      addToast('warning', 'Leave at least one item unchecked to create the second PO');
-      return;
-    }
-
-    const selectedLineItems = splitPOTarget.lineItems.filter((_, index) => uniqueIndexes.includes(index));
-    const remainingLineItems = splitPOTarget.lineItems.filter((_, index) => !uniqueIndexes.includes(index));
+    const selectedLineItems = plan.s1;
+    const remainingLineItems = plan.s2;
 
     const splitPOOne = createSplitDraftPO(splitPOTarget, selectedLineItems, 'S1');
     const splitPOTwo = createSplitDraftPO(splitPOTarget, remainingLineItems, 'S2');
@@ -5445,9 +5496,10 @@ const Procurement: React.FC = () => {
         requestCode: splitPOTarget.requestCode,
       });
       const fullAssigned = assignPrItemToDraftLines(splitPOTarget.lineItems, prItemsForLines);
-      const assignedOne = uniqueIndexes.map((idx) => fullAssigned[idx]);
-      const remainingLineIndices = splitPOTarget.lineItems.map((_, i) => i).filter((i) => !uniqueIndexes.includes(i));
-      const assignedTwo = remainingLineIndices.map((i) => fullAssigned[i]);
+      // A partially split line appears on BOTH sides, so the PR item is looked up by the line's
+      // ORIGINAL index rather than by its position in the produced list.
+      const assignedOne = plan.s1SourceIndexes.map((idx) => fullAssigned[idx]);
+      const assignedTwo = plan.s2SourceIndexes.map((idx) => fullAssigned[idx]);
 
       // Strict MOQ check for split flows: every resulting split line qty must satisfy MOQ.
       const enforceSplitMoq = (
@@ -6832,6 +6884,140 @@ const Procurement: React.FC = () => {
           }
         };
 
+        /**
+         * Save edited qty/price on an already-released PO — same mechanics as the Draft PO editor
+         * (recalcDraftPoLineItem for line totals, draftLineItemsToPurchaseOrderItems for the PUT
+         * payload). When qty is reduced/increased, syncs the linked procurement request's open
+         * demand by the same delta (syncProcurementItemsAfterDraftPoLineQtyEdit) and spins off a
+         * remainder request if qty came down, exactly like the Draft flow.
+         */
+        const handleSaveIssuedPoLineItems = async () => {
+          if (!po.backendPoId) return;
+          setEditIssuedPoSaving(true);
+          try {
+            const backendRequestId = (() => {
+              const direct = String(po.requestId ?? '').trim();
+              if (/^\d+$/.test(direct)) return direct;
+              const codeNorm = String(po.requestCode ?? '').trim().toUpperCase();
+              const byCode = codeNorm ? requests.find((r) => String(r.code).toUpperCase() === codeNorm) : undefined;
+              return byCode?.id ? String(byCode.id) : '';
+            })();
+            const prItemsForLines = backendRequestId
+              ? resolvePrItemsForPurchaseOrderLines(backendPrArray, requestsMapped, {
+                  backendRequestId,
+                  draftRequestId: po.requestId ?? '',
+                  requestCode: po.requestCode ?? '',
+                })
+              : [];
+            const assignedPrLines = assignPrItemToDraftLines(editIssuedPoLines, prItemsForLines);
+            const qtyErr = validateDraftPoQtyAgainstMoqRemainder(po.poNumber, editIssuedPoLines, assignedPrLines);
+            if (qtyErr) {
+              addToast('warning', qtyErr);
+              return;
+            }
+
+            const originalLines = Array.isArray(po.lineItems) ? po.lineItems : [];
+            const qtyEdited = editIssuedPoLines.some(
+              (l, idx) => parseQuantityRequested(l.qty) !== parseQuantityRequested(originalLines[idx]?.qty)
+            );
+
+            const poItems = draftLineItemsToPurchaseOrderItems(editIssuedPoLines, prItemsForLines, assignedPrLines);
+            const res = await updatePurchaseOrder(po.backendPoId, { items: poItems });
+            if (!res.success) {
+              addToast('error', typeof res.error === 'string' ? res.error : (res.error?.message ?? 'Failed to update PO items'));
+              return;
+            }
+
+            if (backendRequestId && qtyEdited) {
+              const prRow = backendPrArray.find((p) => String(p.id) === backendRequestId) as
+                | {
+                    items?: BackendPRItem[];
+                    planningExtractedId?: number;
+                    planningBatchId?: number | null;
+                    priority?: string;
+                    requiredByDate?: string | null;
+                    notes?: string | null;
+                    preferredVendor?: string | null;
+                  }
+                | undefined;
+              const backendItemsForSync = Array.isArray(prRow?.items) ? prRow!.items : [];
+              if (backendItemsForSync.length > 0) {
+                const { updatedItems, remainderItems } = syncProcurementItemsAfterDraftPoLineQtyEdit(
+                  backendItemsForSync,
+                  originalLines,
+                  editIssuedPoLines
+                );
+                const itemsForPrSync = updatedItems.map((it) => ({ ...it, partial_release_remainder: true }));
+                const prUpd = await updateProcurementRequestApi(backendRequestId, { items: itemsForPrSync });
+                if (!prUpd.success) {
+                  addToast(
+                    'error',
+                    typeof prUpd.error === 'string'
+                      ? prUpd.error
+                      : 'PO items saved, but updating the linked procurement request failed. Fix the request manually.',
+                  );
+                  void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                } else {
+                  let remainderCreatedLabel: string | null = null;
+                  if (remainderItems.length > 0) {
+                    if (!prRow?.planningExtractedId || prRow.planningExtractedId <= 0) {
+                      addToast(
+                        'warning',
+                        'PO items updated; could not create a remainder request (missing planning link). Add the backlog lines manually.',
+                      );
+                    } else {
+                      const remainderNotes = `Remainder from ${po.requestCode || po.poNumber}: PO line qty reduced (${po.poNumber}).`;
+                      const remainingRes = await createProcurementRequestApi({
+                        planningExtractedId: prRow.planningExtractedId,
+                        planningBatchId: prRow.planningBatchId ?? null,
+                        priority: prRow.priority ?? 'Medium',
+                        requiredByDate: prRow.requiredByDate ?? null,
+                        notes: [prRow.notes, remainderNotes].filter(Boolean).join('\n\n') || remainderNotes,
+                        preferredVendor: prRow.preferredVendor ?? null,
+                        items: remainderItems,
+                      });
+                      if (!remainingRes.success || !remainingRes.data) {
+                        addToast(
+                          'error',
+                          typeof remainingRes.error === 'string'
+                            ? remainingRes.error
+                            : 'PO items updated but creating the remainder procurement request failed.',
+                        );
+                      } else if (remainingRes.data.id != null) {
+                        remainderCreatedLabel = `PR-REQ-${String(remainingRes.data.id).padStart(3, '0')}`;
+                      }
+                    }
+                  }
+                  void queryClient.invalidateQueries({ queryKey: ['procurement-requests'] });
+                  if (remainderItems.length > 0 && remainderCreatedLabel) {
+                    addToast('success', `PO items updated; remainder tracked as ${remainderCreatedLabel}.`);
+                  } else if (remainderItems.length > 0) {
+                    addToast('success', 'PO items updated; remainder request created.');
+                  }
+                }
+              }
+            }
+
+            const nextGrandTotal = editIssuedPoLines.reduce((s, l) => s + l.lineTotal, 0);
+            setSelectedPO((prev) =>
+              prev
+                ? ({
+                    ...(prev as object),
+                    lineItems: editIssuedPoLines,
+                    items: editIssuedPoLines.map((l) => l.item),
+                    itemCount: editIssuedPoLines.length,
+                    grandTotal: nextGrandTotal,
+                    value: nextGrandTotal,
+                  } as unknown as PurchaseOrder)
+                : prev
+            );
+            void invalidatePurchaseOrdersQueries();
+            if (!qtyEdited || !backendRequestId) addToast('success', 'PO items updated.');
+          } finally {
+            setEditIssuedPoSaving(false);
+          }
+        };
+
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedPO(null)}>
             <div
@@ -6878,6 +7064,180 @@ const Procurement: React.FC = () => {
                     </div>
                   ))}
                 </div>
+
+                {/* PO lifecycle exceptions (Hold · Cancel · Amend) — front-and-center: this is the
+                    "Edit" path for a PO that has already left Draft. */}
+                {po.backendPoId && (
+                  <PoExceptionBar
+                    poId={po.backendPoId}
+                    refreshKey={poWorkflowRefresh}
+                    onToast={addToast}
+                    onLockChange={setPoLock}
+                    onStateChange={setPoEditGate}
+                    onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
+                  />
+                )}
+
+                {/* Line items — qty & price/unit, same editable table as the Draft PO editor. Only
+                    while the PO could also be Amended (approved/sent, not shipped/GRN'd/held/
+                    cancelled) — past that point stock is already moving against the old numbers. */}
+                {po.backendPoId && editIssuedPoLines.length > 0 && (
+                  poEditGate?.canAmend ? (
+                    <div>
+                      <span className="block text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">
+                        Line items — qty &amp; price/unit
+                      </span>
+                      <div className="rounded-lg border border-border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
+                              <th scope="col" className="px-2 py-2 font-semibold">Item</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-24">Qty</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Price/unit (₹)</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-28">Line total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {editIssuedPoLines.map((line, idx) => (
+                              <tr key={idx} className="border-b border-hairline last:border-0">
+                                <td className="px-2 py-2 align-top">
+                                  <p className="font-medium text-ink leading-snug">{line.item}</p>
+                                  <p className="text-[10px] text-ink-3">{line.itemCode}</p>
+                                </td>
+                                <td className="px-2 py-2 text-right align-top">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="Qty"
+                                    value={line.qty}
+                                    onChange={(e) => {
+                                      const next = editIssuedPoLines.map((l, i) =>
+                                        i === idx ? recalcDraftPoLineItem(l, { qty: e.target.value }) : l,
+                                      );
+                                      setEditIssuedPoLines(next);
+                                    }}
+                                    className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-right align-top">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    value={line.pricePerUnit != null && line.pricePerUnit !== 0 ? String(line.pricePerUnit) : ''}
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/,/g, '').trim();
+                                      const price = raw === '' ? 0 : parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+                                      const next = editIssuedPoLines.map((l, i) =>
+                                        i === idx ? recalcDraftPoLineItem(l, { pricePerUnit: price }) : l,
+                                      );
+                                      setEditIssuedPoLines(next);
+                                    }}
+                                    className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
+                                  />
+                                </td>
+                                <td className="px-2 py-2 text-right align-top tabular-nums text-ink font-medium whitespace-nowrap">
+                                  ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Add a new line — a genuine correction/addition, not from the original PR.
+                          Its qty counts toward PO Qty / grand total once saved, same as any other
+                          line, but isn't matched against the linked request's demand (there's
+                          nothing there to sync — it was never asked for). */}
+                      <div className="mt-2 relative">
+                        <input
+                          type="text"
+                          placeholder="+ Add item — search by name or code…"
+                          value={addPoItemSearch}
+                          onChange={(e) => setAddPoItemSearch(e.target.value)}
+                          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-xs focus:outline-none focus:border-brand"
+                        />
+                        {addPoItemSearch.trim().length >= 2 && (() => {
+                          const q = addPoItemSearch.trim().toLowerCase();
+                          const alreadyOnPo = new Set(
+                            editIssuedPoLines.map((l) => String(l.itemCode ?? '').trim().toLowerCase()).filter(Boolean)
+                          );
+                          const matches = poAddItemCatalog
+                            .filter((it): it is PriceListItemPage & { type: RequestType } => {
+                              if (it.type !== 'RM' && it.type !== 'PM') return false; // PO lines are RM/PM only
+                              const code = String(it.code ?? '').trim().toLowerCase();
+                              const name = String(it.name ?? '').trim().toLowerCase();
+                              if (code && alreadyOnPo.has(code)) return false;
+                              return code.includes(q) || name.includes(q);
+                            })
+                            .slice(0, 8);
+                          if (!matches.length) {
+                            return (
+                              <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-lg px-3 py-2 text-xs text-ink-3">
+                                No matching item found (or it&apos;s already on this PO).
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-surface shadow-lg max-h-56 overflow-auto">
+                              {matches.map((it) => (
+                                <button
+                                  key={`${it.type}-${it.code}`}
+                                  type="button"
+                                  onClick={() => {
+                                    const price = resolveStartingPriceForVendor(it, po.vendorName);
+                                    const base: DraftPOLineItem = {
+                                      item: it.name,
+                                      itemCode: it.code,
+                                      type: it.type,
+                                      qty: '1',
+                                      pricePerUnit: price,
+                                      gstPercent: it.gst ?? 18,
+                                      gstAmount: 0,
+                                      lineTotal: 0,
+                                      unit: it.uom,
+                                      raw_material_id: it.raw_material_id ?? undefined,
+                                      pack_material_id: it.pack_material_id ?? undefined,
+                                    };
+                                    setEditIssuedPoLines([
+                                      ...editIssuedPoLines,
+                                      recalcDraftPoLineItem(base, { qty: '1', pricePerUnit: price }),
+                                    ]);
+                                    setAddPoItemSearch('');
+                                    addToast('info', `${it.name} added to this PO — set qty/price, then Save item changes.`);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-surface-3 border-b border-hairline last:border-0"
+                                >
+                                  <span className="font-medium text-ink">{it.name}</span>
+                                  <span className="text-ink-3 ml-2 font-mono text-[10px]">{it.code}</span>
+                                  <span className="text-ink-4 ml-2 text-[10px] uppercase">{it.type}</span>
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <p className="text-[11px] text-ink-3 mt-1.5">
+                        Reducing qty splits the difference off to a new remainder procurement request; increasing it tops up the linked request by the same amount. Newly-added items count toward PO Qty / total once saved.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={editIssuedPoSaving}
+                        onClick={handleSaveIssuedPoLineItems}
+                        className="mt-2 w-full px-3 py-2 rounded border border-brand-soft bg-brand-soft text-brand text-xs font-semibold hover:bg-brand hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {editIssuedPoSaving ? 'Saving…' : 'Save item changes'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-ink-3 bg-surface-3 border border-border rounded px-3 py-2">
+                      {poEditGate
+                        ? 'Qty / price can’t be edited once a PO has shipped, reached GRN, or is on hold/cancelled — use Amend above only if it truly needs to be reworked.'
+                        : 'Checking whether this PO’s items can be edited…'}
+                    </p>
+                  )
+                )}
 
                 {/* Items — with editable per-item connecting date for issued POs */}
                 {po.items && po.items.length > 0 && (
@@ -6995,17 +7355,6 @@ const Procurement: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                )}
-
-                {/* PO lifecycle exceptions (Hold · Cancel · Amend) */}
-                {po.backendPoId && (
-                  <PoExceptionBar
-                    poId={po.backendPoId}
-                    refreshKey={poWorkflowRefresh}
-                    onToast={addToast}
-                    onLockChange={setPoLock}
-                    onChanged={() => { setPoWorkflowRefresh((n) => n + 1); void invalidatePurchaseOrdersQueries(); }}
-                  />
                 )}
 
                 {/* 3-way match + Payment → Closed (Sub-flow I) — once the PO reaches GRN */}
@@ -7624,8 +7973,17 @@ const Procurement: React.FC = () => {
         const selectedCount = splitSelectedLineIndexes.length;
         const remainingCount = splitPOTarget.lineItems.length - selectedCount;
         const selectedSet = new Set(splitSelectedLineIndexes);
-        const po1PreviewItems = splitPOTarget.lineItems.filter((_, index) => selectedSet.has(index));
-        const po2PreviewItems = splitPOTarget.lineItems.filter((_, index) => !selectedSet.has(index));
+        // Preview from the same quantity plan the submit uses, so a partially split line shows on
+        // BOTH sides with its real quantity instead of appearing wholly on one.
+        const previewQtyPlan: Record<number, number> = {};
+        splitPOTarget.lineItems.forEach((line, index) => {
+          if (!selectedSet.has(index)) return;
+          const typed = String(splitQtyForS1[index] ?? '').trim();
+          previewQtyPlan[index] = typed === '' ? lineQtyNumber(line) : Number(typed);
+        });
+        const previewPlan = splitLinesByQuantity(splitPOTarget.lineItems, previewQtyPlan);
+        const po1PreviewItems = previewPlan.s1;
+        const po2PreviewItems = previewPlan.s2;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={closeSplitPOModal}>
@@ -7645,28 +8003,61 @@ const Procurement: React.FC = () => {
               </div>
 
               <div className="px-5 py-4 space-y-3 bg-surface">
-                <p className="text-xs text-ink-3">Select items for each split PO. Unchecked items will remain in a new separate PO.</p>
+                <p className="text-xs text-ink-3">
+                  Tick the items for PO 1 and set how much of each goes there — the remainder forms PO 2.
+                  Leave the quantity blank to move the whole line.
+                </p>
 
                 <label className="block text-[10px] tracking-widest uppercase text-ink-3 mb-1">Items — Check for PO 1</label>
                 <div className="space-y-2">
                   {splitPOTarget.lineItems.map((line, index) => {
                     const checked = splitSelectedLineIndexes.includes(index);
+                    const totalQty = lineQtyNumber(line);
+                    const typed = String(splitQtyForS1[index] ?? '').trim();
+                    const toS1 = !checked ? 0 : typed === '' ? totalQty : Number(typed);
+                    const toS2 = Number.isFinite(toS1) ? Math.round((totalQty - toS1) * 100) / 100 : totalQty;
+                    const invalid = checked && (!Number.isFinite(toS1) || toS1 < 0 || toS1 > totalQty);
                     return (
-                      <label
+                      <div
                         key={`${line.itemCode}-${index}`}
-                        className="flex items-start gap-3 rounded-lg border border-border bg-surface-3 px-3 py-2 cursor-pointer hover:bg-surface-3 transition"
+                        className="rounded-lg border border-border bg-surface-3 px-3 py-2"
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleSplitLineSelection(index)}
-                          className="mt-0.5 h-4 w-4 rounded border-border bg-surface text-ok focus:ring-[color:var(--ring)]"
-                        />
-                        <div className="leading-tight">
-                          <p className="text-sm font-semibold text-ink">{line.item}</p>
-                          <p className="text-xs text-ink-3">{line.qty} · ₹{line.lineTotal.toLocaleString('en-IN')}</p>
-                        </div>
-                      </label>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSplitLineSelection(index)}
+                            className="mt-0.5 h-4 w-4 rounded border-border bg-surface text-ok focus:ring-[color:var(--ring)]"
+                          />
+                          <div className="leading-tight">
+                            <p className="text-sm font-semibold text-ink">{line.item}</p>
+                            <p className="text-xs text-ink-3">{line.qty} · ₹{line.lineTotal.toLocaleString('en-IN')}</p>
+                          </div>
+                        </label>
+                        {checked && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 pl-7">
+                            <span className="text-[11px] font-semibold text-ink-2">Qty to PO 1</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={totalQty}
+                              value={splitQtyForS1[index] ?? ''}
+                              placeholder={String(totalQty)}
+                              onChange={(e) =>
+                                setSplitQtyForS1((prev) => ({ ...prev, [index]: e.target.value }))
+                              }
+                              className={`w-32 rounded-md border px-2 py-1 text-xs text-ink bg-surface focus:outline-none focus:ring-1 ${
+                                invalid ? 'border-err focus:ring-err' : 'border-border focus:border-brand focus:ring-brand'
+                              }`}
+                            />
+                            <span className={`text-[11px] ${invalid ? 'text-err' : 'text-ink-3'}`}>
+                              {invalid
+                                ? `Enter 0 – ${totalQty.toLocaleString('en-IN')}`
+                                : `PO 2 gets ${toS2.toLocaleString('en-IN')}`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -7678,7 +8069,7 @@ const Procurement: React.FC = () => {
                     </p>
                     <p className="text-xs text-ok">
                       {po1PreviewItems.length > 0
-                        ? po1PreviewItems.map((line) => line.item).join(', ')
+                        ? po1PreviewItems.map((line) => `${line.item} × ${line.qty}`).join(', ')
                         : 'No items selected yet'}
                     </p>
                   </div>
@@ -7688,7 +8079,7 @@ const Procurement: React.FC = () => {
                     </p>
                     <p className="text-xs text-brand">
                       {po2PreviewItems.length > 0
-                        ? po2PreviewItems.map((line) => line.item).join(', ')
+                        ? po2PreviewItems.map((line) => `${line.item} × ${line.qty}`).join(', ')
                         : 'No items remaining'}
                     </p>
                   </div>

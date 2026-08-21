@@ -22,6 +22,9 @@ export interface PoExceptionBarProps {
   refreshKey?: number;
   /** Reports on/off-hold + cancelled so the host can grey out sibling workflow panels. */
   onLockChange?: (lock: { onHold: boolean; cancelled: boolean }) => void;
+  /** Reports the full exception state on every load/update — lets the host gate its own
+   * controls (e.g. direct qty/price editing) on the same canAmend/shipped/grnComplete flags. */
+  onStateChange?: (state: PoExceptionState) => void;
 }
 
 type PendingAction = 'hold' | 'cancel' | 'amend' | null;
@@ -32,7 +35,7 @@ const fmt = (iso: string | null) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
 
-export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, onChanged, refreshKey = 0, onLockChange }) => {
+export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, onChanged, refreshKey = 0, onLockChange, onStateChange }) => {
   const [state, setState] = useState<PoExceptionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, o
       setState(res.data);
       setError(null);
       onLockChange?.({ onHold: res.data.onHold, cancelled: res.data.cancelled });
+      onStateChange?.(res.data);
     } else {
       setError(typeof res.error === 'string' ? res.error : 'Failed to load exception state');
     }
@@ -66,6 +70,7 @@ export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, o
         setPending(null);
         setReason('');
         onLockChange?.({ onHold: res.data.onHold, cancelled: res.data.cancelled });
+        onStateChange?.(res.data);
         onToast?.('success', okMsg);
         onChanged?.();
       } else {
@@ -74,7 +79,7 @@ export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, o
         onToast?.('error', msg);
       }
     },
-    [onToast, onChanged, onLockChange],
+    [onToast, onChanged, onLockChange, onStateChange],
   );
 
   if (loading) {

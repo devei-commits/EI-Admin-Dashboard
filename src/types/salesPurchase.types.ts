@@ -30,6 +30,9 @@ export interface Order {
   reference?: string;
   paymentTerms?: string;
   status: string;
+  /** PO approval workflow stage (Sub-flow E): not_submitted | under_review | under_approval | approved. */
+  approvalStatus?: string | null;
+  approvedAt?: string | null;
   items: OrderItem[];
   formData: OrderFormData;
   orderStatus: OrderStatus;

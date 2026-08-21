@@ -8,7 +8,7 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, Eye, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck } from 'lucide-react';
+import { Pencil, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck } from 'lucide-react';
 import { Package, Flag, Warning, Check } from '@phosphor-icons/react';
 import { Pagination } from '../ui';
 import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
@@ -133,10 +133,13 @@ function computeRollup(
     const lines = g.lineItems ?? [];
     const rcvd = lines.reduce((s, l) => s + (Number(l.rcvdQty) || 0), 0);
     const inv = lines.reduce((s, l) => s + (Number(l.invoiceQty) || 0), 0);
-    const poQ = lines.reduce((s, l) => s + (Number(l.poQty) || 0), 0);
+    // What actually left on THIS shipment/truck — not the PO line's full ordered qty. Using
+    // poQty here silently inflated a partial shipment (e.g. 5,000 of a 15,000 line) to look
+    // like the whole line had shipped, which then hid the remaining pending balance.
+    const shipped = lines.reduce((s, l) => s + (Number(l.shippedQty) || 0), 0) || (Number(g.shippedQty) || 0);
     const complete = /complete/i.test(g.status || '');
     if (complete) { received += rcvd; billed += inv; }
-    else { inTransit += rcvd || poQ; } // shipped-but-not-received
+    else { inTransit += rcvd || shipped; } // shipped-but-not-received
   }
   // TODO(RTV): returned is hard-coded 0 — GRN rows expose no per-line return/RTV qty field today,
   // so the return-to-vendor rollup isn't wired. Sum a real field here once the GRN API carries one.
@@ -342,12 +345,16 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   }, [grnList]);
 
   // Already-shipped for a PO line (sum of matched GRN qtys) — drives Pending in the transit popups.
+  // Prefer confirmed rcvdQty once a GRN has landed; while still in transit (rcvdQty 0) fall back
+  // to the qty actually loaded on that specific truck (shippedQty), never the PO line's full
+  // ordered qty — that fallback previously made a partial shipment (e.g. 5,000 of 15,000) read as
+  // "fully dispatched", leaving Pending stuck at 0 for the remainder.
   const shippedForPoItem = (poNo: string, itemCode: string, itemName: string): number => {
     const grns = grnByPo.get(normPo(poNo)) ?? [];
     let sum = 0;
     for (const g of grns) {
       const gl = (g.lineItems ?? []).filter((x) => (x.itemCode || '').toUpperCase() === (itemCode || '').toUpperCase() || x.item === itemName);
-      sum += gl.reduce((s, x) => s + (Number(x.rcvdQty) || Number(x.poQty) || 0), 0);
+      sum += gl.reduce((s, x) => s + (Number(x.rcvdQty) || Number(x.shippedQty) || Number(g.shippedQty) || 0), 0);
     }
     return sum;
   };
@@ -445,7 +452,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
         for (const g of grns) {
           const gl = (g.lineItems ?? []).filter((x) => (x.itemCode || '').toUpperCase() === itemKey || x.item === l.item);
           if (!gl.length) continue;
-          const qty = gl.reduce((s, x) => s + (Number(x.rcvdQty) || Number(x.poQty) || 0), 0);
+          // Same fix as computeRollup/shippedForPoItem above: while in transit, show what actually
+          // shipped on this GRN, not the PO line's full ordered qty.
+          const qty = gl.reduce((s, x) => s + (Number(x.rcvdQty) || Number(x.shippedQty) || 0), 0) || Number(g.shippedQty) || 0;
           const complete = /complete/i.test(g.status || '');
           if (complete) { received += gl.reduce((s, x) => s + (Number(x.rcvdQty) || 0), 0); billed += gl.reduce((s, x) => s + (Number(x.invoiceQty) || 0), 0); }
           grnLines.push({ grnNo: g.grnNo, qty, stage: mapGrnStatusToStage(g.status) });
@@ -740,7 +749,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={(e) => { e.stopPropagation(); onEdit(lr.record); }} title={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2">{lr.record.status === 'Draft' ? <Pencil size={12} /> : <Eye size={12} />}</button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(lr.record); }} title={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2"><Pencil size={12} /></button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty }); }}
                                   disabled={!canTransit}
@@ -851,7 +860,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5 text-center">{rollup.returned > 0 ? <span className="text-xs font-semibold text-err tabular-nums">{rollup.returned}</span> : <span className="text-ink-4 text-xs">0</span>}</td>
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
-                                <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'View / Update status'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold">{r.status === 'Draft' ? <><Pencil size={12} /> Edit</> : <><Eye size={12} /> View</>}</button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
                                 {(() => {
                                   // Before a PO can ship it must clear approval and be released. Showing the
                                   // shipment verb here (greyed out) read as "shipping is next" when it isn't,

@@ -802,6 +802,8 @@ export function mapOrderToPurchaseOrder(po: Order): PurchaseOrder {
   const formData = po.formData && typeof po.formData === 'object' ? po.formData : {};
   return {
     id: po.id,
+    approvalStatus: po.approvalStatus ?? null,
+    approvedAt: po.approvedAt ?? null,
     vendorId: '',
     vendorName: po.vendorName ?? '',
     poNumber: po.orderId ?? po.id,
@@ -889,12 +891,22 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
   const backendPoId = String(po.id ?? '').replace(/^PO-/, '') || undefined;
 
   const isSplitChildPo = /-S\d+$/i.test(String(po.poNumber ?? '').trim());
-  let approvalApproved = String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
+  // Approved when EITHER source says so: the authoritative approval_status column written by the
+  // approval workflow, or the legacy form_data marker older POs still carry. Reading only the
+  // legacy one blocked release/split on every PO approved through the current workflow.
+  const workflowApproved = String(po.approvalStatus ?? '').trim().toLowerCase() === 'approved';
+  let approvalApproved =
+    workflowApproved || String(formData.procurementApprovalStatus ?? '').toLowerCase() === 'approved';
   // Split POs reset approval in form_data; stale "Approved" without a timestamp should not block re-approval in the UI.
-  if (isSplitChildPo && approvalApproved && (formData.procurementApprovedAt == null || formData.procurementApprovedAt === '')) {
+  if (
+    isSplitChildPo &&
+    approvalApproved &&
+    !workflowApproved &&
+    (formData.procurementApprovedAt == null || formData.procurementApprovedAt === '')
+  ) {
     approvalApproved = false;
   }
-  const approvedAtIso = formData.procurementApprovedAt;
+  const approvedAtIso = formData.procurementApprovedAt ?? po.approvedAt ?? undefined;
   let approvedLabel = '';
   if (approvalApproved && approvedAtIso) {
     const d = new Date(approvedAtIso);

@@ -189,6 +189,9 @@ export type POTimelineStep = {
 
 export type PurchaseOrder = {
   id: string;
+  /** Authoritative approval stage from purchase_orders.approval_status (Sub-flow E). */
+  approvalStatus?: string | null;
+  approvedAt?: string | null;
   vendorId: string;
   vendorName: string;
   poNumber: string;
@@ -213,6 +216,12 @@ export type PurchaseOrder = {
   /** Raw line items from API (itemName, quantity, rate, tax) for DraftPO mapping */
   rawItems?: unknown[];
   expectedShipmentDate?: string;
+  /** Structured line items (qty/price/GST) for the Issued PO detail modal — same shape as a Draft PO's lines. */
+  lineItems?: DraftPOLineItem[];
+  /** Vendor display name (duplicate of vendorName, set by openIssuedPODetail for the PO PDF). */
+  vendor?: string;
+  grandTotal?: number;
+  createdDate?: string;
 };
 
 export type CompletedGrnLine = {

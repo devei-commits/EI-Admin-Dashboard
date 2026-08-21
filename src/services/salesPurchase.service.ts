@@ -56,6 +56,11 @@ function toOrder(row: Record<string, unknown>, type: 'SO' | 'PO'): Order {
     items: Array.isArray(row.items) ? row.items : [],
     formData,
     orderStatus,
+    // The PO approval workflow (Sub-flow E) writes purchase_orders.approval_status. Dropping it
+    // here meant the UI could only see the LEGACY form_data.procurementApprovalStatus marker, so a
+    // PO approved through the current workflow still looked unapproved downstream.
+    approvalStatus: (row.approval_status ?? row.approvalStatus ?? null) as string | null,
+    approvedAt: (row.approved_at ?? row.approvedAt ?? null) as string | null,
     zohoPurchaseOrderId: row.zoho_purchase_order_id ?? row.zohoPurchaseOrderId ?? null,
     zohoBillId: row.zoho_bill_id ?? row.zohoBillId ?? null,
   };
