@@ -47,6 +47,7 @@ import {
   type InboundGrnRowInput,
 } from '../../lib/inboundGrnTableDisplay';
 import { inboundGrnSendToQcPayload } from '../../lib/inboundGrnStatus';
+import { requiredGrnDocsError } from '../../lib/grnCopyReceiptDisplay';
 import {
   buildPostRackingPhotosMeta,
   extractPostRackingRackTargets,
@@ -2135,6 +2136,14 @@ const WarehouseInbound = () => {
   };
 
   const handleSendToQc = async (grn: GRNRecord): Promise<void> => {
+    // The row's own Send to QC never passed through the GRN Copy steps, so a GRN could reach
+    // Quality with no Invoice / E-Way Bill / COA on file — QC inspects against the COA, and the GRN
+    // cannot be completed later without them either.
+    const docsError = requiredGrnDocsError(grn.sourceDocuments);
+    if (docsError) {
+      showToast(docsError, 'error');
+      return;
+    }
     try {
       const res = await updateGRN(grn.id, inboundGrnSendToQcPayload(grn.workflowSteps));
       const updated = mapApiToGRNRecord(res);

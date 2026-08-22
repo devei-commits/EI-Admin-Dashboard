@@ -11,7 +11,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pencil, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck } from 'lucide-react';
 import { Package, Flag, Warning, Check } from '@phosphor-icons/react';
 import { Pagination } from '../ui';
-import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
+import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcEmpty } from './ProcSection';
+import { SortableTableTh } from '../ui/SortableTableTh';
 import type { IssuedPOViewRecord } from './issuedPoRecord.types';
 import type { GRNRecordFromApi } from '../../services/grn.service';
 import {
@@ -301,6 +302,13 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     [records],
   );
   const sortOptions = tab === 'items' ? ITEM_SORT_OPTIONS : PO_SORT_OPTIONS;
+  // Clicking a column header sorts by it; clicking the already-active column flips direction —
+  // same sortBy/sortDir state the Sort dropdown above the table already drives (and is shared
+  // across both tabs), so header clicks, the dropdown, and the other tab all stay in sync.
+  const handleHeaderSort = (key: SortKey) => {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
   const hasActiveFilters = !!search || statusFilter !== 'all' || vendorFilter !== 'all' || !!dateFrom || !!dateTo || !!itemFilter;
   const clearFilters = () => {
     setSearch(''); setStatusFilter('all'); setVendorFilter('all'); setDateFrom(''); setDateTo(''); setItemFilter(null);
@@ -543,28 +551,6 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
     return groups;
   }, [pagedRows, sortBy, sortDir]);
 
-  // ── Vendor-grouped rows for Items tab ──
-  const lineVendorGroups = useMemo(() => {
-    const map = new Map<string, typeof lineRows>();
-    for (const lr of pagedLineRows) {
-      const v = lr.record.vendor || 'Unknown Vendor';
-      if (!map.has(v)) map.set(v, []);
-      map.get(v)!.push(lr);
-    }
-    const dirMul = sortDir === 'asc' ? 1 : -1;
-    const groups = [...map.entries()].map(([vendor, vendorLineRows]) => ({
-      vendor,
-      vendorLineRows,
-      latest: vendorLineRows.reduce((m, lr) => Math.max(m, dateMs(lr.record.createdDate)), 0),
-    }));
-    groups.sort((a, b) => {
-      if (sortBy === 'date') return (a.latest - b.latest) * dirMul || a.vendor.localeCompare(b.vendor);
-      if (sortBy === 'vendor') return a.vendor.localeCompare(b.vendor) * dirMul;
-      return a.vendor.localeCompare(b.vendor);
-    });
-    return groups;
-  }, [pagedLineRows, sortBy, sortDir]);
-
   const totalValue = records.reduce((s, r) => s + (r.grandTotal || 0), 0);
   const inTransitCount = rows.filter((x) => x.rollup.inTransit > 0).length;
 
@@ -672,100 +658,95 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           ) : (
             <>
             <ProcTableCard>
-                <ProcThead cols={['PO Date', 'PO #', 'Item', { label: 'PO Qty', align: 'center' }, 'GRN Qty (GRN# · qty)', 'GRN Status', 'Purchase Status', 'SLA', 'Other POs', 'Action']} />
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                    <SortableTableTh label="PO Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <SortableTableTh label="PO #" column="po" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <SortableTableTh label="Vendor" column="vendor" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <SortableTableTh label="Item" column="item" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <SortableTableTh label="PO Qty" column="qty" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Qty (GRN# · qty)</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Status</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Purchase Status</th>
+                    <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Other POs</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Action</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {lineVendorGroups.map(({ vendor, vendorLineRows }) => (
-                    <React.Fragment key={vendor}>
-                      {/* Vendor header row */}
-                      <tr
-                        className="bg-surface-3 border-y border-border hover:bg-surface-2 cursor-pointer select-none"
-                        onClick={() => toggleVendor(`items:${vendor}`)}
-                      >
-                        <td colSpan={10} className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <ChevronDown
-                              size={13}
-                              className={`text-ink-3 transition-transform ${collapsedVendors.has(`items:${vendor}`) ? '-rotate-90' : ''}`}
-                            />
-                            <span className="text-xs font-bold text-ink">{vendor}</span>
-                            <span className="text-[10px] text-ink-3 font-medium">
-                              {vendorLineRows.length} line{vendorLineRows.length !== 1 ? 's' : ''}
-                            </span>
+                  {pagedLineRows.map((lr, idx) => {
+                    const ps = derivePurchaseStatus(lr.received, lr.billed, resolvePoWorkflowStatus(lr.record));
+                    const psCfg = ps ? PURCHASE_STATUS_CONFIG[ps] : null;
+                    const fullyReceived = lr.received >= lr.poQty && lr.poQty > 0;
+                    const canTransit = isShippable(lr.record) && !fullyReceived;
+                    const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
+                      : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
+                      : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
+                    const slaText = fullyReceived ? <><Check className="inline w-3 h-3 align-[-1px]" /> received</> : slaLevel === 'bad' ? <><Flag weight="fill" className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d lead`}</> : slaLevel === 'warn' ? <><Warning className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d`}</> : <><Check className="inline w-3 h-3 align-[-1px]" /> within lead</>;
+                    const slaCls = slaLevel === 'bad' ? 'text-err font-bold' : slaLevel === 'warn' ? 'text-warn font-semibold' : 'text-ok';
+                    return (
+                      <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} onClick={() => onOpenDetail(lr.record)} className="hover:bg-brand-soft transition-colors align-top border-b border-hairline cursor-pointer">
+                        <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(lr.record.createdDate)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button onClick={(e) => { e.stopPropagation(); onOpenDetail(lr.record); }} className="font-mono text-xs font-semibold text-brand hover:underline decoration-dotted">{lr.record.poNumber}</button>
+                        </td>
+                        <td className="px-3 py-2.5 max-w-[140px]">
+                          <p className="text-xs text-ink truncate" title={lr.record.vendor || 'Unknown Vendor'}>{lr.record.vendor || 'Unknown Vendor'}</p>
+                        </td>
+                        <td className="px-3 py-2.5 max-w-[150px]">
+                          <p className="text-xs font-semibold text-ink truncate" title={lr.item}>{lr.item}</p>
+                          <p className="text-[10px] text-ink-4 font-mono">{lr.itemCode}</p>
+                        </td>
+                        <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-ink-2">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
+                        <td className="px-3 py-2.5 min-w-[130px]">
+                          {lr.grnLines.length === 0 ? (
+                            <span className="text-[10.5px] text-ink-4">— no shipments yet</span>
+                          ) : (
+                            <div className="space-y-0.5 font-mono text-[10.5px]">
+                              {lr.grnLines.map((g, i) => (
+                                <div key={i}><span className="text-brand">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {lr.grnLines.length === 0 ? <span className="text-ink-4 text-xs">—</span> : (
+                            <div className="flex flex-col gap-0.5">
+                              {lr.grnLines.map((g, i) => {
+                                const c = GRN_STAGE_CONFIG[g.stage];
+                                return <span key={i} className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${c.text} ${c.bg} ${c.border}`}>{c.label}</span>;
+                              })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-ink-4">— draft</span>}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-center">
+                          {lr.otherPos > 0 ? (
+                            <button onClick={(e) => { e.stopPropagation(); setItemFilter(lr.itemKey); }} className="inline-flex items-center gap-0.5 text-[10.5px] text-brand font-semibold hover:underline">
+                              <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
+                            </button>
+                          ) : <span className="text-ink-4 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); onEdit(lr.record); }} title={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2"><Pencil size={12} /></button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty }); }}
+                              disabled={!canTransit}
+                              title={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
+                              aria-label={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
+                              className={`inline-flex items-center justify-center w-7 h-7 rounded-md border ${canTransit ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}
+                            >
+                              <Truck size={12} />
+                            </button>
                           </div>
                         </td>
                       </tr>
-                      {!collapsedVendors.has(`items:${vendor}`) && vendorLineRows.map((lr, idx) => {
-                        const ps = derivePurchaseStatus(lr.received, lr.billed, resolvePoWorkflowStatus(lr.record));
-                        const psCfg = ps ? PURCHASE_STATUS_CONFIG[ps] : null;
-                        const fullyReceived = lr.received >= lr.poQty && lr.poQty > 0;
-                        const canTransit = isShippable(lr.record) && !fullyReceived;
-                        const slaLevel: 'ok' | 'warn' | 'bad' = fullyReceived ? 'ok'
-                          : lr.leadDays > 0 && lr.daysOpen > lr.leadDays ? 'bad'
-                          : lr.leadDays > 0 && lr.daysOpen >= lr.leadDays * 0.8 ? 'warn' : 'ok';
-                        const slaText = fullyReceived ? <><Check className="inline w-3 h-3 align-[-1px]" /> received</> : slaLevel === 'bad' ? <><Flag weight="fill" className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d lead`}</> : slaLevel === 'warn' ? <><Warning className="inline w-3 h-3 align-[-1px]" /> {`${lr.daysOpen}d / ${lr.leadDays}d`}</> : <><Check className="inline w-3 h-3 align-[-1px]" /> within lead</>;
-                        const slaCls = slaLevel === 'bad' ? 'text-err font-bold' : slaLevel === 'warn' ? 'text-warn font-semibold' : 'text-ok';
-                        return (
-                          <tr key={`${lr.record.poNumber}-${lr.itemKey}-${idx}`} onClick={() => onOpenDetail(lr.record)} className="hover:bg-brand-soft transition-colors align-top border-b border-hairline cursor-pointer">
-                            <td className="px-3 py-2.5 whitespace-nowrap text-xs text-ink-2">{fmtDate(lr.record.createdDate)}</td>
-                            <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={(e) => { e.stopPropagation(); onOpenDetail(lr.record); }} className="font-mono text-xs font-semibold text-brand hover:underline decoration-dotted">{lr.record.poNumber}</button>
-                            </td>
-                            <td className="px-3 py-2.5 max-w-[150px]">
-                              <p className="text-xs font-semibold text-ink truncate" title={lr.item}>{lr.item}</p>
-                              <p className="text-[10px] text-ink-4 font-mono">{lr.itemCode}</p>
-                            </td>
-                            <td className="px-3 py-2.5 text-center whitespace-nowrap text-xs tabular-nums text-ink-2">{lr.poQty.toLocaleString('en-IN')}{lr.unit ? ` ${lr.unit}` : ''}</td>
-                            <td className="px-3 py-2.5 min-w-[130px]">
-                              {lr.grnLines.length === 0 ? (
-                                <span className="text-[10.5px] text-ink-4">— no shipments yet</span>
-                              ) : (
-                                <div className="space-y-0.5 font-mono text-[10.5px]">
-                                  {lr.grnLines.map((g, i) => (
-                                    <div key={i}><span className="text-brand">{g.grnNo}</span> · <b>{g.qty.toLocaleString('en-IN')}</b></div>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {lr.grnLines.length === 0 ? <span className="text-ink-4 text-xs">—</span> : (
-                                <div className="flex flex-col gap-0.5">
-                                  {lr.grnLines.map((g, i) => {
-                                    const c = GRN_STAGE_CONFIG[g.stage];
-                                    return <span key={i} className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${c.text} ${c.bg} ${c.border}`}>{c.label}</span>;
-                                  })}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap">
-                              {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-ink-4">— draft</span>}
-                            </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
-                            <td className="px-3 py-2.5 whitespace-nowrap text-center">
-                              {lr.otherPos > 0 ? (
-                                <button onClick={(e) => { e.stopPropagation(); setItemFilter(lr.itemKey); }} className="inline-flex items-center gap-0.5 text-[10.5px] text-brand font-semibold hover:underline">
-                                  <ChevronRight size={11} /> {lr.otherPos} other PO{lr.otherPos !== 1 ? 's' : ''}
-                                </button>
-                              ) : <span className="text-ink-4 text-xs">—</span>}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex gap-1">
-                                <button onClick={(e) => { e.stopPropagation(); onEdit(lr.record); }} title={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} aria-label={lr.record.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2"><Pencil size={12} /></button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); canTransit && openPerLine(lr.record, { itemCode: lr.itemCode, item: lr.item, unit: lr.unit, poQty: lr.poQty }); }}
-                                  disabled={!canTransit}
-                                  title={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
-                                  aria-label={canTransit ? 'Initiate Transit (per line)' : fullyReceived ? 'Line already fully received' : 'PO must be Issued / Accepted before shipment'}
-                                  className={`inline-flex items-center justify-center w-7 h-7 rounded-md border ${canTransit ? 'border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2' : 'border-border text-ink-4 bg-surface-3 cursor-not-allowed'}`}
-                                >
-                                  <Truck size={12} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
             </ProcTableCard>
             <PoPaginationBar
@@ -790,7 +771,21 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           ) : (
             <>
             <ProcTableCard>
-                <ProcThead cols={['PO Date', 'PO #', 'Item', 'PO Status', { label: 'PO Value', align: 'center' }, 'Connecting', { label: 'In-Transit', align: 'center' }, { label: 'Received', align: 'center' }, { label: 'Billed', align: 'center' }, { label: 'Return', align: 'center' }, 'Actions']} />
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                    <SortableTableTh label="PO Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <SortableTableTh label="PO #" column="po" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Item</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">PO Status</th>
+                    <SortableTableTh label="PO Value" column="value" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Connecting</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">In-Transit</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">Received</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">Billed</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">Return</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {vendorGroups.map(({ vendor, vendorRows, vendorTotal }) => (
                     <React.Fragment key={vendor}>

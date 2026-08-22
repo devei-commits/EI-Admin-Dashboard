@@ -1012,6 +1012,8 @@ const Procurement: React.FC = () => {
   // Raw text as typed per row — see editIssuedPoPriceDraft for why this can't just be derived
   // from the parsed number (a mid-typed "60." would collapse back to "60" every keystroke).
   const [editDraftPoPriceDraft, setEditDraftPoPriceDraft] = useState<Record<number, string>>({});
+  const [editDraftPoGstDraft, setEditDraftPoGstDraft] = useState<Record<number, string>>({});
+  const [editDraftPoGstAmtDraft, setEditDraftPoGstAmtDraft] = useState<Record<number, string>>({});
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
@@ -1039,11 +1041,15 @@ const Procurement: React.FC = () => {
   // collapsed back to "60" on every keystroke, which happened when the input's displayed value
   // was re-derived from the parsed number instead of the exact characters the user typed.
   const [editIssuedPoPriceDraft, setEditIssuedPoPriceDraft] = useState<Record<number, string>>({});
+  const [editIssuedPoGstDraft, setEditIssuedPoGstDraft] = useState<Record<number, string>>({});
+  const [editIssuedPoGstAmtDraft, setEditIssuedPoGstAmtDraft] = useState<Record<number, string>>({});
   useEffect(() => {
     setEditIssuedPoLines(Array.isArray(selectedPO?.lineItems) ? selectedPO.lineItems.map((l) => ({ ...l })) : []);
     setPoEditGate(null);
     setAddPoItemSearch('');
     setEditIssuedPoPriceDraft({});
+    setEditIssuedPoGstDraft({});
+    setEditIssuedPoGstAmtDraft({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPO?.backendPoId, selectedPO?.poNumber]);
   // Guards the released-PO detail modal's mutation buttons against double-submit while in flight.
@@ -2851,6 +2857,8 @@ const Procurement: React.FC = () => {
     });
     setAddDraftPoItemSearch('');
     setEditDraftPoPriceDraft({});
+    setEditDraftPoGstDraft({});
+    setEditDraftPoGstAmtDraft({});
   }, [editDraftPOTarget]);
 
   const updateEditRequestItem = (index: number, updates: Partial<BackendPRItem>) => {
@@ -7100,12 +7108,13 @@ const Procurement: React.FC = () => {
                         Line items — qty &amp; price/unit
                       </span>
                       <div className="rounded-lg border border-border overflow-x-auto">
-                        <table className="w-full text-sm min-w-[480px]">
+                        <table className="w-full text-sm min-w-[600px]">
                           <thead>
                             <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
                               <th scope="col" className="px-2 py-2 font-semibold">Item</th>
                               <th scope="col" className="px-2 py-2 font-semibold text-right w-32">Qty</th>
                               <th scope="col" className="px-2 py-2 font-semibold text-right w-36">Price/unit (₹)</th>
+                              <th scope="col" className="px-2 py-2 font-semibold text-right w-32">GST</th>
                               <th scope="col" className="px-2 py-2 font-semibold text-right w-40">Line total</th>
                             </tr>
                           </thead>
@@ -7152,6 +7161,66 @@ const Procurement: React.FC = () => {
                                     }}
                                     className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
                                   />
+                                </td>
+                                <td className="px-2 py-2 text-right align-top">
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="0"
+                                      title="GST %"
+                                      value={
+                                        editIssuedPoGstDraft[idx] ??
+                                        (line.gstPercent != null ? String(line.gstPercent) : '')
+                                      }
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        setEditIssuedPoGstDraft((prev) => ({ ...prev, [idx]: raw }));
+                                        setEditIssuedPoGstAmtDraft((prev) => {
+                                          const next = { ...prev };
+                                          delete next[idx];
+                                          return next;
+                                        });
+                                        const cleaned = raw.replace(/,/g, '').trim();
+                                        const gstPercent = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
+                                        const next = editIssuedPoLines.map((l, i) =>
+                                          i === idx ? recalcDraftPoLineItem(l, { gstPercent }) : l,
+                                        );
+                                        setEditIssuedPoLines(next);
+                                      }}
+                                      className="w-12 rounded border border-border px-1.5 py-1 text-right tabular-nums"
+                                    />
+                                    <span className="text-ink-3 text-[10px]">%</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <span className="text-ink-3 text-[10px]">₹</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="0"
+                                      title="GST amount"
+                                      value={
+                                        editIssuedPoGstAmtDraft[idx] ??
+                                        (line.gstAmount != null && line.gstAmount !== 0 ? String(line.gstAmount) : '')
+                                      }
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        setEditIssuedPoGstAmtDraft((prev) => ({ ...prev, [idx]: raw }));
+                                        setEditIssuedPoGstDraft((prev) => {
+                                          const next = { ...prev };
+                                          delete next[idx];
+                                          return next;
+                                        });
+                                        const cleaned = raw.replace(/,/g, '').trim();
+                                        const gstAmount = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
+                                        const next = editIssuedPoLines.map((l, i) =>
+                                          i === idx ? recalcDraftPoLineItem(l, { gstAmount }) : l,
+                                        );
+                                        setEditIssuedPoLines(next);
+                                      }}
+                                      className="w-16 rounded border border-border px-1.5 py-1 text-right tabular-nums"
+                                    />
+                                  </div>
                                 </td>
                                 <td className="px-2 py-2 text-right align-top tabular-nums text-ink font-medium whitespace-nowrap">
                                   ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -10342,12 +10411,13 @@ const Procurement: React.FC = () => {
               <div>
                 <span className="block text-xs font-semibold text-ink-3 mb-2">Line items — qty &amp; price/unit</span>
                 <div className="rounded-lg border border-border overflow-x-auto">
-                  <table className="w-full text-sm min-w-[480px]">
+                  <table className="w-full text-sm min-w-[600px]">
                     <thead>
                       <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
                         <th scope="col" className="px-2 py-2 font-semibold">Item</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-32">Qty</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-36">Price/unit (₹)</th>
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-32">GST</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-40">Line total</th>
                       </tr>
                     </thead>
@@ -10358,7 +10428,7 @@ const Procurement: React.FC = () => {
                             <p className="font-medium text-ink leading-snug">{line.item}</p>
                             <p className="text-[10px] text-ink-3">{line.itemCode}</p>
                             {line.leadTimeDays != null ? (
-                              <p className="text-[10px] text-ink-3 mt-0.5">Lead {line.leadTimeDays}d · GST {line.gstPercent ?? 18}%</p>
+                              <p className="text-[10px] text-ink-3 mt-0.5">Lead {line.leadTimeDays}d</p>
                             ) : null}
                           </td>
                           <td className="px-2 py-2 text-right align-top">
@@ -10397,6 +10467,66 @@ const Procurement: React.FC = () => {
                               }}
                               className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
                             />
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0"
+                                title="GST %"
+                                value={
+                                  editDraftPoGstDraft[idx] ??
+                                  (line.gstPercent != null ? String(line.gstPercent) : '')
+                                }
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setEditDraftPoGstDraft((prev) => ({ ...prev, [idx]: raw }));
+                                  setEditDraftPoGstAmtDraft((prev) => {
+                                    const next = { ...prev };
+                                    delete next[idx];
+                                    return next;
+                                  });
+                                  const cleaned = raw.replace(/,/g, '').trim();
+                                  const gstPercent = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
+                                  const next = editDraftPOForm.lineItems.map((l, i) =>
+                                    i === idx ? recalcDraftPoLineItem(l, { gstPercent }) : l,
+                                  );
+                                  setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                                }}
+                                className="w-12 rounded border border-border px-1.5 py-1 text-right tabular-nums"
+                              />
+                              <span className="text-ink-3 text-[10px]">%</span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-ink-3 text-[10px]">₹</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0"
+                                title="GST amount"
+                                value={
+                                  editDraftPoGstAmtDraft[idx] ??
+                                  (line.gstAmount != null && line.gstAmount !== 0 ? String(line.gstAmount) : '')
+                                }
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setEditDraftPoGstAmtDraft((prev) => ({ ...prev, [idx]: raw }));
+                                  setEditDraftPoGstDraft((prev) => {
+                                    const next = { ...prev };
+                                    delete next[idx];
+                                    return next;
+                                  });
+                                  const cleaned = raw.replace(/,/g, '').trim();
+                                  const gstAmount = cleaned === '' ? 0 : parseFloat(cleaned.replace(/[^\d.]/g, '')) || 0;
+                                  const next = editDraftPOForm.lineItems.map((l, i) =>
+                                    i === idx ? recalcDraftPoLineItem(l, { gstAmount }) : l,
+                                  );
+                                  setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                                }}
+                                className="w-16 rounded border border-border px-1.5 py-1 text-right tabular-nums"
+                              />
+                            </div>
                           </td>
                           <td className="px-2 py-2 text-right align-top tabular-nums text-ink font-medium whitespace-nowrap">
                             ₹{line.lineTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}

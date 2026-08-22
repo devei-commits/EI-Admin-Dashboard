@@ -1,18 +1,47 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { fetchGRNList } from '../../services/grn.service';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { fetchGRNList, fetchGRNAssignableUsers } from '../../services/grn.service';
 import { filterInboundQcQueue, type QualityGrnQueueInput } from '../../lib/qualityGrnQueueDisplay';
+import {
+  buildQualityOrderManagementRow,
+  type QualityOrderManagementInput,
+  type QualityOrderManagementRow,
+} from '../../lib/qualityOrderManagementTableDisplay';
+import QualityCheckModal from '../../components/quality/QualityCheckModal';
 import QualityGrnQueueTable from './QualityGrnQueueTable';
 
+/**
+ * GRNs the warehouse has sent to QC.
+ *
+ * This queue used to be read-only: its only action was a link to /warehouse/inbound labelled
+ * "Inspect in Warehouse", so a GRN sitting at "QC Pending" had no way to be acted on from Quality —
+ * the inspection form lived on a different page. It now opens that same form on the row.
+ */
 const InboundQcQueue: React.FC = () => {
+  const navigate = useNavigate();
   const [grns, setGrns] = useState<QualityGrnQueueInput[]>([]);
+  const [assigneeOptions, setAssigneeOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeQcRow, setActiveQcRow] = useState<QualityOrderManagementRow | null>(null);
+
+  const loadQueue = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const [list, users] = await Promise.all([fetchGRNList(), fetchGRNAssignableUsers()]);
+      setGrns(list as QualityGrnQueueInput[]);
+      setAssigneeOptions(
+        users.map((u) => String(u.displayName ?? '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+      );
+    } catch {
+      setGrns([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchGRNList()
-      .then((list) => setGrns(list as QualityGrnQueueInput[]))
-      .catch(() => setGrns([]))
-      .finally(() => setLoading(false));
-  }, []);
+    void loadQueue();
+  }, [loadQueue]);
 
   const queue = useMemo(() => filterInboundQcQueue(grns), [grns]);
 
@@ -25,7 +54,8 @@ const InboundQcQueue: React.FC = () => {
           </p>
           <h1 className="text-2xl font-bold text-ink mt-1">Inbound QC Queue</h1>
           <p className="text-sm text-ink-2 mt-2">
-            GRNs sent from warehouse via Send to QC — complete inspection in Order Management.
+            GRNs sent from warehouse via Send to QC. Use <strong>Complete QC</strong> to record the
+            inspection — results and verdict are saved against the GRN.
           </p>
         </div>
         {loading ? (
@@ -34,9 +64,22 @@ const InboundQcQueue: React.FC = () => {
           <QualityGrnQueueTable
             grns={queue}
             emptyMessage="No GRNs awaiting inbound QC."
-            actionLabel="Inspect in Warehouse"
+            actionLabel="Complete QC"
+            onAction={(grn) =>
+              setActiveQcRow(buildQualityOrderManagementRow(grn as QualityOrderManagementInput))
+            }
           />
         )}
+
+        {activeQcRow ? (
+          <QualityCheckModal
+            row={activeQcRow}
+            assigneeOptions={assigneeOptions}
+            onClose={() => setActiveQcRow(null)}
+            onSaved={() => void loadQueue()}
+            onThirdPartyReleased={() => navigate('/quality/third-party-tracking')}
+          />
+        ) : null}
       </div>
     </div>
   );

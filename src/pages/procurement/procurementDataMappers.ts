@@ -1110,10 +1110,15 @@ export function itemDetailsToProcurementRequestItems(details: ItemDetail[]): Pro
   });
 }
 
-/** Recompute GST and line total after qty or price/unit change on a draft PO line. */
+/**
+ * Recompute GST and line total after qty, price/unit, GST%, or GST amount changes on a draft PO
+ * line. GST% and GST amount are two views of the same number — editing either one back-derives
+ * the other from the current subtotal, so they always stay equivalent (e.g. 10% on a ₹20,000
+ * subtotal is the same thing as typing ₹2,000 directly).
+ */
 export function recalcDraftPoLineItem(
   line: DraftPOLineItem,
-  patch: Partial<Pick<DraftPOLineItem, 'qty' | 'pricePerUnit'>>,
+  patch: Partial<Pick<DraftPOLineItem, 'qty' | 'pricePerUnit' | 'gstPercent' | 'gstAmount'>>,
 ): DraftPOLineItem {
   const qtyStr = patch.qty !== undefined ? patch.qty : line.qty;
   const qty = parseQuantityRequested(qtyStr);
@@ -1121,14 +1126,25 @@ export function recalcDraftPoLineItem(
     patch.pricePerUnit !== undefined
       ? Number(patch.pricePerUnit) || 0
       : Number(line.pricePerUnit) || 0;
-  const gstPct = line.gstPercent ?? 18;
   const subtotal = qty * price;
-  const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+
+  // Items on the same PO can carry different tax rates (e.g. a mixed RM/PM order), so GST is
+  // per-line, not a single order-wide default — 18% is only the starting point for a new line.
+  let gstPct: number;
+  let gstAmount: number;
+  if (patch.gstAmount !== undefined) {
+    gstAmount = Number(patch.gstAmount) || 0;
+    gstPct = subtotal > 0 ? parseFloat(((gstAmount / subtotal) * 100).toFixed(2)) : 0;
+  } else {
+    gstPct = patch.gstPercent !== undefined ? Number(patch.gstPercent) || 0 : (line.gstPercent ?? 18);
+    gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
+  }
   const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
   return {
     ...line,
     ...(patch.qty !== undefined ? { qty: patch.qty } : {}),
     ...(patch.pricePerUnit !== undefined ? { pricePerUnit: price } : {}),
+    gstPercent: gstPct,
     gstAmount,
     lineTotal,
   };

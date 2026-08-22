@@ -16,6 +16,8 @@ import { raiseRtv } from '../../services/poGrnException.service';
 import type { InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
 import {
   allGrnReceiptChecksPass,
+  missingRequiredGrnDocs,
+  requiredGrnDocsError,
   allGrnCoreMatchChecksPass,
   buildGrnCopyDocumentRows,
   buildGrnCopyReceiptHeaderFields,
@@ -482,6 +484,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const receivedPacks = packRows.filter((row) => row.actualQty > 0).length;
   const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
   const docsLocked = grnReceiptDocumentsLocked(mode, grn);
+  /** Required receipt documents still missing — drives the * outlines and the step-2 block. */
+  const missingDocKeys = useMemo(() => missingRequiredGrnDocs(sourceDocuments), [sourceDocuments]);
 
   const updateDocRef = (key: GrnCopyDocRefKey, ref: string): void => {
     setDocRefs((prev) => ({ ...prev, [key]: ref }));
@@ -797,6 +801,13 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       addToast('error', errors[0]);
       return;
     }
+    // Invoice / E-Way Bill / COA gate label generation and therefore completion. Refusing here —
+    // where they are entered — instead of silently at step 5 keeps the reason next to the fields.
+    const docsError = requiredGrnDocsError(sourceDocuments);
+    if (docsError) {
+      addToast('error', docsError);
+      return;
+    }
     setConfirmingDetails(true);
     try {
       const confirmedMeta: InboundGrnDetailsMeta = {
@@ -925,6 +936,14 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   // (a raw prop that goes stale mid-session — see the receiptModal sync fix in Inbound.tsx).
   const qcAlreadyDecided = sourceDocuments.qc?.verdict === 'accept' || sourceDocuments.qc?.verdict === 'reject';
   const handleSendToQc = async (): Promise<void> => {
+    // GRN-2026-0185 reached QC with none of the four documents on file, because Send to QC does not
+    // pass through step 2. The same requirement applies here — QC inspects against the COA, and the
+    // GRN cannot be completed later without these anyway.
+    const docsError = requiredGrnDocsError(sourceDocuments);
+    if (docsError) {
+      addToast('error', docsError);
+      return;
+    }
     setSendingToQc(true);
     try {
       const payload = inboundGrnSendToQuarantineQcPayload(grn.workflowSteps);
@@ -1266,17 +1285,31 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
 
           {currentStep === 2 ? (
             <section className="mt-4 rounded-xl border border-border bg-surface-2/60 p-4">
-              <h3 className="text-sm font-semibold text-ink">Receipt documents</h3>
+              <h3 className="text-sm font-semibold text-ink">
+                Receipt documents <span className="text-err">*</span>
+              </h3>
               <p className="mt-1 text-xs text-ink-3">
                 Invoice, E-Way Bill and COA are required — <strong>Generate Labels</strong> (step 5) stays
                 disabled until all three are on file. Lorry Receipt is reference-only.
               </p>
+              {missingDocKeys.length > 0 && (
+                <p className="mt-2 rounded-md border border-err bg-err-soft px-2 py-1 text-[11px] font-semibold text-err">
+                  {requiredGrnDocsError(sourceDocuments)}
+                </p>
+              )}
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 {(['bill', 'waybill', 'coa'] as const).map((key) => {
                   const row = documentRows.find((d) => d.key === key);
                   return (
-                    <div key={key} className="rounded-lg border border-border bg-surface p-3">
-                      <div className="text-xs font-semibold text-ink">{row?.docType ?? key}</div>
+                    <div
+                      key={key}
+                      className={`rounded-lg border bg-surface p-3 ${
+                        missingDocKeys.includes(key) ? 'border-err' : 'border-border'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold text-ink">
+                        {row?.docType ?? key} <span className="text-err">*</span>
+                      </div>
                       {key !== 'coa' ? (
                         <input
                           type="text"

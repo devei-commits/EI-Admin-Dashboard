@@ -12,12 +12,25 @@ type QualityGrnQueueTableProps = {
   grns: QualityGrnQueueInput[];
   emptyMessage: string;
   actionLabel?: string;
+  /**
+   * Where the row action goes. Defaults to the warehouse list, which is right for read-only views
+   * (QC history) but wrong for a queue of GRNs waiting on QC — those need the screen that can
+   * actually record the inspection.
+   */
+  actionTo?: string;
+  /**
+   * Handle the row action in place instead of navigating. A queue of GRNs waiting on QC should
+   * open the inspection form on the row, not send the user to another page to find it again.
+   */
+  onAction?: (grn: QualityGrnQueueInput) => void;
 };
 
 const QualityGrnQueueTable: React.FC<QualityGrnQueueTableProps> = ({
   grns,
   emptyMessage,
   actionLabel = 'Open in Warehouse',
+  actionTo = '/warehouse/inbound',
+  onAction,
 }) => {
   const [detail, setDetail] = useState<QualityGrnQueueRow | null>(null);
 
@@ -60,13 +73,23 @@ const QualityGrnQueueTable: React.FC<QualityGrnQueueTableProps> = ({
                   <td className="px-4 py-3 font-medium text-ink">{row.statusLabel}</td>
                   <td className="px-4 py-3 text-ink-2">{row.qcStatus}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      to="/warehouse/inbound"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline"
-                    >
-                      {actionLabel}
-                    </Link>
+                    {onAction ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onAction(grn); }}
+                        className="rounded-md border border-teal-700 px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50"
+                      >
+                        {actionLabel}
+                      </button>
+                    ) : (
+                      <Link
+                        to={actionTo}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline"
+                      >
+                        {actionLabel}
+                      </Link>
+                    )}
                   </td>
                 </tr>
               );

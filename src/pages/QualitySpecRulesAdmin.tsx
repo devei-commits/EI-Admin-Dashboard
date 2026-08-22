@@ -101,6 +101,11 @@ export default function QualitySpecRulesAdmin() {
    * quality specification and in the GRN quality-test screen.
    */
   const [editItemCode, setEditItemCode] = useState('');
+  // Live search-as-you-type for the item code field, so the admin can see which item they're
+  // scoping the rule to (by code or name) instead of typing a code blind and hoping it's right.
+  const [itemCodeResults, setItemCodeResults] = useState<ItemPick[]>([]);
+  const [itemCodeSearching, setItemCodeSearching] = useState(false);
+  const [itemCodeDropdownOpen, setItemCodeDropdownOpen] = useState(false);
   /** Third scope level, matching the masters' sub-sub category (RM: 'ANIONIC'; PM: 'PET'). */
   const [editSubSubCategory, setEditSubSubCategory] = useState('');
   const [editRows, setEditRows] = useState<QualitySpecTableRow[]>([]);
@@ -241,6 +246,8 @@ export default function QualitySpecRulesAdmin() {
     setEditSubSubCategory('');
     setEditItemCode('');
     setEditRows([]);
+    setItemCodeResults([]);
+    setItemCodeDropdownOpen(false);
     setModalOpen(true);
   };
 
@@ -251,6 +258,8 @@ export default function QualitySpecRulesAdmin() {
     setEditSubSubCategory(rule.subSubCategory ?? '');
     setEditItemCode(rule.itemCode ?? '');
     setEditRows(rule.rows.map((row) => createEmptyQualitySpecRow(row)));
+    setItemCodeResults([]);
+    setItemCodeDropdownOpen(false);
     setModalOpen(true);
   };
 
@@ -382,6 +391,44 @@ export default function QualitySpecRulesAdmin() {
       clearTimeout(handle);
     };
   }, [itemModalOpen, selectedItem, itemSearch, searchItems]);
+
+  // Debounced search for the "New quality rule" form's item-code field — same searchItems()
+  // used by the item-specific editor above, so a code or a name both resolve. Runs whenever the
+  // rule modal is open and the field has a value, including when editing an existing item-scoped
+  // rule (the field is disabled there, but the resolved name should still be visible).
+  useEffect(() => {
+    if (!modalOpen || !editItemCode.trim()) {
+      setItemCodeResults([]);
+      return;
+    }
+    let cancelled = false;
+    setItemCodeSearching(true);
+    const handle = setTimeout(() => {
+      void searchItems(editItemCode)
+        .then((rows) => {
+          if (!cancelled) setItemCodeResults(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setItemCodeResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setItemCodeSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [modalOpen, editItemCode, searchItems]);
+
+  /** Exact code match from the live search — the item this rule actually resolves to right now. */
+  const editItemCodeMatch = useMemo(
+    () =>
+      itemCodeResults.find(
+        (r) => r.code.trim().toLowerCase() === editItemCode.trim().toLowerCase()
+      ) ?? null,
+    [itemCodeResults, editItemCode]
+  );
 
   /** Seed the editor with the item's OWN current quality rows for the active entity/section. */
   const selectItem = async (item: ItemPick) => {
@@ -894,18 +941,61 @@ export default function QualitySpecRulesAdmin() {
 
             <label className="mt-3 block text-xs font-semibold text-ink-2">
               Item code (leave blank for a category rule)
-              <input
-                type="text"
-                value={editItemCode}
-                disabled={Boolean(editingRule)}
-                onChange={(e) => setEditItemCode(e.target.value)}
-                placeholder="e.g. 1001150 — applies to this item only"
-                className="mt-1 w-full rounded-md border border-border px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
-              />
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  value={editItemCode}
+                  disabled={Boolean(editingRule)}
+                  onChange={(e) => setEditItemCode(e.target.value)}
+                  onFocus={() => setItemCodeDropdownOpen(true)}
+                  onBlur={() => setItemCodeDropdownOpen(false)}
+                  placeholder="e.g. 1001150 — applies to this item only (type a name to search)"
+                  role="combobox"
+                  aria-expanded={itemCodeDropdownOpen}
+                  aria-autocomplete="list"
+                  className="w-full rounded-md border border-border px-2 py-1.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
+                />
+                {itemCodeDropdownOpen && !editingRule && editItemCode.trim() && (
+                  <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-surface shadow-lg">
+                    {itemCodeSearching ? (
+                      <div className="px-3 py-2 text-xs text-ink-3">Searching…</div>
+                    ) : itemCodeResults.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-ink-3">No matching item found.</div>
+                    ) : (
+                      itemCodeResults.map((it) => (
+                        <button
+                          key={it.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // keep focus so the input doesn't blur before the click registers
+                            setEditItemCode(it.code);
+                            setItemCodeDropdownOpen(false);
+                          }}
+                          className="block w-full px-3 py-2 text-left text-xs hover:bg-surface-3"
+                        >
+                          <span className="font-mono text-ink-3">{it.code}</span>{' '}
+                          <span className="text-ink">{it.name}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <span className="mt-1 block text-[11px] font-normal text-ink-3">
-                {editItemCode.trim()
-                  ? `Applies to item ${editItemCode.trim()} only, overriding any category rule — in the item's master quality specification and in its quality tests.`
-                  : 'Set an item code to override the category rules for one specific item.'}
+                {editItemCode.trim() ? (
+                  editItemCodeMatch ? (
+                    <>
+                      Applies to <span className="font-semibold text-ink">{editItemCodeMatch.name}</span> ({editItemCodeMatch.code}) only,
+                      overriding any category rule — in the item's master quality specification and in its quality tests.
+                    </>
+                  ) : itemCodeSearching ? (
+                    'Looking up this item…'
+                  ) : (
+                    <span className="text-warn">No item matches code “{editItemCode.trim()}” — double-check it before saving.</span>
+                  )
+                ) : (
+                  'Set an item code (or search by name) to override the category rules for one specific item.'
+                )}
               </span>
               {/* Confirm the chosen scope actually reaches items; only fall back to the
                   uncategorised warning when no category has been picked, since that is the case

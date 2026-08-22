@@ -460,3 +460,40 @@ export function allGrnReceiptChecksPass(checks: GrnMatchCheckRow[]): boolean {
   const receipt = checks.filter((c) => !c.label.startsWith('QR labels'));
   return allGrnMatchChecksPass(receipt);
 }
+
+/**
+ * Receipt documents that must be on file before a GRN can progress.
+ *
+ * These already gate Generate Labels (step 5) and therefore GRN completion, but nothing stopped an
+ * operator moving past step 2 without them — so the block only surfaced three steps later, by which
+ * point the omission was easy to miss. Naming them here lets step 2 refuse with a specific message.
+ *
+ * Lorry Receipt is deliberately absent: it is reference-only and does not gate anything.
+ */
+export const GRN_REQUIRED_DOC_KEYS = ['bill', 'waybill', 'coa'] as const;
+export type GrnRequiredDocKey = (typeof GRN_REQUIRED_DOC_KEYS)[number];
+
+export const GRN_REQUIRED_DOC_LABELS: Record<GrnRequiredDocKey, string> = {
+  bill: 'Tax Invoice',
+  waybill: 'E-Way Bill',
+  coa: 'COA',
+};
+
+/** Required documents with no file uploaded yet, in display order. */
+export function missingRequiredGrnDocs(
+  sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+): GrnRequiredDocKey[] {
+  const docs = sourceDocuments ?? {};
+  return GRN_REQUIRED_DOC_KEYS.filter((key) => !docUploaded(docs, key));
+}
+
+/** One sentence naming what is still missing, or null when nothing is. */
+export function requiredGrnDocsError(
+  sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+): string | null {
+  const missing = missingRequiredGrnDocs(sourceDocuments);
+  if (missing.length === 0) return null;
+  const names = missing.map((k) => GRN_REQUIRED_DOC_LABELS[k]);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `Upload ${list} before continuing — ${names.length === 1 ? 'it is' : 'they are'} required to generate labels and complete this GRN.`;
+}
